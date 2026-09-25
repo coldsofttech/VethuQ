@@ -12,15 +12,17 @@ this plan is derived from.
 
 ## Current state
 
-Only `packages/vethuq-core` exists today. Everything else below is the
-**planned** package map — build them incrementally as tiers require them,
-not up front.
+Built so far: `packages/vethuq-core`, `packages/vethuq-cli`, and
+`packages/vethuq-ui`. Everything else below is the **planned** package
+map — build them incrementally as tiers require them, not up front.
 
 ## Planned package map
 
 | Package | Purpose | Introduced by tier |
 | --- | --- | --- |
-| `vethuq-core` | Document model, ingest, OCR (Tesseract), SQLite/FTS5 indexing, embeddings, search | Free |
+| `vethuq-core` | Document model, ingest, OCR (Tesseract), SQLite/FTS5 indexing, embeddings, search, source registration | Free |
+| `vethuq-cli` | CLI (Typer) | Free |
+| `vethuq-ui` | Desktop UI (Tkinter) | Free |
 | `vethuq-entitlements` | Tier/capability flags, license enforcement — cross-cutting, depended on by everything | Free (built early, per requirements §13) |
 | `vethuq-intelligence` | Classification, entities, relationships, similarity, tables, timelines | Basic/Lite/Pro |
 | `vethuq-security` | Auth, authz, tenant isolation, audit logging | Premium |
@@ -28,7 +30,6 @@ not up front.
 | `vethuq-api` | REST API (framework TBD — deferred) | Pro |
 | `vethuq-mcp` | MCP server, generic + domain SKILLS | Premium / V4 |
 | `vethuq-ai` | AI abstraction layer: provider-independent (Bedrock/local/hybrid), AI application services | V5 |
-| `vethuq-cli` | CLI + interactive console (Typer) | Free |
 
 Expected intra-workspace dependency direction (later packages depend on
 earlier ones, never the reverse):
@@ -38,16 +39,40 @@ vethuq-entitlements
         ▲
         │
    vethuq-core ──► vethuq-intelligence
-        ▲                 ▲
-        │                 │
-  vethuq-security    vethuq-sdk ──► vethuq-api
-        ▲                 ▲
-        │                 │
+        ▲   ▲             ▲
+        │   │             │
+   vethuq-cli │      vethuq-sdk ──► vethuq-api
+        │   │             ▲
+   vethuq-ui │             │
+        │  vethuq-security │
+        │             │
         └──────── vethuq-mcp ◄──── vethuq-ai
-        ▲
-        │
-   vethuq-cli
 ```
+
+## Sources (files/folders as OCR/indexing input)
+
+`vethuq_core.sources` is the single source of truth for registering files
+and folders as VethuQ sources; both `vethuq-cli` (`vethuq source ...`) and
+`vethuq-ui` (toolbar "Add Folder"/"Add File" buttons) call it directly
+rather than duplicating logic. Folders are always indexed recursively —
+there is no non-recursive mode.
+
+Storage: a per-user SQLite database at
+`platformdirs.user_data_dir("VethuQ")/vethuq.db` (e.g.
+`%APPDATA%\VethuQ\vethuq.db` on Windows), with a `sources` table:
+
+| Column | Notes |
+| --- | --- |
+| `id` | autoincrement primary key |
+| `path` | resolved absolute path, unique (dedupes relative vs. absolute) |
+| `source_type` | `file` \| `folder` |
+| `status` | `pending` \| `indexed` \| `error` \| `removed` — updated later by the indexing pipeline |
+| `added_at` | ISO-8601 UTC timestamp |
+| `last_scanned_at` | nullable, set by the indexing pipeline |
+| `is_active` | soft-delete flag; `remove_source` sets this to 0 rather than deleting the row |
+
+A one-row `schema_version` table exists as a hook for future migrations,
+without a full migration framework yet.
 
 ## Conventions per package
 
