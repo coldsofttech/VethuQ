@@ -25,4 +25,14 @@ jobs:
         run: uv sync --all-packages --group dev
 
       - name: Run tests
-        run: uv run pytest --cov --cov-report=xml
+        shell: bash
+        run: |
+          set +e
+          uv run pytest --cov --cov-report=xml
+          code=$?
+          # pytest exits 5 when no tests were collected — not a failure this early in the project.
+          if [ $code -eq 5 ]; then
+            echo "No tests collected yet, skipping."
+            exit 0
+          fi
+          exit $code
