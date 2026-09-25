@@ -9,10 +9,11 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 vethuq-core = { workspace = true }
-# Additional workspace packages (vethuq-entitlements, vethuq-intelligence,
-# vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai, vethuq-cli)
-# are added here as they are built — see docs/architecture.md for the planned
-# package map.
+vethuq-cli = { workspace = true }
+vethuq-ui = { workspace = true }
+# Remaining workspace packages (vethuq-entitlements, vethuq-intelligence,
+# vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai) are added
+# here as they are built — see docs/architecture.md for the planned package map.
 
 [dependency-groups]
 dev = [
