@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-import multiprocessing
-import queue
 import sqlite3
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from vethuq_core.db import connect
+from vethuq_core.index_runner import (
+    AlreadyRunningError,
+    IndexRunnerError,
+    IndexState,
+    StaleLockError,
+    is_running,
+    read_state,
+    signal_stop,
+    start_run,
+)
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
@@ -21,37 +29,6 @@ from vethuq_core.sources import (
 )
 
 _INDEX_POLL_INTERVAL_MS = 5000
-_QUEUE_POLL_INTERVAL_MS = 100
-
-
-def _run_index_worker(
-    db_path: Path | None,
-    stop_event: multiprocessing.synchronize.Event,
-    message_queue: multiprocessing.Queue,
-) -> None:
-    """Poll for pending sources and OCR them, in a process of its own.
-
-    This runs as a separate OS process rather than a thread because
-    PaddleOCR's native calls don't reliably release the GIL — in a thread,
-    a long init/inference call would block the main process's Tk event
-    loop for as long as it runs, freezing the whole UI. Status updates are
-    reported back through `message_queue`; nothing here ever touches Tk,
-    and it must stay a plain module-level function (not a bound method) so
-    it's picklable for `multiprocessing`'s spawn start method on Windows.
-    """
-    from vethuq_core.ocr import run_ocr
-
-    worker_conn = connect(db_path)
-    try:
-        while not stop_event.wait(_INDEX_POLL_INTERVAL_MS / 1000):
-            pending = [s for s in list_sources(worker_conn) if s.status == "pending"]
-            for index, source in enumerate(pending, start=1):
-                message_queue.put(("indexing", index, len(pending), source.path))
-                run_ocr(worker_conn, source)
-                message_queue.put(("refresh",))
-            message_queue.put(("idle",))
-    finally:
-        worker_conn.close()
 
 
 class MainWindow(tk.Tk):
@@ -68,39 +45,50 @@ class MainWindow(tk.Tk):
         self._build_source_list()
         self.refresh_sources()
         self._closing = False
-        self._start_index_worker()
-        self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
+        self._launch_or_attach_index()
+        self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
 
-    def _start_index_worker(self) -> None:
-        self._worker_stop = multiprocessing.Event()
-        self._worker_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._worker_process = multiprocessing.Process(
-            target=_run_index_worker,
-            args=(self._db_path, self._worker_stop, self._worker_queue),
-            daemon=True,
-        )
-        self._worker_process.start()
+    def _launch_or_attach_index(self) -> None:
+        """Start background indexing, unless a run is already in progress.
 
-    def _process_worker_queue(self) -> None:
-        while True:
-            try:
-                message = self._worker_queue.get_nowait()
-            except queue.Empty:
-                break
-            tag = message[0]
-            if tag == "indexing":
-                _, index, total, path = message
-                self._set_indexing_status(index, total, path)
-            elif tag == "refresh":
-                self.refresh_sources()
-            elif tag == "idle":
-                self._set_idle_status()
+        A run could already be going if this app instance crashed and
+        relaunched, or if `vethuq index run` was started from the CLI - in
+        either case we just attach to it via polling rather than starting a
+        second one.
+        """
+        if is_running(self._db_path)[0]:
+            return
+        try:
+            start_run(db_path=self._db_path)
+        except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
+            # AlreadyRunningError: lost a race with something else starting a
+            # run just now - fine, we'll just poll it. StaleLockError: a
+            # previous run didn't exit cleanly; leave clearing that to the
+            # user (`vethuq index run --force`) rather than doing it silently
+            # here. SourceNotFoundError can't actually happen (no target is
+            # passed), but is one of start_run's declared errors.
+            pass
+
+    def _poll_index_status(self) -> None:
+        state = read_state(self._db_path)
+        if state is not None and state.status in ("running", "paused"):
+            self._set_indexing_status(state)
+            self.refresh_sources()
+        else:
+            self._set_idle_status()
         if not self._closing:
-            self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
+            self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
 
     def destroy(self) -> None:
+        # Signal only - don't wait. The worker finishes whatever file it's
+        # on and exits by itself (cleaning up its own lock/control files and
+        # index_runs row), so the app doesn't need to stay open to see that
+        # happen.
         self._closing = True
-        self._worker_stop.set()
+        try:
+            signal_stop(db_path=self._db_path)
+        except IndexRunnerError:
+            pass
         super().destroy()
 
     def _build_menubar(self) -> None:
@@ -192,8 +180,12 @@ class MainWindow(tk.Tk):
         self._status_progress = ttk.Progressbar(status_bar, mode="indeterminate", length=120)
         self._status_progress.pack(side=tk.RIGHT, pady=4)
 
-    def _set_indexing_status(self, index: int, total: int, path: str) -> None:
-        self._status_var.set(f"Indexing ({index}/{total}): {path}")
+    def _set_indexing_status(self, state: IndexState) -> None:
+        if state.status == "paused":
+            self._status_var.set(f"Paused ({state.processed_files}/{state.total_files})")
+        else:
+            current = f": {Path(state.current_file).name}" if state.current_file else ""
+            self._status_var.set(f"Indexing ({state.processed_files}/{state.total_files}){current}")
         self._status_progress.start(10)
 
     def _set_idle_status(self) -> None:
@@ -219,6 +211,7 @@ class MainWindow(tk.Tk):
             messagebox.showerror("Could not add source", str(exc))
         else:
             self.refresh_sources()
+            self._launch_or_attach_index()
 
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
@@ -233,7 +226,6 @@ class MainWindow(tk.Tk):
 
 
 def main() -> None:
-    multiprocessing.freeze_support()
     window = MainWindow()
     window.mainloop()
 

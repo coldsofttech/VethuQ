@@ -261,14 +261,41 @@ def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
         conn.close()
 
 
-def request_stop(db_path: Path | None = None) -> None:
+def signal_stop(db_path: Path | None = None) -> None:
+    """Ask the running background index to stop, without waiting for it to.
+
+    Sets the same "stop" control the worker checks between files, then
+    returns immediately - it does not wait or force-kill. The worker cleans
+    up after itself (lock/control files, `index_runs`) once it actually
+    exits on its own, whether that's right away (between files) or after
+    finishing whatever file it's currently on (nothing left to check the
+    signal at); either way nothing lingers, just not necessarily instantly.
+    Use this when the caller shouldn't block on that - e.g. the desktop app
+    closing. For an interactive "stop it now and tell me" (`vethuq index
+    stop`), use `request_stop` instead.
+    """
+    db_path = db_path or default_db_path()
+    if not is_running(db_path)[0]:
+        raise IndexRunnerError("No background index run is currently running.")
+    _set_control(db_path, "stop")
+
+
+def request_stop(db_path: Path | None = None, *, timeout: float = _STOP_TIMEOUT_SECONDS) -> None:
+    """Stop the running background index and wait for confirmation.
+
+    Signals the worker to finish the file it's currently on and exit rather
+    than starting another one, then waits up to `timeout` seconds for it to
+    do so before force-killing it - for an interactive caller (the CLI) that
+    wants to know it actually stopped before returning. A caller that
+    shouldn't block on that should use `signal_stop` instead.
+    """
     db_path = db_path or default_db_path()
     running, pid = is_running(db_path)
     if not running or pid is None:
         raise IndexRunnerError("No background index run is currently running.")
 
     _set_control(db_path, "stop")
-    deadline = time.monotonic() + _STOP_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline and _is_pid_running(pid):
         time.sleep(0.25)
     if _is_pid_running(pid):

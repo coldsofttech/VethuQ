@@ -273,6 +273,76 @@ def test_request_stop_raises_when_not_running(db_path):
         index_runner.request_stop(db_path=db_path)
 
 
+def test_signal_stop_raises_when_not_running(db_path):
+    with pytest.raises(index_runner.IndexRunnerError):
+        index_runner.signal_stop(db_path=db_path)
+
+
+def test_signal_stop_sets_control_without_waiting(db_path, monkeypatch):
+    index_runner._atomic_write(index_runner._lock_path(db_path), "321")
+    monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: True)
+    sleep_calls = []
+    monkeypatch.setattr(index_runner.time, "sleep", lambda s: sleep_calls.append(s))
+
+    index_runner.signal_stop(db_path=db_path)
+
+    assert index_runner._read_control(db_path) == "stop"
+    assert sleep_calls == []
+    # Unlike request_stop, signal_stop doesn't clean up the lock itself -
+    # that's the worker's job once it actually exits.
+    assert index_runner._lock_path(db_path).exists()
+
+
+def test_request_stop_honors_custom_timeout(db_path, conn, tmp_path, monkeypatch):
+    _register_source(conn, tmp_path)
+    started_at = datetime.now(UTC).isoformat()
+    cursor = conn.execute(
+        "INSERT INTO index_runs (target, status, pid, total_files, started_at) "
+        "VALUES (NULL, 'running', 5150, 5, ?)",
+        (started_at,),
+    )
+    conn.commit()
+    run_id = cursor.lastrowid
+    conn.close()
+
+    state = index_runner.IndexState(
+        run_id=run_id,
+        pid=5150,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=5,
+        processed_files=1,
+        failed_files=0,
+        current_file=None,
+        started_at=started_at,
+        updated_at=started_at,
+    )
+    index_runner._write_state(db_path, state)
+    index_runner._atomic_write(index_runner._lock_path(db_path), "5150")
+
+    monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: True)
+    monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
+    force_kill_calls = []
+    monkeypatch.setattr(index_runner, "_force_kill", force_kill_calls.append)
+
+    clock = {"now": 0.0}
+
+    def fake_monotonic() -> float:
+        clock["now"] += 1.0
+        return clock["now"]
+
+    monkeypatch.setattr(index_runner.time, "monotonic", fake_monotonic)
+
+    index_runner.request_stop(db_path=db_path, timeout=3.0)
+
+    assert force_kill_calls == [5150]
+    # The deadline check runs once before the loop and once per iteration;
+    # with a 1s-per-call fake clock and a 3s timeout, it should give up
+    # (and force-kill) well before it would have for the ~5s default.
+    assert clock["now"] < index_runner._STOP_TIMEOUT_SECONDS
+
+
 def test_request_pause_raises_when_not_running(db_path):
     with pytest.raises(index_runner.IndexRunnerError):
         index_runner.request_pause(db_path=db_path)
