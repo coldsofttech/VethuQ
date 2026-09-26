@@ -8,6 +8,7 @@ import sqlite3
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
 import sv_ttk
 from vethuq_core.db import connect
@@ -22,7 +23,7 @@ from vethuq_core.sources import (
     remove_source,
 )
 
-from vethuq_ui.icons import get_file_icon
+from vethuq_ui.icons import get_file_icon, get_icon
 from vethuq_ui.tooltip import TreeviewTooltip
 
 _INDEX_POLL_INTERVAL_MS = 5000
@@ -129,8 +130,8 @@ class MainWindow(tk.Tk):
         notebook.add(home_tab, text="Home")
         ttk.Button(
             home_tab,
-            text="\N{LEFT-POINTING MAGNIFYING GLASS}\nSearch",
             command=self.on_show_search,
+            **self._ribbon_icon_kwargs("search", "\N{LEFT-POINTING MAGNIFYING GLASS}", "Search"),
         ).pack(side=tk.LEFT, padx=6, pady=4)
 
         settings_tab = ttk.Frame(notebook)
@@ -139,8 +140,8 @@ class MainWindow(tk.Tk):
         view_group = self._build_ribbon_group(settings_tab, "View")
         ttk.Button(
             view_group,
-            text="\N{FILE FOLDER}\nSources",
             command=self.on_show_source_list,
+            **self._ribbon_icon_kwargs("sources", "\N{FILE FOLDER}", "Sources"),
         ).pack(side=tk.LEFT, padx=2)
 
         ttk.Separator(settings_tab, orient=tk.VERTICAL).pack(
@@ -151,13 +152,31 @@ class MainWindow(tk.Tk):
         self._gpu_enabled_var = tk.BooleanVar(value=is_gpu_enabled(self.conn))
         ttk.Checkbutton(
             ocr_group,
-            text="\N{HIGH VOLTAGE SIGN}\nGPU",
             variable=self._gpu_enabled_var,
             command=self._on_toggle_gpu,
             style="Toolbutton",
+            **self._ribbon_icon_kwargs("gpu", "\N{HIGH VOLTAGE SIGN}", "GPU"),
         ).pack(side=tk.LEFT, padx=2)
 
         notebook.select(home_tab)
+
+    @staticmethod
+    def _ribbon_icon_kwargs(
+        name: str, glyph: str, caption: str, *, compound: str = tk.TOP, size: int | None = None
+    ) -> dict[str, Any]:
+        """Button/Checkbutton kwargs for an icon+caption control: a real icon
+        if `assets/icons/<name>.png` exists yet, else the old glyph-in-text
+        look. `compound` places the icon relative to the text (`tk.TOP` for
+        the ribbon's icon-above-caption buttons, `tk.LEFT` for an inline one
+        like the search bar's Go button). `size` defaults to the ribbon tab
+        buttons' 32px (see `get_icon`); pass 16 for an inline control like
+        Go, to match the file-type badges' size.
+        """
+        icon = get_icon(name) if size is None else get_icon(name, size)
+        if icon is not None:
+            return {"image": icon, "text": caption, "compound": compound}
+        separator = "\n" if compound == tk.TOP else " "
+        return {"text": f"{glyph}{separator}{caption}"}
 
     @staticmethod
     def _build_ribbon_group(ribbon: ttk.Frame, caption: str) -> ttk.Frame:
@@ -185,7 +204,11 @@ class MainWindow(tk.Tk):
         self._search_entry.bind("<Return>", lambda event: self.on_search())
         self._add_search_placeholder()
         ttk.Button(
-            search_bar, text="\N{LEFT-POINTING MAGNIFYING GLASS} Go", command=self.on_search
+            search_bar,
+            command=self.on_search,
+            **self._ribbon_icon_kwargs(
+                "search", "\N{LEFT-POINTING MAGNIFYING GLASS}", "Go", compound=tk.LEFT, size=16
+            ),
         ).pack(side=tk.LEFT, padx=(4, 0))
 
         results = ttk.Frame(self._search_frame)

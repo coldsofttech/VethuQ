@@ -1,4 +1,15 @@
-"""Real Windows shell icons for file-type badges in the search results list."""
+"""File-type badge and ribbon action icons.
+
+Both kinds load from the checked-in assets under `assets/icons/`
+(generated via the vethuq-icons skill - see `.claude/skills/vethuq-icons/`):
+
+- `get_file_icon` - file-type badges for the search results list. Any
+  extension without a generated asset yet falls back to the real Windows
+  shell icon, then to a plain gray square as a last resort.
+- `get_icon` - ribbon action icons (Search, Sources, GPU, ...), looked up
+  by logical name rather than file suffix. Returns None for a name with no
+  asset yet, so callers can fall back to a text-only control.
+"""
 
 from __future__ import annotations
 
@@ -6,18 +17,41 @@ import tkinter as tk
 from pathlib import Path
 from typing import Any
 
+from PIL import Image, ImageTk
+
 try:
     import win32api
     import win32con
     import win32gui
     import win32ui
-    from PIL import Image, ImageTk
 
     _SHELL_ICONS_AVAILABLE = True
 except ImportError:
     _SHELL_ICONS_AVAILABLE = False
 
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+_ICON_SIZE = 16
+_RIBBON_ICON_SIZE = 32
+
+# .jpeg has no asset of its own - it's the same format as .jpg.
+_SUFFIX_ASSET_ALIASES = {".jpeg": "jpg"}
+
 _icon_cache: dict[str, Any] = {}
+
+
+def _load_asset(asset_path: Path, size: int) -> Any | None:
+    if not asset_path.is_file():
+        return None
+    image = Image.open(asset_path).convert("RGBA")
+    if image.size != (size, size):
+        image = image.resize((size, size), Image.Resampling.LANCZOS)
+    return ImageTk.PhotoImage(image)
+
+
+def _static_asset_icon(suffix: str) -> Any | None:
+    """Load a checked-in icon asset for `suffix` (e.g. ".pdf" -> assets/icons/pdf.png)."""
+    stem = _SUFFIX_ASSET_ALIASES.get(suffix, suffix.lstrip("."))
+    return _load_asset(_ASSETS_DIR / f"{stem}.png", _ICON_SIZE)
 
 
 def _shell_icon_for_suffix(suffix: str) -> Any | None:
@@ -52,17 +86,17 @@ def _shell_icon_for_suffix(suffix: str) -> Any | None:
 
 
 def get_file_icon(file_path: str | Path) -> Any:
-    """Return the OS-registered icon for `file_path`'s extension, cached per extension.
+    """Return the icon for `file_path`'s extension, cached per extension.
 
-    Falls back to a plain gray square when the Windows shell APIs aren't
-    available (e.g. running on a non-Windows platform).
+    Prefers a checked-in asset (see module docstring), then the OS-registered
+    shell icon, then a plain gray square when neither is available.
     """
     suffix = Path(file_path).suffix.lower() or ".file"
     if suffix in _icon_cache:
         return _icon_cache[suffix]
 
-    icon: Any | None = None
-    if _SHELL_ICONS_AVAILABLE:
+    icon = _static_asset_icon(suffix)
+    if icon is None and _SHELL_ICONS_AVAILABLE:
         try:
             icon = _shell_icon_for_suffix(suffix)
         except Exception:
@@ -72,4 +106,22 @@ def get_file_icon(file_path: str | Path) -> Any:
         icon.put("#757575", to=(0, 0, 16, 16))
 
     _icon_cache[suffix] = icon
+    return icon
+
+
+def get_icon(name: str, size: int = _RIBBON_ICON_SIZE) -> Any | None:
+    """Return a ribbon/action icon by logical name (e.g. "search"), cached.
+
+    Returns None when no asset exists yet for that name - callers should
+    fall back to a text-only control rather than a missing image. `size`
+    defaults to the ribbon tab buttons' 32px; pass 16 for an inline control
+    like the search bar's Go button, to match the file-type badges' size.
+    """
+    cache_key = f"ribbon:{name}:{size}"
+    if cache_key in _icon_cache:
+        return _icon_cache[cache_key]
+
+    icon = _load_asset(_ASSETS_DIR / f"{name}.png", size)
+    if icon is not None:
+        _icon_cache[cache_key] = icon
     return icon
