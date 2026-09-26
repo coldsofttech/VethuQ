@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -38,6 +38,7 @@ class Source:
     added_at: str
     last_scanned_at: str | None
     is_active: bool
+    removed_at: str | None
 
     @classmethod
     def _from_row(cls, row: sqlite3.Row) -> Source:
@@ -49,6 +50,7 @@ class Source:
             added_at=row["added_at"],
             last_scanned_at=row["last_scanned_at"],
             is_active=bool(row["is_active"]),
+            removed_at=row["removed_at"],
         )
 
 
@@ -82,7 +84,7 @@ def add_source(conn: sqlite3.Connection, path: str | Path) -> Source:
             """
             UPDATE sources
             SET source_type = ?, status = 'pending', added_at = ?,
-                last_scanned_at = NULL, is_active = 1
+                last_scanned_at = NULL, is_active = 1, removed_at = NULL
             WHERE id = ?
             """,
             (source_type, added_at, existing["id"]),
@@ -141,12 +143,52 @@ def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Sou
     Raises SourceNotFoundError if no active source matches.
     """
     source = get_source(conn, path_or_id)
+    removed_at = datetime.now(UTC).isoformat()
 
     conn.execute(
-        "UPDATE sources SET is_active = 0, status = 'removed' WHERE id = ?",
-        (source.id,),
+        "UPDATE sources SET is_active = 0, status = 'removed', removed_at = ? WHERE id = ?",
+        (removed_at, source.id),
     )
     conn.commit()
 
     updated = conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone()
     return Source._from_row(updated)
+
+
+def purge_expired_removed_sources(
+    conn: sqlite3.Connection, retention_minutes: int | None = None
+) -> int:
+    """Permanently delete removed sources (and their indexed data) past their retention window.
+
+    Returns the number of sources purged.
+    """
+    from vethuq_core.settings import get_removed_source_retention_minutes
+
+    if retention_minutes is None:
+        retention_minutes = get_removed_source_retention_minutes(conn)
+
+    cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
+    expired = conn.execute(
+        "SELECT id FROM sources "
+        "WHERE status = 'removed' AND removed_at IS NOT NULL AND removed_at <= ?",
+        (cutoff,),
+    ).fetchall()
+
+    for row in expired:
+        source_id = row["id"]
+        document_ids = [
+            r["id"]
+            for r in conn.execute(
+                "SELECT id FROM document_index WHERE source_id = ?", (source_id,)
+            ).fetchall()
+        ]
+        for document_id in document_ids:
+            conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
+            conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
+        conn.execute("DELETE FROM document_index WHERE source_id = ?", (source_id,))
+        conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+
+    if expired:
+        conn.commit()
+
+    return len(expired)

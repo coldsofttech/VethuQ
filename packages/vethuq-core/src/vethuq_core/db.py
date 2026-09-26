@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS sources (
         CHECK (status IN ('pending', 'indexed', 'error', 'removed')),
     added_at TEXT NOT NULL,
     last_scanned_at TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1
+    is_active INTEGER NOT NULL DEFAULT 1,
+    removed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS document_index (
@@ -92,6 +93,10 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     _ensure_schema(conn)
+
+    from vethuq_core.sources import purge_expired_removed_sources
+
+    purge_expired_removed_sources(conn)
     return conn
 
 
@@ -121,3 +126,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(index_runs)")}
         if "mode" not in columns:
             conn.execute("ALTER TABLE index_runs ADD COLUMN mode TEXT NOT NULL DEFAULT 'run'")
+    if from_version < 7:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
+        if "removed_at" not in columns:
+            conn.execute("ALTER TABLE sources ADD COLUMN removed_at TEXT")

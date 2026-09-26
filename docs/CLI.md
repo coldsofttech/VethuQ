@@ -193,3 +193,16 @@ side of a match. Defaults to 80.
 vethuq settings search snippet set 40
 vethuq settings search snippet show
 ```
+
+### `index removed-retention set <minutes>|show`
+
+Configure, in minutes, how long a removed source (and its indexed data)
+is kept before it's permanently deleted from the database. Defaults to
+30 minutes. The purge itself runs opportunistically whenever a database
+connection is opened (CLI commands, the desktop app), not on a fixed
+schedule.
+
+```bash
+vethuq settings index removed-retention set 60
+vethuq settings index removed-retention show
+```
