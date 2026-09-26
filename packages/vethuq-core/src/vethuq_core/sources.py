@@ -73,9 +73,7 @@ def add_source(conn: sqlite3.Connection, path: str | Path) -> Source:
         raise SourcePathError(f"Path is neither a file nor a folder: {resolved}")
 
     added_at = datetime.now(UTC).isoformat()
-    existing = conn.execute(
-        "SELECT * FROM sources WHERE path = ?", (str(resolved),)
-    ).fetchone()
+    existing = conn.execute("SELECT * FROM sources WHERE path = ?", (str(resolved),)).fetchone()
 
     if existing is not None:
         if existing["is_active"]:

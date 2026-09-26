@@ -36,5 +36,9 @@ python_version = "3.11"
 warn_unused_ignores = true
 warn_redundant_casts = true
 
+[[tool.mypy.overrides]]
+module = "paddleocr.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["packages"]

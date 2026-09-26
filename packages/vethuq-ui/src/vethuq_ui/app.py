@@ -55,9 +55,7 @@ def _run_index_worker(
 
 
 class MainWindow(tk.Tk):
-    def __init__(
-        self, conn: sqlite3.Connection | None = None, db_path: Path | None = None
-    ) -> None:
+    def __init__(self, conn: sqlite3.Connection | None = None, db_path: Path | None = None) -> None:
         super().__init__()
         self.conn = conn or connect(db_path)
         self._db_path = db_path
@@ -151,9 +149,7 @@ class MainWindow(tk.Tk):
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed)
 
         self._tree_context_menu = tk.Menu(self.tree, tearoff=0)
-        self._tree_context_menu.add_command(
-            label="Delete", command=self._delete_selected_source
-        )
+        self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
 
     def on_show_source_list(self) -> None:
         if not self._source_list_frame.winfo_ismapped():

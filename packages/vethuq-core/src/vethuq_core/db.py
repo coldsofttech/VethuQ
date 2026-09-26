@@ -96,9 +96,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
     if from_version < 3:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
         if "source" not in columns:
-            conn.execute(
-                "ALTER TABLE pdf_pages ADD COLUMN source TEXT NOT NULL DEFAULT 'ocr'"
-            )
+            conn.execute("ALTER TABLE pdf_pages ADD COLUMN source TEXT NOT NULL DEFAULT 'ocr'")
     if from_version < 5:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         if "started_at" not in columns:

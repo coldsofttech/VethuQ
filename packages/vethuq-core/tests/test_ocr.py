@@ -42,9 +42,7 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
     assert doc["status"] == "indexed"
     assert doc["file_type"] == "image"
 
-    page = conn.execute(
-        "SELECT * FROM image_pages WHERE document_id = ?", (doc["id"],)
-    ).fetchone()
+    page = conn.execute("SELECT * FROM image_pages WHERE document_id = ?", (doc["id"],)).fetchone()
     assert page["ocr_text"] == "hello world"
     assert page["confidence"] == pytest.approx(0.95)
 
@@ -118,9 +116,7 @@ def test_run_ocr_rerun_replaces_stale_page_rows(
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
     ).fetchone()
-    pages = conn.execute(
-        "SELECT * FROM image_pages WHERE document_id = ?", (doc["id"],)
-    ).fetchall()
+    pages = conn.execute("SELECT * FROM image_pages WHERE document_id = ?", (doc["id"],)).fetchall()
     assert len(pages) == 1
     assert pages[0]["ocr_text"] == "second pass"
 
@@ -206,9 +202,7 @@ def test_run_ocr_digital_pdf_skips_engine_entirely(
     ).fetchone()
     assert doc["status"] == "indexed"
 
-    page = conn.execute(
-        "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-    ).fetchone()
+    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
     assert page["source"] == "native"
     assert page["confidence"] == pytest.approx(1.0)
     assert len(page["ocr_text"]) > 0
@@ -233,9 +227,7 @@ def test_run_ocr_scanned_pdf_runs_full_page_ocr(
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
     ).fetchone()
-    page = conn.execute(
-        "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-    ).fetchone()
+    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
     assert page["source"] == "ocr"
     assert page["ocr_text"] == "scanned page text"
 
@@ -261,9 +253,7 @@ def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
     ).fetchone()
-    page = conn.execute(
-        "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-    ).fetchone()
+    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
     assert page["source"] == "mixed"
     assert "Discover Andhra Pradesh" in page["ocr_text"]
     assert "banner region text" in page["ocr_text"]

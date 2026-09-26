@@ -137,8 +137,7 @@ def _render_page_array(
 def _is_native_text(text: str) -> bool:
     stripped = text.strip()
     return (
-        len(stripped) >= _MIN_NATIVE_TEXT_CHARS
-        and len(stripped.split()) >= _MIN_NATIVE_TEXT_WORDS
+        len(stripped) >= _MIN_NATIVE_TEXT_CHARS and len(stripped.split()) >= _MIN_NATIVE_TEXT_WORDS
     )
 
 
@@ -291,9 +290,7 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     return results
 
 
-def run_ocr(
-    conn: sqlite3.Connection, source: Source, *, only_new_files: bool = False
-) -> list[str]:
+def run_ocr(conn: sqlite3.Connection, source: Source, *, only_new_files: bool = False) -> list[str]:
     """Run OCR over supported files under `source` and index the results.
 
     Unsupported files are silently skipped. Per-file OCR failures are recorded
