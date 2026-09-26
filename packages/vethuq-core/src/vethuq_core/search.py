@@ -23,27 +23,54 @@ class SearchMatch:
     after: str
     truncated_before: bool
     truncated_after: bool
+    duplicate_of_path: str | None
 
 
-def _indexed_pages(conn: sqlite3.Connection) -> list[tuple[int, str, str, int | None]]:
+def _indexed_pages(
+    conn: sqlite3.Connection,
+) -> list[tuple[int, str, str, int | None, int, str | None]]:
+    """Return `(document_id, file_path, ocr_text, page_number, canonical_id, duplicate_of_path)`.
+
+    `canonical_id` is the id whose `pdf_pages`/`image_pages` rows actually hold
+    the text - a duplicate document has none of its own, so it's the id of the
+    original it matches; `duplicate_of_path` is that original's file path, or
+    None if this document isn't a duplicate. A duplicate is thus returned as
+    its own row here (with its own `document_id`/`file_path`), reusing the
+    original's OCR text, so it still surfaces as its own search result.
+    """
     pdf_rows = conn.execute(
         "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
-        "pp.page_number AS page_number "
-        "FROM pdf_pages pp JOIN document_index di ON di.id = pp.document_id "
+        "pp.page_number AS page_number, "
+        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
+        "orig.file_path AS duplicate_of_path "
+        "FROM document_index di "
+        "JOIN pdf_pages pp ON pp.document_id = COALESCE(di.duplicate_of_id, di.id) "
         "JOIN sources s ON s.id = di.source_id "
-        "WHERE di.status = 'indexed' AND s.is_active = 1 "
+        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
+        "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
         "ORDER BY di.file_path, pp.page_number"
     ).fetchall()
     image_rows = conn.execute(
         "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
-        "NULL AS page_number "
-        "FROM image_pages ip JOIN document_index di ON di.id = ip.document_id "
+        "NULL AS page_number, "
+        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
+        "orig.file_path AS duplicate_of_path "
+        "FROM document_index di "
+        "JOIN image_pages ip ON ip.document_id = COALESCE(di.duplicate_of_id, di.id) "
         "JOIN sources s ON s.id = di.source_id "
-        "WHERE di.status = 'indexed' AND s.is_active = 1 "
+        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
+        "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
         "ORDER BY di.file_path"
     ).fetchall()
     return [
-        (row["document_id"], row["file_path"], row["ocr_text"], row["page_number"])
+        (
+            row["document_id"],
+            row["file_path"],
+            row["ocr_text"],
+            row["page_number"],
+            row["canonical_id"],
+            row["duplicate_of_path"],
+        )
         for row in (*pdf_rows, *image_rows)
     ]
 
@@ -73,7 +100,14 @@ def search_indexed_content(
     page_counts = _pdf_page_counts(conn)
 
     matches: list[SearchMatch] = []
-    for document_id, file_path, ocr_text, page_number in _indexed_pages(conn):
+    for (
+        document_id,
+        file_path,
+        ocr_text,
+        page_number,
+        canonical_id,
+        duplicate_of_path,
+    ) in _indexed_pages(conn):
         text = ocr_text.replace("\n", " ")
         position = text.lower().find(query_lower)
         if position == -1:
@@ -89,12 +123,13 @@ def search_indexed_content(
                 file_name=Path(file_path).name,
                 file_path=file_path,
                 page_number=page_number,
-                total_pages=page_counts.get(document_id) if page_number is not None else None,
+                total_pages=page_counts.get(canonical_id) if page_number is not None else None,
                 before=text[before_start:position],
                 matched=text[position:end],
                 after=text[end:after_end],
                 truncated_before=before_start > 0,
                 truncated_after=after_end < len(text),
+                duplicate_of_path=duplicate_of_path,
             )
         )
 

@@ -54,6 +54,45 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
 
 
 @patch("vethuq_core.ocr._get_engine")
+def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
+    mock_get_engine, conn: sqlite3.Connection, tmp_path
+):
+    engine = MagicMock()
+    engine.predict.return_value = _fake_ocr_result()
+    mock_get_engine.return_value = engine
+
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    (folder / "a.png").write_bytes(b"identical bytes")
+    (folder / "b.png").write_bytes(b"identical bytes")
+    source = add_source(conn, folder)
+
+    run_ocr(conn, source)
+
+    assert engine.predict.call_count == 1
+
+    docs = conn.execute("SELECT * FROM document_index").fetchall()
+    assert len(docs) == 2
+    originals = [doc for doc in docs if doc["duplicate_of_id"] is None]
+    duplicates = [doc for doc in docs if doc["duplicate_of_id"] is not None]
+    assert len(originals) == 1
+    assert len(duplicates) == 1
+    original, duplicate = originals[0], duplicates[0]
+
+    assert original["status"] == "indexed"
+    assert duplicate["status"] == "indexed"
+    assert duplicate["duplicate_of_id"] == original["id"]
+    assert original["checksum"] == duplicate["checksum"]
+
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) AS n FROM image_pages WHERE document_id = ?", (duplicate["id"],)
+        ).fetchone()["n"]
+        == 0
+    )
+
+
+@patch("vethuq_core.ocr._get_engine")
 def test_run_ocr_updates_processing_metrics_on_success(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):

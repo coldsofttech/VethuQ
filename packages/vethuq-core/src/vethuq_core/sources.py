@@ -155,6 +155,45 @@ def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Sou
     return Source._from_row(updated)
 
 
+def _promote_surviving_duplicate(
+    conn: sqlite3.Connection, document_id: int, doomed_ids: set[int]
+) -> None:
+    """Before deleting `document_id`, hand off its OCR content if it's an "original".
+
+    If other documents link to `document_id` via `duplicate_of_id` (it's the
+    original they deduped against) and at least one of them isn't also about
+    to be deleted, the earliest-indexed survivor is promoted to original in
+    its place: it takes over the OCR pages (re-keyed to its own id) and every
+    other duplicate is repointed to it. If every duplicate is doomed too, the
+    whole content cluster is disappearing together and nothing needs promoting.
+    """
+    duplicates = conn.execute(
+        "SELECT id FROM document_index WHERE duplicate_of_id = ? ORDER BY id ASC",
+        (document_id,),
+    ).fetchall()
+    survivors = [row["id"] for row in duplicates if row["id"] not in doomed_ids]
+    if not survivors:
+        return
+
+    new_original_id = survivors[0]
+    conn.execute(
+        "UPDATE pdf_pages SET document_id = ? WHERE document_id = ?",
+        (new_original_id, document_id),
+    )
+    conn.execute(
+        "UPDATE image_pages SET document_id = ? WHERE document_id = ?",
+        (new_original_id, document_id),
+    )
+    conn.execute(
+        "UPDATE document_index SET duplicate_of_id = ? WHERE duplicate_of_id = ? AND id != ?",
+        (new_original_id, document_id, new_original_id),
+    )
+    conn.execute(
+        "UPDATE document_index SET duplicate_of_id = NULL WHERE id = ?",
+        (new_original_id,),
+    )
+
+
 def purge_expired_removed_sources(
     conn: sqlite3.Connection, retention_minutes: int | None = None
 ) -> int:
@@ -174,8 +213,22 @@ def purge_expired_removed_sources(
         (cutoff,),
     ).fetchall()
 
-    for row in expired:
-        source_id = row["id"]
+    if not expired:
+        return 0
+
+    source_ids = [row["id"] for row in expired]
+    placeholders = ",".join("?" * len(source_ids))
+    doomed_ids = {
+        row["id"]
+        for row in conn.execute(
+            f"SELECT id FROM document_index WHERE source_id IN ({placeholders})",
+            source_ids,
+        ).fetchall()
+    }
+    for document_id in doomed_ids:
+        _promote_surviving_duplicate(conn, document_id, doomed_ids)
+
+    for source_id in source_ids:
         document_ids = [
             r["id"]
             for r in conn.execute(
@@ -188,7 +241,5 @@ def purge_expired_removed_sources(
         conn.execute("DELETE FROM document_index WHERE source_id = ?", (source_id,))
         conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
 
-    if expired:
-        conn.commit()
-
+    conn.commit()
     return len(expired)

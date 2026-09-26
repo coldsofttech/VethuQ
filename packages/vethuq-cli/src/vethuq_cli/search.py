@@ -146,7 +146,10 @@ def search(
                 last_file_path = match.file_path
                 file_index += 1
                 accent = _ACCENT_COLORS[file_index % len(_ACCENT_COLORS)]
-                lines.append(typer.style(f"File: {match.file_path}", fg=accent, bold=True))
+                file_line = f"File: {match.file_path}"
+                if match.duplicate_of_path is not None:
+                    file_line += f"  (duplicate of {match.duplicate_of_path})"
+                lines.append(typer.style(file_line, fg=accent, bold=True))
             if match.page_number is not None:
                 lines.append(
                     typer.style(f"Page: {match.page_number} of {match.total_pages}", fg=accent)

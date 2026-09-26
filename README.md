@@ -16,6 +16,8 @@ vethuq index run
 
 `vethuq index run` starts OCR (English, currently supporting PDF, PNG, and JPEG files) in the background and returns right away — including picking up new files added to a source you've already indexed. Check on it with `vethuq index status`, or `vethuq index status <source>` for a detailed per-file breakdown. You can pause, resume, or stop a run with `vethuq index pause` / `resume` / `stop`, see past runs with `vethuq index history`, and retry just the files that failed with `vethuq index restart`.
 
+If a file's content exactly matches a file you've already indexed — anywhere across your sources, not just the same one — VethuQ recognizes it as a duplicate and skips OCR'ing it again, linking it to the original instead. Duplicates still show up in `vethuq index status` and in search results, marked as a duplicate of the original file.
+
 In the desktop app, add sources from the toolbar — indexing then happens automatically in the background, no extra step needed.
 
 Once your files are indexed, search them from the CLI:

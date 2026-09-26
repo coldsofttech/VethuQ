@@ -32,10 +32,12 @@ def _add_document(
     file_path: str,
     file_type: str = "pdf",
     status: str = "indexed",
+    duplicate_of_id: int | None = None,
 ) -> int:
     cursor = conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status) VALUES (?, ?, ?, ?)",
-        (source_id, file_path, file_type, status),
+        "INSERT INTO document_index "
+        "(source_id, file_path, file_type, status, duplicate_of_id) VALUES (?, ?, ?, ?, ?)",
+        (source_id, file_path, file_type, status, duplicate_of_id),
     )
     conn.commit()
     assert cursor.lastrowid is not None
@@ -164,6 +166,23 @@ def test_search_snippet_context_is_configurable(conn: sqlite3.Connection):
     assert matches[0].after == "y" * 10
     assert matches[0].truncated_before is True
     assert matches[0].truncated_after is True
+
+
+def test_search_returns_duplicate_as_its_own_flagged_result(conn: sqlite3.Connection):
+    source_id = _add_source(conn)
+    original_id = _add_document(conn, source_id, "/docs/original.pdf")
+    _add_pdf_page(conn, original_id, 1, "Total amount due: $1,200.00 by Friday.")
+    duplicate_id = _add_document(conn, source_id, "/docs/copy.pdf", duplicate_of_id=original_id)
+
+    matches = search_indexed_content(conn, "amount due")
+
+    assert len(matches) == 2
+    by_file_id = {m.file_id: m for m in matches}
+    assert by_file_id[original_id].duplicate_of_path is None
+    assert by_file_id[duplicate_id].file_name == "copy.pdf"
+    assert by_file_id[duplicate_id].duplicate_of_path == "/docs/original.pdf"
+    assert by_file_id[duplicate_id].matched == "amount due"
+    assert by_file_id[duplicate_id].total_pages == 1
 
 
 def test_search_context_chars_argument_overrides_setting(conn: sqlite3.Connection):

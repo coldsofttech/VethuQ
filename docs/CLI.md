@@ -81,8 +81,11 @@ Without a source, shows the current (or most recently finished)
 background run: status, progress (`processed/total`), failed-file count,
 the file currently being processed, and an ETA while running. With a
 source id or path, shows a detailed per-file breakdown for that source
-instead (status, confidence, and duration for each file). `--json`
-prints machine-readable output.
+instead (status, confidence, and duration for each file). A file whose
+content exactly matches an already-indexed file is shown as a duplicate
+of that file instead of being OCR'd again. `--json` prints
+machine-readable output (adds a `duplicate_of` field, null unless the
+file is a duplicate).
 
 ```bash
 vethuq index status
@@ -129,7 +132,10 @@ searched. Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, and press `q` to close
 it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every matching page in
-that file (PDFs only show `Page:` — an image is a single page):
+that file (PDFs only show `Page:` — an image is a single page). A
+duplicate file (identical content to another already-indexed file) is
+still shown as its own result, reusing the original's matched text, with
+its `File:` line noting which file it's a duplicate of:
 
 ```bash
 Results: 3 matches
