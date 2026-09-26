@@ -332,7 +332,8 @@ def run_ocr(
                 page_results = _ocr_pdf_file(conn, file_path)
                 conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
                 conn.executemany(
-                    "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence, source) "
+                    "INSERT INTO pdf_pages "
+                    "(document_id, page_number, ocr_text, confidence, source) "
                     "VALUES (?, ?, ?, ?, ?)",
                     [
                         (document_id, page_number, page.text, page.confidence, page.source)
