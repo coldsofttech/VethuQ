@@ -114,8 +114,8 @@ def list_sources(conn: sqlite3.Connection, include_inactive: bool = False) -> li
     return [Source._from_row(row) for row in rows]
 
 
-def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
-    """Soft-delete a registered source by id or path.
+def get_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
+    """Look up an active registered source by id or path.
 
     Raises SourceNotFoundError if no active source matches.
     """
@@ -132,11 +132,21 @@ def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Sou
     if row is None:
         raise SourceNotFoundError(f"No active source matches: {path_or_id}")
 
+    return Source._from_row(row)
+
+
+def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
+    """Soft-delete a registered source by id or path.
+
+    Raises SourceNotFoundError if no active source matches.
+    """
+    source = get_source(conn, path_or_id)
+
     conn.execute(
         "UPDATE sources SET is_active = 0, status = 'removed' WHERE id = ?",
-        (row["id"],),
+        (source.id,),
     )
     conn.commit()
 
-    updated = conn.execute("SELECT * FROM sources WHERE id = ?", (row["id"],)).fetchone()
+    updated = conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone()
     return Source._from_row(updated)

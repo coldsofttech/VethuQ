@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
-import queue
 import sqlite3
 import tkinter as tk
 from pathlib import Path
@@ -12,6 +10,18 @@ from typing import Any
 
 import sv_ttk
 from vethuq_core.db import connect
+from vethuq_core.index_runner import (
+    AlreadyRunningError,
+    IndexRunnerError,
+    IndexState,
+    StaleLockError,
+    is_running,
+    read_state,
+    request_pause,
+    request_resume,
+    signal_stop,
+    start_run,
+)
 from vethuq_core.search import search_indexed_content
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import (
@@ -27,40 +37,14 @@ from vethuq_ui.icons import get_file_icon, get_icon
 from vethuq_ui.tooltip import TreeviewTooltip
 
 _INDEX_POLL_INTERVAL_MS = 5000
-_QUEUE_POLL_INTERVAL_MS = 100
 _SEARCH_PLACEHOLDER = "Search"
 _RESULT_LIST_WIDTH_FRACTION = 0.35
 _MAX_DISPLAYED_NAME_CHARS = 35
 
-
-def _run_index_worker(
-    db_path: Path | None,
-    stop_event: multiprocessing.synchronize.Event,
-    message_queue: multiprocessing.Queue,
-) -> None:
-    """Poll for pending sources and OCR them, in a process of its own.
-
-    This runs as a separate OS process rather than a thread because
-    PaddleOCR's native calls don't reliably release the GIL — in a thread,
-    a long init/inference call would block the main process's Tk event
-    loop for as long as it runs, freezing the whole UI. Status updates are
-    reported back through `message_queue`; nothing here ever touches Tk,
-    and it must stay a plain module-level function (not a bound method) so
-    it's picklable for `multiprocessing`'s spawn start method on Windows.
-    """
-    from vethuq_core.ocr import run_ocr
-
-    worker_conn = connect(db_path)
-    try:
-        while not stop_event.wait(_INDEX_POLL_INTERVAL_MS / 1000):
-            pending = [s for s in list_sources(worker_conn) if s.status == "pending"]
-            for index, source in enumerate(pending, start=1):
-                message_queue.put(("indexing", index, len(pending), source.path))
-                run_ocr(worker_conn, source)
-                message_queue.put(("refresh",))
-            message_queue.put(("idle",))
-    finally:
-        worker_conn.close()
+# Fixed positions within the Sources tree's right-click menu (see
+# _build_source_list) - must stay in sync with the order items are added in.
+_INDEX_NOW_MENU_INDEX = 0
+_RETRY_MENU_INDEX = 1
 
 
 class MainWindow(tk.Tk):
@@ -84,39 +68,51 @@ class MainWindow(tk.Tk):
         self._build_source_list()
         self.on_show_search()
         self._closing = False
-        self._start_index_worker()
-        self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
+        self._launch_or_attach_index()
+        self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
 
-    def _start_index_worker(self) -> None:
-        self._worker_stop = multiprocessing.Event()
-        self._worker_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._worker_process = multiprocessing.Process(
-            target=_run_index_worker,
-            args=(self._db_path, self._worker_stop, self._worker_queue),
-            daemon=True,
-        )
-        self._worker_process.start()
+    def _launch_or_attach_index(self) -> None:
+        """Start background indexing, unless a run is already in progress.
 
-    def _process_worker_queue(self) -> None:
-        while True:
-            try:
-                message = self._worker_queue.get_nowait()
-            except queue.Empty:
-                break
-            tag = message[0]
-            if tag == "indexing":
-                _, index, total, path = message
-                self._set_indexing_status(index, total, path)
-            elif tag == "refresh":
-                self.refresh_sources()
-            elif tag == "idle":
-                self._set_idle_status()
+        A run could already be going if this app instance crashed and
+        relaunched, or if `vethuq index run` was started from the CLI - in
+        either case we just attach to it via polling rather than starting a
+        second one.
+        """
+        if is_running(self._db_path)[0]:
+            return
+        try:
+            start_run(db_path=self._db_path)
+        except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
+            # AlreadyRunningError: lost a race with something else starting a
+            # run just now - fine, we'll just poll it. StaleLockError: a
+            # previous run didn't exit cleanly; leave clearing that to the
+            # user (`vethuq index run --force`) rather than doing it silently
+            # here. SourceNotFoundError can't actually happen (no target is
+            # passed), but is one of start_run's declared errors.
+            pass
+
+    def _poll_index_status(self) -> None:
+        state = read_state(self._db_path)
+        if state is not None and state.status in ("running", "paused"):
+            self._set_indexing_status(state)
+            self.refresh_sources()
+        else:
+            self._set_idle_status()
+        self._update_index_control_buttons(state)
         if not self._closing:
-            self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
+            self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
 
     def destroy(self) -> None:
+        # Signal only - don't wait. The worker finishes whatever file it's
+        # on and exits by itself (cleaning up its own lock/control files and
+        # index_runs row), so the app doesn't need to stay open to see that
+        # happen.
         self._closing = True
-        self._worker_stop.set()
+        try:
+            signal_stop(db_path=self._db_path)
+        except IndexRunnerError:
+            pass
         super().destroy()
 
     def _build_menubar(self) -> None:
@@ -300,6 +296,16 @@ class MainWindow(tk.Tk):
         )
         self._delete_button.pack(side=tk.LEFT, padx=2)
 
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        self._pause_resume_button = ttk.Button(
+            toolbar, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
+        )
+        self._pause_resume_button.pack(side=tk.LEFT, padx=2)
+        self._stop_button = ttk.Button(
+            toolbar, text="Stop", command=self._stop_index_run, state=tk.DISABLED
+        )
+        self._stop_button.pack(side=tk.LEFT, padx=2)
+
         columns = ("type", "path", "status")
         self.tree = ttk.Treeview(self._source_list_frame, columns=columns, show="headings")
         self.tree.heading("type", text="Type")
@@ -312,7 +318,15 @@ class MainWindow(tk.Tk):
         self.tree.bind("<Button-3>", self._on_tree_right_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed)
 
+        # Fixed layout - indices below must stay in sync with insertion order.
         self._tree_context_menu = tk.Menu(self.tree, tearoff=0)
+        self._tree_context_menu.add_command(label="Index Now", command=self._index_selected_source)
+        self._tree_context_menu.add_command(
+            label="Retry Failed Files", command=self._retry_selected_source
+        )
+        self._tree_context_menu.add_separator()
+        self._tree_context_menu.add_command(label="History...", command=self._show_history)
+        self._tree_context_menu.add_separator()
         self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
 
     def on_show_source_list(self) -> None:
@@ -330,7 +344,103 @@ class MainWindow(tk.Tk):
         row_id = self.tree.identify_row(event.y)
         if row_id:
             self.tree.selection_set(row_id)
+            self._update_context_menu_state()
             self._tree_context_menu.tk_popup(event.x_root, event.y_root)
+
+    def _update_context_menu_state(self) -> None:
+        # Index Now/Retry Failed Files start a new background run, which
+        # can't happen while one is already in progress (Pause/Stop/Resume
+        # are global - see the toolbar buttons - since there's a single
+        # background worker, not one per source).
+        running = is_running(self._db_path)[0]
+        self._tree_context_menu.entryconfig(
+            _INDEX_NOW_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
+        )
+        self._tree_context_menu.entryconfig(
+            _RETRY_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
+        )
+
+    def _index_selected_source(self) -> None:
+        self._start_targeted_run(restart=False)
+
+    def _retry_selected_source(self) -> None:
+        self._start_targeted_run(restart=True)
+
+    def _start_targeted_run(self, *, restart: bool) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        try:
+            start_run(selection[0], restart=restart, db_path=self._db_path)
+        except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
+            messagebox.showerror("Could not start indexing", str(exc))
+        else:
+            self.refresh_sources()
+
+    def _stop_index_run(self) -> None:
+        try:
+            signal_stop(db_path=self._db_path)
+        except IndexRunnerError as exc:
+            messagebox.showerror("Could not stop indexing", str(exc))
+
+    def _toggle_pause_resume(self) -> None:
+        state = read_state(self._db_path)
+        try:
+            if state is not None and state.status == "paused":
+                request_resume(db_path=self._db_path)
+            else:
+                request_pause(db_path=self._db_path)
+        except IndexRunnerError as exc:
+            messagebox.showerror("Could not update index run", str(exc))
+
+    def _update_index_control_buttons(self, state: IndexState | None) -> None:
+        running = state is not None and state.status in ("running", "paused")
+        paused = state is not None and state.status == "paused"
+        self._pause_resume_button.config(
+            text="Resume" if paused else "Pause", state=tk.NORMAL if running else tk.DISABLED
+        )
+        self._stop_button.config(state=tk.NORMAL if running else tk.DISABLED)
+
+    def _show_history(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        source_id = selection[0]
+        path = self.tree.item(selection[0], "values")[1]
+
+        # A run over "all sources" (target IS NULL) would have covered this
+        # source too, so it's included alongside runs targeted at just it.
+        rows = self.conn.execute(
+            "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
+            "ORDER BY started_at DESC LIMIT 20",
+            (source_id,),
+        ).fetchall()
+
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Index History — {path}")
+        dialog.geometry("640x320")
+
+        columns = ("started_at", "mode", "target", "status", "progress", "failed")
+        tree = ttk.Treeview(dialog, columns=columns, show="headings")
+        for column, heading in zip(
+            columns, ("Started", "Mode", "Target", "Status", "Progress", "Failed"), strict=False
+        ):
+            tree.heading(column, text=heading)
+        tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        for row in rows:
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row["started_at"],
+                    row["mode"],
+                    row["target"] or "all sources",
+                    row["status"],
+                    f"{row['processed_files']}/{row['total_files']}",
+                    row["failed_files"],
+                ),
+            )
 
     def _on_tree_selection_changed(self, event: tk.Event | None = None) -> None:
         self._delete_button.config(state=tk.NORMAL if self.tree.selection() else tk.DISABLED)
@@ -362,8 +472,12 @@ class MainWindow(tk.Tk):
         self._status_progress = ttk.Progressbar(status_bar, mode="indeterminate", length=120)
         self._status_progress.pack(side=tk.RIGHT, pady=4)
 
-    def _set_indexing_status(self, index: int, total: int, path: str) -> None:
-        self._status_var.set(f"Indexing ({index}/{total}): {path}")
+    def _set_indexing_status(self, state: IndexState) -> None:
+        if state.status == "paused":
+            self._status_var.set(f"Paused ({state.processed_files}/{state.total_files})")
+        else:
+            current = f": {Path(state.current_file).name}" if state.current_file else ""
+            self._status_var.set(f"Indexing ({state.processed_files}/{state.total_files}){current}")
         self._status_progress.start(10)
 
     def _set_idle_status(self) -> None:
@@ -389,6 +503,7 @@ class MainWindow(tk.Tk):
             messagebox.showerror("Could not add source", str(exc))
         else:
             self.refresh_sources()
+            self._launch_or_attach_index()
 
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
@@ -403,7 +518,6 @@ class MainWindow(tk.Tk):
 
 
 def main() -> None:
-    multiprocessing.freeze_support()
     window = MainWindow()
     window.mainloop()
 
