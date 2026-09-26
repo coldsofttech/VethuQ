@@ -22,11 +22,12 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.8",
-    # For .claude/skills/vethuq-icons/generate_icons.py only - not a
-    # vethuq-ui runtime dependency. reportlab is pinned exactly: newer
-    # releases need rlPyCairo (-> the native Cairo library, unavailable on
-    # a plain Windows box) for PNG output; 3.6.13 is the last self-contained
-    # release. See that script's module docstring for the full reasoning.
+]
+
+# For .claude/skills/vethuq-icons/generate_icons.py only - opt-in via
+# `uv sync --group icons`, not part of the default `dev` group CI installs,
+# since reportlab needs FreeType headers to build from source on Linux.
+icons = [
     "svglib==1.5.1",
     "reportlab==3.6.13",
 ]

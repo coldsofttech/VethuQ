@@ -2978,8 +2978,10 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "reportlab" },
     { name = "ruff" },
+]
+icons = [
+    { name = "reportlab" },
     { name = "svglib" },
 ]
 
@@ -2991,8 +2993,10 @@ dev = [
     { name = "pre-commit", specifier = ">=3.8" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=5.0" },
-    { name = "reportlab", specifier = "==3.6.13" },
     { name = "ruff", specifier = ">=0.6" },
+]
+icons = [
+    { name = "reportlab", specifier = "==3.6.13" },
     { name = "svglib", specifier = "==1.5.1" },
 ]
 
