@@ -20,7 +20,7 @@ map — build them incrementally as tiers require them, not up front.
 
 | Package | Purpose | Introduced by tier |
 | --- | --- | --- |
-| `vethuq-core` | Document model, ingest, OCR (Tesseract), SQLite/FTS5 indexing, embeddings, search, source registration | Free |
+| `vethuq-core` | Document model, ingest, OCR (PaddleOCR), SQLite/FTS5 indexing, embeddings, search, source registration | Free |
 | `vethuq-cli` | CLI (Typer) | Free |
 | `vethuq-ui` | Desktop UI (Tkinter) | Free |
 | `vethuq-entitlements` | Tier/capability flags, license enforcement — cross-cutting, depended on by everything | Free (built early, per requirements §13) |
@@ -73,6 +73,37 @@ Storage: a per-user SQLite database at
 
 A one-row `schema_version` table exists as a hook for future migrations,
 without a full migration framework yet.
+
+## OCR indexing pipeline
+
+`vethuq_core.ocr.run_ocr(conn, source)` walks a registered source
+(recursively for folders), runs PaddleOCR (`lang="en"`) on every
+supported file, and writes the extracted text to SQLite. Unsupported
+extensions are skipped silently. PDFs are rasterized page-by-page via
+PyMuPDF before OCR; PNG/JPEG files are OCR'd directly.
+
+Trigger model:
+- CLI: `add_source` only registers a source (`status='pending'`); a
+  separate `vethuq index run` command processes all pending sources.
+- Desktop UI: a background daemon thread polls for pending sources every
+  `_INDEX_POLL_INTERVAL_MS` (5s) and runs them automatically, using its
+  own SQLite connection (connections aren't thread-safe) and marshalling
+  UI refreshes back via `Tk.after`.
+
+Storage, alongside `sources`:
+
+| Table | Purpose |
+| --- | --- |
+| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`. Central table joining the type-specific pages tables. |
+| `pdf_pages` | One row per PDF page: `document_id`, `page_number`, `ocr_text`, `confidence`. |
+| `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
+
+A single PaddleOCR engine instance is lazily created and reused per
+process (`vethuq_core.ocr._get_engine`) since model init is expensive.
+A failure on one file is recorded on that file's `document_index` row
+(`status='error'`, `error_message`) without aborting the rest of the
+source; `sources.status` reflects the overall outcome (`indexed` if all
+files succeeded, `error` if any failed).
 
 ## Conventions per package
 

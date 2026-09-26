@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -26,6 +26,40 @@ CREATE TABLE IF NOT EXISTS sources (
     added_at TEXT NOT NULL,
     last_scanned_at TEXT,
     is_active INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS document_index (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL REFERENCES sources(id),
+    file_path TEXT NOT NULL UNIQUE,
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'indexed', 'error')),
+    error_message TEXT,
+    indexed_at TEXT,
+    started_at TEXT,
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pdf_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES document_index(id),
+    page_number INTEGER NOT NULL,
+    ocr_text TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed'))
+);
+
+CREATE TABLE IF NOT EXISTS image_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES document_index(id),
+    ocr_text TEXT NOT NULL,
+    confidence REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 
@@ -52,4 +86,20 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+    elif row["version"] < SCHEMA_VERSION:
+        _migrate_schema(conn, from_version=row["version"])
+        conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
     conn.commit()
+
+
+def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
+    if from_version < 3:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
+        if "source" not in columns:
+            conn.execute("ALTER TABLE pdf_pages ADD COLUMN source TEXT NOT NULL DEFAULT 'ocr'")
+    if from_version < 5:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "started_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN started_at TEXT")
+        if "completed_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN completed_at TEXT")

@@ -5,6 +5,23 @@ description = "VethuQ core engine — document model, ingest, OCR, indexing, and
 requires-python = ">=3.11"
 dependencies = [
     "platformdirs>=4.0",
+    # Paddle merged CPU/GPU into a single `paddlepaddle` package from 3.0
+    # onward (the separate `paddlepaddle-gpu` PyPI package was never updated
+    # past 2.6.2). This PyPI build is CPU-only; a GPU-enabled build has to be
+    # installed separately from Paddle's own package index - it runs CPU-only
+    # fine either way (paddle.device.get_device() reports 'cpu' automatically
+    # without one) - see `vethuq_core.ocr._resolve_device` for the opt-in GPU
+    # setting on top.
+    "paddlepaddle>=3.0",
+    "paddleocr>=3.0",
+    "pymupdf>=1.24",
+    # No explicit opencv dependency here on purpose: `paddleocr` pulls in
+    # `paddlex`, which hard-pins an exact `opencv-contrib-python` version.
+    # Also declaring our own `opencv-python-headless` installs a second,
+    # different-version `cv2` native build into the same site-packages path,
+    # which corrupts both and crashes Paddle's inference calls with a native
+    # access violation - so `cv2` here is provided solely by paddlex's pin.
+    "numpy>=1.26",
 ]
 
 [build-system]
