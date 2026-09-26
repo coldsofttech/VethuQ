@@ -100,13 +100,26 @@ def _atomic_write(path: Path, text: str) -> None:
 
 def _is_pid_running(pid: int) -> bool:
     if sys.platform == "win32":
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return str(pid) in result.stdout
+        # A direct WinAPI call, not a `tasklist` subprocess: spawning a new
+        # process just to check another one's liveness is slow (tens to
+        # hundreds of ms, worse under antivirus real-time scanning of new
+        # process launches) and this is called from places - the desktop
+        # app's launch/add-source/close paths - where that's felt as a
+        # visible stutter or freeze.
+        import ctypes
+
+        still_active = 259
+        query_limited_information = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(query_limited_information, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
