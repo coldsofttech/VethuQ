@@ -15,6 +15,8 @@ from vethuq_core.index_runner import (
     StaleLockError,
     is_running,
     read_state,
+    request_pause,
+    request_resume,
     signal_stop,
     start_run,
 )
@@ -29,6 +31,13 @@ from vethuq_core.sources import (
 )
 
 _INDEX_POLL_INTERVAL_MS = 5000
+
+# Fixed positions within the Sources tree's right-click menu (see
+# _build_source_list) - must stay in sync with the order items are added in.
+_INDEX_NOW_MENU_INDEX = 0
+_RETRY_MENU_INDEX = 1
+_PAUSE_RESUME_MENU_INDEX = 3
+_STOP_MENU_INDEX = 4
 
 
 class MainWindow(tk.Tk):
@@ -136,7 +145,17 @@ class MainWindow(tk.Tk):
         self.tree.bind("<Button-3>", self._on_tree_right_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed)
 
+        # Fixed layout - indices below must stay in sync with insertion order.
         self._tree_context_menu = tk.Menu(self.tree, tearoff=0)
+        self._tree_context_menu.add_command(label="Index Now", command=self._index_selected_source)
+        self._tree_context_menu.add_command(
+            label="Retry Failed Files", command=self._retry_selected_source
+        )
+        self._tree_context_menu.add_separator()
+        self._tree_context_menu.add_command(label="Pause", command=self._toggle_pause_resume)
+        self._tree_context_menu.add_command(label="Stop", command=self._stop_index_run)
+        self._tree_context_menu.add_command(label="History...", command=self._show_history)
+        self._tree_context_menu.add_separator()
         self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
 
     def on_show_source_list(self) -> None:
@@ -148,7 +167,97 @@ class MainWindow(tk.Tk):
         row_id = self.tree.identify_row(event.y)
         if row_id:
             self.tree.selection_set(row_id)
+            self._update_context_menu_state()
             self._tree_context_menu.tk_popup(event.x_root, event.y_root)
+
+    def _update_context_menu_state(self) -> None:
+        # Pause/Resume/Stop control the single background run as a whole,
+        # not just the right-clicked source - enabled/disabled (and, for
+        # Pause/Resume, labeled) based on that run's state regardless of
+        # which row is selected.
+        state = read_state(self._db_path)
+        running = state is not None and state.status in ("running", "paused")
+        paused = state is not None and state.status == "paused"
+        self._tree_context_menu.entryconfig(
+            _PAUSE_RESUME_MENU_INDEX,
+            label="Resume" if paused else "Pause",
+            state=tk.NORMAL if running else tk.DISABLED,
+        )
+        self._tree_context_menu.entryconfig(
+            _STOP_MENU_INDEX, state=tk.NORMAL if running else tk.DISABLED
+        )
+        # Index Now/Retry Failed Files start a new background run, which
+        # can't happen while one is already in progress.
+        self._tree_context_menu.entryconfig(
+            _INDEX_NOW_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
+        )
+        self._tree_context_menu.entryconfig(
+            _RETRY_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
+        )
+
+    def _index_selected_source(self) -> None:
+        self._start_targeted_run(restart=False)
+
+    def _retry_selected_source(self) -> None:
+        self._start_targeted_run(restart=True)
+
+    def _start_targeted_run(self, *, restart: bool) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        try:
+            start_run(selection[0], restart=restart, db_path=self._db_path)
+        except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
+            messagebox.showerror("Could not start indexing", str(exc))
+        else:
+            self.refresh_sources()
+
+    def _stop_index_run(self) -> None:
+        try:
+            signal_stop(db_path=self._db_path)
+        except IndexRunnerError as exc:
+            messagebox.showerror("Could not stop indexing", str(exc))
+
+    def _toggle_pause_resume(self) -> None:
+        state = read_state(self._db_path)
+        try:
+            if state is not None and state.status == "paused":
+                request_resume(db_path=self._db_path)
+            else:
+                request_pause(db_path=self._db_path)
+        except IndexRunnerError as exc:
+            messagebox.showerror("Could not update index run", str(exc))
+
+    def _show_history(self) -> None:
+        rows = self.conn.execute(
+            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20"
+        ).fetchall()
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Index History")
+        dialog.geometry("640x320")
+
+        columns = ("started_at", "mode", "target", "status", "progress", "failed")
+        tree = ttk.Treeview(dialog, columns=columns, show="headings")
+        for column, heading in zip(
+            columns, ("Started", "Mode", "Target", "Status", "Progress", "Failed"), strict=False
+        ):
+            tree.heading(column, text=heading)
+        tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        for row in rows:
+            tree.insert(
+                "",
+                tk.END,
+                values=(
+                    row["started_at"],
+                    row["mode"],
+                    row["target"] or "all sources",
+                    row["status"],
+                    f"{row['processed_files']}/{row['total_files']}",
+                    row["failed_files"],
+                ),
+            )
 
     def _on_tree_selection_changed(self, event: tk.Event | None = None) -> None:
         self._delete_button.config(state=tk.NORMAL if self.tree.selection() else tk.DISABLED)
