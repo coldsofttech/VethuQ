@@ -49,3 +49,68 @@ def test_connect_migrates_index_runs_missing_mode_column(tmp_path):
         assert version == SCHEMA_VERSION
     finally:
         conn.close()
+
+
+def test_connect_migrates_document_index_missing_file_size_column(tmp_path):
+    db_path = tmp_path / "vethuq.db"
+
+    # Simulate a database created by an older version of this code: a
+    # document_index table that predates the "file_size_bytes" column, at
+    # schema version 6.
+    old_conn = sqlite3.connect(db_path)
+    old_conn.executescript(
+        """
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (6);
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            added_at TEXT NOT NULL,
+            last_scanned_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE document_index (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            file_path TEXT NOT NULL UNIQUE,
+            file_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            indexed_at TEXT,
+            started_at TEXT,
+            completed_at TEXT
+        );
+        """
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    conn = connect(db_path)
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        assert "file_size_bytes" in columns
+
+        version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+        assert version == SCHEMA_VERSION
+    finally:
+        conn.close()
+
+
+def test_connect_creates_processing_metrics_table(tmp_path):
+    conn = connect(tmp_path / "vethuq.db")
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
+        assert columns == {
+            "file_type",
+            "document_count",
+            "avg_duration_seconds",
+            "avg_confidence",
+            "pages_native",
+            "pages_ocr",
+            "pages_mixed",
+            "updated_at",
+        }
+    finally:
+        conn.close()

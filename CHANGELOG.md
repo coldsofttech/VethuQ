@@ -28,7 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Sources list now shows a file/folder icon, capitalized status, and how many files have been processed per source.
 - Viewing a source's run history now opens alongside the source list instead of a separate popup window.
 - Dialogs and right-click menus in the desktop app are now styled to match its Windows 11 theme.
-- A removed source is now fully deleted from the database (not just hidden) after it's been removed for a while — 30 minutes by default, configurable with `vethuq settings index removed-retention set/show`.
+- A removed source is now fully deleted from the database (not just hidden) after it's been removed for a while — 7 days by default, configurable with `vethuq settings index removed-retention set/show`.
+- Indexed documents now record their file size.
+- VethuQ now tracks running averages of OCR duration, confidence, and text-source mix (native/OCR/mixed) per file type.
+- `vethuq index status`'s ETA is now based on historical average OCR duration per file type, rather than this run's own pace, so it's available even before any file in the current run has finished.
 
 ### Fixed
 
