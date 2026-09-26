@@ -30,14 +30,16 @@ def _indexed_pages(conn: sqlite3.Connection) -> list[tuple[int, str, str, int | 
         "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
         "pp.page_number AS page_number "
         "FROM pdf_pages pp JOIN document_index di ON di.id = pp.document_id "
-        "WHERE di.status = 'indexed' "
+        "JOIN sources s ON s.id = di.source_id "
+        "WHERE di.status = 'indexed' AND s.is_active = 1 "
         "ORDER BY di.file_path, pp.page_number"
     ).fetchall()
     image_rows = conn.execute(
         "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
         "NULL AS page_number "
         "FROM image_pages ip JOIN document_index di ON di.id = ip.document_id "
-        "WHERE di.status = 'indexed' "
+        "JOIN sources s ON s.id = di.source_id "
+        "WHERE di.status = 'indexed' AND s.is_active = 1 "
         "ORDER BY di.file_path"
     ).fetchall()
     return [

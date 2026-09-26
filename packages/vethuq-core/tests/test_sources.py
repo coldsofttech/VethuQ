@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from vethuq_core.db import connect
@@ -8,6 +9,7 @@ from vethuq_core.sources import (
     SourcePathError,
     add_source,
     list_sources,
+    purge_expired_removed_sources,
     remove_source,
 )
 
@@ -88,6 +90,7 @@ def test_remove_source_by_path(conn: sqlite3.Connection, tmp_path):
 
     assert removed.is_active is False
     assert removed.status == "removed"
+    assert removed.removed_at is not None
 
 
 def test_remove_source_not_found_raises(conn: sqlite3.Connection):
@@ -107,4 +110,53 @@ def test_add_source_reactivates_removed_source(conn: sqlite3.Connection, tmp_pat
     assert readded.is_active is True
     assert readded.status == "pending"
     assert readded.last_scanned_at is None
+    assert readded.removed_at is None
     assert len(list_sources(conn)) == 1
+
+
+def test_purge_expired_removed_sources_deletes_stale_removed_rows(
+    conn: sqlite3.Connection, tmp_path
+):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    document_id = conn.execute(
+        "INSERT INTO document_index (source_id, file_path, file_type, status) "
+        "VALUES (?, '/docs/a.pdf', 'pdf', 'indexed')",
+        (source.id,),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+        "VALUES (?, 1, 'text', 0.9)",
+        (document_id,),
+    )
+    conn.commit()
+    remove_source(conn, source.id)
+    stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
+    conn.execute("UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, source.id))
+    conn.commit()
+
+    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+
+    assert purged == 1
+    assert conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone() is None
+    assert (
+        conn.execute("SELECT * FROM document_index WHERE source_id = ?", (source.id,)).fetchone()
+        is None
+    )
+    assert (
+        conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (document_id,)).fetchone()
+        is None
+    )
+
+
+def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Connection, tmp_path):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    remove_source(conn, source.id)
+
+    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+
+    assert purged == 0
+    assert conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone() is not None

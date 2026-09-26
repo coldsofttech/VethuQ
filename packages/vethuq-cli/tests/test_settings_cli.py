@@ -68,3 +68,30 @@ def test_snippet_set_rejects_negative(tmp_path, monkeypatch):
     result = runner.invoke(app, ["settings", "search", "snippet", "set", "--", "-1"])
 
     assert result.exit_code == 1
+
+
+def test_removed_retention_show_defaults_to_30(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "removed-retention", "show"])
+
+    assert result.exit_code == 0
+    assert "30" in result.stdout
+
+
+def test_removed_retention_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "index", "removed-retention", "set", "60"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "index", "removed-retention", "show"])
+    assert "60" in show_result.stdout
+
+
+def test_removed_retention_set_rejects_negative(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "removed-retention", "set", "--", "-1"])
+
+    assert result.exit_code == 1

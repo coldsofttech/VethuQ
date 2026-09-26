@@ -91,6 +91,18 @@ def test_search_matches_image_page(conn: sqlite3.Connection):
     assert matches[0].matched == "John Doe"
 
 
+def test_search_excludes_removed_source(conn: sqlite3.Connection):
+    source_id = _add_source(conn)
+    document_id = _add_document(conn, source_id, "/docs/invoice.pdf")
+    _add_pdf_page(conn, document_id, 1, "Total amount due: $1,200.00 by Friday.")
+    conn.execute("UPDATE sources SET is_active = 0, status = 'removed' WHERE id = ?", (source_id,))
+    conn.commit()
+
+    matches = search_indexed_content(conn, "amount due")
+
+    assert matches == []
+
+
 def test_search_is_case_insensitive(conn: sqlite3.Connection):
     source_id = _add_source(conn)
     document_id = _add_document(conn, source_id, "/docs/letter.pdf")
