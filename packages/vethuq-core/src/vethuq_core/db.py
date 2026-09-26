@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS document_index (
     indexed_at TEXT,
     started_at TEXT,
     completed_at TEXT,
-    file_size_bytes INTEGER
+    file_size_bytes INTEGER,
+    checksum TEXT,
+    duplicate_of_id INTEGER REFERENCES document_index(id)
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -120,6 +122,12 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     elif row["version"] < SCHEMA_VERSION:
         _migrate_schema(conn, from_version=row["version"])
         conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
+    # Created after the table (and any migration adding `checksum` to it)
+    # rather than inline in `_SCHEMA`, since that script runs before
+    # migrations and would otherwise fail against a pre-migration table.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_index_checksum ON document_index(checksum)"
+    )
     conn.commit()
 
 
@@ -146,3 +154,12 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         if "file_size_bytes" not in columns:
             conn.execute("ALTER TABLE document_index ADD COLUMN file_size_bytes INTEGER")
+    if from_version < 9:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "checksum" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN checksum TEXT")
+        if "duplicate_of_id" not in columns:
+            conn.execute(
+                "ALTER TABLE document_index ADD COLUMN duplicate_of_id "
+                "INTEGER REFERENCES document_index(id)"
+            )

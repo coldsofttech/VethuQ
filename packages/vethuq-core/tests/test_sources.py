@@ -150,6 +150,53 @@ def test_purge_expired_removed_sources_deletes_stale_removed_rows(
     )
 
 
+def test_purge_expired_removed_sources_promotes_surviving_duplicate(
+    conn: sqlite3.Connection, tmp_path
+):
+    removed_folder = tmp_path / "removed"
+    removed_folder.mkdir()
+    removed_source = add_source(conn, removed_folder)
+    (tmp_path / "kept.pdf").write_bytes(b"pdf bytes")
+    kept_source = add_source(conn, tmp_path / "kept.pdf")
+
+    original_id = conn.execute(
+        "INSERT INTO document_index (source_id, file_path, file_type, status, checksum) "
+        "VALUES (?, '/removed/original.pdf', 'pdf', 'indexed', 'abc')",
+        (removed_source.id,),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+        "VALUES (?, 1, 'shared text', 0.9)",
+        (original_id,),
+    )
+    duplicate_id = conn.execute(
+        "INSERT INTO document_index "
+        "(source_id, file_path, file_type, status, checksum, duplicate_of_id) "
+        "VALUES (?, '/kept/copy.pdf', 'pdf', 'indexed', 'abc', ?)",
+        (kept_source.id, original_id),
+    ).lastrowid
+    conn.commit()
+
+    remove_source(conn, removed_source.id)
+    stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
+    conn.execute(
+        "UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, removed_source.id)
+    )
+    conn.commit()
+
+    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+
+    assert purged == 1
+    promoted = conn.execute("SELECT * FROM document_index WHERE id = ?", (duplicate_id,)).fetchone()
+    assert promoted["duplicate_of_id"] is None
+    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (duplicate_id,)).fetchone()
+    assert page["ocr_text"] == "shared text"
+    assert (
+        conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (original_id,)).fetchone()
+        is None
+    )
+
+
 def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()

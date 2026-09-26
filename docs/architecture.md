@@ -94,7 +94,7 @@ Storage, alongside `sources`:
 
 | Table | Purpose |
 | --- | --- |
-| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`, `file_size_bytes`. Central table joining the type-specific pages tables. |
+| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`, `file_size_bytes`, `checksum` (SHA-256 of file contents), `duplicate_of_id` (self-FK; set when this file's checksum matches an already-indexed original, in which case OCR is skipped and this row has no rows of its own in the pages tables — it reuses the original's). Central table joining the type-specific pages tables. |
 | `pdf_pages` | One row per PDF page: `document_id`, `page_number`, `ocr_text`, `confidence`. |
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_confidence`, `pages_native`/`pages_ocr`/`pages_mixed`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
@@ -105,6 +105,18 @@ A failure on one file is recorded on that file's `document_index` row
 (`status='error'`, `error_message`) without aborting the rest of the
 source; `sources.status` reflects the overall outcome (`indexed` if all
 files succeeded, `error` if any failed).
+
+Duplicate detection (`vethuq_core.ocr._upsert_document`) hashes every file
+(SHA-256) as it's processed and, if another *indexed*, non-duplicate
+document already has that checksum, links the new one to it via
+`duplicate_of_id` instead of running OCR — duplicates are detected
+globally across all sources, not just within one. Search and `index
+status` still show a duplicate as its own result/row (reusing the
+original's OCR text), just flagged as a duplicate. If the original is
+later purged (see the removed-source retention window below), the
+earliest-indexed surviving duplicate is promoted in its place: it
+inherits the original's `pdf_pages`/`image_pages` rows and any other
+duplicates are repointed to it (`vethuq_core.sources._promote_surviving_duplicate`).
 
 ## Conventions per package
 

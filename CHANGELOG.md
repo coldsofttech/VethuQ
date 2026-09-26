@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Indexed documents now record their file size.
 - VethuQ now tracks running averages of OCR duration, confidence, and text-source mix (native/OCR/mixed) per file type.
 - `vethuq index status`'s ETA is now based on historical average OCR duration per file type, rather than this run's own pace, so it's available even before any file in the current run has finished.
+- Files with identical content to one already indexed are now detected as duplicates and linked to the original instead of being OCR'd again; both the CLI and the desktop app flag duplicates in search results and index status.
 
 ### Fixed
 

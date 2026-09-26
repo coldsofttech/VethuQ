@@ -7,6 +7,7 @@ found under a source, runs PaddleOCR and writes the extracted text into
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import sqlite3
@@ -194,27 +195,66 @@ def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]
         return [_ocr_pdf_page(conn, page) for page in doc]
 
 
+_CHECKSUM_CHUNK_BYTES = 1024 * 1024
+
+
+def _compute_checksum(file_path: Path) -> str:
+    """Return the SHA-256 hex digest of a file's contents, read in chunks."""
+    digest = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(_CHECKSUM_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _find_duplicate_original(
+    conn: sqlite3.Connection, checksum: str, document_id: int
+) -> int | None:
+    """Return the id of the original document `document_id` duplicates, if any.
+
+    An "original" is the earliest-indexed document with matching content
+    (same checksum) that isn't itself a duplicate of something else -
+    duplicates always link directly to the root original, never to a chain.
+    """
+    row = conn.execute(
+        "SELECT id FROM document_index "
+        "WHERE checksum = ? AND id != ? AND duplicate_of_id IS NULL AND status = 'indexed' "
+        "ORDER BY id ASC LIMIT 1",
+        (checksum, document_id),
+    ).fetchone()
+    return row["id"] if row is not None else None
+
+
 def _upsert_document(
     conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
-) -> int:
+) -> tuple[int, int | None]:
+    """Insert/reset a document's `document_index` row and check it for duplicates.
+
+    Returns `(document_id, duplicate_of_id)` - `duplicate_of_id` is the id of
+    the original document this one's content (by checksum) already matches,
+    or None if this document is new/unique content.
+    """
     started_at = datetime.now(UTC).isoformat()
     file_size_bytes = file_path.stat().st_size
+    checksum = _compute_checksum(file_path)
     conn.execute(
         """
         INSERT INTO document_index
-            (source_id, file_path, file_type, status, started_at, file_size_bytes)
-        VALUES (?, ?, ?, 'pending', ?, ?)
+            (source_id, file_path, file_type, status, started_at, file_size_bytes, checksum)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
             status = 'pending', error_message = NULL, indexed_at = NULL,
             started_at = excluded.started_at, completed_at = NULL,
-            file_size_bytes = excluded.file_size_bytes
+            file_size_bytes = excluded.file_size_bytes, checksum = excluded.checksum,
+            duplicate_of_id = NULL
         """,
-        (source_id, str(file_path), file_type, started_at, file_size_bytes),
+        (source_id, str(file_path), file_type, started_at, file_size_bytes, checksum),
     )
     row = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
     ).fetchone()
-    return row["id"]
+    document_id = row["id"]
+    return document_id, _find_duplicate_original(conn, checksum, document_id)
 
 
 def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
@@ -223,6 +263,16 @@ def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
         "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
         "WHERE id = ?",
         (now, now, document_id),
+    )
+
+
+def _mark_duplicate(conn: sqlite3.Connection, document_id: int, original_id: int) -> None:
+    """Mark a document as indexed via a checksum match instead of running OCR on it."""
+    now = datetime.now(UTC).isoformat()
+    conn.execute(
+        "UPDATE document_index SET status = 'indexed', duplicate_of_id = ?, "
+        "indexed_at = ?, completed_at = ? WHERE id = ?",
+        (original_id, now, now, document_id),
     )
 
 
@@ -304,6 +354,7 @@ class DocumentResult:
     started_at: str | None
     completed_at: str | None
     duration: float | None
+    duplicate_of_path: str | None
 
 
 def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[DocumentResult]:
@@ -311,12 +362,20 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
 
     `confidence` is the average across a document's pages (there's only one for
     an image; a PDF may have several), and is None for documents that aren't
-    (yet) successfully indexed. `duration` (in seconds) is derived from
+    (yet) successfully indexed. For a duplicate (`duplicate_of_path` is not
+    None), the pages - and so the confidence - are the original's, since a
+    duplicate has none of its own. `duration` (in seconds) is derived from
     `started_at`/`completed_at` and is None while a document is still pending.
     """
     rows = conn.execute(
-        "SELECT id, file_path, file_type, status, error_message, started_at, completed_at "
-        "FROM document_index WHERE source_id = ? ORDER BY file_path",
+        "SELECT di.id AS id, di.file_path AS file_path, di.file_type AS file_type, "
+        "di.status AS status, di.error_message AS error_message, "
+        "di.started_at AS started_at, di.completed_at AS completed_at, "
+        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
+        "orig.file_path AS duplicate_of_path "
+        "FROM document_index di "
+        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
+        "WHERE di.source_id = ? ORDER BY di.file_path",
         (source_id,),
     ).fetchall()
 
@@ -328,7 +387,8 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
             scores = [
                 page["confidence"]
                 for page in conn.execute(
-                    f"SELECT confidence FROM {table} WHERE document_id = ?", (row["id"],)
+                    f"SELECT confidence FROM {table} WHERE document_id = ?",
+                    (row["canonical_id"],),
                 )
             ]
             confidence = sum(scores) / len(scores) if scores else None
@@ -349,6 +409,7 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
                 started_at=row["started_at"],
                 completed_at=row["completed_at"],
                 duration=duration,
+                duplicate_of_path=row["duplicate_of_path"],
             )
         )
     return results
@@ -474,9 +535,18 @@ def run_ocr(
             continue
 
         file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
-        document_id = _upsert_document(conn, source.id, file_path, file_type)
+        document_id, duplicate_of_id = _upsert_document(conn, source.id, file_path, file_type)
         conn.commit()
         processed_paths.append(str(file_path))
+
+        if duplicate_of_id is not None:
+            # Identical content already indexed under `duplicate_of_id` - link to
+            # it and skip OCR entirely rather than redoing the same work.
+            _mark_duplicate(conn, document_id, duplicate_of_id)
+            conn.commit()
+            if on_file_done is not None:
+                on_file_done(str(file_path))
+            continue
 
         try:
             if file_type == "pdf":

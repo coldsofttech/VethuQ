@@ -222,6 +222,7 @@ def status(
                         "confidence": r.confidence,
                         "duration": r.duration,
                         "error": r.error_message,
+                        "duplicate_of": r.duplicate_of_path,
                     }
                     for r in results
                 ]
@@ -238,7 +239,10 @@ def status(
         if r.status == "indexed":
             confidence = f"{r.confidence:.0%}" if r.confidence is not None else "n/a"
             duration = f"{r.duration:.1f}s" if r.duration is not None else "n/a"
-            typer.echo(f"  {name:<40} indexed  confidence: {confidence}  duration: {duration}")
+            line = f"  {name:<40} indexed  confidence: {confidence}  duration: {duration}"
+            if r.duplicate_of_path is not None:
+                line += f"  (duplicate of {Path(r.duplicate_of_path).name})"
+            typer.echo(line)
         elif r.status == "error":
             typer.echo(f"  {name:<40} error    {r.error_message}")
         else:

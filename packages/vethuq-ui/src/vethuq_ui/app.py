@@ -350,19 +350,21 @@ class MainWindow(tk.Tk):
         if not query or query == _SEARCH_PLACEHOLDER:
             return
 
-        seen_files: dict[int, tuple[str, str]] = {}
+        seen_files: dict[int, tuple[str, str, bool]] = {}
         for match in search_indexed_content(self.conn, query):
-            seen_files.setdefault(match.file_id, (match.file_name, match.file_path))
+            is_duplicate = match.duplicate_of_path is not None
+            seen_files.setdefault(match.file_id, (match.file_name, match.file_path, is_duplicate))
 
-        for file_id, (file_name, file_path) in seen_files.items():
+        for file_id, (file_name, file_path, is_duplicate) in seen_files.items():
             iid = str(file_id)
-            if len(file_name) > _MAX_DISPLAYED_NAME_CHARS:
-                self._search_full_names[iid] = file_name
+            display_name = f"{file_name} (duplicate)" if is_duplicate else file_name
+            if len(display_name) > _MAX_DISPLAYED_NAME_CHARS:
+                self._search_full_names[iid] = display_name
             self._search_tree.insert(
                 "",
                 tk.END,
                 iid=iid,
-                text=self._truncate_name(file_name),
+                text=self._truncate_name(display_name),
                 image=get_file_icon(file_path),
                 values=(file_path,),
             )
