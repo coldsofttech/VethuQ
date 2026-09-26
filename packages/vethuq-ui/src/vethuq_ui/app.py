@@ -36,8 +36,6 @@ _INDEX_POLL_INTERVAL_MS = 5000
 # _build_source_list) - must stay in sync with the order items are added in.
 _INDEX_NOW_MENU_INDEX = 0
 _RETRY_MENU_INDEX = 1
-_PAUSE_RESUME_MENU_INDEX = 3
-_STOP_MENU_INDEX = 4
 
 
 class MainWindow(tk.Tk):
@@ -85,6 +83,7 @@ class MainWindow(tk.Tk):
             self.refresh_sources()
         else:
             self._set_idle_status()
+        self._update_index_control_buttons(state)
         if not self._closing:
             self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
 
@@ -133,6 +132,16 @@ class MainWindow(tk.Tk):
         )
         self._delete_button.pack(side=tk.LEFT, padx=2)
 
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+        self._pause_resume_button = ttk.Button(
+            toolbar, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
+        )
+        self._pause_resume_button.pack(side=tk.LEFT, padx=2)
+        self._stop_button = ttk.Button(
+            toolbar, text="Stop", command=self._stop_index_run, state=tk.DISABLED
+        )
+        self._stop_button.pack(side=tk.LEFT, padx=2)
+
         columns = ("type", "path", "status")
         self.tree = ttk.Treeview(self._source_list_frame, columns=columns, show="headings")
         self.tree.heading("type", text="Type")
@@ -152,8 +161,6 @@ class MainWindow(tk.Tk):
             label="Retry Failed Files", command=self._retry_selected_source
         )
         self._tree_context_menu.add_separator()
-        self._tree_context_menu.add_command(label="Pause", command=self._toggle_pause_resume)
-        self._tree_context_menu.add_command(label="Stop", command=self._stop_index_run)
         self._tree_context_menu.add_command(label="History...", command=self._show_history)
         self._tree_context_menu.add_separator()
         self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
@@ -171,23 +178,11 @@ class MainWindow(tk.Tk):
             self._tree_context_menu.tk_popup(event.x_root, event.y_root)
 
     def _update_context_menu_state(self) -> None:
-        # Pause/Resume/Stop control the single background run as a whole,
-        # not just the right-clicked source - enabled/disabled (and, for
-        # Pause/Resume, labeled) based on that run's state regardless of
-        # which row is selected.
-        state = read_state(self._db_path)
-        running = state is not None and state.status in ("running", "paused")
-        paused = state is not None and state.status == "paused"
-        self._tree_context_menu.entryconfig(
-            _PAUSE_RESUME_MENU_INDEX,
-            label="Resume" if paused else "Pause",
-            state=tk.NORMAL if running else tk.DISABLED,
-        )
-        self._tree_context_menu.entryconfig(
-            _STOP_MENU_INDEX, state=tk.NORMAL if running else tk.DISABLED
-        )
         # Index Now/Retry Failed Files start a new background run, which
-        # can't happen while one is already in progress.
+        # can't happen while one is already in progress (Pause/Stop/Resume
+        # are global - see the toolbar buttons - since there's a single
+        # background worker, not one per source).
+        running = is_running(self._db_path)[0]
         self._tree_context_menu.entryconfig(
             _INDEX_NOW_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
         )
@@ -228,13 +223,31 @@ class MainWindow(tk.Tk):
         except IndexRunnerError as exc:
             messagebox.showerror("Could not update index run", str(exc))
 
+    def _update_index_control_buttons(self, state: IndexState | None) -> None:
+        running = state is not None and state.status in ("running", "paused")
+        paused = state is not None and state.status == "paused"
+        self._pause_resume_button.config(
+            text="Resume" if paused else "Pause", state=tk.NORMAL if running else tk.DISABLED
+        )
+        self._stop_button.config(state=tk.NORMAL if running else tk.DISABLED)
+
     def _show_history(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        source_id = selection[0]
+        path = self.tree.item(selection[0], "values")[1]
+
+        # A run over "all sources" (target IS NULL) would have covered this
+        # source too, so it's included alongside runs targeted at just it.
         rows = self.conn.execute(
-            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT 20"
+            "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
+            "ORDER BY started_at DESC LIMIT 20",
+            (source_id,),
         ).fetchall()
 
         dialog = tk.Toplevel(self)
-        dialog.title("Index History")
+        dialog.title(f"Index History — {path}")
         dialog.geometry("640x320")
 
         columns = ("started_at", "mode", "target", "status", "progress", "failed")

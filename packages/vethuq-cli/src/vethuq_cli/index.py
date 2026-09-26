@@ -237,15 +237,33 @@ def resume() -> None:
 
 @app.command("history")
 def history(
+    target: str = typer.Argument(
+        None, help="Source id or path to filter to (also includes runs over all sources)."
+    ),
     limit: int = typer.Option(10, "--limit", help="Number of past runs to show."),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
-    """List past background index runs."""
+    """List past background index runs, optionally filtered to one source."""
     conn = connect()
     try:
-        rows = conn.execute(
-            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+        if target is None:
+            rows = conn.execute(
+                "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        else:
+            try:
+                get_source(conn, _coerce_target(target))
+            except SourceNotFoundError as exc:
+                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                raise typer.Exit(code=1) from exc
+            # A run over "all sources" (target IS NULL) would have covered
+            # this source too, so it's included alongside runs targeted at
+            # just this source.
+            rows = conn.execute(
+                "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
+                "ORDER BY started_at DESC LIMIT ?",
+                (target, limit),
+            ).fetchall()
     finally:
         conn.close()
 
