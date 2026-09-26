@@ -13,9 +13,11 @@ from vethuq_core.settings import (
 
 app = typer.Typer(help="Manage VethuQ settings.")
 gpu_app = typer.Typer(help="Configure whether OCR should use the GPU when available.")
+search_app = typer.Typer(help="Configure `search` behavior.")
 snippet_app = typer.Typer(help="Configure how much context `search` shows around a match.")
 app.add_typer(gpu_app, name="gpu")
-app.add_typer(snippet_app, name="snippet")
+app.add_typer(search_app, name="search")
+search_app.add_typer(snippet_app, name="snippet")
 
 
 @gpu_app.command("enable")

@@ -5,7 +5,7 @@ VethuQ — open-source document intelligence and evidence infrastructure for sea
 
 Add a file or folder as a source, then index it so its text becomes searchable:
 
-```
+```bash
 vethuq source add ./path/to/folder-or-file
 vethuq index run
 ```
@@ -16,11 +16,11 @@ In the desktop app, add sources from the toolbar — indexing then happens autom
 
 Once your files are indexed, search them from the CLI:
 
-```
+```bash
 vethuq search "invoice total"
 ```
 
-Each result shows the file it was found in and a snippet of the matching text, with your search term highlighted. How much surrounding text is shown can be adjusted with `vethuq settings snippet set <characters>`.
+Each result shows the file it was found in and a snippet of the matching text, with your search term highlighted. How much surrounding text is shown can be adjusted with `vethuq settings search snippet set <characters>`.
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 

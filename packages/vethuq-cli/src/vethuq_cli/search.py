@@ -122,7 +122,7 @@ def search(
     followed by one `Page: X of Y` and boxed, highlighted snippet per match;
     consecutive files alternate accent colors to make them easier to tell
     apart. How much context the box shows is configurable via
-    `vethuq settings snippet`.
+    `vethuq settings search snippet`.
     """
     conn = connect()
     try:
