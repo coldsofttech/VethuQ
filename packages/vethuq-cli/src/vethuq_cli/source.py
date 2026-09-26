@@ -31,6 +31,7 @@ def add(
         raise typer.Exit(code=1) from exc
     else:
         typer.echo(f"Added {source.source_type}: {source.path}")
+        typer.echo("Run 'vethuq index run' to process pending sources.")
     finally:
         conn.close()
 

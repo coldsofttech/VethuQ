@@ -93,3 +93,18 @@ def test_remove_source_by_path(conn: sqlite3.Connection, tmp_path):
 def test_remove_source_not_found_raises(conn: sqlite3.Connection):
     with pytest.raises(SourceNotFoundError):
         remove_source(conn, 999)
+
+
+def test_add_source_reactivates_removed_source(conn: sqlite3.Connection, tmp_path):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    original = add_source(conn, folder)
+    remove_source(conn, original.id)
+
+    readded = add_source(conn, folder)
+
+    assert readded.id == original.id
+    assert readded.is_active is True
+    assert readded.status == "pending"
+    assert readded.last_scanned_at is None
+    assert len(list_sources(conn)) == 1

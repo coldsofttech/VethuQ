@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from vethuq_core.db import connect
+from vethuq_core.ocr import run_ocr
 from vethuq_core.sources import SourceAlreadyExistsError, SourceError, add_source, list_sources
+
+_INDEX_POLL_INTERVAL_MS = 5000
 
 
 class MainWindow(tk.Tk):
-    def __init__(self, conn: sqlite3.Connection | None = None) -> None:
+    def __init__(
+        self, conn: sqlite3.Connection | None = None, db_path: Path | None = None
+    ) -> None:
         super().__init__()
-        self.conn = conn or connect()
+        self.conn = conn or connect(db_path)
+        self._db_path = db_path
 
         self.title("VethuQ")
         self.geometry("720x480")
@@ -21,6 +29,31 @@ class MainWindow(tk.Tk):
         self._build_toolbar()
         self._build_source_list()
         self.refresh_sources()
+        self._start_index_worker()
+
+    def _start_index_worker(self) -> None:
+        self._worker_stop = threading.Event()
+        self._worker_thread = threading.Thread(
+            target=self._index_worker_loop, daemon=True
+        )
+        self._worker_thread.start()
+
+    def _index_worker_loop(self) -> None:
+        # Runs on a background thread with its own connection — sqlite3
+        # connections aren't safe to share across threads.
+        worker_conn = connect(self._db_path)
+        try:
+            while not self._worker_stop.wait(_INDEX_POLL_INTERVAL_MS / 1000):
+                pending = [s for s in list_sources(worker_conn) if s.status == "pending"]
+                for source in pending:
+                    run_ocr(worker_conn, source)
+                    self.after(0, self.refresh_sources)
+        finally:
+            worker_conn.close()
+
+    def destroy(self) -> None:
+        self._worker_stop.set()
+        super().destroy()
 
     def _build_toolbar(self) -> None:
         toolbar = ttk.Frame(self)

@@ -55,8 +55,11 @@ class Source:
 def add_source(conn: sqlite3.Connection, path: str | Path) -> Source:
     """Register a file or folder as a source. Folders are indexed recursively.
 
+    Re-adding a path that was previously removed reactivates that source
+    (reset to 'pending') rather than failing.
+
     Raises SourcePathError if the path does not exist or is neither a file nor
-    a folder, and SourceAlreadyExistsError if it is already registered.
+    a folder, and SourceAlreadyExistsError if it is already an active source.
     """
     resolved = Path(path).expanduser().resolve()
 
@@ -70,17 +73,34 @@ def add_source(conn: sqlite3.Connection, path: str | Path) -> Source:
         raise SourcePathError(f"Path is neither a file nor a folder: {resolved}")
 
     added_at = datetime.now(UTC).isoformat()
-    try:
-        cursor = conn.execute(
+    existing = conn.execute(
+        "SELECT * FROM sources WHERE path = ?", (str(resolved),)
+    ).fetchone()
+
+    if existing is not None:
+        if existing["is_active"]:
+            raise SourceAlreadyExistsError(f"Path is already registered: {resolved}")
+        conn.execute(
             """
-            INSERT INTO sources (path, source_type, status, added_at, is_active)
-            VALUES (?, ?, 'pending', ?, 1)
+            UPDATE sources
+            SET source_type = ?, status = 'pending', added_at = ?,
+                last_scanned_at = NULL, is_active = 1
+            WHERE id = ?
             """,
-            (str(resolved), source_type, added_at),
+            (source_type, added_at, existing["id"]),
         )
         conn.commit()
-    except sqlite3.IntegrityError as exc:
-        raise SourceAlreadyExistsError(f"Path is already registered: {resolved}") from exc
+        row = conn.execute("SELECT * FROM sources WHERE id = ?", (existing["id"],)).fetchone()
+        return Source._from_row(row)
+
+    cursor = conn.execute(
+        """
+        INSERT INTO sources (path, source_type, status, added_at, is_active)
+        VALUES (?, ?, 'pending', ?, 1)
+        """,
+        (str(resolved), source_type, added_at),
+    )
+    conn.commit()
 
     row = conn.execute("SELECT * FROM sources WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return Source._from_row(row)
