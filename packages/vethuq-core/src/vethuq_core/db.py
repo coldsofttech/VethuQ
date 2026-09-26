@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS index_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target TEXT,
+    mode TEXT NOT NULL DEFAULT 'run' CHECK (mode IN ('run', 'restart')),
     status TEXT NOT NULL DEFAULT 'running'
         CHECK (status IN ('running', 'completed', 'stopped', 'failed')),
     pid INTEGER,

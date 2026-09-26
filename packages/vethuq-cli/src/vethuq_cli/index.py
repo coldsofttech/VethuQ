@@ -47,6 +47,7 @@ def _estimate_eta(state: IndexState) -> str | None:
 def _print_state(state: IndexState) -> None:
     percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
     typer.echo(f"Status: {state.status}")
+    typer.echo(f"Mode: {state.mode}")
     typer.echo(f"Target: {state.target or 'all sources'}")
     typer.echo(
         f"Progress: {state.processed_files}/{state.total_files} ({percent:.0f}%), "
@@ -58,6 +59,29 @@ def _print_state(state: IndexState) -> None:
         eta = _estimate_eta(state)
         if eta is not None:
             typer.echo(f"ETA: ~{eta}")
+
+
+def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
+    try:
+        pid = start_run(target, force=force, restart=restart)
+    except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    verb = "restart" if restart else "index run"
+    typer.echo(f"Started background {verb} (pid {pid}).")
+    if not wait:
+        typer.echo("Check progress with 'vethuq index status'.")
+        return
+
+    while True:
+        time.sleep(_POLL_SECONDS)
+        state = read_state()
+        if state is None or state.pid != pid:
+            break
+        if state.status in ("completed", "stopped", "failed"):
+            _print_state(state)
+            break
 
 
 @app.command("run")
@@ -78,25 +102,28 @@ def run(
     to it since the last run - only genuinely new (or previously failed)
     files are (re)processed. Use 'vethuq index status' to check progress.
     """
-    try:
-        pid = start_run(target, force=force)
-    except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
+    _start_and_report(target, force=force, wait=wait, restart=False)
 
-    typer.echo(f"Started background index run (pid {pid}).")
-    if not wait:
-        typer.echo("Check progress with 'vethuq index status'.")
-        return
 
-    while True:
-        time.sleep(_POLL_SECONDS)
-        state = read_state()
-        if state is None or state.pid != pid:
-            break
-        if state.status in ("completed", "stopped", "failed"):
-            _print_state(state)
-            break
+@app.command("restart")
+def restart(
+    target: str = typer.Argument(
+        None, help="Source id or path to retry. Omit to retry every source's failed files."
+    ),
+    wait: bool = typer.Option(
+        False, "--wait", help="Block until the run finishes, printing progress as it goes."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
+    ),
+) -> None:
+    """Retry only previously-failed files, in the background.
+
+    New files and already-indexed files are left untouched - only files
+    whose last OCR attempt failed are (re)processed. Use 'vethuq index run'
+    instead to also pick up new files.
+    """
+    _start_and_report(target, force=force, wait=wait, restart=True)
 
 
 @app.command("status")
@@ -220,7 +247,7 @@ def history(
     for row in rows:
         target = row["target"] or "all sources"
         typer.echo(
-            f"[{row['id']}] {row['started_at']}  target={target}  status={row['status']}  "
-            f"{row['processed_files']}/{row['total_files']} processed, "
+            f"[{row['id']}] {row['started_at']}  mode={row['mode']}  target={target}  "
+            f"status={row['status']}  {row['processed_files']}/{row['total_files']} processed, "
             f"{row['failed_files']} failed"
         )

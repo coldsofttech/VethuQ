@@ -34,7 +34,9 @@ def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
     add_source(conn, folder)
 
 
-def _fake_run_ocr(conn, source, *, only_new_files=False, on_file_done=None, should_stop=None):
+def _fake_run_ocr(
+    conn, source, *, only_new_files=False, only_failed=False, on_file_done=None, should_stop=None
+):
     processed = []
     for file_path in ("a.pdf", "b.pdf", "c.pdf"):
         if should_stop is not None and should_stop():
@@ -72,7 +74,15 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
     _register_source(conn, tmp_path)
     conn.close()
 
-    def fake_run_ocr(conn, source, *, only_new_files=False, on_file_done=None, should_stop=None):
+    def fake_run_ocr(
+        conn,
+        source,
+        *,
+        only_new_files=False,
+        only_failed=False,
+        on_file_done=None,
+        should_stop=None,
+    ):
         processed = []
         for file_path in ("a.pdf", "b.pdf", "c.pdf"):
             if should_stop is not None and should_stop():
@@ -108,7 +118,15 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
 
     monkeypatch.setattr(index_runner.time, "sleep", fake_sleep)
 
-    def fake_run_ocr(conn, source, *, only_new_files=False, on_file_done=None, should_stop=None):
+    def fake_run_ocr(
+        conn,
+        source,
+        *,
+        only_new_files=False,
+        only_failed=False,
+        on_file_done=None,
+        should_stop=None,
+    ):
         assert should_stop() is False
         index_runner._set_control(db_path, "pause")
         assert should_stop() is False
@@ -126,6 +144,39 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
     assert state.status == "completed"
 
 
+def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
+    _register_source(conn, tmp_path)
+    conn.close()
+
+    seen = {}
+
+    def fake_run_ocr(
+        conn,
+        source,
+        *,
+        only_new_files=False,
+        only_failed=False,
+        on_file_done=None,
+        should_stop=None,
+    ):
+        seen["only_failed"] = only_failed
+        return []
+
+    with (
+        patch.object(index_runner, "pending_file_count", return_value=0) as fake_count,
+        patch.object(index_runner, "run_ocr", side_effect=fake_run_ocr),
+    ):
+        index_runner._run_worker(db_path, None, restart=True)
+
+    assert seen["only_failed"] is True
+    assert fake_count.call_args.kwargs["only_failed"] is True
+
+    result_conn = connect(db_path)
+    row = result_conn.execute("SELECT mode FROM index_runs").fetchone()
+    result_conn.close()
+    assert row["mode"] == "restart"
+
+
 def test_start_run_writes_lock_and_returns_pid(db_path, monkeypatch):
     monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(4321))
 
@@ -133,6 +184,20 @@ def test_start_run_writes_lock_and_returns_pid(db_path, monkeypatch):
 
     assert pid == 4321
     assert index_runner._lock_path(db_path).read_text(encoding="utf-8").strip() == "4321"
+
+
+def test_start_run_passes_restart_mode_to_worker_argv(db_path, monkeypatch):
+    captured = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        return _FakeProcess(4321)
+
+    monkeypatch.setattr(index_runner.subprocess, "Popen", fake_popen)
+
+    index_runner.start_run(None, restart=True, db_path=db_path)
+
+    assert captured["argv"][-1] == "restart"
 
 
 def test_start_run_raises_when_already_running(db_path, monkeypatch):
@@ -197,6 +262,7 @@ def test_request_stop_marks_state_and_history(db_path, conn, tmp_path, monkeypat
         run_id=run_id,
         pid=4242,
         target=None,
+        mode="run",
         status="running",
         total_files=5,
         processed_files=2,

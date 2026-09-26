@@ -57,6 +57,7 @@ class IndexState:
     run_id: int
     pid: int
     target: str | None
+    mode: str  # "run" | "restart"
     status: str  # "running" | "paused" | "completed" | "stopped" | "failed"
     total_files: int
     processed_files: int
@@ -160,9 +161,18 @@ def _coerce_target(target: str) -> str | int:
 
 
 def start_run(
-    target: str | None = None, *, force: bool = False, db_path: Path | None = None
+    target: str | None = None,
+    *,
+    force: bool = False,
+    restart: bool = False,
+    db_path: Path | None = None,
 ) -> int:
-    """Launch OCR indexing as a detached background process. Returns its pid."""
+    """Launch OCR indexing as a detached background process. Returns its pid.
+
+    When `restart` is True, only files that previously failed are retried
+    (see `run_ocr`'s `only_failed`); otherwise new and previously-failed
+    files are processed as usual.
+    """
     db_path = db_path or default_db_path()
     running, pid = is_running(db_path)
     if running:
@@ -187,9 +197,19 @@ def start_run(
 
     creationflags = 0
     if sys.platform == "win32":
-        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        # CREATE_NO_WINDOW suppresses the console window a console-subsystem
+        # child (python.exe) would otherwise pop up; CREATE_NEW_PROCESS_GROUP
+        # keeps it from receiving Ctrl+C aimed at the parent's console.
+        creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
     process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user-controlled binary
-        [sys.executable, "-m", "vethuq_core.index_runner", str(db_path), target or ""],
+        [
+            sys.executable,
+            "-m",
+            "vethuq_core.index_runner",
+            str(db_path),
+            target or "",
+            "restart" if restart else "run",
+        ],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -263,22 +283,24 @@ def _resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Sourc
     return [get_source(conn, _coerce_target(target))]
 
 
-def _run_worker(db_path: Path, target: str | None) -> None:
+def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:
     conn = connect(db_path)
     pid = os.getpid()
     started_at = datetime.now(UTC).isoformat()
     run_id: int | None = None
     stopped = False
+    mode = "restart" if restart else "run"
     try:
         sources = _resolve_targets(conn, target)
         total = sum(
-            pending_file_count(conn, s, only_new_files=s.status != "pending") for s in sources
+            pending_file_count(conn, s, only_new_files=s.status != "pending", only_failed=restart)
+            for s in sources
         )
 
         cursor = conn.execute(
-            "INSERT INTO index_runs (target, status, pid, total_files, started_at) "
-            "VALUES (?, 'running', ?, ?, ?)",
-            (target, pid, total, started_at),
+            "INSERT INTO index_runs (target, mode, status, pid, total_files, started_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?)",
+            (target, mode, pid, total, started_at),
         )
         conn.commit()
         run_id = cursor.lastrowid
@@ -288,6 +310,7 @@ def _run_worker(db_path: Path, target: str | None) -> None:
             run_id=run_id,
             pid=pid,
             target=target,
+            mode=mode,
             status="running",
             total_files=total,
             processed_files=0,
@@ -327,6 +350,7 @@ def _run_worker(db_path: Path, target: str | None) -> None:
                 conn,
                 source,
                 only_new_files=source.status != "pending",
+                only_failed=restart,
                 on_file_done=on_file_done,
                 should_stop=should_stop,
             )
@@ -356,7 +380,8 @@ def _run_worker(db_path: Path, target: str | None) -> None:
 def main() -> None:
     db_path = Path(sys.argv[1])
     target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
-    _run_worker(db_path, target)
+    mode = sys.argv[3] if len(sys.argv) > 3 else "run"
+    _run_worker(db_path, target, restart=mode == "restart")
 
 
 if __name__ == "__main__":

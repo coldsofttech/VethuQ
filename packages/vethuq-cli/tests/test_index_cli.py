@@ -44,6 +44,16 @@ def test_run_reports_already_running(tmp_path, monkeypatch):
     assert "already in progress" in result.output
 
 
+def test_restart_starts_background_process(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(456))
+
+    result = runner.invoke(app, ["index", "restart"])
+
+    assert result.exit_code == 0
+    assert "Started background restart (pid 456)" in result.stdout
+
+
 def test_run_unknown_target_fails(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
@@ -68,6 +78,7 @@ def test_status_shows_progress(tmp_path, monkeypatch):
         run_id=1,
         pid=1,
         target=None,
+        mode="run",
         status="running",
         total_files=4,
         processed_files=1,

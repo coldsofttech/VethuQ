@@ -63,6 +63,18 @@ vethuq index run 3 --wait
 vethuq index run --force
 ```
 
+### `vethuq index restart [source] [--wait] [--force]`
+
+Retry only files that previously failed OCR, as a background process.
+Unlike `run`, new files and already-indexed files are left untouched —
+only files whose last attempt errored are (re)processed. Takes the same
+`source`/`--wait`/`--force` options as `run`.
+
+```
+vethuq index restart
+vethuq index restart ./path/to/folder-or-file
+```
+
 ### `vethuq index status [source] [--json]`
 
 Without a source, shows the current (or most recently finished)

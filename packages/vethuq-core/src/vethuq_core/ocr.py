@@ -291,7 +291,11 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
 
 
 def pending_file_count(
-    conn: sqlite3.Connection, source: Source, *, only_new_files: bool = False
+    conn: sqlite3.Connection,
+    source: Source,
+    *,
+    only_new_files: bool = False,
+    only_failed: bool = False,
 ) -> int:
     """Count the files `run_ocr` would actually (re)process for `source`.
 
@@ -301,12 +305,16 @@ def pending_file_count(
     root = Path(source.path)
     count = 0
     for file_path in _iter_supported_files(root):
-        if only_new_files:
+        existing = None
+        if only_new_files or only_failed:
             existing = conn.execute(
                 "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
             ).fetchone()
-            if existing is not None and existing["status"] == "indexed":
+        if only_failed:
+            if existing is None or existing["status"] != "error":
                 continue
+        elif only_new_files and existing is not None and existing["status"] == "indexed":
+            continue
         count += 1
     return count
 
@@ -316,6 +324,7 @@ def run_ocr(
     source: Source,
     *,
     only_new_files: bool = False,
+    only_failed: bool = False,
     on_file_done: Callable[[str], None] | None = None,
     should_stop: Callable[[], bool] | None = None,
 ) -> list[str]:
@@ -333,6 +342,11 @@ def run_ocr(
     source is (re)processed unconditionally - appropriate for a source that's
     freshly added or reactivated after removal.
 
+    When `only_failed` is True, only files whose `document_index` row has
+    status='error' are (re)processed - new and already-indexed files are
+    left untouched. Use this to retry failures without touching anything
+    else. Takes precedence over `only_new_files` if both are set.
+
     `on_file_done`, when given, is called with a file's path immediately after
     it's (re)processed - used to report progress. `should_stop`, when given,
     is checked before each file and stops the source early (leaving remaining
@@ -348,12 +362,16 @@ def run_ocr(
         if should_stop is not None and should_stop():
             break
 
-        if only_new_files:
+        existing = None
+        if only_new_files or only_failed:
             existing = conn.execute(
                 "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
             ).fetchone()
-            if existing is not None and existing["status"] == "indexed":
+        if only_failed:
+            if existing is None or existing["status"] != "error":
                 continue
+        elif only_new_files and existing is not None and existing["status"] == "indexed":
+            continue
 
         file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
         document_id = _upsert_document(conn, source.id, file_path, file_type)
