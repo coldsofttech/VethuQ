@@ -1,6 +1,10 @@
 # VethuQ
 VethuQ — open-source document intelligence and evidence infrastructure for search, retrieval, structure, metadata, relationships, and AI-ready document access.
 
+## Compatibility
+
+The `vethuq` CLI works on both Windows and Linux. The desktop app is Windows-only.
+
 ## Usage
 
 Add a file or folder as a source, then index it so its text becomes searchable:
