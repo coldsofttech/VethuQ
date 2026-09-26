@@ -14,20 +14,23 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # Must be set before `paddleocr` is imported: skips its startup check for
 # connectivity to the model hoster, which is slow and unnecessary once models
-# are already cached locally.
+# are already cached locally. cv2/numpy/paddle/pymupdf/paddleocr are all
+# imported lazily inside the functions that use them (not here at module
+# level) since they're heavy - importing this module shouldn't pull in
+# Paddle/OCR init as a side effect.
 os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
-import cv2  # noqa: E402
-import numpy as np  # noqa: E402
-import paddle  # noqa: E402
-import pymupdf  # noqa: E402
-from paddleocr import PaddleOCR  # noqa: E402
+if TYPE_CHECKING:
+    import numpy as np
+    import pymupdf
+    from paddleocr import PaddleOCR
 
-from vethuq_core.settings import is_gpu_enabled  # noqa: E402
-from vethuq_core.sources import Source  # noqa: E402
+from vethuq_core.settings import is_gpu_enabled
+from vethuq_core.sources import Source
 
 _logger = logging.getLogger(__name__)
 
@@ -61,6 +64,8 @@ def _resolve_device(conn: sqlite3.Connection) -> str:
     """
     if not is_gpu_enabled(conn):
         return "cpu"
+    import paddle
+
     if paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0:
         return "gpu"
     _logger.warning(
@@ -73,6 +78,8 @@ def _resolve_device(conn: sqlite3.Connection) -> str:
 def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
     global _engine
     if _engine is None:
+        from paddleocr import PaddleOCR
+
         _engine = PaddleOCR(
             lang="en",
             device=_resolve_device(conn),
@@ -119,6 +126,9 @@ def _ocr_image_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
 def _render_page_array(
     page: pymupdf.Page, clip: tuple[float, float, float, float] | None = None
 ) -> np.ndarray:
+    import cv2
+    import numpy as np
+
     pixmap = page.get_pixmap(clip=clip)
     image_bytes = pixmap.tobytes("png")
     return cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -179,6 +189,8 @@ def _ocr_pdf_page(conn: sqlite3.Connection, page: pymupdf.Page) -> PageResult:
 
 
 def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+    import pymupdf
+
     with pymupdf.open(file_path) as doc:
         return [_ocr_pdf_page(conn, page) for page in doc]
 
