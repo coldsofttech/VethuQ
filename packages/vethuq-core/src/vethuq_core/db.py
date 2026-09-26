@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -117,3 +117,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             conn.execute("ALTER TABLE document_index ADD COLUMN started_at TEXT")
         if "completed_at" not in columns:
             conn.execute("ALTER TABLE document_index ADD COLUMN completed_at TEXT")
+    if from_version < 6:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(index_runs)")}
+        if "mode" not in columns:
+            conn.execute("ALTER TABLE index_runs ADD COLUMN mode TEXT NOT NULL DEFAULT 'run'")

@@ -15,6 +15,7 @@ from vethuq_core.index_runner import (
     IndexState,
     StaleLockError,
     is_running,
+    log_path,
     read_state,
     request_pause,
     request_resume,
@@ -89,7 +90,10 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         # the process itself is confirmed no longer running.
         running, current_pid = is_running()
         if not running or current_pid != pid:
-            typer.echo("Background run ended before reporting any progress.")
+            typer.echo(
+                "Background run ended before reporting any progress. "
+                f"If this is unexpected, check {log_path()} for errors."
+            )
             return
 
 

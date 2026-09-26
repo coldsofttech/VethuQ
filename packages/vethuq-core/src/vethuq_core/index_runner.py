@@ -36,6 +36,7 @@ from vethuq_core.sources import Source, get_source, list_sources
 _STATE_FILENAME = "index_state.json"
 _CONTROL_FILENAME = "index.control"
 _LOCK_FILENAME = "index.lock"
+_LOG_FILENAME = "index_worker.log"
 _STOP_TIMEOUT_SECONDS = 5.0
 _PAUSE_POLL_SECONDS = 1.0
 
@@ -84,6 +85,11 @@ def _control_path(db_path: Path) -> Path:
 
 def _lock_path(db_path: Path) -> Path:
     return db_path.parent / _LOCK_FILENAME
+
+
+def log_path(db_path: Path | None = None) -> Path:
+    """Path to the worker's log file, where a crash's traceback is written."""
+    return (db_path or default_db_path()).parent / _LOG_FILENAME
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -210,21 +216,26 @@ def start_run(
         # child (python.exe) would otherwise pop up; CREATE_NEW_PROCESS_GROUP
         # keeps it from receiving Ctrl+C aimed at the parent's console.
         creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-    process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user-controlled binary
-        [
-            sys.executable,
-            "-m",
-            "vethuq_core.index_runner",
-            str(db_path),
-            target or "",
-            "restart" if restart else "run",
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=(sys.platform != "win32"),
-        creationflags=creationflags,
-    )
+    # stderr goes to a log file (appended across runs) rather than DEVNULL -
+    # if the worker crashes before it can record anything in index_runs or
+    # the state file (e.g. an unexpected exception during startup), this is
+    # the only place that failure is visible at all.
+    with open(log_path(db_path), "a", encoding="utf-8") as log_file:
+        process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
+            [
+                sys.executable,
+                "-m",
+                "vethuq_core.index_runner",
+                str(db_path),
+                target or "",
+                "restart" if restart else "run",
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=log_file,
+            start_new_session=(sys.platform != "win32"),
+            creationflags=creationflags,
+        )
     _atomic_write(lock_path, str(process.pid))
     return process.pid
 

@@ -207,6 +207,22 @@ def test_start_run_writes_lock_and_returns_pid(db_path, monkeypatch):
     assert index_runner._lock_path(db_path).read_text(encoding="utf-8").strip() == "4321"
 
 
+def test_start_run_redirects_stderr_to_log_file(db_path, monkeypatch):
+    captured = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["stderr"] = kwargs.get("stderr")
+        return _FakeProcess(4321)
+
+    monkeypatch.setattr(index_runner.subprocess, "Popen", fake_popen)
+
+    index_runner.start_run(None, db_path=db_path)
+
+    assert captured["stderr"] is not None
+    assert captured["stderr"] != index_runner.subprocess.DEVNULL
+    assert index_runner.log_path(db_path).exists()
+
+
 def test_start_run_passes_restart_mode_to_worker_argv(db_path, monkeypatch):
     captured = {}
 
