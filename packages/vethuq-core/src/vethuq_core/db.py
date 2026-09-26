@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS document_index (
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'indexed', 'error')),
     error_message TEXT,
-    indexed_at TEXT
+    indexed_at TEXT,
+    started_at TEXT,
+    completed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -97,3 +99,9 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             conn.execute(
                 "ALTER TABLE pdf_pages ADD COLUMN source TEXT NOT NULL DEFAULT 'ocr'"
             )
+    if from_version < 5:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "started_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN started_at TEXT")
+        if "completed_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN completed_at TEXT")

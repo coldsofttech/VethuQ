@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PDFs with real, selectable text are now indexed directly from that text instead of being run through OCR, which is faster and more accurate; OCR now only runs on scanned pages or scanned regions within an otherwise digital page.
 - OCR can now optionally use the GPU (off by default) — toggle it with `vethuq settings gpu enable/disable`, or from the desktop app's Settings menu.
 - The desktop app now shows a status bar with indexing progress while sources are being processed in the background.
+- Indexed documents now record how long OCR took to process them, alongside their confidence score.
 
 ### Fixed
 

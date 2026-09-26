@@ -198,14 +198,16 @@ def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]
 def _upsert_document(
     conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
 ) -> int:
+    started_at = datetime.now(UTC).isoformat()
     conn.execute(
         """
-        INSERT INTO document_index (source_id, file_path, file_type, status)
-        VALUES (?, ?, ?, 'pending')
+        INSERT INTO document_index (source_id, file_path, file_type, status, started_at)
+        VALUES (?, ?, ?, 'pending', ?)
         ON CONFLICT(file_path) DO UPDATE SET
-            status = 'pending', error_message = NULL, indexed_at = NULL
+            status = 'pending', error_message = NULL, indexed_at = NULL,
+            started_at = excluded.started_at, completed_at = NULL
         """,
-        (source_id, str(file_path), file_type),
+        (source_id, str(file_path), file_type, started_at),
     )
     row = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
@@ -214,16 +216,19 @@ def _upsert_document(
 
 
 def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
+    now = datetime.now(UTC).isoformat()
     conn.execute(
-        "UPDATE document_index SET status = 'indexed', indexed_at = ? WHERE id = ?",
-        (datetime.now(UTC).isoformat(), document_id),
+        "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
+        "WHERE id = ?",
+        (now, now, document_id),
     )
 
 
 def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> None:
     conn.execute(
-        "UPDATE document_index SET status = 'error', error_message = ? WHERE id = ?",
-        (message, document_id),
+        "UPDATE document_index SET status = 'error', error_message = ?, completed_at = ? "
+        "WHERE id = ?",
+        (message, datetime.now(UTC).isoformat(), document_id),
     )
 
 
@@ -233,6 +238,9 @@ class DocumentResult:
     status: str
     error_message: str | None
     confidence: float | None
+    started_at: str | None
+    completed_at: str | None
+    duration: float | None
 
 
 def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[DocumentResult]:
@@ -240,10 +248,11 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
 
     `confidence` is the average across a document's pages (there's only one for
     an image; a PDF may have several), and is None for documents that aren't
-    (yet) successfully indexed.
+    (yet) successfully indexed. `duration` (in seconds) is derived from
+    `started_at`/`completed_at` and is None while a document is still pending.
     """
     rows = conn.execute(
-        "SELECT id, file_path, file_type, status, error_message "
+        "SELECT id, file_path, file_type, status, error_message, started_at, completed_at "
         "FROM document_index WHERE source_id = ? ORDER BY file_path",
         (source_id,),
     ).fetchall()
@@ -260,12 +269,23 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
                 )
             ]
             confidence = sum(scores) / len(scores) if scores else None
+
+        duration = None
+        if row["started_at"] and row["completed_at"]:
+            duration = (
+                datetime.fromisoformat(row["completed_at"])
+                - datetime.fromisoformat(row["started_at"])
+            ).total_seconds()
+
         results.append(
             DocumentResult(
                 file_path=row["file_path"],
                 status=row["status"],
                 error_message=row["error_message"],
                 confidence=confidence,
+                started_at=row["started_at"],
+                completed_at=row["completed_at"],
+                duration=duration,
             )
         )
     return results
