@@ -1,7 +1,7 @@
 """File-type badge and ribbon action icons.
 
 Both kinds load from the checked-in assets under `assets/icons/`
-(generated via the vethuq-icons skill - see `.claude/skills/vethuq-icons/`):
+(generated via `scripts/dev/generate_icons.py`):
 
 - `get_file_icon` - file-type badges for the search results list. Any
   extension without a generated asset yet falls back to the real Windows

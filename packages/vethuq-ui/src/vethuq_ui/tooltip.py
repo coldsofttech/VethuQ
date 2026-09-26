@@ -8,10 +8,11 @@ from tkinter import ttk
 
 
 class TreeviewTooltip:
-    """Shows a small popup with per-row text when hovering over `tree`.
+    """Shows a themed popup with per-row text when hovering over `tree`.
 
     `text_for` is called with the hovered row's iid and should return the
-    text to show, or a falsy value to show nothing for that row.
+    full text only when the row's displayed value is truncated, or a falsy
+    value to show nothing for that row.
     """
 
     def __init__(self, tree: ttk.Treeview, text_for: Callable[[str], str | None]) -> None:
@@ -36,18 +37,24 @@ class TreeviewTooltip:
             self._show(event, text)
 
     def _show(self, event: tk.Event, text: str) -> None:
+        style = ttk.Style(self._tree)
+        background = style.lookup("TEntry", "fieldbackground") or "#f9f9f9"
+        foreground = style.lookup("TLabel", "foreground") or "#000000"
+
         self._popup = tk.Toplevel(self._tree)
         self._popup.wm_overrideredirect(True)
         self._popup.wm_attributes("-topmost", True)
+        border = tk.Frame(self._popup, background="#d1d1d1")
+        border.pack()
         tk.Label(
-            self._popup,
+            border,
             text=text,
-            background="#ffffe0",
-            relief=tk.SOLID,
-            borderwidth=1,
-            padx=4,
-            pady=2,
-        ).pack()
+            background=background,
+            foreground=foreground,
+            borderwidth=0,
+            padx=8,
+            pady=4,
+        ).pack(padx=1, pady=1)
         self._reposition(event)
 
     def _reposition(self, event: tk.Event) -> None:

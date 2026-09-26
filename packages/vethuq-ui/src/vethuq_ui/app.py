@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import tkinter as tk
+import tkinter.font as tkfont
+from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 from typing import Any
 
 import sv_ttk
-from vethuq_core.db import connect
+from vethuq_core.db import connect, default_db_path
 from vethuq_core.index_runner import (
     AlreadyRunningError,
     IndexRunnerError,
@@ -22,6 +25,7 @@ from vethuq_core.index_runner import (
     signal_stop,
     start_run,
 )
+from vethuq_core.ocr import get_document_results
 from vethuq_core.search import search_indexed_content
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import (
@@ -33,6 +37,7 @@ from vethuq_core.sources import (
     remove_source,
 )
 
+from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.icons import get_file_icon, get_icon
 from vethuq_ui.tooltip import TreeviewTooltip
 
@@ -41,17 +46,32 @@ _SEARCH_PLACEHOLDER = "Search"
 _RESULT_LIST_WIDTH_FRACTION = 0.35
 _MAX_DISPLAYED_NAME_CHARS = 35
 
-# Fixed positions within the Sources tree's right-click menu (see
-# _build_source_list) - must stay in sync with the order items are added in.
-_INDEX_NOW_MENU_INDEX = 0
-_RETRY_MENU_INDEX = 1
+_LOG_FILENAME = "vethuq-ui.log"
+_logger = logging.getLogger("vethuq_ui")
+
+
+def _configure_logging(db_path: Path | None) -> None:
+    """Log to `vethuq-ui.log` next to the database (same dir as the .db,
+    lock/state files, etc.) so a UI bug like a silently-failing button
+    command shows up somewhere instead of only in a console no one is
+    watching (Tk swallows exceptions raised inside `command=` callbacks).
+    """
+    if _logger.handlers:
+        return
+    log_path = (db_path or default_db_path()).parent / _LOG_FILENAME
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _logger.addHandler(handler)
+    _logger.setLevel(logging.INFO)
 
 
 class MainWindow(tk.Tk):
     def __init__(self, conn: sqlite3.Connection | None = None, db_path: Path | None = None) -> None:
+        _configure_logging(db_path)
         super().__init__()
         self.conn = conn or connect(db_path)
         self._db_path = db_path
+        _logger.info("VethuQ UI started")
 
         self.title("VethuQ")
         self.geometry("720x480")
@@ -70,6 +90,12 @@ class MainWindow(tk.Tk):
         self._closing = False
         self._launch_or_attach_index()
         self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
+
+    def report_callback_exception(self, exc: type, val: BaseException, tb: Any) -> None:
+        # Tk's default just prints to stderr, invisible once the app is
+        # launched as a GUI (no attached console) - log it instead, e.g. an
+        # exception raised inside a button's command silently doing nothing.
+        _logger.error("Unhandled error in a UI callback", exc_info=(exc, val, tb))
 
     def _launch_or_attach_index(self) -> None:
         """Start background indexing, unless a run is already in progress.
@@ -130,29 +156,57 @@ class MainWindow(tk.Tk):
             **self._ribbon_icon_kwargs("search", "\N{LEFT-POINTING MAGNIFYING GLASS}", "Search"),
         ).pack(side=tk.LEFT, padx=6, pady=4)
 
+        ttk.Separator(home_tab, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=4)
+
+        sources_group = self._build_ribbon_group(home_tab, "Sources")
+        ttk.Button(
+            sources_group,
+            command=self.on_add_folder,
+            **self._ribbon_icon_kwargs("folder", "\N{FILE FOLDER}", "Folder"),
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            sources_group,
+            command=self.on_add_file,
+            **self._ribbon_icon_kwargs("file", "\N{PAGE FACING UP}", "File"),
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            sources_group,
+            command=self.on_show_source_list,
+            **self._ribbon_icon_kwargs("list", "\N{CARD INDEX DIVIDERS}", "List"),
+        ).pack(side=tk.LEFT, padx=2)
+        self._pause_resume_button = ttk.Button(
+            sources_group,
+            command=self._toggle_pause_resume,
+            state=tk.DISABLED,
+            **self._ribbon_icon_kwargs("pause", "\N{DOUBLE VERTICAL BAR}", "Pause"),
+        )
+        self._pause_resume_button.pack(side=tk.LEFT, padx=2)
+        self._stop_button = ttk.Button(
+            sources_group,
+            command=self._stop_index_run,
+            state=tk.DISABLED,
+            **self._ribbon_icon_kwargs("stop", "\N{BLACK SQUARE FOR STOP}", "Stop"),
+        )
+        self._stop_button.pack(side=tk.LEFT, padx=2)
+        self._delete_button = ttk.Button(
+            sources_group,
+            command=self._delete_selected_source,
+            **self._ribbon_icon_kwargs("delete", "\N{WASTEBASKET}", "Delete"),
+        )
+
         settings_tab = ttk.Frame(notebook)
         notebook.add(settings_tab, text="Settings")
 
-        view_group = self._build_ribbon_group(settings_tab, "View")
-        ttk.Button(
-            view_group,
-            command=self.on_show_source_list,
-            **self._ribbon_icon_kwargs("sources", "\N{FILE FOLDER}", "Sources"),
-        ).pack(side=tk.LEFT, padx=2)
-
-        ttk.Separator(settings_tab, orient=tk.VERTICAL).pack(
-            side=tk.LEFT, fill=tk.Y, padx=6, pady=4
-        )
-
-        ocr_group = self._build_ribbon_group(settings_tab, "OCR")
+        ocr_group = self._build_ribbon_group(settings_tab, "GPU")
         self._gpu_enabled_var = tk.BooleanVar(value=is_gpu_enabled(self.conn))
-        ttk.Checkbutton(
+        self._gpu_button = ttk.Checkbutton(
             ocr_group,
             variable=self._gpu_enabled_var,
             command=self._on_toggle_gpu,
             style="Toolbutton",
-            **self._ribbon_icon_kwargs("gpu", "\N{HIGH VOLTAGE SIGN}", "GPU"),
-        ).pack(side=tk.LEFT, padx=2)
+            **self._ribbon_icon_kwargs(self._gpu_icon_name(), "\N{HIGH VOLTAGE SIGN}", ""),
+        )
+        self._gpu_button.pack(side=tk.LEFT, padx=2)
 
         notebook.select(home_tab)
 
@@ -174,6 +228,27 @@ class MainWindow(tk.Tk):
         separator = "\n" if compound == tk.TOP else " "
         return {"text": f"{glyph}{separator}{caption}"}
 
+    def _flush_left_tree_style(self, style_name: str) -> None:
+        """A Treeview style with no indicator/indent, so a row's own image
+        (e.g. a file-type or source-type icon) sits flush against the left edge."""
+        style = ttk.Style(self)
+        style.configure(style_name, indent=0)
+        style.layout(
+            f"{style_name}.Item",
+            [
+                (
+                    "Treeitem.padding",
+                    {
+                        "sticky": "nswe",
+                        "children": [
+                            ("Treeitem.image", {"side": "left", "sticky": ""}),
+                            ("Treeitem.text", {"side": "left", "sticky": ""}),
+                        ],
+                    },
+                )
+            ],
+        )
+
     @staticmethod
     def _build_ribbon_group(ribbon: ttk.Frame, caption: str) -> ttk.Frame:
         """A ribbon group: a row for its buttons, with a caption label below."""
@@ -186,8 +261,14 @@ class MainWindow(tk.Tk):
         )
         return buttons_row
 
+    def _gpu_icon_name(self) -> str:
+        return "gpu" if self._gpu_enabled_var.get() else "gpu-disable"
+
     def _on_toggle_gpu(self) -> None:
         set_gpu_enabled(self.conn, self._gpu_enabled_var.get())
+        icon = get_icon(self._gpu_icon_name())
+        if icon is not None:
+            self._gpu_button.configure(image=icon)
 
     def _build_search_view(self) -> None:
         self._search_frame = ttk.Frame(self)
@@ -223,11 +304,14 @@ class MainWindow(tk.Tk):
             relx=0.5, rely=0.5, anchor=tk.CENTER
         )
 
-        self._search_tree = ttk.Treeview(list_frame, columns=("path",), show="tree headings")
+        self._flush_left_tree_style("Search.Treeview")
+        self._search_tree = ttk.Treeview(
+            list_frame, columns=("path",), show="tree headings", style="Search.Treeview"
+        )
         self._search_tree.heading("#0", text="Name")
-        self._search_tree.column("#0", width=260, anchor=tk.W, stretch=False)
+        self._search_tree.column("#0", width=260, minwidth=80, anchor=tk.W, stretch=False)
         self._search_tree.heading("path", text="Path")
-        self._search_tree.column("path", width=320, anchor=tk.W, stretch=False)
+        self._search_tree.column("path", width=320, minwidth=80, anchor=tk.W, stretch=True)
 
         hscroll = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self._search_tree.xview)
         self._search_tree.configure(xscrollcommand=hscroll.set)
@@ -256,8 +340,8 @@ class MainWindow(tk.Tk):
     @staticmethod
     def _truncate_name(name: str, max_chars: int = _MAX_DISPLAYED_NAME_CHARS) -> str:
         if len(name) <= max_chars:
-            return name
-        return name[: max_chars - 1] + "\N{HORIZONTAL ELLIPSIS}"
+            return f" {name}"
+        return f" {name[: max_chars - 1]}\N{HORIZONTAL ELLIPSIS}"
 
     def on_search(self) -> None:
         query = self._search_var.get().strip()
@@ -272,7 +356,8 @@ class MainWindow(tk.Tk):
 
         for file_id, (file_name, file_path) in seen_files.items():
             iid = str(file_id)
-            self._search_full_names[iid] = file_name
+            if len(file_name) > _MAX_DISPLAYED_NAME_CHARS:
+                self._search_full_names[iid] = file_name
             self._search_tree.insert(
                 "",
                 tk.END,
@@ -284,50 +369,29 @@ class MainWindow(tk.Tk):
 
     def _build_source_list(self) -> None:
         self._source_list_frame = ttk.Frame(self)
+        self._sources_paned = ttk.Panedwindow(self._source_list_frame, orient=tk.HORIZONTAL)
+        self._sources_paned.pack(fill=tk.BOTH, expand=True)
+        self._sources_list_pane = ttk.Frame(self._sources_paned)
+        self._sources_history_pane = ttk.Frame(self._sources_paned, relief=tk.SUNKEN, borderwidth=1)
+        self._sources_paned.add(self._sources_list_pane, weight=1)
 
-        toolbar = ttk.Frame(self._source_list_frame)
-        toolbar.pack(side=tk.TOP, fill=tk.X, padx=4, pady=4)
-        ttk.Button(toolbar, text="Add Folder", command=self.on_add_folder).pack(
-            side=tk.LEFT, padx=2
+        self._flush_left_tree_style("Sources.Treeview")
+        columns = ("path", "status", "progress")
+        self.tree = ttk.Treeview(
+            self._sources_list_pane, columns=columns, show="tree headings", style="Sources.Treeview"
         )
-        ttk.Button(toolbar, text="Add File", command=self.on_add_file).pack(side=tk.LEFT, padx=2)
-        self._delete_button = ttk.Button(
-            toolbar, text="Delete", command=self._delete_selected_source, state=tk.DISABLED
-        )
-        self._delete_button.pack(side=tk.LEFT, padx=2)
-
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
-        self._pause_resume_button = ttk.Button(
-            toolbar, text="Pause", command=self._toggle_pause_resume, state=tk.DISABLED
-        )
-        self._pause_resume_button.pack(side=tk.LEFT, padx=2)
-        self._stop_button = ttk.Button(
-            toolbar, text="Stop", command=self._stop_index_run, state=tk.DISABLED
-        )
-        self._stop_button.pack(side=tk.LEFT, padx=2)
-
-        columns = ("type", "path", "status")
-        self.tree = ttk.Treeview(self._source_list_frame, columns=columns, show="headings")
-        self.tree.heading("type", text="Type")
+        self.tree.heading("#0", text="Type")
         self.tree.heading("path", text="Path")
         self.tree.heading("status", text="Status")
-        self.tree.column("type", width=80, anchor=tk.W)
-        self.tree.column("path", width=520, anchor=tk.W)
+        self.tree.heading("progress", text="Progress")
+        self.tree.column("#0", width=90, minwidth=90, anchor=tk.W, stretch=False)
+        self.tree.column("path", width=440, anchor=tk.W)
         self.tree.column("status", width=80, anchor=tk.W)
+        self.tree.column("progress", width=160, anchor=tk.E)
         self.tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
         self.tree.bind("<Button-3>", self._on_tree_right_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_selection_changed)
-
-        # Fixed layout - indices below must stay in sync with insertion order.
-        self._tree_context_menu = tk.Menu(self.tree, tearoff=0)
-        self._tree_context_menu.add_command(label="Index Now", command=self._index_selected_source)
-        self._tree_context_menu.add_command(
-            label="Retry Failed Files", command=self._retry_selected_source
-        )
-        self._tree_context_menu.add_separator()
-        self._tree_context_menu.add_command(label="History...", command=self._show_history)
-        self._tree_context_menu.add_separator()
-        self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
+        TreeviewTooltip(self.tree, self._source_tooltip_text)
 
     def on_show_source_list(self) -> None:
         self._search_frame.pack_forget()
@@ -344,21 +408,59 @@ class MainWindow(tk.Tk):
         row_id = self.tree.identify_row(event.y)
         if row_id:
             self.tree.selection_set(row_id)
-            self._update_context_menu_state()
-            self._tree_context_menu.tk_popup(event.x_root, event.y_root)
+            self._show_context_menu(event.x_root, event.y_root)
 
-    def _update_context_menu_state(self) -> None:
+    def _show_context_menu(self, x: int, y: int) -> None:
+        # A native tk.Menu can't be restyled by sv_ttk (it isn't a ttk
+        # widget, and Windows draws it natively regardless of color options),
+        # so this is a themed popup built from real ttk widgets instead.
+        running = is_running(self._db_path)[0]
+        menu = tk.Toplevel(self)
+        menu.wm_overrideredirect(True)
+        menu.wm_attributes("-topmost", True)
+        frame = ttk.Frame(menu, relief=tk.SOLID, borderwidth=1, padding=2)
+        frame.pack()
+        ttk.Style(self).configure("ContextMenu.Toolbutton", anchor=tk.W, padding=(6, 1))
+
+        def close() -> None:
+            self.unbind_all("<Button-1>")
+            menu.destroy()
+
+        def add_item(label: str, command: Any, *, disabled: bool = False) -> None:
+            def run() -> None:
+                close()
+                command()
+
+            button = ttk.Button(frame, text=label, command=run, style="ContextMenu.Toolbutton")
+            if disabled:
+                button.state(["disabled"])
+            button.pack(fill=tk.X, padx=2, pady=1)
+
         # Index Now/Retry Failed Files start a new background run, which
         # can't happen while one is already in progress (Pause/Stop/Resume
         # are global - see the toolbar buttons - since there's a single
         # background worker, not one per source).
-        running = is_running(self._db_path)[0]
-        self._tree_context_menu.entryconfig(
-            _INDEX_NOW_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
-        )
-        self._tree_context_menu.entryconfig(
-            _RETRY_MENU_INDEX, state=tk.DISABLED if running else tk.NORMAL
-        )
+        add_item("Index Now", self._index_selected_source, disabled=running)
+        add_item("Retry Failed Files", self._retry_selected_source, disabled=running)
+        ttk.Separator(frame).pack(fill=tk.X, pady=2)
+        add_item("History...", self._show_history)
+        ttk.Separator(frame).pack(fill=tk.X, pady=2)
+        add_item("Delete", self._delete_selected_source)
+
+        menu.update_idletasks()
+        menu.geometry(f"+{x}+{y}")
+
+        # A raw <FocusOut> on `menu` would fire (and destroy it) the instant
+        # one of its own buttons takes focus on click, before that button's
+        # command ever runs - so dismiss on an app-wide click that lands
+        # outside the popup instead, ignoring clicks on the popup itself.
+        def dismiss_if_outside(event: tk.Event) -> None:
+            widget_path = str(event.widget)
+            menu_path = str(menu)
+            if widget_path != menu_path and not widget_path.startswith(menu_path + "."):
+                close()
+
+        self.bind_all("<Button-1>", dismiss_if_outside, add="+")
 
     def _index_selected_source(self) -> None:
         self._start_targeted_run(restart=False)
@@ -373,7 +475,7 @@ class MainWindow(tk.Tk):
         try:
             start_run(selection[0], restart=restart, db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
-            messagebox.showerror("Could not start indexing", str(exc))
+            show_error(self, "Could not start indexing", str(exc))
         else:
             self.refresh_sources()
 
@@ -381,7 +483,7 @@ class MainWindow(tk.Tk):
         try:
             signal_stop(db_path=self._db_path)
         except IndexRunnerError as exc:
-            messagebox.showerror("Could not stop indexing", str(exc))
+            show_error(self, "Could not stop indexing", str(exc))
 
     def _toggle_pause_resume(self) -> None:
         state = read_state(self._db_path)
@@ -391,13 +493,17 @@ class MainWindow(tk.Tk):
             else:
                 request_pause(db_path=self._db_path)
         except IndexRunnerError as exc:
-            messagebox.showerror("Could not update index run", str(exc))
+            show_error(self, "Could not update index run", str(exc))
 
     def _update_index_control_buttons(self, state: IndexState | None) -> None:
         running = state is not None and state.status in ("running", "paused")
         paused = state is not None and state.status == "paused"
+        icon = get_icon("resume" if paused else "pause")
+        if icon is not None:
+            self._pause_resume_button.config(image=icon)
         self._pause_resume_button.config(
-            text="Resume" if paused else "Pause", state=tk.NORMAL if running else tk.DISABLED
+            text="Resume" if paused else "Pause",
+            state=tk.NORMAL if running else tk.DISABLED,
         )
         self._stop_button.config(state=tk.NORMAL if running else tk.DISABLED)
 
@@ -406,7 +512,7 @@ class MainWindow(tk.Tk):
         if not selection:
             return
         source_id = selection[0]
-        path = self.tree.item(selection[0], "values")[1]
+        path = self.tree.item(selection[0], "values")[0]
 
         # A run over "all sources" (target IS NULL) would have covered this
         # source too, so it's included alongside runs targeted at just it.
@@ -416,47 +522,83 @@ class MainWindow(tk.Tk):
             (source_id,),
         ).fetchall()
 
-        dialog = tk.Toplevel(self)
-        dialog.title(f"Index History — {path}")
-        dialog.geometry("640x320")
+        for child in self._sources_history_pane.winfo_children():
+            child.destroy()
+        header = ttk.Frame(self._sources_history_pane)
+        header.pack(fill=tk.X, padx=8, pady=8)
+        ttk.Label(header, text=f"Index History — {path}").pack(side=tk.LEFT)
+        ttk.Button(header, text="Close", command=self._hide_history).pack(side=tk.RIGHT)
 
         columns = ("started_at", "mode", "target", "status", "progress", "failed")
-        tree = ttk.Treeview(dialog, columns=columns, show="headings")
+        tree = ttk.Treeview(self._sources_history_pane, columns=columns, show="headings")
         for column, heading in zip(
             columns, ("Started", "Mode", "Target", "Status", "Progress", "Failed"), strict=False
         ):
             tree.heading(column, text=heading)
-        tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        tree.column("started_at", width=150, minwidth=110, anchor=tk.W, stretch=False)
+        tree.column("mode", width=80, minwidth=60, anchor=tk.W, stretch=False)
+        tree.column("target", width=160, minwidth=80, anchor=tk.W, stretch=False)
+        tree.column("status", width=90, minwidth=70, anchor=tk.W, stretch=False)
+        tree.column("progress", width=100, minwidth=80, anchor=tk.E, stretch=False)
+        tree.column("failed", width=70, minwidth=60, anchor=tk.E, stretch=False)
+
+        hscroll = ttk.Scrollbar(
+            self._sources_history_pane, orient=tk.HORIZONTAL, command=tree.xview
+        )
+        tree.configure(xscrollcommand=hscroll.set)
+        hscroll.pack(side=tk.BOTTOM, fill=tk.X, padx=8)
+        tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
         for row in rows:
             tree.insert(
                 "",
                 tk.END,
                 values=(
-                    row["started_at"],
-                    row["mode"],
-                    row["target"] or "all sources",
-                    row["status"],
+                    self._format_history_timestamp(row["started_at"]),
+                    row["mode"].capitalize(),
+                    row["target"] if row["target"] is not None else "All sources",
+                    row["status"].capitalize(),
                     f"{row['processed_files']}/{row['total_files']}",
                     row["failed_files"],
                 ),
             )
 
+        if str(self._sources_history_pane) not in self._sources_paned.panes():
+            self._sources_paned.add(self._sources_history_pane, weight=1)
+            self._sources_paned.update_idletasks()
+            self._sources_paned.sashpos(0, self._sources_paned.winfo_width() // 2)
+
+    @staticmethod
+    def _format_history_timestamp(value: str) -> str:
+        try:
+            dt = datetime.fromisoformat(value)
+        except ValueError:
+            return value
+        return f"{dt.day} {dt.strftime('%b %Y %H:%M')}"
+
+    def _hide_history(self) -> None:
+        if str(self._sources_history_pane) in self._sources_paned.panes():
+            self._sources_paned.forget(self._sources_history_pane)
+
     def _on_tree_selection_changed(self, event: tk.Event | None = None) -> None:
-        self._delete_button.config(state=tk.NORMAL if self.tree.selection() else tk.DISABLED)
+        if self.tree.selection():
+            if not self._delete_button.winfo_ismapped():
+                self._delete_button.pack(side=tk.LEFT, padx=2)
+        else:
+            self._delete_button.pack_forget()
 
     def _delete_selected_source(self) -> None:
         selection = self.tree.selection()
         if not selection:
             return
         source_id = int(selection[0])
-        path = self.tree.item(selection[0], "values")[1]
-        if not messagebox.askyesno("Remove source", f"Remove {path} from VethuQ?"):
+        path = self.tree.item(selection[0], "values")[0]
+        if not ask_yes_no(self, "Remove source", f"Remove {path} from VethuQ?"):
             return
         try:
             remove_source(self.conn, source_id)
         except SourceNotFoundError as exc:
-            messagebox.showerror("Could not remove source", str(exc))
+            show_error(self, "Could not remove source", str(exc))
         else:
             self.refresh_sources()
 
@@ -498,9 +640,9 @@ class MainWindow(tk.Tk):
         try:
             add_source(self.conn, path)
         except SourceAlreadyExistsError:
-            messagebox.showwarning("Already added", f"{path} is already registered.")
+            show_warning(self, "Already added", f"{path} is already registered.")
         except SourceError as exc:
-            messagebox.showerror("Could not add source", str(exc))
+            show_error(self, "Could not add source", str(exc))
         else:
             self.refresh_sources()
             self._launch_or_attach_index()
@@ -508,13 +650,32 @@ class MainWindow(tk.Tk):
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
         for source in list_sources(self.conn):
+            results = get_document_results(self.conn, source.id)
+            done = sum(1 for result in results if result.status == "indexed")
+            noun = "file" if len(results) == 1 else "files"
+            icon_kwargs: dict[str, Any] = {}
+            icon = get_icon(source.source_type, 16)
+            if icon is not None:
+                icon_kwargs["image"] = icon
             self.tree.insert(
                 "",
                 tk.END,
                 iid=str(source.id),
-                values=(source.source_type, source.path, source.status),
+                text=f" {source.source_type.capitalize()}",
+                values=(
+                    source.path,
+                    source.status.capitalize(),
+                    f"{done}/{len(results)} {noun} processed",
+                ),
+                **icon_kwargs,
             )
         self._on_tree_selection_changed()
+
+    def _source_tooltip_text(self, iid: str) -> str | None:
+        path = self.tree.set(iid, "path")
+        font = tkfont.nametofont("TkDefaultFont")
+        column_width = self.tree.column("path", "width")
+        return path if font.measure(path) > column_width - 10 else None
 
 
 def main() -> None:

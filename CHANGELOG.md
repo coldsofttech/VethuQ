@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq index history` can now be filtered to a specific source by id or path.
 - You can now search indexed content from the CLI with `vethuq search <content>`, which highlights the match in a snippet of surrounding text; how much surrounding text is shown is configurable with `vethuq settings search snippet set/show`.
 - The desktop app now has a search screen (a search box and a results list showing each match's file), and its toolbar has been redesigned as a ribbon with a Windows 11-styled look.
+- Search results and Sources list columns can now be resized, and show hover tooltips for text that's cut off.
+- The Home ribbon now has quick actions for adding a folder/file, viewing the source list, and pausing/stopping/deleting a selected source.
+- The Sources list now shows a file/folder icon, capitalized status, and how many files have been processed per source.
+- Viewing a source's run history now opens alongside the source list instead of a separate popup window.
+- Dialogs and right-click menus in the desktop app are now styled to match its Windows 11 theme.
 
 ### Fixed
 
