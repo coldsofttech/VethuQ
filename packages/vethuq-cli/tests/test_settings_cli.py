@@ -41,3 +41,30 @@ def test_gpu_enable_then_disable(tmp_path, monkeypatch):
 
     status_result = runner.invoke(app, ["settings", "gpu", "status"])
     assert "disabled" in status_result.stdout
+
+
+def test_snippet_show_defaults_to_80(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "snippet", "show"])
+
+    assert result.exit_code == 0
+    assert "80" in result.stdout
+
+
+def test_snippet_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "snippet", "set", "40"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "snippet", "show"])
+    assert "40" in show_result.stdout
+
+
+def test_snippet_set_rejects_negative(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "snippet", "set", "--", "-1"])
+
+    assert result.exit_code == 1

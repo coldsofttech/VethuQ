@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OCR can now optionally use the GPU (off by default) — toggle it with `vethuq settings gpu enable/disable`, or from the desktop app's Settings menu.
 - The desktop app now shows a status bar with indexing progress while sources are being processed in the background.
 - Indexed documents now record how long OCR took to process them, alongside their confidence score.
+- You can now search indexed content from the CLI with `vethuq search <content>`, which highlights the match in a snippet of surrounding text; how much surrounding text is shown is configurable with `vethuq settings snippet set/show`.
 
 ### Fixed
 

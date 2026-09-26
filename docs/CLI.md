@@ -54,6 +54,54 @@ per-file status and confidence (`indexed | confidence: NN%`, or
 vethuq index run
 ```
 
+## `vethuq search <content>`
+
+Search indexed content for `content` (case-insensitive substring match)
+and print matching pages. Only documents with status `indexed` are
+searched. Results open in a pager, starting at the top: scroll (e.g. the
+down arrow, space, or page down) to reveal more, and press `q` to close
+it. Each file with a match prints its path once, followed by a
+`Page: X of Y` and boxed, highlighted snippet for every matching page in
+that file (PDFs only show `Page:` — an image is a single page):
+
+```
+Results: 3 matches
+
+File: <full file path>
+Page: <page number> of <total pages in the file>   (PDFs only)
+
+________________________________________
+|                                       |
+|   ...surrounding text with the MATCH  |
+|   highlighted, wrapped to fit...      |
+|_______________________________________|
+
+Page: <next matching page> of <total pages in the file>
+
+________________________________________
+|                                       |
+|   ...another matching page's snippet  |
+|_______________________________________|
+
+File: <next file's full path>
+...
+```
+
+Consecutive files alternate accent colors so results are easier to tell
+apart. When a page contains the search term more than once, only its
+first occurrence is used. The box's width and how much surrounding text
+it shows are controlled by `vethuq settings snippet` (80 characters by
+default).
+
+On Windows, this uses `less` (bundled with Git for Windows) if it's on
+your `PATH`, for proper arrow-key scrolling and colors; without it,
+Windows' built-in `more` is used instead, which only advances a line at
+a time on Enter and doesn't render colors.
+
+```
+vethuq search "invoice total"
+```
+
 ## `vethuq settings`
 
 ### `vethuq settings gpu enable|disable|status`
@@ -67,4 +115,14 @@ falls back to CPU.
 vethuq settings gpu enable
 vethuq settings gpu disable
 vethuq settings gpu status
+```
+
+### `vethuq settings snippet set <chars>|show`
+
+Configure how many characters of context `vethuq search` shows on each
+side of a match. Defaults to 80.
+
+```
+vethuq settings snippet set 40
+vethuq settings snippet show
 ```
