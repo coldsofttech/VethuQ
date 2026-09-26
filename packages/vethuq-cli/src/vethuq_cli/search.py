@@ -22,9 +22,9 @@ def _read_key_windows() -> str:
     import msvcrt
 
     while True:
-        ch = msvcrt.getch()
+        ch = msvcrt.getch()  # type: ignore[attr-defined]
         if ch in (b"\x00", b"\xe0"):  # extended-key prefix (arrows, page up/down, ...)
-            ch2 = msvcrt.getch()
+            ch2 = msvcrt.getch()  # type: ignore[attr-defined]
             if ch2 == b"P":  # down arrow
                 return "down"
             if ch2 in (b"Q", b"O"):  # page down / end
@@ -45,9 +45,9 @@ def _read_key_posix() -> str:
     import tty
 
     fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)  # type: ignore[attr-defined]
+    old_settings = termios.tcgetattr(fd)
     try:
-        tty.setcbreak(fd)  # type: ignore[attr-defined]  # keeps Ctrl+C as SIGINT, unlike raw mode
+        tty.setcbreak(fd)  # keeps Ctrl+C as SIGINT, unlike raw mode
         while True:
             ch = sys.stdin.read(1)
             if ch == "\x1b":
@@ -70,7 +70,7 @@ def _read_key_posix() -> str:
             if ch in ("\r", "\n"):
                 return "down"
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)  # type: ignore[attr-defined]
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def _page(rendered: str) -> None:
