@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS document_index (
     error_message TEXT,
     indexed_at TEXT,
     started_at TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    file_size_bytes INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -75,6 +76,17 @@ CREATE TABLE IF NOT EXISTS index_runs (
     failed_files INTEGER NOT NULL DEFAULT 0,
     started_at TEXT NOT NULL,
     completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS processing_metrics (
+    file_type TEXT PRIMARY KEY CHECK (file_type IN ('pdf', 'image')),
+    document_count INTEGER NOT NULL DEFAULT 0,
+    avg_duration_seconds REAL NOT NULL DEFAULT 0,
+    avg_confidence REAL NOT NULL DEFAULT 0,
+    pages_native INTEGER NOT NULL DEFAULT 0,
+    pages_ocr INTEGER NOT NULL DEFAULT 0,
+    pages_mixed INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
 );
 """
 
@@ -130,3 +142,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
         if "removed_at" not in columns:
             conn.execute("ALTER TABLE sources ADD COLUMN removed_at TEXT")
+    if from_version < 8:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "file_size_bytes" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN file_size_bytes INTEGER")

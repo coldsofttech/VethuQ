@@ -198,15 +198,18 @@ def _upsert_document(
     conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
 ) -> int:
     started_at = datetime.now(UTC).isoformat()
+    file_size_bytes = file_path.stat().st_size
     conn.execute(
         """
-        INSERT INTO document_index (source_id, file_path, file_type, status, started_at)
-        VALUES (?, ?, ?, 'pending', ?)
+        INSERT INTO document_index
+            (source_id, file_path, file_type, status, started_at, file_size_bytes)
+        VALUES (?, ?, ?, 'pending', ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
             status = 'pending', error_message = NULL, indexed_at = NULL,
-            started_at = excluded.started_at, completed_at = NULL
+            started_at = excluded.started_at, completed_at = NULL,
+            file_size_bytes = excluded.file_size_bytes
         """,
-        (source_id, str(file_path), file_type, started_at),
+        (source_id, str(file_path), file_type, started_at, file_size_bytes),
     )
     row = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
@@ -228,6 +231,67 @@ def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> Non
         "UPDATE document_index SET status = 'error', error_message = ?, completed_at = ? "
         "WHERE id = ?",
         (message, datetime.now(UTC).isoformat(), document_id),
+    )
+
+
+def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
+    """Fold one freshly-indexed document into `processing_metrics`'s running averages.
+
+    Called only for successfully indexed documents - a failed document has no
+    confidence and a duration that doesn't reflect a full OCR pass, so it
+    would skew the averages `vethuq index run` uses to estimate ETAs.
+    """
+    doc = conn.execute(
+        "SELECT started_at, completed_at FROM document_index WHERE id = ?", (document_id,)
+    ).fetchone()
+    duration = (
+        datetime.fromisoformat(doc["completed_at"]) - datetime.fromisoformat(doc["started_at"])
+    ).total_seconds()
+
+    if file_type == "pdf":
+        pages = conn.execute(
+            "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
+        ).fetchall()
+    else:
+        pages = conn.execute(
+            "SELECT confidence FROM image_pages WHERE document_id = ?", (document_id,)
+        ).fetchall()
+    if not pages:
+        return
+
+    confidence = sum(page["confidence"] for page in pages) / len(pages)
+    native = sum(1 for page in pages if file_type == "pdf" and page["source"] == "native")
+    ocr = sum(1 for page in pages if file_type == "image" or page["source"] == "ocr")
+    mixed = sum(1 for page in pages if file_type == "pdf" and page["source"] == "mixed")
+
+    now = datetime.now(UTC).isoformat()
+    existing = conn.execute(
+        "SELECT document_count, avg_duration_seconds, avg_confidence "
+        "FROM processing_metrics WHERE file_type = ?",
+        (file_type,),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            "INSERT INTO processing_metrics "
+            "(file_type, document_count, avg_duration_seconds, avg_confidence, "
+            "pages_native, pages_ocr, pages_mixed, updated_at) "
+            "VALUES (?, 1, ?, ?, ?, ?, ?, ?)",
+            (file_type, duration, confidence, native, ocr, mixed, now),
+        )
+        return
+
+    new_count = existing["document_count"] + 1
+    avg_duration = (
+        existing["avg_duration_seconds"] + (duration - existing["avg_duration_seconds"]) / new_count
+    )
+    avg_confidence = (
+        existing["avg_confidence"] + (confidence - existing["avg_confidence"]) / new_count
+    )
+    conn.execute(
+        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
+        "avg_confidence = ?, pages_native = pages_native + ?, pages_ocr = pages_ocr + ?, "
+        "pages_mixed = pages_mixed + ?, updated_at = ? WHERE file_type = ?",
+        (new_count, avg_duration, avg_confidence, native, ocr, mixed, now, file_type),
     )
 
 
@@ -290,20 +354,19 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     return results
 
 
-def pending_file_count(
+def _iter_pending_files(
     conn: sqlite3.Connection,
     source: Source,
     *,
     only_new_files: bool = False,
     only_failed: bool = False,
-) -> int:
-    """Count the files `run_ocr` would actually (re)process for `source`.
+) -> Iterator[tuple[Path, str]]:
+    """Yield `(file_path, file_type)` for files `run_ocr` would actually (re)process.
 
-    Mirrors the skip logic in `run_ocr` so callers (e.g. progress reporting)
-    can size a run before starting it.
+    Mirrors the skip logic in `run_ocr` so callers (e.g. progress/ETA
+    reporting) can size a run before starting it.
     """
     root = Path(source.path)
-    count = 0
     for file_path in _iter_supported_files(root):
         existing = None
         if only_new_files or only_failed:
@@ -315,8 +378,45 @@ def pending_file_count(
                 continue
         elif only_new_files and existing is not None and existing["status"] == "indexed":
             continue
-        count += 1
-    return count
+        file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
+        yield file_path, file_type
+
+
+def pending_file_count(
+    conn: sqlite3.Connection,
+    source: Source,
+    *,
+    only_new_files: bool = False,
+    only_failed: bool = False,
+) -> int:
+    """Count the files `run_ocr` would actually (re)process for `source`."""
+    return sum(
+        1
+        for _ in _iter_pending_files(
+            conn, source, only_new_files=only_new_files, only_failed=only_failed
+        )
+    )
+
+
+def pending_file_type_counts(
+    conn: sqlite3.Connection,
+    source: Source,
+    *,
+    only_new_files: bool = False,
+    only_failed: bool = False,
+) -> dict[str, int]:
+    """Like `pending_file_count`, but broken down by file_type ('pdf'/'image').
+
+    Used to weight ETA estimates by each file type's own average OCR
+    duration (`processing_metrics`), since a source's remaining files may be
+    a mix of pdfs and images that OCR at very different speeds.
+    """
+    counts = {"pdf": 0, "image": 0}
+    for _, file_type in _iter_pending_files(
+        conn, source, only_new_files=only_new_files, only_failed=only_failed
+    ):
+        counts[file_type] += 1
+    return counts
 
 
 def run_ocr(
@@ -403,6 +503,7 @@ def run_ocr(
             _mark_error(conn, document_id, str(exc))
         else:
             _mark_indexed(conn, document_id)
+            _update_processing_metrics(conn, document_id, file_type)
 
         conn.commit()
         if on_file_done is not None:

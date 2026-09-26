@@ -50,6 +50,52 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
         "SELECT status FROM sources WHERE id = ?", (source.id,)
     ).fetchone()
     assert updated_source["status"] == "indexed"
+    assert doc["file_size_bytes"] == image_path.stat().st_size
+
+
+@patch("vethuq_core.ocr._get_engine")
+def test_run_ocr_updates_processing_metrics_on_success(
+    mock_get_engine, conn: sqlite3.Connection, tmp_path
+):
+    engine = MagicMock()
+    engine.predict.return_value = _fake_ocr_result(score=0.8)
+    mock_get_engine.return_value = engine
+
+    first = tmp_path / "first.png"
+    first.write_bytes(b"fake png bytes")
+    run_ocr(conn, add_source(conn, first))
+
+    metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
+    assert metrics["document_count"] == 1
+    assert metrics["avg_confidence"] == pytest.approx(0.8)
+    assert metrics["pages_ocr"] == 1
+    assert metrics["pages_native"] == 0
+    assert metrics["pages_mixed"] == 0
+
+    engine.predict.return_value = _fake_ocr_result(score=0.6)
+    second = tmp_path / "second.png"
+    second.write_bytes(b"more fake png bytes")
+    run_ocr(conn, add_source(conn, second))
+
+    metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
+    assert metrics["document_count"] == 2
+    assert metrics["avg_confidence"] == pytest.approx(0.7)
+    assert metrics["pages_ocr"] == 2
+
+
+@patch("vethuq_core.ocr._get_engine")
+def test_run_ocr_does_not_update_processing_metrics_on_error(
+    mock_get_engine, conn: sqlite3.Connection, tmp_path
+):
+    engine = MagicMock()
+    engine.predict.side_effect = RuntimeError("ocr blew up")
+    mock_get_engine.return_value = engine
+
+    image_path = tmp_path / "scan.png"
+    image_path.write_bytes(b"fake png bytes")
+    run_ocr(conn, add_source(conn, image_path))
+
+    assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
 
 
 @patch("vethuq_core.ocr._get_engine")

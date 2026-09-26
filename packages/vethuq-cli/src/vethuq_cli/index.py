@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -20,9 +20,10 @@ from vethuq_core.index_runner import (
     request_pause,
     request_resume,
     request_stop,
+    resolve_targets,
     start_run,
 )
-from vethuq_core.ocr import get_document_results
+from vethuq_core.ocr import get_document_results, pending_file_type_counts
 from vethuq_core.sources import SourceNotFoundError, get_source
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
@@ -34,19 +35,53 @@ def _coerce_target(path_or_id: str) -> str | int:
     return int(path_or_id) if path_or_id.isdigit() else path_or_id
 
 
-def _estimate_eta(state: IndexState) -> str | None:
-    if state.processed_files == 0 or state.total_files == 0:
+def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
+    """Estimate time remaining from historical averages in `processing_metrics`.
+
+    Splits the target sources' still-pending files by file_type (pdf/image -
+    OCR at very different speeds) and multiplies each type's count by that
+    type's average document duration across all past runs, rather than this
+    run's own pace, which is noisy - or unavailable - early in a run.
+    """
+    try:
+        sources = resolve_targets(conn, state.target)
+    except SourceNotFoundError:
         return None
-    elapsed = (datetime.now(UTC) - datetime.fromisoformat(state.started_at)).total_seconds()
-    remaining = state.total_files - state.processed_files
-    if elapsed <= 0 or remaining <= 0:
+
+    remaining_by_type = {"pdf": 0, "image": 0}
+    for source in sources:
+        counts = pending_file_type_counts(
+            conn,
+            source,
+            only_new_files=source.status != "pending",
+            only_failed=state.mode == "restart",
+        )
+        for file_type, count in counts.items():
+            remaining_by_type[file_type] += count
+
+    if not any(remaining_by_type.values()):
         return None
-    seconds_left = remaining / (state.processed_files / elapsed)
+
+    averages = {
+        row["file_type"]: row["avg_duration_seconds"]
+        for row in conn.execute(
+            "SELECT file_type, avg_duration_seconds FROM processing_metrics "
+            "WHERE document_count > 0"
+        )
+    }
+    seconds_left = sum(
+        count * averages[file_type]
+        for file_type, count in remaining_by_type.items()
+        if count > 0 and file_type in averages
+    )
+    if seconds_left <= 0:
+        return None
+
     minutes, seconds = divmod(int(seconds_left), 60)
     return f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
 
 
-def _print_state(state: IndexState) -> None:
+def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
     percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
     typer.echo(f"Status: {state.status}")
     typer.echo(f"Mode: {state.mode}")
@@ -58,7 +93,7 @@ def _print_state(state: IndexState) -> None:
     if state.current_file:
         typer.echo(f"Current file: {Path(state.current_file).name}")
     if state.status == "running":
-        eta = _estimate_eta(state)
+        eta = _estimate_eta(conn, state)
         if eta is not None:
             typer.echo(f"ETA: ~{eta}")
 
@@ -81,7 +116,11 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         state = read_state()
         if state is not None and state.pid == pid:
             if state.status in ("completed", "stopped", "failed"):
-                _print_state(state)
+                conn = connect()
+                try:
+                    _print_state(conn, state)
+                finally:
+                    conn.close()
                 return
             continue
         # No state yet for this pid - could just be starting up (the worker
@@ -155,7 +194,11 @@ def status(
         if state is None:
             typer.echo("No index run has been started yet.")
             return
-        _print_state(state)
+        conn = connect()
+        try:
+            _print_state(conn, state)
+        finally:
+            conn.close()
         return
 
     conn = connect()

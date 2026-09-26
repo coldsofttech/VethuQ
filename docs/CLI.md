@@ -198,7 +198,7 @@ vethuq settings search snippet show
 
 Configure, in minutes, how long a removed source (and its indexed data)
 is kept before it's permanently deleted from the database. Defaults to
-30 minutes. The purge itself runs opportunistically whenever a database
+7 days (10080 minutes). The purge itself runs opportunistically whenever a database
 connection is opened (CLI commands, the desktop app), not on a fixed
 schedule.
 

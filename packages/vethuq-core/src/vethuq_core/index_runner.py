@@ -337,7 +337,14 @@ def request_resume(db_path: Path | None = None) -> None:
     _set_control(db_path, "run")
 
 
-def _resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source]:
+def resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source]:
+    """Return the sources a run/status check against `target` would cover.
+
+    `target=None` means every source eligible for indexing (not `removed`);
+    a specific id/path resolves to just that one source. Shared with ETA
+    estimation (`vethuq index status`), which needs the same source set to
+    know which files are still pending.
+    """
     if target is None:
         return [s for s in list_sources(conn) if s.status in ("pending", "indexed", "error")]
     return [get_source(conn, _coerce_target(target))]
@@ -351,7 +358,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
     stopped = False
     mode = "restart" if restart else "run"
     try:
-        sources = _resolve_targets(conn, target)
+        sources = resolve_targets(conn, target)
         total = sum(
             pending_file_count(conn, s, only_new_files=s.status != "pending", only_failed=restart)
             for s in sources

@@ -142,6 +142,48 @@ def test_status_shows_progress(tmp_path, monkeypatch):
     assert "1/4" in result.stdout
 
 
+def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    (folder / "a.png").write_bytes(b"fake png bytes")
+    (folder / "b.png").write_bytes(b"fake png bytes")
+
+    conn = db_module.connect(db_path)
+    add_source(conn, folder)
+    now = datetime.now(UTC).isoformat()
+    conn.execute(
+        "INSERT INTO processing_metrics "
+        "(file_type, document_count, avg_duration_seconds, avg_confidence, "
+        "pages_native, pages_ocr, pages_mixed, updated_at) "
+        "VALUES ('image', 3, 10.0, 0.9, 0, 3, 0, ?)",
+        (now,),
+    )
+    conn.commit()
+    conn.close()
+
+    state = index_runner_module.IndexState(
+        run_id=1,
+        pid=1,
+        target=str(folder),
+        mode="run",
+        status="running",
+        total_files=2,
+        processed_files=0,
+        failed_files=0,
+        current_file=None,
+        started_at=now,
+        updated_at=now,
+    )
+    index_runner_module._write_state(db_path, state)
+
+    result = runner.invoke(app, ["index", "status"])
+
+    assert result.exit_code == 0
+    # 2 pending images * 10s average = 20s.
+    assert "ETA: ~20s" in result.stdout
+
+
 def test_status_detail_for_target(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     folder = tmp_path / "docs"

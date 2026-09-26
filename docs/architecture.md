@@ -94,9 +94,10 @@ Storage, alongside `sources`:
 
 | Table | Purpose |
 | --- | --- |
-| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`. Central table joining the type-specific pages tables. |
+| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`, `file_size_bytes`. Central table joining the type-specific pages tables. |
 | `pdf_pages` | One row per PDF page: `document_id`, `page_number`, `ocr_text`, `confidence`. |
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
+| `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_confidence`, `pages_native`/`pages_ocr`/`pages_mixed`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
 
 A single PaddleOCR engine instance is lazily created and reused per
 process (`vethuq_core.ocr._get_engine`) since model init is expensive.
