@@ -5,6 +5,9 @@ description = "VethuQ desktop UI (Tkinter)"
 requires-python = ">=3.11"
 dependencies = [
     "vethuq-core",
+    "pillow",
+    "pywin32; sys_platform == 'win32'",
+    "sv-ttk",
 ]
 
 [project.scripts]

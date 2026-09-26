@@ -6,7 +6,9 @@ import sqlite3
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
+import sv_ttk
 from vethuq_core.db import connect
 from vethuq_core.index_runner import (
     AlreadyRunningError,
@@ -20,6 +22,7 @@ from vethuq_core.index_runner import (
     signal_stop,
     start_run,
 )
+from vethuq_core.search import search_indexed_content
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
@@ -30,7 +33,13 @@ from vethuq_core.sources import (
     remove_source,
 )
 
+from vethuq_ui.icons import get_file_icon, get_icon
+from vethuq_ui.tooltip import TreeviewTooltip
+
 _INDEX_POLL_INTERVAL_MS = 5000
+_SEARCH_PLACEHOLDER = "Search"
+_RESULT_LIST_WIDTH_FRACTION = 0.35
+_MAX_DISPLAYED_NAME_CHARS = 35
 
 # Fixed positions within the Sources tree's right-click menu (see
 # _build_source_list) - must stay in sync with the order items are added in.
@@ -46,11 +55,18 @@ class MainWindow(tk.Tk):
 
         self.title("VethuQ")
         self.geometry("720x480")
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            self.attributes("-zoomed", True)
+        sv_ttk.set_theme("light")
 
+        self._search_full_names: dict[str, str] = {}
         self._build_menubar()
         self._build_status_bar()
+        self._build_search_view()
         self._build_source_list()
-        self.refresh_sources()
+        self.on_show_search()
         self._closing = False
         self._launch_or_attach_index()
         self.after(_INDEX_POLL_INTERVAL_MS, self._poll_index_status)
@@ -100,23 +116,171 @@ class MainWindow(tk.Tk):
         super().destroy()
 
     def _build_menubar(self) -> None:
-        menubar = tk.Menu(self)
+        # A native tk.Menu can't be restyled by sv_ttk (it isn't a ttk
+        # widget), so instead of a dropdown menu this is a ribbon-style
+        # tabbed toolbar built entirely from themed ttk widgets.
+        notebook = ttk.Notebook(self)
+        notebook.pack(side=tk.TOP, fill=tk.X)
 
-        settings_menu = tk.Menu(menubar, tearoff=0)
-        settings_menu.add_command(label="Sources", command=self.on_show_source_list)
-        settings_menu.add_separator()
+        home_tab = ttk.Frame(notebook)
+        notebook.add(home_tab, text="Home")
+        ttk.Button(
+            home_tab,
+            command=self.on_show_search,
+            **self._ribbon_icon_kwargs("search", "\N{LEFT-POINTING MAGNIFYING GLASS}", "Search"),
+        ).pack(side=tk.LEFT, padx=6, pady=4)
+
+        settings_tab = ttk.Frame(notebook)
+        notebook.add(settings_tab, text="Settings")
+
+        view_group = self._build_ribbon_group(settings_tab, "View")
+        ttk.Button(
+            view_group,
+            command=self.on_show_source_list,
+            **self._ribbon_icon_kwargs("sources", "\N{FILE FOLDER}", "Sources"),
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(settings_tab, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=6, pady=4
+        )
+
+        ocr_group = self._build_ribbon_group(settings_tab, "OCR")
         self._gpu_enabled_var = tk.BooleanVar(value=is_gpu_enabled(self.conn))
-        settings_menu.add_checkbutton(
-            label="Use GPU (if available)",
+        ttk.Checkbutton(
+            ocr_group,
             variable=self._gpu_enabled_var,
             command=self._on_toggle_gpu,
-        )
-        menubar.add_cascade(label="Settings", menu=settings_menu)
+            style="Toolbutton",
+            **self._ribbon_icon_kwargs("gpu", "\N{HIGH VOLTAGE SIGN}", "GPU"),
+        ).pack(side=tk.LEFT, padx=2)
 
-        self.config(menu=menubar)
+        notebook.select(home_tab)
+
+    @staticmethod
+    def _ribbon_icon_kwargs(
+        name: str, glyph: str, caption: str, *, compound: str = tk.TOP, size: int | None = None
+    ) -> dict[str, Any]:
+        """Button/Checkbutton kwargs for an icon+caption control: a real icon
+        if `assets/icons/<name>.png` exists yet, else the old glyph-in-text
+        look. `compound` places the icon relative to the text (`tk.TOP` for
+        the ribbon's icon-above-caption buttons, `tk.LEFT` for an inline one
+        like the search bar's Go button). `size` defaults to the ribbon tab
+        buttons' 32px (see `get_icon`); pass 16 for an inline control like
+        Go, to match the file-type badges' size.
+        """
+        icon = get_icon(name) if size is None else get_icon(name, size)
+        if icon is not None:
+            return {"image": icon, "text": caption, "compound": compound}
+        separator = "\n" if compound == tk.TOP else " "
+        return {"text": f"{glyph}{separator}{caption}"}
+
+    @staticmethod
+    def _build_ribbon_group(ribbon: ttk.Frame, caption: str) -> ttk.Frame:
+        """A ribbon group: a row for its buttons, with a caption label below."""
+        group = ttk.Frame(ribbon)
+        group.pack(side=tk.LEFT, padx=4, pady=(4, 0))
+        buttons_row = ttk.Frame(group)
+        buttons_row.pack(side=tk.TOP)
+        ttk.Label(group, text=caption, anchor=tk.CENTER, foreground="grey").pack(
+            side=tk.TOP, fill=tk.X, pady=(2, 4)
+        )
+        return buttons_row
 
     def _on_toggle_gpu(self) -> None:
         set_gpu_enabled(self.conn, self._gpu_enabled_var.get())
+
+    def _build_search_view(self) -> None:
+        self._search_frame = ttk.Frame(self)
+
+        search_bar = ttk.Frame(self._search_frame)
+        search_bar.pack(side=tk.TOP, fill=tk.X, padx=8, pady=8)
+        self._search_var = tk.StringVar()
+        self._search_entry = ttk.Entry(search_bar, textvariable=self._search_var)
+        self._search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._search_entry.bind("<Return>", lambda event: self.on_search())
+        self._add_search_placeholder()
+        ttk.Button(
+            search_bar,
+            command=self.on_search,
+            **self._ribbon_icon_kwargs(
+                "search", "\N{LEFT-POINTING MAGNIFYING GLASS}", "Go", compound=tk.LEFT, size=16
+            ),
+        ).pack(side=tk.LEFT, padx=(4, 0))
+
+        results = ttk.Frame(self._search_frame)
+        results.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+        list_frame = ttk.Frame(results)
+        list_frame.place(relx=0, rely=0, relwidth=_RESULT_LIST_WIDTH_FRACTION, relheight=1)
+        content_frame = ttk.Frame(results, relief=tk.SUNKEN, borderwidth=1)
+        content_frame.place(
+            relx=_RESULT_LIST_WIDTH_FRACTION,
+            rely=0,
+            relwidth=1 - _RESULT_LIST_WIDTH_FRACTION,
+            relheight=1,
+        )
+        ttk.Label(content_frame, text="Select a result to preview its content.").place(
+            relx=0.5, rely=0.5, anchor=tk.CENTER
+        )
+
+        self._search_tree = ttk.Treeview(list_frame, columns=("path",), show="tree headings")
+        self._search_tree.heading("#0", text="Name")
+        self._search_tree.column("#0", width=260, anchor=tk.W, stretch=False)
+        self._search_tree.heading("path", text="Path")
+        self._search_tree.column("path", width=320, anchor=tk.W, stretch=False)
+
+        hscroll = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self._search_tree.xview)
+        self._search_tree.configure(xscrollcommand=hscroll.set)
+        hscroll.pack(side=tk.BOTTOM, fill=tk.X)
+        self._search_tree.pack(fill=tk.BOTH, expand=True)
+
+        TreeviewTooltip(self._search_tree, self._search_full_names.get)
+
+    def _add_search_placeholder(self) -> None:
+        entry = self._search_entry
+
+        def clear_placeholder(event: tk.Event | None = None) -> None:
+            if self._search_var.get() == _SEARCH_PLACEHOLDER:
+                self._search_var.set("")
+                entry.config(foreground="black")
+
+        def restore_placeholder(event: tk.Event | None = None) -> None:
+            if not self._search_var.get():
+                self._search_var.set(_SEARCH_PLACEHOLDER)
+                entry.config(foreground="grey")
+
+        entry.bind("<FocusIn>", clear_placeholder)
+        entry.bind("<FocusOut>", restore_placeholder)
+        restore_placeholder()
+
+    @staticmethod
+    def _truncate_name(name: str, max_chars: int = _MAX_DISPLAYED_NAME_CHARS) -> str:
+        if len(name) <= max_chars:
+            return name
+        return name[: max_chars - 1] + "\N{HORIZONTAL ELLIPSIS}"
+
+    def on_search(self) -> None:
+        query = self._search_var.get().strip()
+        self._search_tree.delete(*self._search_tree.get_children())
+        self._search_full_names.clear()
+        if not query or query == _SEARCH_PLACEHOLDER:
+            return
+
+        seen_files: dict[int, tuple[str, str]] = {}
+        for match in search_indexed_content(self.conn, query):
+            seen_files.setdefault(match.file_id, (match.file_name, match.file_path))
+
+        for file_id, (file_name, file_path) in seen_files.items():
+            iid = str(file_id)
+            self._search_full_names[iid] = file_name
+            self._search_tree.insert(
+                "",
+                tk.END,
+                iid=iid,
+                text=self._truncate_name(file_name),
+                image=get_file_icon(file_path),
+                values=(file_path,),
+            )
 
     def _build_source_list(self) -> None:
         self._source_list_frame = ttk.Frame(self)
@@ -166,9 +330,15 @@ class MainWindow(tk.Tk):
         self._tree_context_menu.add_command(label="Delete", command=self._delete_selected_source)
 
     def on_show_source_list(self) -> None:
+        self._search_frame.pack_forget()
         if not self._source_list_frame.winfo_ismapped():
             self._source_list_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         self.refresh_sources()
+
+    def on_show_search(self) -> None:
+        self._source_list_frame.pack_forget()
+        if not self._search_frame.winfo_ismapped():
+            self._search_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
     def _on_tree_right_click(self, event: tk.Event) -> None:
         row_id = self.tree.identify_row(event.y)

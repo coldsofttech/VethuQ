@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The desktop app's background indexing now shares the same engine as `vethuq index run`, checking every 5 seconds for progress. Closing the app lets whatever file is currently being processed finish in the background rather than cutting it off.
 - The desktop app's Sources view now lets you right-click a source to index it now, retry its failed files, or view its indexing history; Pause, Resume, and Stop buttons control the overall background run.
 - `vethuq index history` can now be filtered to a specific source by id or path.
+- You can now search indexed content from the CLI with `vethuq search <content>`, which highlights the match in a snippet of surrounding text; how much surrounding text is shown is configurable with `vethuq settings search snippet set/show`.
+- The desktop app now has a search screen (a search box and a results list showing each match's file), and its toolbar has been redesigned as a ribbon with a Windows 11-styled look.
 
 ### Fixed
 

@@ -2,7 +2,14 @@ import sqlite3
 
 import pytest
 from vethuq_core.db import connect
-from vethuq_core.settings import get_setting, is_gpu_enabled, set_gpu_enabled, set_setting
+from vethuq_core.settings import (
+    get_search_snippet_context_chars,
+    get_setting,
+    is_gpu_enabled,
+    set_gpu_enabled,
+    set_search_snippet_context_chars,
+    set_setting,
+)
 
 
 @pytest.fixture
@@ -34,3 +41,17 @@ def test_set_setting_overwrites_existing_value(conn: sqlite3.Connection):
 
 def test_get_setting_missing_key_returns_none(conn: sqlite3.Connection):
     assert get_setting(conn, "does-not-exist") is None
+
+
+def test_search_snippet_context_chars_defaults_to_80(conn: sqlite3.Connection):
+    assert get_search_snippet_context_chars(conn) == 80
+
+
+def test_set_search_snippet_context_chars_roundtrip(conn: sqlite3.Connection):
+    set_search_snippet_context_chars(conn, 40)
+    assert get_search_snippet_context_chars(conn) == 40
+
+
+def test_set_search_snippet_context_chars_rejects_negative(conn: sqlite3.Connection):
+    with pytest.raises(ValueError, match="non-negative"):
+        set_search_snippet_context_chars(conn, -1)
