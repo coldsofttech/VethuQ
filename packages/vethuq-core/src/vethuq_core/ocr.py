@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -290,7 +290,44 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     return results
 
 
-def run_ocr(conn: sqlite3.Connection, source: Source, *, only_new_files: bool = False) -> list[str]:
+def pending_file_count(
+    conn: sqlite3.Connection,
+    source: Source,
+    *,
+    only_new_files: bool = False,
+    only_failed: bool = False,
+) -> int:
+    """Count the files `run_ocr` would actually (re)process for `source`.
+
+    Mirrors the skip logic in `run_ocr` so callers (e.g. progress reporting)
+    can size a run before starting it.
+    """
+    root = Path(source.path)
+    count = 0
+    for file_path in _iter_supported_files(root):
+        existing = None
+        if only_new_files or only_failed:
+            existing = conn.execute(
+                "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
+            ).fetchone()
+        if only_failed:
+            if existing is None or existing["status"] != "error":
+                continue
+        elif only_new_files and existing is not None and existing["status"] == "indexed":
+            continue
+        count += 1
+    return count
+
+
+def run_ocr(
+    conn: sqlite3.Connection,
+    source: Source,
+    *,
+    only_new_files: bool = False,
+    only_failed: bool = False,
+    on_file_done: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> list[str]:
     """Run OCR over supported files under `source` and index the results.
 
     Unsupported files are silently skipped. Per-file OCR failures are recorded
@@ -305,6 +342,16 @@ def run_ocr(conn: sqlite3.Connection, source: Source, *, only_new_files: bool = 
     source is (re)processed unconditionally - appropriate for a source that's
     freshly added or reactivated after removal.
 
+    When `only_failed` is True, only files whose `document_index` row has
+    status='error' are (re)processed - new and already-indexed files are
+    left untouched. Use this to retry failures without touching anything
+    else. Takes precedence over `only_new_files` if both are set.
+
+    `on_file_done`, when given, is called with a file's path immediately after
+    it's (re)processed - used to report progress. `should_stop`, when given,
+    is checked before each file and stops the source early (leaving remaining
+    files untouched) if it returns True.
+
     Returns the paths of the files actually (re)processed in this call.
     """
     root = Path(source.path)
@@ -312,12 +359,19 @@ def run_ocr(conn: sqlite3.Connection, source: Source, *, only_new_files: bool = 
     processed_paths: list[str] = []
 
     for file_path in _iter_supported_files(root):
-        if only_new_files:
+        if should_stop is not None and should_stop():
+            break
+
+        existing = None
+        if only_new_files or only_failed:
             existing = conn.execute(
                 "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
             ).fetchone()
-            if existing is not None and existing["status"] == "indexed":
+        if only_failed:
+            if existing is None or existing["status"] != "error":
                 continue
+        elif only_new_files and existing is not None and existing["status"] == "indexed":
+            continue
 
         file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
         document_id = _upsert_document(conn, source.id, file_path, file_type)
@@ -351,6 +405,8 @@ def run_ocr(conn: sqlite3.Connection, source: Source, *, only_new_files: bool = 
             _mark_indexed(conn, document_id)
 
         conn.commit()
+        if on_file_done is not None:
+            on_file_done(str(file_path))
 
     conn.execute(
         "UPDATE sources SET status = ?, last_scanned_at = ? WHERE id = ?",

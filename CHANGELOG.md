@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OCR can now optionally use the GPU (off by default) — toggle it with `vethuq settings gpu enable/disable`, or from the desktop app's Settings menu.
 - The desktop app now shows a status bar with indexing progress while sources are being processed in the background.
 - Indexed documents now record how long OCR took to process them, alongside their confidence score.
+- `vethuq index run` now runs in the background and returns immediately. Use `vethuq index status` to check progress, `vethuq index pause`/`resume` to pause and continue a run, `vethuq index stop` to cancel it, and `vethuq index history` to see past runs. You can also target a specific source by id or path.
+- `vethuq index restart` retries just the files that previously failed OCR, without redoing new or already-indexed files.
+- The desktop app's background indexing now shares the same engine as `vethuq index run`, checking every 5 seconds for progress. Closing the app lets whatever file is currently being processed finish in the background rather than cutting it off.
+- The desktop app's Sources view now lets you right-click a source to index it now, retry its failed files, or view its indexing history; Pause, Resume, and Stop buttons control the overall background run.
+- `vethuq index history` can now be filtered to a specific source by id or path.
 
 ### Fixed
 
