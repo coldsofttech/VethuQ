@@ -14,6 +14,7 @@ from vethuq_core.index_runner import (
     IndexRunnerError,
     IndexState,
     StaleLockError,
+    is_running,
     read_state,
     request_pause,
     request_resume,
@@ -77,11 +78,19 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
     while True:
         time.sleep(_POLL_SECONDS)
         state = read_state()
-        if state is None or state.pid != pid:
-            break
-        if state.status in ("completed", "stopped", "failed"):
-            _print_state(state)
-            break
+        if state is not None and state.pid == pid:
+            if state.status in ("completed", "stopped", "failed"):
+                _print_state(state)
+                return
+            continue
+        # No state yet for this pid - could just be starting up (the worker
+        # hasn't written its first state file yet) or it could genuinely be
+        # gone (e.g. crashed before writing anything). Only stop waiting once
+        # the process itself is confirmed no longer running.
+        running, current_pid = is_running()
+        if not running or current_pid != pid:
+            typer.echo("Background run ended before reporting any progress.")
+            return
 
 
 @app.command("run")

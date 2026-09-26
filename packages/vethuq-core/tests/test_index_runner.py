@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,26 @@ def conn(db_path):
 class _FakeProcess:
     def __init__(self, pid: int):
         self.pid = pid
+
+
+def test_read_state_ignores_old_incompatible_format(db_path):
+    # Simulates a state file left behind by an older version of this code,
+    # written before a field (e.g. "mode") existed.
+    old_format = {
+        "run_id": 1,
+        "pid": 123,
+        "target": None,
+        "status": "completed",
+        "total_files": 1,
+        "processed_files": 1,
+        "failed_files": 0,
+        "current_file": None,
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    index_runner._atomic_write(index_runner._state_path(db_path), json.dumps(old_format))
+
+    assert index_runner.read_state(db_path) is None
 
 
 def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:

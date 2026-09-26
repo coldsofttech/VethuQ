@@ -33,6 +33,53 @@ def test_run_starts_background_process(tmp_path, monkeypatch):
     assert "Started background index run (pid 123)" in result.stdout
 
 
+def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(777))
+    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+
+    now = datetime.now(UTC).isoformat()
+    completed_state = index_runner_module.IndexState(
+        run_id=1,
+        pid=777,
+        target=None,
+        mode="run",
+        status="completed",
+        total_files=1,
+        processed_files=1,
+        failed_files=0,
+        current_file="a.pdf",
+        started_at=now,
+        updated_at=now,
+    )
+    calls = {"n": 0}
+
+    def fake_read_state(db_path=None):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else completed_state
+
+    monkeypatch.setattr(index_cli_module, "read_state", fake_read_state)
+    monkeypatch.setattr(index_cli_module, "is_running", lambda: (True, 777))
+
+    result = runner.invoke(app, ["index", "run", "--wait"])
+
+    assert result.exit_code == 0
+    assert "Status: completed" in result.stdout
+
+
+def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(888))
+    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(index_cli_module, "read_state", lambda: None)
+    monkeypatch.setattr(index_cli_module, "is_running", lambda: (False, None))
+
+    result = runner.invoke(app, ["index", "run", "--wait"])
+
+    assert result.exit_code == 0
+    assert "Background run ended before reporting any progress." in result.stdout
+
+
 def test_run_reports_already_running(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     index_runner_module._atomic_write(index_runner_module._lock_path(db_path), "999")

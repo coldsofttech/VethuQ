@@ -121,11 +121,20 @@ def _force_kill(pid: int) -> None:
 
 
 def read_state(db_path: Path | None = None) -> IndexState | None:
-    """Return the most recent run's live/last-known state, if one exists."""
+    """Return the most recent run's live/last-known state, if one exists.
+
+    The state file isn't durable history (that's `index_runs`) - it's just
+    scratch progress for the current/last run - so a file left behind by an
+    older version of this code, in a since-changed format, is treated the
+    same as no state at all rather than raised as an error.
+    """
     path = _state_path(db_path or default_db_path())
     if not path.exists():
         return None
-    return IndexState.from_json(path.read_text(encoding="utf-8"))
+    try:
+        return IndexState.from_json(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, TypeError, KeyError):
+        return None
 
 
 def _write_state(db_path: Path, state: IndexState) -> None:
