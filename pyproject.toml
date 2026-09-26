@@ -24,7 +24,7 @@ dev = [
     "pre-commit>=3.8",
 ]
 
-# For .claude/skills/vethuq-icons/generate_icons.py only - opt-in via
+# For scripts/dev/generate_icons.py only - opt-in via
 # `uv sync --group icons`, not part of the default `dev` group CI installs,
 # since reportlab needs FreeType headers to build from source on Linux.
 icons = [

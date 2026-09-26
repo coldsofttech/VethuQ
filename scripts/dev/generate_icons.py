@@ -1,12 +1,11 @@
 """Turn SVG icon sources into the PNG assets vethuq-ui ships.
 
-Not part of the vethuq-ui package - a design-time tool for the
-`vethuq-icons` skill. Its deps (svglib, reportlab, pillow) are pinned in
-the repo root `pyproject.toml`'s `dev` dependency-group, so a plain
-`uv sync` picks them up and this just runs directly:
+Not part of the vethuq-ui package - a one-off design-time tool. Its deps
+(svglib, reportlab, pillow) are pinned in the repo root `pyproject.toml`'s
+opt-in `icons` dependency-group (`uv sync --group icons`), then this runs
+directly:
 
-    uv run python .claude/skills/vethuq-icons/generate_icons.py \
-        --manifest icons.json
+    uv run python scripts/dev/generate_icons.py --manifest icons.json
 
 reportlab is pinned to 3.6.13 deliberately: newer reportlab's PNG renderer
 needs rlPyCairo -> pycairo -> the native Cairo library, which isn't
