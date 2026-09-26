@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import multiprocessing
+import queue
 import sqlite3
-import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -20,6 +21,37 @@ from vethuq_core.sources import (
 )
 
 _INDEX_POLL_INTERVAL_MS = 5000
+_QUEUE_POLL_INTERVAL_MS = 100
+
+
+def _run_index_worker(
+    db_path: Path | None,
+    stop_event: multiprocessing.synchronize.Event,
+    message_queue: multiprocessing.Queue,
+) -> None:
+    """Poll for pending sources and OCR them, in a process of its own.
+
+    This runs as a separate OS process rather than a thread because
+    PaddleOCR's native calls don't reliably release the GIL — in a thread,
+    a long init/inference call would block the main process's Tk event
+    loop for as long as it runs, freezing the whole UI. Status updates are
+    reported back through `message_queue`; nothing here ever touches Tk,
+    and it must stay a plain module-level function (not a bound method) so
+    it's picklable for `multiprocessing`'s spawn start method on Windows.
+    """
+    from vethuq_core.ocr import run_ocr
+
+    worker_conn = connect(db_path)
+    try:
+        while not stop_event.wait(_INDEX_POLL_INTERVAL_MS / 1000):
+            pending = [s for s in list_sources(worker_conn) if s.status == "pending"]
+            for index, source in enumerate(pending, start=1):
+                message_queue.put(("indexing", index, len(pending), source.path))
+                run_ocr(worker_conn, source)
+                message_queue.put(("refresh",))
+            message_queue.put(("idle",))
+    finally:
+        worker_conn.close()
 
 
 class MainWindow(tk.Tk):
@@ -37,35 +69,39 @@ class MainWindow(tk.Tk):
         self._build_status_bar()
         self._build_source_list()
         self.refresh_sources()
+        self._closing = False
         self._start_index_worker()
+        self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
 
     def _start_index_worker(self) -> None:
-        self._worker_stop = threading.Event()
-        self._worker_thread = threading.Thread(
-            target=self._index_worker_loop, daemon=True
+        self._worker_stop = multiprocessing.Event()
+        self._worker_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self._worker_process = multiprocessing.Process(
+            target=_run_index_worker,
+            args=(self._db_path, self._worker_stop, self._worker_queue),
+            daemon=True,
         )
-        self._worker_thread.start()
+        self._worker_process.start()
 
-    def _index_worker_loop(self) -> None:
-        # Runs on a background thread with its own connection — sqlite3
-        # connections aren't safe to share across threads. Imported here
-        # rather than at module level so Paddle/OCR init happens on this
-        # thread after the UI is already up, not at app startup.
-        from vethuq_core.ocr import run_ocr
-
-        worker_conn = connect(self._db_path)
-        try:
-            while not self._worker_stop.wait(_INDEX_POLL_INTERVAL_MS / 1000):
-                pending = [s for s in list_sources(worker_conn) if s.status == "pending"]
-                for index, source in enumerate(pending, start=1):
-                    self.after(0, self._set_indexing_status, index, len(pending), source.path)
-                    run_ocr(worker_conn, source)
-                    self.after(0, self.refresh_sources)
-                self.after(0, self._set_idle_status)
-        finally:
-            worker_conn.close()
+    def _process_worker_queue(self) -> None:
+        while True:
+            try:
+                message = self._worker_queue.get_nowait()
+            except queue.Empty:
+                break
+            tag = message[0]
+            if tag == "indexing":
+                _, index, total, path = message
+                self._set_indexing_status(index, total, path)
+            elif tag == "refresh":
+                self.refresh_sources()
+            elif tag == "idle":
+                self._set_idle_status()
+        if not self._closing:
+            self.after(_QUEUE_POLL_INTERVAL_MS, self._process_worker_queue)
 
     def destroy(self) -> None:
+        self._closing = True
         self._worker_stop.set()
         super().destroy()
 
@@ -201,6 +237,7 @@ class MainWindow(tk.Tk):
 
 
 def main() -> None:
+    multiprocessing.freeze_support()
     window = MainWindow()
     window.mainloop()
 
