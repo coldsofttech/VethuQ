@@ -5,7 +5,12 @@ description = "VethuQ core engine — document model, ingest, OCR, indexing, and
 requires-python = ">=3.11"
 dependencies = [
     "platformdirs>=4.0",
-    "paddlepaddle>=2.6",
+    # `paddlepaddle-gpu` (not the plain `paddlepaddle` CPU build) on purpose:
+    # it runs CPU-only fine when no GPU is present (paddle.device.get_device()
+    # reports 'cpu' automatically), and additionally supports GPU inference
+    # when one is. One package for everyone, no CPU/GPU build to swap - see
+    # `vethuq_core.ocr._resolve_device` for the opt-in GPU setting on top.
+    "paddlepaddle-gpu>=2.6",
     "paddleocr>=2.8",
     "pymupdf>=1.24",
     "opencv-python-headless>=4.9",

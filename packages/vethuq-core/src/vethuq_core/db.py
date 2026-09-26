@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS image_pages (
     document_id INTEGER NOT NULL REFERENCES document_index(id),
     ocr_text TEXT NOT NULL,
     confidence REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 

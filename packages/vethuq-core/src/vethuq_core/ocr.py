@@ -7,6 +7,7 @@ found under a source, runs PaddleOCR and writes the extracted text into
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from collections.abc import Iterator
@@ -21,10 +22,14 @@ os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
+import paddle  # noqa: E402
 import pymupdf  # noqa: E402
 from paddleocr import PaddleOCR  # noqa: E402
 
+from vethuq_core.settings import is_gpu_enabled  # noqa: E402
 from vethuq_core.sources import Source  # noqa: E402
+
+_logger = logging.getLogger(__name__)
 
 _PDF_EXTENSIONS = {".pdf"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
@@ -45,11 +50,32 @@ _MIN_IMAGE_AREA_FRACTION = 0.05
 _engine: PaddleOCR | None = None
 
 
-def _get_engine() -> PaddleOCR:
+def _resolve_device(conn: sqlite3.Connection) -> str:
+    """Pick the inference device honoring the user's GPU setting.
+
+    GPU is opt-in and disabled by default (see `vethuq_core.settings`). When
+    enabled, it's only actually used if this is a CUDA-capable PaddlePaddle
+    build with a visible GPU - otherwise we fall back to CPU rather than
+    erroring out, since enabling the setting on a CPU-only install (the
+    common case) shouldn't break OCR.
+    """
+    if not is_gpu_enabled(conn):
+        return "cpu"
+    if paddle.device.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0:
+        return "gpu"
+    _logger.warning(
+        "GPU is enabled in settings, but no CUDA-capable PaddlePaddle build/GPU "
+        "was found. Falling back to CPU."
+    )
+    return "cpu"
+
+
+def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
     global _engine
     if _engine is None:
         _engine = PaddleOCR(
             lang="en",
+            device=_resolve_device(conn),
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
@@ -75,8 +101,8 @@ def _iter_supported_files(path: Path) -> Iterator[Path]:
             yield candidate
 
 
-def _ocr_image_array(image: str | np.ndarray) -> tuple[str, float]:
-    engine = _get_engine()
+def _ocr_image_array(conn: sqlite3.Connection, image: str | np.ndarray) -> tuple[str, float]:
+    engine = _get_engine(conn)
     result = engine.predict(image)
     page = result[0] if result else {}
     texts = page.get("rec_texts", [])
@@ -85,8 +111,8 @@ def _ocr_image_array(image: str | np.ndarray) -> tuple[str, float]:
     return "\n".join(texts), confidence
 
 
-def _ocr_image_file(file_path: Path) -> PageResult:
-    text, confidence = _ocr_image_array(str(file_path))
+def _ocr_image_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
+    text, confidence = _ocr_image_array(conn, str(file_path))
     return PageResult(text=text, confidence=confidence, source="ocr")
 
 
@@ -124,7 +150,7 @@ def _significant_image_blocks(
     return bboxes
 
 
-def _ocr_pdf_page(page: pymupdf.Page) -> PageResult:
+def _ocr_pdf_page(conn: sqlite3.Connection, page: pymupdf.Page) -> PageResult:
     """Classify a page as native, scanned, or mixed and extract accordingly.
 
     Native text is read directly from the PDF's text layer with no OCR at all.
@@ -141,20 +167,20 @@ def _ocr_pdf_page(page: pymupdf.Page) -> PageResult:
         region_texts = []
         region_scores = []
         for bbox in image_blocks:
-            text, confidence = _ocr_image_array(_render_page_array(page, clip=bbox))
+            text, confidence = _ocr_image_array(conn, _render_page_array(page, clip=bbox))
             region_texts.append(text)
             region_scores.append(confidence)
         combined_text = "\n".join([native_text.strip(), *region_texts])
         combined_confidence = sum(region_scores) / len(region_scores)
         return PageResult(text=combined_text, confidence=combined_confidence, source="mixed")
 
-    text, confidence = _ocr_image_array(_render_page_array(page))
+    text, confidence = _ocr_image_array(conn, _render_page_array(page))
     return PageResult(text=text, confidence=confidence, source="ocr")
 
 
-def _ocr_pdf_file(file_path: Path) -> list[PageResult]:
+def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
     with pymupdf.open(file_path) as doc:
-        return [_ocr_pdf_page(page) for page in doc]
+        return [_ocr_pdf_page(conn, page) for page in doc]
 
 
 def _upsert_document(
@@ -271,7 +297,7 @@ def run_ocr(
 
         try:
             if file_type == "pdf":
-                page_results = _ocr_pdf_file(file_path)
+                page_results = _ocr_pdf_file(conn, file_path)
                 conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
                 conn.executemany(
                     "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence, source) "
@@ -282,7 +308,7 @@ def run_ocr(
                     ],
                 )
             else:
-                page = _ocr_image_file(file_path)
+                page = _ocr_image_file(conn, file_path)
                 conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
                 conn.execute(
                     "INSERT INTO image_pages (document_id, ocr_text, confidence) VALUES (?, ?, ?)",

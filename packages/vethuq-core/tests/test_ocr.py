@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import connect
-from vethuq_core.ocr import _is_native_text, run_ocr
+from vethuq_core.ocr import _is_native_text, _resolve_device, run_ocr
+from vethuq_core.settings import set_gpu_enabled
 from vethuq_core.sources import add_source
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
@@ -153,6 +154,31 @@ def test_run_ocr_only_new_files_skips_already_indexed(
     }
     assert docs[str((folder / "first.png").resolve())] == "indexed"
     assert docs[str((folder / "second.png").resolve())] == "indexed"
+
+
+def test_resolve_device_defaults_to_cpu(conn: sqlite3.Connection):
+    assert _resolve_device(conn) == "cpu"
+
+
+@patch("vethuq_core.ocr.paddle")
+def test_resolve_device_uses_gpu_when_enabled_and_available(
+    mock_paddle, conn: sqlite3.Connection
+):
+    mock_paddle.device.is_compiled_with_cuda.return_value = True
+    mock_paddle.device.cuda.device_count.return_value = 1
+    set_gpu_enabled(conn, True)
+
+    assert _resolve_device(conn) == "gpu"
+
+
+@patch("vethuq_core.ocr.paddle")
+def test_resolve_device_falls_back_to_cpu_when_enabled_but_unsupported(
+    mock_paddle, conn: sqlite3.Connection
+):
+    mock_paddle.device.is_compiled_with_cuda.return_value = False
+    set_gpu_enabled(conn, True)
+
+    assert _resolve_device(conn) == "cpu"
 
 
 def test_is_native_text_threshold():

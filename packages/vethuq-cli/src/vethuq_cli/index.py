@@ -6,7 +6,6 @@ from pathlib import Path
 
 import typer
 from vethuq_core.db import connect
-from vethuq_core.ocr import get_document_results, run_ocr
 from vethuq_core.sources import list_sources
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
@@ -21,6 +20,12 @@ def run() -> None:
     files are (re)processed; already-indexed files are left untouched. A
     freshly added or reactivated source is (re)processed in full.
     """
+    # Imported here, not at module level: vethuq_core.ocr pulls in
+    # paddleocr/paddle/cv2, which print import-time noise and are slow to
+    # import - other `vethuq` subcommands shouldn't pay that cost just
+    # because Typer has to import this module to register `index run`.
+    from vethuq_core.ocr import get_document_results, run_ocr
+
     conn = connect()
     try:
         sources = [s for s in list_sources(conn) if s.status in ("pending", "indexed", "error")]

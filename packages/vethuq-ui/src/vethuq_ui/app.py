@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from vethuq_core.db import connect
 from vethuq_core.ocr import run_ocr
+from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import SourceAlreadyExistsError, SourceError, add_source, list_sources
 
 _INDEX_POLL_INTERVAL_MS = 5000
@@ -26,6 +27,7 @@ class MainWindow(tk.Tk):
         self.title("VethuQ")
         self.geometry("720x480")
 
+        self._build_menubar()
         self._build_toolbar()
         self._build_source_list()
         self.refresh_sources()
@@ -54,6 +56,23 @@ class MainWindow(tk.Tk):
     def destroy(self) -> None:
         self._worker_stop.set()
         super().destroy()
+
+    def _build_menubar(self) -> None:
+        menubar = tk.Menu(self)
+
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        self._gpu_enabled_var = tk.BooleanVar(value=is_gpu_enabled(self.conn))
+        settings_menu.add_checkbutton(
+            label="Use GPU (if available)",
+            variable=self._gpu_enabled_var,
+            command=self._on_toggle_gpu,
+        )
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+
+        self.config(menu=menubar)
+
+    def _on_toggle_gpu(self) -> None:
+        set_gpu_enabled(self.conn, self._gpu_enabled_var.get())
 
     def _build_toolbar(self) -> None:
         toolbar = ttk.Frame(self)
