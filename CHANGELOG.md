@@ -50,3 +50,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq index run` now also checks already-indexed sources for files added since the last run, instead of only ever looking at sources it hasn't touched yet.
 - Commands that don't do OCR (e.g. `vethuq settings gpu status`) no longer print unrelated OCR-engine startup messages.
 - Searching no longer returns matches from files whose source has been removed.
+- Permanently purging removed sources no longer fails with a database error when two of them shared duplicate-flagged content, and no longer leaves `index history` pointing at a source that's gone.
