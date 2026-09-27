@@ -16,6 +16,15 @@ Built so far: `packages/vethuq-core`, `packages/vethuq-cli`, and
 `packages/vethuq-ui`. Everything else below is the **planned** package
 map — build them incrementally as tiers require them, not up front.
 
+`packages/vethuq` is a fourth, different kind of package: the only one
+published to PyPI (`pip install vethuq`). `packages/vethuq/scripts/merge_sources.py`
+vendors `vethuq-core` + `vethuq-cli`'s source into it at build time (as
+`vethuq._core` / `vethuq._cli`, generated and gitignored, not committed)
+so tech users get `import vethuq` and the `vethuq` CLI from one
+distribution, without `vethuq-core`/`vethuq-cli` ever being independently
+installable from PyPI. See `scripts/dev/release.py` to build/verify it
+locally, and `.github/workflows/release.yml` for the publish workflow.
+
 ## Planned package map
 
 | Package | Purpose | Introduced by tier |

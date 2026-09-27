@@ -50,6 +50,8 @@ from vethuq_cli.settings import (
 from vethuq_cli.source import add as source_add
 from vethuq_cli.source import list_ as source_list
 from vethuq_cli.source import remove as source_remove
+from vethuq_cli.stats import reset as stats_reset
+from vethuq_cli.stats import show as stats_show
 
 
 class _Quit(Exception):
@@ -325,6 +327,19 @@ def _settings_index_menu() -> None:
             _settings_stale_lock_menu()
 
 
+def _stats_menu() -> None:
+    while True:
+        console.print()
+        _print_menu("Stats", [("1", "Show"), ("2", "Reset"), ("0", "Back")])
+        choice = _prompt_choice(["1", "2", "0"])
+        if choice == "0":
+            return
+        if choice == "1":
+            _run_safely(stats_show)
+        elif choice == "2":
+            _run_safely(stats_reset, force=False)
+
+
 def _settings_menu() -> None:
     while True:
         console.print()
@@ -353,11 +368,12 @@ def run_interactive() -> None:
                     ("2", "Sources"),
                     ("3", "Index"),
                     ("4", "Settings"),
-                    ("5", "Exit"),
+                    ("5", "Stats"),
+                    ("6", "Exit"),
                 ],
             )
-            choice = _prompt_choice(["1", "2", "3", "4", "5"])
-            if choice == "5":
+            choice = _prompt_choice(["1", "2", "3", "4", "5", "6"])
+            if choice == "6":
                 break
             if choice == "1":
                 _search_action()
@@ -367,6 +383,8 @@ def run_interactive() -> None:
                 _index_menu()
             elif choice == "4":
                 _settings_menu()
+            elif choice == "5":
+                _stats_menu()
     except _Quit:
         pass
     console.print()

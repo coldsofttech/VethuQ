@@ -379,6 +379,58 @@ def request_resume(db_path: Path | None = None) -> None:
     _set_control(db_path, "run")
 
 
+@dataclass
+class IndexRun:
+    id: int
+    target: str | None
+    mode: str  # "run" | "restart"
+    status: str  # "running" | "completed" | "stopped" | "failed"
+    pid: int | None
+    total_files: int
+    processed_files: int
+    failed_files: int
+    workers: int | None
+    started_at: str
+    completed_at: str | None
+
+    @classmethod
+    def _from_row(cls, row: sqlite3.Row) -> IndexRun:
+        return cls(
+            id=row["id"],
+            target=row["target"],
+            mode=row["mode"],
+            status=row["status"],
+            pid=row["pid"],
+            total_files=row["total_files"],
+            processed_files=row["processed_files"],
+            failed_files=row["failed_files"],
+            workers=row["workers"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+        )
+
+
+def list_index_runs(
+    conn: sqlite3.Connection, target: str | None = None, limit: int = 10
+) -> list[IndexRun]:
+    """Return past index runs, most recent first, optionally filtered to one source.
+
+    A run over "all sources" (`target` column IS NULL) covered every source,
+    so it's included alongside runs targeted at just the given `target`.
+    """
+    if target is None:
+        rows = conn.execute(
+            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
+            "ORDER BY started_at DESC LIMIT ?",
+            (target, limit),
+        ).fetchall()
+    return [IndexRun._from_row(row) for row in rows]
+
+
 def resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source]:
     """Return the sources a run/status check against `target` would cover.
 

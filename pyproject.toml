@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 members = ["packages/*"]
 
 [tool.uv.sources]
+vethuq = { workspace = true }
 vethuq-core = { workspace = true }
 vethuq-cli = { workspace = true }
 vethuq-ui = { workspace = true }
@@ -31,6 +32,13 @@ dev = [
 icons = [
     "svglib==1.5.1",
     "reportlab==3.6.13",
+]
+
+# For scripts/dev/release.py --desktop only - opt-in via
+# `uv sync --group desktop`. Windows-only (the desktop build itself is
+# Windows-only for now), so not part of the default `dev` group.
+desktop = [
+    "pyinstaller>=6.10; sys_platform == 'win32'",
 ]
 
 [tool.ruff]

@@ -1,0 +1,56 @@
+name: Release (vethuq package)
+
+# Tag scheme: vX.Y.Z (stable, tag from main) -> GitHub Release + PyPI.
+# vX.Y.Z-dev.N (prerelease, tag from a dev/v* branch) -> GitHub prerelease
+# only, PyPI publish skipped. Channel is decided purely from the tag
+# suffix (`-dev`), not from which branch the tag lives on.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write # PyPI Trusted Publishing (OIDC)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # hatch-vcs needs full history to derive the version
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Build vethuq package
+        run: uv run python scripts/dev/release.py --package
+
+      - name: Determine channel
+        id: channel
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_name }}" == *-dev.* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/vethuq-*
+          prerelease: ${{ steps.channel.outputs.prerelease }}
+          generate_release_notes: true
+
+      - name: Publish to PyPI
+        if: steps.channel.outputs.prerelease == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
