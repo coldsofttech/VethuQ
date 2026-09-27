@@ -8,7 +8,12 @@ import time
 from pathlib import Path
 
 import typer
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TaskProgressColumn
+from rich.progress import TextColumn as ProgressTextColumn
 from rich.prompt import Confirm
+from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.index_runner import (
@@ -93,16 +98,41 @@ def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
     return f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
 
 
-def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
-    percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
-    status_style = _RUN_STATUS_STYLES.get(state.status, "default")
-    console.print(Text.assemble("Status: ", (state.status, f"bold {status_style}")))
-    console.print(Text(f"Mode: {state.mode}", style="bright_yellow"))
-    console.print(Text(f"Target: {state.target or 'all sources'}", style="bright_yellow"))
-    console.print(
-        f"Progress: {state.processed_files}/{state.total_files} ({percent:.0f}%), "
-        f"{state.failed_files} failed"
+def _progress_bar(processed: int, total: int) -> Progress:
+    """A `Progress` renderable showing an animated bar plus count and percentage.
+
+    Not started (`.start()` is never called) - it's rendered as a plain,
+    self-contained renderable, either once for a static snapshot or repeatedly
+    via `Live.update()`, without spinning up its own refresh thread.
+    """
+    bar = Progress(
+        BarColumn(bar_width=30),
+        ProgressTextColumn("{task.completed}/{task.total}"),
+        TaskProgressColumn(),
     )
+    bar.add_task("progress", total=total or 1, completed=processed)
+    return bar
+
+
+def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated: bool) -> Panel:
+    status_style = _RUN_STATUS_STYLES.get(state.status, "default")
+
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="bright_yellow", no_wrap=True)
+    table.add_column()
+
+    table.add_row("Status", Text(state.status, style=f"bold {status_style}"))
+    table.add_row("Mode", state.mode)
+    table.add_row("Target", state.target or "all sources")
+
+    if animated:
+        table.add_row("Progress", _progress_bar(state.processed_files, state.total_files))
+    else:
+        percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
+        table.add_row("Progress", f"{state.processed_files}/{state.total_files} ({percent:.0f}%)")
+    failed_style = "bold red" if state.failed_files else "default"
+    table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
+
     if state.thread_workers_setting == "0":
         workers_label = "disabled (sequential)"
     elif state.thread_workers_setting == THREAD_WORKERS_AUTO:
@@ -110,15 +140,49 @@ def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
         workers_label = f"auto (currently {state.workers} {thread_word})"
     else:
         workers_label = f"{state.workers} threads"
-    console.print(f"Workers: {workers_label}")
+    table.add_row("Workers", workers_label)
+
     if state.current_files:
-        names = ", ".join(Path(f).name for f in state.current_files)
         label = "Current files" if len(state.current_files) > 1 else "Current file"
-        console.print(f"{label}: {names}")
+        files_text = Text("\n".join(f"• {Path(f).name}" for f in state.current_files))
+        table.add_row(label, files_text)
+
     if state.status == "running":
         eta = _estimate_eta(conn, state)
         if eta is not None:
-            console.print(f"ETA: ~{eta}")
+            table.add_row("ETA", f"~{eta}")
+
+    border_style = status_style if status_style != "default" else "white"
+    return Panel(table, title="Index Run", border_style=border_style, expand=False)
+
+
+def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
+    console.print(_build_state_panel(conn, state, animated=False))
+
+
+def _live_wait(conn: sqlite3.Connection, pid: int) -> None:
+    """Live-refresh the state panel until the run owned by `pid` reaches a terminal state."""
+    with Live(console=console, refresh_per_second=4) as live:
+        while True:
+            time.sleep(_POLL_SECONDS)
+            state = read_state()
+            if state is not None and state.pid == pid:
+                live.update(_build_state_panel(conn, state, animated=True))
+                if state.status in ("completed", "stopped", "failed"):
+                    return
+                continue
+            # No state yet for this pid - could just be starting up (the worker
+            # hasn't written its first state file yet) or it could genuinely be
+            # gone (e.g. crashed before writing anything). Only stop waiting once
+            # the process itself is confirmed no longer running.
+            running, current_pid = is_running()
+            if not running or current_pid != pid:
+                live.stop()
+                console.print(
+                    "Background run ended before reporting any progress. "
+                    f"If this is unexpected, check {log_path()} for errors."
+                )
+                return
 
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
@@ -154,29 +218,11 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         )
         return
 
-    while True:
-        time.sleep(_POLL_SECONDS)
-        state = read_state()
-        if state is not None and state.pid == pid:
-            if state.status in ("completed", "stopped", "failed"):
-                conn = connect()
-                try:
-                    _print_state(conn, state)
-                finally:
-                    conn.close()
-                return
-            continue
-        # No state yet for this pid - could just be starting up (the worker
-        # hasn't written its first state file yet) or it could genuinely be
-        # gone (e.g. crashed before writing anything). Only stop waiting once
-        # the process itself is confirmed no longer running.
-        running, current_pid = is_running()
-        if not running or current_pid != pid:
-            console.print(
-                "Background run ended before reporting any progress. "
-                f"If this is unexpected, check {log_path()} for errors."
-            )
-            return
+    conn = connect()
+    try:
+        _live_wait(conn, pid)
+    finally:
+        conn.close()
 
 
 @app.command("run")
@@ -229,6 +275,9 @@ def status(
         None, help="Show detailed per-file status for this source id or path."
     ),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    wait: bool = typer.Option(
+        False, "--wait", help="Live-refresh progress until the run finishes."
+    ),
 ) -> None:
     """Show background index run progress, or per-file detail for one source."""
     if target is None:
@@ -241,7 +290,10 @@ def status(
             return
         conn = connect()
         try:
-            _print_state(conn, state)
+            if wait and state.status in ("running", "paused"):
+                _live_wait(conn, state.pid)
+            else:
+                _print_state(conn, state)
         finally:
             conn.close()
         return
