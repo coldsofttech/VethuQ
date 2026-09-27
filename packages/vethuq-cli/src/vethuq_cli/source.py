@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import typer
+from rich.prompt import Confirm
+from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
     add_source,
+    get_source,
     list_sources,
     remove_source,
 )
 
+from vethuq_cli.console import console, error_console
+
 app = typer.Typer(help="Manage files and folders registered as VethuQ sources.")
+
+_STATUS_STYLES = {"indexed": "green", "pending": "blue", "error": "red"}
 
 
 @app.command("add")
@@ -27,11 +34,16 @@ def add(
     try:
         source = add_source(conn, path)
     except (SourcePathError, SourceAlreadyExistsError) as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
     else:
-        typer.echo(f"Added {source.source_type}: {source.path}")
-        typer.echo("Run 'vethuq index run' to process pending sources.")
+        console.print(Text.assemble((f"Added {source.source_type}: ", "bold green"), source.path))
+        console.print()
+        console.print(
+            Text.assemble(
+                "Run '", ("vethuq index run", "bold cyan"), "' to process pending sources."
+            )
+        )
     finally:
         conn.close()
 
@@ -46,26 +58,47 @@ def list_() -> None:
         conn.close()
 
     if not sources:
-        typer.echo("No sources registered yet.")
+        console.print("No sources registered yet.", style="bright_black")
         return
 
     for source in sources:
-        typer.echo(f"[{source.id}] {source.source_type:<6} {source.status:<8} {source.path}")
+        line = Text.assemble(
+            "[",
+            (str(source.id), "bright_black"),
+            "] ",
+            (f"{source.source_type:<6}", "bright_yellow"),
+            " ",
+            (f"{source.status:<8}", _STATUS_STYLES.get(source.status, "default")),
+            f" {source.path}",
+        )
+        console.print(line)
 
 
 @app.command("remove")
 def remove(
     path_or_id: str = typer.Argument(..., help="Registered source id or path to remove."),
+    force: bool = typer.Option(False, "--force", help="Remove without asking for confirmation."),
 ) -> None:
     """Remove a registered source."""
     conn = connect()
     try:
         target: str | int = int(path_or_id) if path_or_id.isdigit() else path_or_id
+        try:
+            source = get_source(conn, target)
+        except SourceNotFoundError as exc:
+            error_console.print(str(exc), style="bold red")
+            raise typer.Exit(code=1) from exc
+
+        if not force:
+            prompt = Text.assemble(
+                "Remove ", (source.source_type, "bright_yellow"), f" '{source.path}'?"
+            )
+            if not Confirm.ask(prompt, console=console, default=False):
+                console.print("Aborted.", style="bright_black")
+                raise typer.Exit(code=0)
+
         source = remove_source(conn, target)
-    except SourceNotFoundError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1) from exc
-    else:
-        typer.echo(f"Removed {source.source_type}: {source.path}")
     finally:
         conn.close()
+
+    console.print(Text.assemble((f"Removed {source.source_type}: ", "bold green"), source.path))

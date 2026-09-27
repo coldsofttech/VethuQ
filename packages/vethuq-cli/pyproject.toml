@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "vethuq-core",
     "typer>=0.12",
+    "rich>=13.7",
 ]
 
 [project.scripts]

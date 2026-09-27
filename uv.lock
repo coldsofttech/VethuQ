@@ -2925,12 +2925,14 @@ name = "vethuq-cli"
 version = "0.1.0"
 source = { editable = "packages/vethuq-cli" }
 dependencies = [
+    { name = "rich" },
     { name = "typer" },
     { name = "vethuq-core" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
     { name = "vethuq-core", editable = "packages/vethuq-core" },
 ]

@@ -35,15 +35,43 @@ def test_add_missing_path_fails(tmp_path, monkeypatch):
     assert result.exit_code == 1
 
 
-def test_remove_source(tmp_path, monkeypatch):
+def test_remove_source_with_force_skips_confirmation(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
     folder = tmp_path / "docs"
     folder.mkdir()
     runner.invoke(app, ["source", "add", str(folder)])
 
-    remove_result = runner.invoke(app, ["source", "remove", str(folder)])
+    remove_result = runner.invoke(app, ["source", "remove", str(folder), "--force"])
     assert remove_result.exit_code == 0
     assert "Removed folder" in remove_result.stdout
 
     list_result = runner.invoke(app, ["source", "list"])
     assert "No sources registered yet." in list_result.stdout
+
+
+def test_remove_source_confirms_before_removing(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    runner.invoke(app, ["source", "add", str(folder)])
+
+    remove_result = runner.invoke(app, ["source", "remove", str(folder)], input="y\n")
+    assert remove_result.exit_code == 0
+    assert "Removed folder" in remove_result.stdout
+
+    list_result = runner.invoke(app, ["source", "list"])
+    assert "No sources registered yet." in list_result.stdout
+
+
+def test_remove_source_declined_leaves_source_registered(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    runner.invoke(app, ["source", "add", str(folder)])
+
+    remove_result = runner.invoke(app, ["source", "remove", str(folder)], input="n\n")
+    assert remove_result.exit_code == 0
+    assert "Removed folder" not in remove_result.stdout
+
+    list_result = runner.invoke(app, ["source", "list"])
+    assert str(folder.resolve()) in list_result.stdout

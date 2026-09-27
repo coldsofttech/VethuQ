@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq index run` now recognizes a file that's been renamed or moved within its source (by content, without re-running OCR), and flags a file that's gone missing from its source for cleanup after the same retention period used for removed sources.
 - OCR results now record which engine and language processed them, the image resolution used, and memory/CPU usage during processing.
 - A file that fails OCR is now automatically retried before being marked as failed — configurable with `vethuq settings index ocr-retry set/show` (3 attempts by default).
+- The CLI's colored output now uses your system pager (e.g. `less`) to scroll through `vethuq search` results, instead of a custom built-in one.
 
 ### Fixed
 

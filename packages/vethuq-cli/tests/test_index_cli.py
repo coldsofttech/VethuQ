@@ -23,8 +23,17 @@ def _use_temp_db(monkeypatch, tmp_path):
     return db_path
 
 
+def _add_pending_source(db_path, tmp_path):
+    conn = db_module.connect(db_path)
+    try:
+        add_source(conn, tmp_path)
+    finally:
+        conn.close()
+
+
 def test_run_starts_background_process(tmp_path, monkeypatch):
-    _use_temp_db(monkeypatch, tmp_path)
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(123))
 
     result = runner.invoke(app, ["index", "run"])
@@ -34,7 +43,8 @@ def test_run_starts_background_process(tmp_path, monkeypatch):
 
 
 def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
-    _use_temp_db(monkeypatch, tmp_path)
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(777))
     monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
 
@@ -68,7 +78,8 @@ def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
 
 
 def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
-    _use_temp_db(monkeypatch, tmp_path)
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(888))
     monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(index_cli_module, "read_state", lambda: None)
@@ -82,6 +93,7 @@ def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
 
 def test_run_reports_already_running(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
+    _add_pending_source(db_path, tmp_path)
     index_runner_module._atomic_write(index_runner_module._lock_path(db_path), "999")
     monkeypatch.setattr(index_runner_module, "_is_pid_running", lambda pid: True)
 
@@ -92,7 +104,8 @@ def test_run_reports_already_running(tmp_path, monkeypatch):
 
 
 def test_restart_starts_background_process(tmp_path, monkeypatch):
-    _use_temp_db(monkeypatch, tmp_path)
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(456))
 
     result = runner.invoke(app, ["index", "restart"])
@@ -107,6 +120,21 @@ def test_run_unknown_target_fails(tmp_path, monkeypatch):
     result = runner.invoke(app, ["index", "run", "999"])
 
     assert result.exit_code == 1
+
+
+def test_run_with_no_sources_registered_does_not_start_a_process(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    def _fail_popen(*args, **kwargs):
+        raise AssertionError("should not start a background process with no sources registered")
+
+    monkeypatch.setattr(index_runner_module.subprocess, "Popen", _fail_popen)
+
+    result = runner.invoke(app, ["index", "run"])
+
+    assert result.exit_code == 0
+    assert "No sources registered yet." in result.stdout
+    assert "vethuq source add" in result.stdout
 
 
 def test_status_with_no_run(tmp_path, monkeypatch):
@@ -209,16 +237,34 @@ def test_status_unknown_target_fails(tmp_path, monkeypatch):
 def test_stop_without_running_fails(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
-    result = runner.invoke(app, ["index", "stop"])
+    result = runner.invoke(app, ["index", "stop", "--force"])
 
     assert result.exit_code == 1
+
+
+def test_stop_declined_does_not_call_request_stop(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["index", "stop"], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Index run stopped." not in result.stdout
 
 
 def test_pause_and_resume_without_running_fail(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
-    assert runner.invoke(app, ["index", "pause"]).exit_code == 1
+    assert runner.invoke(app, ["index", "pause", "--force"]).exit_code == 1
     assert runner.invoke(app, ["index", "resume"]).exit_code == 1
+
+
+def test_pause_declined_does_not_call_request_pause(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["index", "pause"], input="n\n")
+
+    assert result.exit_code == 0
+    assert "Index run paused." not in result.stdout
 
 
 def test_history_empty(tmp_path, monkeypatch):

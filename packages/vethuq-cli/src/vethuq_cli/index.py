@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 
 import typer
+from rich.prompt import Confirm
+from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.index_runner import (
     AlreadyRunningError,
@@ -24,11 +26,20 @@ from vethuq_core.index_runner import (
     start_run,
 )
 from vethuq_core.ocr import get_document_results, pending_file_type_counts
-from vethuq_core.sources import SourceNotFoundError, get_source
+from vethuq_core.sources import SourceNotFoundError, get_source, list_sources
+
+from vethuq_cli.console import console, error_console
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
 
 _POLL_SECONDS = 1.0
+_RUN_STATUS_STYLES = {
+    "running": "blue",
+    "completed": "green",
+    "failed": "red",
+    "stopped": "blue",
+    "paused": "blue",
+}
 
 
 def _coerce_target(path_or_id: str) -> str | int:
@@ -83,32 +94,53 @@ def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
 
 def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
     percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
-    typer.echo(f"Status: {state.status}")
-    typer.echo(f"Mode: {state.mode}")
-    typer.echo(f"Target: {state.target or 'all sources'}")
-    typer.echo(
+    status_style = _RUN_STATUS_STYLES.get(state.status, "default")
+    console.print(Text.assemble("Status: ", (state.status, f"bold {status_style}")))
+    console.print(Text(f"Mode: {state.mode}", style="bright_yellow"))
+    console.print(Text(f"Target: {state.target or 'all sources'}", style="bright_yellow"))
+    console.print(
         f"Progress: {state.processed_files}/{state.total_files} ({percent:.0f}%), "
         f"{state.failed_files} failed"
     )
     if state.current_file:
-        typer.echo(f"Current file: {Path(state.current_file).name}")
+        console.print(f"Current file: {Path(state.current_file).name}")
     if state.status == "running":
         eta = _estimate_eta(conn, state)
         if eta is not None:
-            typer.echo(f"ETA: ~{eta}")
+            console.print(f"ETA: ~{eta}")
 
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
+    if target is None:
+        conn = connect()
+        try:
+            has_sources = bool(list_sources(conn))
+        finally:
+            conn.close()
+        if not has_sources:
+            console.print(
+                Text.assemble(
+                    "No sources registered yet. Register one with '",
+                    ("vethuq source add <path>", "bold cyan"),
+                    "'.",
+                    style="bright_black",
+                )
+            )
+            return
+
     try:
         pid = start_run(target, force=force, restart=restart)
     except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
 
     verb = "restart" if restart else "index run"
-    typer.echo(f"Started background {verb} (pid {pid}).")
+    console.print(f"Started background {verb} (pid {pid}).", style="bold green")
     if not wait:
-        typer.echo("Check progress with 'vethuq index status'.")
+        console.print()
+        console.print(
+            Text.assemble("Check progress with '", ("vethuq index status", "bold cyan"), "'.")
+        )
         return
 
     while True:
@@ -129,7 +161,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         # the process itself is confirmed no longer running.
         running, current_pid = is_running()
         if not running or current_pid != pid:
-            typer.echo(
+            console.print(
                 "Background run ended before reporting any progress. "
                 f"If this is unexpected, check {log_path()} for errors."
             )
@@ -191,10 +223,10 @@ def status(
     if target is None:
         state = read_state()
         if as_json:
-            typer.echo(state.to_json() if state is not None else "null")
+            console.print(state.to_json() if state is not None else "null")
             return
         if state is None:
-            typer.echo("No index run has been started yet.")
+            console.print("No index run has been started yet.", style="bright_black")
             return
         conn = connect()
         try:
@@ -208,14 +240,14 @@ def status(
         try:
             source = get_source(conn, _coerce_target(target))
         except SourceNotFoundError as exc:
-            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            error_console.print(str(exc), style="bold red")
             raise typer.Exit(code=1) from exc
         results = get_document_results(conn, source.id)
     finally:
         conn.close()
 
     if as_json:
-        typer.echo(
+        console.print(
             json.dumps(
                 [
                     {
@@ -233,44 +265,63 @@ def status(
         return
 
     if not results:
-        typer.echo("No files indexed yet for this source.")
+        console.print("No files indexed yet for this source.", style="bright_black")
         return
 
     for r in results:
         name = Path(r.file_path).name
+        line = Text(f"  {name:<40} ")
         if r.status == "indexed":
             confidence = f"{r.confidence:.0%}" if r.confidence is not None else "n/a"
             duration = f"{r.duration:.1f}s" if r.duration is not None else "n/a"
-            line = f"  {name:<40} indexed  confidence: {confidence}  duration: {duration}"
+            line.append("indexed ", style="bold green")
+            line.append(f" confidence: {confidence}  duration: {duration}")
             if r.duplicate_of_path is not None:
-                line += f"  (duplicate of {Path(r.duplicate_of_path).name})"
-            typer.echo(line)
+                line.append(f"  (duplicate of {Path(r.duplicate_of_path).name})")
         elif r.status == "error":
-            typer.echo(f"  {name:<40} error    {r.error_message}")
+            line.append("error   ", style="bold red")
+            line.append(f" {r.error_message}")
         else:
-            typer.echo(f"  {name:<40} {r.status}")
+            line.append(r.status, style="bold blue")
+        console.print(line)
 
 
 @app.command("stop")
-def stop() -> None:
+def stop(
+    force: bool = typer.Option(False, "--force", help="Stop without asking for confirmation."),
+) -> None:
     """Force-stop the currently running background index."""
+    if not force and not Confirm.ask(
+        "Stop the currently running index run? Progress on the current file will be lost.",
+        console=console,
+        default=False,
+    ):
+        console.print("Aborted.", style="bright_black")
+        raise typer.Exit(code=0)
     try:
         request_stop()
     except IndexRunnerError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
-    typer.echo("Index run stopped.")
+    console.print("Index run stopped.", style="bold green")
 
 
 @app.command("pause")
-def pause() -> None:
+def pause(
+    force: bool = typer.Option(False, "--force", help="Pause without asking for confirmation."),
+) -> None:
     """Pause the currently running background index."""
+    if not force and not Confirm.ask(
+        "Pause the currently running index run?", console=console, default=False
+    ):
+        console.print("Aborted.", style="bright_black")
+        raise typer.Exit(code=0)
     try:
         request_pause()
     except IndexRunnerError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
-    typer.echo("Index run paused.")
+    console.print("Index run paused.", style="bold yellow")
 
 
 @app.command("resume")
@@ -279,9 +330,9 @@ def resume() -> None:
     try:
         request_resume()
     except IndexRunnerError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
-    typer.echo("Index run resumed.")
+    console.print("Index run resumed.", style="bold green")
 
 
 @app.command("history")
@@ -303,7 +354,7 @@ def history(
             try:
                 get_source(conn, _coerce_target(target))
             except SourceNotFoundError as exc:
-                typer.secho(str(exc), fg=typer.colors.RED, err=True)
+                error_console.print(str(exc), style="bold red")
                 raise typer.Exit(code=1) from exc
             # A run over "all sources" (target IS NULL) would have covered
             # this source too, so it's included alongside runs targeted at
@@ -317,17 +368,25 @@ def history(
         conn.close()
 
     if as_json:
-        typer.echo(json.dumps([dict(row) for row in rows]))
+        console.print(json.dumps([dict(row) for row in rows]))
         return
 
     if not rows:
-        typer.echo("No index runs recorded yet.")
+        console.print("No index runs recorded yet.", style="bright_black")
         return
 
     for row in rows:
         target = row["target"] or "all sources"
-        typer.echo(
-            f"[{row['id']}] {row['started_at']}  mode={row['mode']}  target={target}  "
-            f"status={row['status']}  {row['processed_files']}/{row['total_files']} processed, "
-            f"{row['failed_files']} failed"
+        line = Text.assemble(
+            "[",
+            (str(row["id"]), "bright_black"),
+            f"] {row['started_at']}  ",
+            (f"mode={row['mode']}", "bright_yellow"),
+            "  ",
+            (f"target={target}", "bright_yellow"),
+            "  status=",
+            (row["status"], _RUN_STATUS_STYLES.get(row["status"], "default")),
+            f"  {row['processed_files']}/{row['total_files']} processed, "
+            f"{row['failed_files']} failed",
         )
+        console.print(line)
