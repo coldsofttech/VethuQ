@@ -32,6 +32,7 @@ from pathlib import Path
 
 from vethuq_core.db import connect, default_db_path
 from vethuq_core.ocr import (
+    new_file_type_counts,
     pending_file_count,
     pending_file_type_counts,
     resolve_thread_workers,
@@ -407,7 +408,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             pending_file_count(conn, s, only_new_files=s.status != "pending", only_failed=restart)
             for s in sources
         )
-        type_counts = {"pdf": 0, "image": 0}
+        type_counts = new_file_type_counts()
         for source in sources:
             counts = pending_file_type_counts(
                 conn, source, only_new_files=source.status != "pending", only_failed=restart
