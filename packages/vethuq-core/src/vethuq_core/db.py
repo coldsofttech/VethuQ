@@ -254,6 +254,5 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             )
         if "avg_cpu_percent" not in columns:
             conn.execute(
-                "ALTER TABLE processing_metrics ADD COLUMN avg_cpu_percent "
-                "REAL NOT NULL DEFAULT 0"
+                "ALTER TABLE processing_metrics ADD COLUMN avg_cpu_percent REAL NOT NULL DEFAULT 0"
             )
