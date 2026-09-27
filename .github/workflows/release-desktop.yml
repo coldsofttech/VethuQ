@@ -1,0 +1,52 @@
+name: Release (VethuQ Desktop)
+
+# Separate release stream from release.yml - never publishes to PyPI.
+# Tag scheme mirrors release.yml: desktop-vX.Y.Z (stable) vs
+# desktop-vX.Y.Z-dev.N (prerelease), decided from the tag suffix.
+on:
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev --group desktop
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build VethuQ Desktop installer
+        run: uv run python scripts/dev/release.py --desktop
+
+      - name: Determine channel
+        id: channel
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_name }}" == *-dev.* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/VethuQ-Setup.exe
+          prerelease: ${{ steps.channel.outputs.prerelease }}
+          body: |
+            VethuQ Desktop installer. See [docs/DESKTOP.md](https://github.com/${{ github.repository }}/blob/main/docs/DESKTOP.md) for install and usage instructions.

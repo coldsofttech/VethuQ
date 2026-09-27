@@ -1,0 +1,289 @@
+# Python API reference
+
+Install with `pip install vethuq` (Windows or Linux, Python 3.11+) — this
+also gives you the `vethuq` CLI, see [docs/CLI.md](CLI.md).
+
+```python
+import vethuq
+
+client = vethuq.Vethuq()
+```
+
+`vethuq` is a thin public surface over the same engine that powers the
+CLI and desktop app: registering sources (files/folders for OCR and
+indexing) and running/controlling indexing. It grows as more of VethuQ's
+functionality (search) is exposed here.
+
+Every method below connects to VethuQ's local SQLite database — the same
+one the CLI and desktop app use, at `DB_PATH` — for the single call and
+closes it again. There's no connection object to manage.
+
+### `DB_PATH`
+
+The `Path` to VethuQ's local SQLite database (the same one the CLI and
+desktop app use).
+
+## `client.sources`
+
+### `add(path)`
+
+Register a file or folder as a source. Folders are indexed recursively.
+Raises `SourcePathError` if `path` doesn't exist, `SourceAlreadyExistsError`
+if it's already registered.
+
+```python
+source = client.sources.add("./path/to/folder-or-file")
+```
+
+### `list(include_inactive=False)`
+
+Return registered sources, most recently added first.
+
+```python
+for source in client.sources.list():
+    print(source.id, source.path)
+```
+
+### `remove(source_id)`
+
+Unregister a source by id or path. Raises `SourceNotFoundError` if it
+doesn't exist.
+
+## `Source`
+
+The registered-source model returned by `sources.add`/`sources.list`/
+`sources.remove`:
+
+- `id`, `path`, `source_type` (`"file"` or `"folder"`)
+- `status` (`"pending"`, `"indexed"`, `"error"`, or `"removed"`)
+- `added_at`, `last_scanned_at`
+- `is_active`, `removed_at`
+
+## `client.index`
+
+Indexing runs in the background, the same way as `vethuq index run`. See
+[docs/CLI.md](CLI.md) for the underlying concepts (targets, pause/resume,
+history).
+
+### `run(target=None, *, force=False, wait=False)`
+
+Start OCR indexing on registered sources. `target` is a source id or path;
+omit it to index every pending source. Returns the background process id,
+or, with `wait=True`, blocks until the run finishes and returns its final
+`IndexState` instead.
+
+Raises `AlreadyRunningError` if a run is already in progress, and
+`StaleLockError` if a previous run left a stale lock (`force=True` clears
+it). Raises `SourceNotFoundError` if `target` doesn't match a registered
+source.
+
+```python
+pid = client.index.run()
+state = client.index.run(wait=True)
+```
+
+### `restart(target=None, *, force=False, wait=False)`
+
+Retry only previously-failed files, in the background. Same arguments and
+return value as `run`.
+
+### `status(target=None)`
+
+With no `target`, returns the live/last-known `IndexState` (or `None` if no
+run has ever started). With a `target` (source id or path), returns a
+`DocumentResult` per file indexed under that source instead. Raises
+`SourceNotFoundError` if `target` doesn't match a registered source.
+
+```python
+state = client.index.status()
+print(state.status, state.processed_files, state.total_files)
+
+for result in client.index.status(source.id):
+    print(result.file_path, result.status)
+```
+
+### `stop()`
+
+Stop the currently running background index and wait for confirmation.
+Raises `IndexRunnerError` if no run is currently active.
+
+### `pause()` / `resume()`
+
+Pause or resume the currently running background index. Raises
+`IndexRunnerError` if no run is currently active.
+
+### `history(target=None, limit=10)`
+
+Return the last `limit` background index runs (`IndexRun`), most recent
+first, optionally filtered to one source. A run over all sources is
+included alongside runs targeted at just `target`. Raises
+`SourceNotFoundError` if `target` doesn't match a registered source.
+
+## `IndexState`
+
+A background run's live/last-known progress, returned by `index.run`/
+`index.restart` (with `wait=True`) and `index.status()` (with no `target`):
+
+- `run_id`, `pid`, `target`, `mode` (`"run"` or `"restart"`)
+- `status` (`"running"`, `"paused"`, `"completed"`, `"stopped"`, or `"failed"`)
+- `total_files`, `processed_files`, `failed_files`
+- `thread_workers_setting`, `workers` (current effective worker count)
+- `current_files` (files being processed right now)
+- `started_at`, `updated_at`
+
+## `IndexRun`
+
+One past run's summary, returned by `index.history`:
+
+- `id`, `target`, `mode`, `status`, `pid`
+- `total_files`, `processed_files`, `failed_files`, `workers`
+- `started_at`, `completed_at`
+
+## `DocumentResult`
+
+One indexed file's result under a source, returned by `index.status(target)`:
+
+- `file_path`, `status`, `error_message`
+- `confidence` (`None` until successfully indexed)
+- `started_at`, `completed_at`, `duration` (seconds; `None` while pending)
+- `duplicate_of_path` (set if this file's content matched an already-indexed
+  file)
+
+## `client.settings`
+
+Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
+
+### `client.settings.gpu`
+
+- `is_enabled()` — whether OCR should attempt to use the GPU (disabled by default)
+- `enable()` / `disable()`
+
+### `client.settings.search.snippet`
+
+- `get()` — characters of context `search` shows around a match (80 by default)
+- `set(chars)` — raises `InvalidSettingValueError` if `chars` is negative
+
+### `client.settings.search.export_format`
+
+- `get()` — default format `search --export` writes to (`"json"` by default)
+- `set(format_)` — `format_` must be one of `SEARCH_EXPORT_FORMATS`
+  (`"json"`, `"html"`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.index.removed_retention`
+
+- `get()` — minutes a removed source is kept before it's purged (7 days by default)
+- `set(minutes)` — raises `InvalidSettingValueError` if `minutes` is negative
+
+### `client.settings.index.ocr_retry`
+
+- `get()` — times a file's OCR is retried after a transient failure (3 by default)
+- `set(attempts)` — raises `InvalidSettingValueError` if `attempts` is negative
+
+### `client.settings.index.thread_workers`
+
+- `get()` — worker threads background indexing uses (`"0"`, disabled, by default)
+- `set(value)` — `value` must be `"0"`-`ThreadWorkersSettings.MAX` or
+  `ThreadWorkersSettings.AUTO`; raises `InvalidSettingValueError` otherwise
+
+### `client.settings.index.stale_lock`
+
+- `get()` — whether a stale lock auto-clears on the next run (`"auto"` by default)
+- `set(value)` — `value` must be one of `STALE_LOCK_VALUES`
+  (`"enable"`, `"disable"`, `"auto"`); raises `InvalidSettingValueError` otherwise
+
+```python
+client.settings.gpu.enable()
+client.settings.search.snippet.set(120)
+client.settings.index.thread_workers.set(ThreadWorkersSettings.AUTO)
+```
+
+## `client.stats`
+
+Accumulated OCR processing/confidence statistics — mirrors `vethuq stats ...`
+in the CLI.
+
+### `processing()`
+
+Return per-(file type, size) running averages (`ProcessingMetric`): document
+count, average duration, peak memory, and CPU use.
+
+### `confidence()`
+
+Return per-(file type, process type) running averages (`ConfidenceMetric`):
+page count and average confidence.
+
+### `reset()`
+
+Clear both. They're running averages folded in as OCR completes, and
+`client.index.run`'s ETA estimate is based on them — after a reset, ETAs are
+unavailable again until enough files have been (re)indexed to rebuild them.
+
+```python
+for m in client.stats.processing():
+    print(m.file_type, m.size_bucket, m.avg_duration_seconds)
+
+client.stats.reset()
+```
+
+## `ProcessingMetric`
+
+- `file_type`, `size_bucket`, `document_count`
+- `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`
+- `updated_at`
+
+## `ConfidenceMetric`
+
+- `file_type`, `process_type`, `page_count`, `avg_confidence`, `updated_at`
+
+## `client.search`
+
+Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
+
+### `run(content, *, context_chars=None)`
+
+Search indexed OCR text for `content`, case-insensitively. Returns one
+`SearchMatch` per matching page, ordered by file path (pages of the same
+PDF stay in page order). Only successfully indexed documents are
+considered. `context_chars` defaults to `client.settings.search.snippet`
+if not given.
+
+```python
+for match in client.search.run("invoice"):
+    print(match.file_path, match.matched)
+```
+
+### `export(matches, query, output, format_=None)`
+
+Write `matches` for `query` to `output` (a path) as JSON or HTML, and
+return the resolved `Path`. `format_` defaults to
+`client.settings.search.export_format` if not given, and must be one of
+`SEARCH_EXPORT_FORMATS`.
+
+```python
+matches = client.search.run("invoice")
+client.search.export(matches, "invoice", "results.html", "html")
+```
+
+## `SearchMatch`
+
+One matching page, returned by `client.search.run`:
+
+- `file_id`, `file_name`, `file_path`
+- `page_number`, `total_pages` (both `None` for a non-paginated file, e.g. an image)
+- `before`, `matched`, `after` (the match split out for highlighting)
+- `truncated_before`, `truncated_after`
+- `duplicate_of_path` (set if this file's content matched an already-indexed file)
+
+## Errors
+
+`SourceError` is the base class for `SourceAlreadyExistsError`,
+`SourceNotFoundError`, and `SourcePathError` — catch `SourceError` to
+handle any of them generically, or a specific subclass to handle one case.
+
+`IndexRunnerError` is the base class for `AlreadyRunningError` and
+`StaleLockError`, raised by the indexing methods above.
+
+`SettingsError` is the base class for `InvalidSettingValueError`, raised by
+the `set(...)` methods under `client.settings` when given an invalid value
+(it's also a `ValueError`, so existing `except ValueError` handling still
+works).

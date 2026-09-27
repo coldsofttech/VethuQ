@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages --group dev
 
+      - name: Merge vethuq-core/vethuq-cli into packages/vethuq
+        run: uv run python packages/vethuq/scripts/merge_sources.py
+
       - name: Ruff check
         run: uv run ruff check .
 

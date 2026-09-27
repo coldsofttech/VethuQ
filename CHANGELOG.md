@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
+- The Python library now offers a `vethuq.Vethuq()` client with `client.sources` (add/list/remove), `client.index` (run/restart/status/stop/pause/resume/history), `client.settings` (GPU, search snippet/export format, and indexing retention/retry/workers/stale-lock), `client.stats` (processing/confidence statistics), and `client.search` (search indexed content and export results) — no database connection to manage yourself.
+- `vethuq`'s interactive menu (run with no arguments) now includes Stats, matching the `vethuq stats` command.
 - Initial repository scaffold: uv workspace, `vethuq-core` package, CI, and pre-commit setup.
 - Users can add folders and files as sources for OCR/indexing, from both the CLI (`vethuq source add/list/remove`) and the desktop UI's Settings > Sources view, which also lets you delete a registered source.
 - Registered sources are now OCR'd (English, PDF/PNG/JPEG) and indexed into the local database — via `vethuq index run` in the CLI, or automatically in the background in the desktop app.

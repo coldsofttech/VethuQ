@@ -1,5 +1,9 @@
 # CLI reference
 
+Install with `pip install vethuq` (Windows or Linux, Python 3.11+) — this
+also gives you `import vethuq` as a library, see
+[docs/PYTHON_API.md](PYTHON_API.md).
+
 The `vethuq` command-line tool manages sources (files/folders registered
 for OCR/indexing), runs the OCR indexing pipeline, and configures
 settings.
