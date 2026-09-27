@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from platformdirs import user_data_dir
@@ -10,7 +11,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -98,13 +99,18 @@ CREATE TABLE IF NOT EXISTS processing_metrics (
     file_type TEXT PRIMARY KEY CHECK (file_type IN ('pdf', 'image')),
     document_count INTEGER NOT NULL DEFAULT 0,
     avg_duration_seconds REAL NOT NULL DEFAULT 0,
-    avg_confidence REAL NOT NULL DEFAULT 0,
-    pages_native INTEGER NOT NULL DEFAULT 0,
-    pages_ocr INTEGER NOT NULL DEFAULT 0,
-    pages_mixed INTEGER NOT NULL DEFAULT 0,
     avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
     avg_cpu_percent REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS confidence_metrics (
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+    page_count INTEGER NOT NULL DEFAULT 0,
+    avg_confidence REAL NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (file_type, process_type)
 );
 """
 
@@ -268,3 +274,49 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(index_runs)")}
         if "workers" not in columns:
             conn.execute("ALTER TABLE index_runs ADD COLUMN workers INTEGER")
+    if from_version < 15:
+        # avg_confidence used to live on processing_metrics, blended across a
+        # file_type's native/ocr/mixed pages - since native pages are ~100%
+        # confidence, that blend diluted the OCR/mixed signal. Confidence now
+        # lives in its own table keyed by (file_type, process_type), backfilled
+        # below from the page-level history that's still in pdf_pages/image_pages
+        # rather than from the old blended average.
+        conn.execute(
+            """
+            CREATE TABLE processing_metrics_new (
+                file_type TEXT PRIMARY KEY CHECK (file_type IN ('pdf', 'image')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO processing_metrics_new "
+            "(file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+            "avg_cpu_percent, updated_at) "
+            "SELECT file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+            "avg_cpu_percent, updated_at FROM processing_metrics"
+        )
+        conn.execute("DROP TABLE processing_metrics")
+        conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
+
+        # `_ensure_schema` already created `confidence_metrics` via the
+        # `CREATE TABLE IF NOT EXISTS` in `_SCHEMA` before migrations run.
+        now = datetime.now(UTC).isoformat()
+        conn.execute(
+            "INSERT INTO confidence_metrics "
+            "(file_type, process_type, page_count, avg_confidence, updated_at) "
+            "SELECT 'pdf', source, COUNT(*), AVG(confidence), ? "
+            "FROM pdf_pages GROUP BY source",
+            (now,),
+        )
+        conn.execute(
+            "INSERT INTO confidence_metrics "
+            "(file_type, process_type, page_count, avg_confidence, updated_at) "
+            "SELECT 'image', 'ocr', COUNT(*), AVG(confidence), ? "
+            "FROM image_pages HAVING COUNT(*) > 0",
+            (now,),
+        )

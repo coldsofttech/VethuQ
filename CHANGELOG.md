@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dialogs and right-click menus in the desktop app are now styled to match its Windows 11 theme.
 - A removed source is now fully deleted from the database (not just hidden) after it's been removed for a while — 7 days by default, configurable with `vethuq settings index removed-retention set/show`.
 - Indexed documents now record their file size.
-- VethuQ now tracks running averages of OCR duration, confidence, and text-source mix (native/OCR/mixed) per file type.
+- VethuQ now tracks running averages of OCR duration per file type, and confidence per file type and text-source (native/OCR/mixed), so a document type's confidence isn't blended across very different sources.
 - `vethuq index status`'s ETA is now based on historical average OCR duration per file type, rather than this run's own pace, so it's available even before any file in the current run has finished.
 - Files with identical content to one already indexed are now detected as duplicates and linked to the original instead of being OCR'd again; both the CLI and the desktop app flag duplicates in search results and index status.
 - `vethuq index run` now also re-indexes files whose content has changed since they were last indexed, not just newly added ones; if a changed file was one others were flagged as duplicates of, one of them takes over as the original instead.
@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Running `vethuq` with no subcommand now opens an interactive menu for Search, Sources, Index, and Settings, instead of just printing help text.
 - While viewing `search` results, pressing `e` now lets you export them to a file (asking for the filename and format) instead of having to re-run the search with `--export`.
 - Background indexing can now process files with multiple worker threads instead of one at a time — configurable with `vethuq settings index thread-workers set/show` (also available from the interactive menu; disabled by default, set a fixed 1-8, or `auto` to keep it sized to current CPU/memory usage throughout the run). Pending files across all sources are now indexed in filename order together, rather than one whole source at a time.
+- `vethuq stats show` displays accumulated OCR processing and confidence statistics, and `vethuq stats reset` (with confirmation, or `--force`) clears them for a fresh baseline.
 
 ### Fixed
 

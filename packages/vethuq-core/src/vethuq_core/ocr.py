@@ -459,11 +459,12 @@ def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> Non
 
 
 def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
-    """Fold one freshly-indexed document into `processing_metrics`'s running averages.
+    """Fold one freshly-indexed document's duration/memory/cpu into `processing_metrics`'s
+    running averages.
 
-    Called only for successfully indexed documents - a failed document has no
-    confidence and a duration that doesn't reflect a full OCR pass, so it
-    would skew the averages `vethuq index run` uses to estimate ETAs.
+    Called only for successfully indexed documents - a failed document has a
+    duration that doesn't reflect a full OCR pass, so it would skew the
+    averages `vethuq index run` uses to estimate ETAs.
     """
     doc = conn.execute(
         "SELECT started_at, completed_at, peak_memory_mb, cpu_percent "
@@ -476,6 +477,55 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     peak_memory_mb = doc["peak_memory_mb"] or 0.0
     cpu_percent = doc["cpu_percent"] or 0.0
 
+    now = datetime.now(UTC).isoformat()
+    existing = conn.execute(
+        "SELECT document_count, avg_duration_seconds, "
+        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics WHERE file_type = ?",
+        (file_type,),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            "INSERT INTO processing_metrics "
+            "(file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+            "avg_cpu_percent, updated_at) "
+            "VALUES (?, 1, ?, ?, ?, ?)",
+            (file_type, duration, peak_memory_mb, cpu_percent, now),
+        )
+        return
+
+    new_count = existing["document_count"] + 1
+    avg_duration = (
+        existing["avg_duration_seconds"] + (duration - existing["avg_duration_seconds"]) / new_count
+    )
+    avg_peak_memory_mb = (
+        existing["avg_peak_memory_mb"]
+        + (peak_memory_mb - existing["avg_peak_memory_mb"]) / new_count
+    )
+    avg_cpu_percent = (
+        existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
+    )
+    conn.execute(
+        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
+        "avg_peak_memory_mb = ?, avg_cpu_percent = ?, updated_at = ? WHERE file_type = ?",
+        (
+            new_count,
+            avg_duration,
+            avg_peak_memory_mb,
+            avg_cpu_percent,
+            now,
+            file_type,
+        ),
+    )
+
+
+def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
+    """Fold one freshly-indexed document's pages into `confidence_metrics`'s running
+    averages, grouped independently by (file_type, process_type).
+
+    Native pages run near-100% confidence while OCR/mixed pages don't, so
+    blending them into a single average would dilute the OCR/mixed signal -
+    tracking each process_type separately keeps them meaningful.
+    """
     if file_type == "pdf":
         pages = conn.execute(
             "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
@@ -487,60 +537,42 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     if not pages:
         return
 
-    confidence = sum(page["confidence"] for page in pages) / len(pages)
-    native = sum(1 for page in pages if file_type == "pdf" and page["source"] == "native")
-    ocr = sum(1 for page in pages if file_type == "image" or page["source"] == "ocr")
-    mixed = sum(1 for page in pages if file_type == "pdf" and page["source"] == "mixed")
+    by_process_type: dict[str, list[float]] = {}
+    for page in pages:
+        process_type = page["source"] if file_type == "pdf" else "ocr"
+        by_process_type.setdefault(process_type, []).append(page["confidence"])
 
     now = datetime.now(UTC).isoformat()
-    existing = conn.execute(
-        "SELECT document_count, avg_duration_seconds, avg_confidence, "
-        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics WHERE file_type = ?",
-        (file_type,),
-    ).fetchone()
-    if existing is None:
-        conn.execute(
-            "INSERT INTO processing_metrics "
-            "(file_type, document_count, avg_duration_seconds, avg_confidence, "
-            "pages_native, pages_ocr, pages_mixed, avg_peak_memory_mb, avg_cpu_percent, "
-            "updated_at) "
-            "VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (file_type, duration, confidence, native, ocr, mixed, peak_memory_mb, cpu_percent, now),
-        )
-        return
+    for process_type, confidences in by_process_type.items():
+        existing = conn.execute(
+            "SELECT page_count, avg_confidence FROM confidence_metrics "
+            "WHERE file_type = ? AND process_type = ?",
+            (file_type, process_type),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO confidence_metrics "
+                "(file_type, process_type, page_count, avg_confidence, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    file_type,
+                    process_type,
+                    len(confidences),
+                    sum(confidences) / len(confidences),
+                    now,
+                ),
+            )
+            continue
 
-    new_count = existing["document_count"] + 1
-    avg_duration = (
-        existing["avg_duration_seconds"] + (duration - existing["avg_duration_seconds"]) / new_count
-    )
-    avg_confidence = (
-        existing["avg_confidence"] + (confidence - existing["avg_confidence"]) / new_count
-    )
-    avg_peak_memory_mb = (
-        existing["avg_peak_memory_mb"]
-        + (peak_memory_mb - existing["avg_peak_memory_mb"]) / new_count
-    )
-    avg_cpu_percent = (
-        existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
-    )
-    conn.execute(
-        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
-        "avg_confidence = ?, pages_native = pages_native + ?, pages_ocr = pages_ocr + ?, "
-        "pages_mixed = pages_mixed + ?, avg_peak_memory_mb = ?, avg_cpu_percent = ?, "
-        "updated_at = ? WHERE file_type = ?",
-        (
-            new_count,
-            avg_duration,
-            avg_confidence,
-            native,
-            ocr,
-            mixed,
-            avg_peak_memory_mb,
-            avg_cpu_percent,
-            now,
-            file_type,
-        ),
-    )
+        new_count = existing["page_count"] + len(confidences)
+        avg_confidence = (
+            existing["avg_confidence"] * existing["page_count"] + sum(confidences)
+        ) / new_count
+        conn.execute(
+            "UPDATE confidence_metrics SET page_count = ?, avg_confidence = ?, updated_at = ? "
+            "WHERE file_type = ? AND process_type = ?",
+            (new_count, avg_confidence, now, file_type, process_type),
+        )
 
 
 @dataclass(frozen=True)
@@ -911,6 +943,7 @@ def run_ocr(
         else:
             _mark_indexed(conn, document_id)
             _update_processing_metrics(conn, document_id, file_type)
+            _update_confidence_metrics(conn, document_id, file_type)
 
         conn.commit()
         if on_file_done is not None:
@@ -1041,6 +1074,7 @@ def _process_file(
         else:
             _mark_indexed(conn, document_id)
             _update_processing_metrics(conn, document_id, file_type)
+            _update_confidence_metrics(conn, document_id, file_type)
 
         conn.commit()
 

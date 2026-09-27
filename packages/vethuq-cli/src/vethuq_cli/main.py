@@ -10,11 +10,13 @@ from vethuq_cli.interactive import run_interactive
 from vethuq_cli.search import search as search_command
 from vethuq_cli.settings import app as settings_app
 from vethuq_cli.source import app as source_app
+from vethuq_cli.stats import app as stats_app
 
 app = typer.Typer(help=f"{APP_NAME} — {APP_TAGLINE}")
 app.add_typer(source_app, name="source")
 app.add_typer(index_app, name="index")
 app.add_typer(settings_app, name="settings")
+app.add_typer(stats_app, name="stats")
 app.command("search")(search_command)
 
 

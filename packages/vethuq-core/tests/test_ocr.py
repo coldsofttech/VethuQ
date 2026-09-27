@@ -164,10 +164,12 @@ def test_run_ocr_updates_processing_metrics_on_success(
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 1
-    assert metrics["avg_confidence"] == pytest.approx(0.8)
-    assert metrics["pages_ocr"] == 1
-    assert metrics["pages_native"] == 0
-    assert metrics["pages_mixed"] == 0
+
+    confidence = conn.execute(
+        "SELECT * FROM confidence_metrics WHERE file_type = 'image' AND process_type = 'ocr'"
+    ).fetchone()
+    assert confidence["page_count"] == 1
+    assert confidence["avg_confidence"] == pytest.approx(0.8)
 
     engine.predict.return_value = _fake_ocr_result(score=0.6)
     second = tmp_path / "second.png"
@@ -176,8 +178,12 @@ def test_run_ocr_updates_processing_metrics_on_success(
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 2
-    assert metrics["avg_confidence"] == pytest.approx(0.7)
-    assert metrics["pages_ocr"] == 2
+
+    confidence = conn.execute(
+        "SELECT * FROM confidence_metrics WHERE file_type = 'image' AND process_type = 'ocr'"
+    ).fetchone()
+    assert confidence["page_count"] == 2
+    assert confidence["avg_confidence"] == pytest.approx(0.7)
 
 
 @patch("vethuq_core.ocr._get_engine")
@@ -193,6 +199,7 @@ def test_run_ocr_does_not_update_processing_metrics_on_error(
     run_ocr(conn, add_source(conn, image_path))
 
     assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
+    assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
 
 
 @patch("vethuq_core.ocr._get_engine")
