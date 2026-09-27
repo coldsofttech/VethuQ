@@ -49,10 +49,6 @@ _logger = logging.getLogger(__name__)
 
 _OCR_LANGUAGE = "en"
 
-_PDF_EXTENSIONS = {".pdf"}
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
-_SUPPORTED_EXTENSIONS = _PDF_EXTENSIONS | _IMAGE_EXTENSIONS
-
 # A page's native text layer counts as usable content once it clears both floors -
 # short enough to reject a stray artifact (e.g. a scanner-stamped filename) that
 # would otherwise mask a page that's actually a scanned image.
@@ -127,11 +123,11 @@ class PageResult:
 
 def _iter_supported_files(path: Path) -> Iterator[Path]:
     if path.is_file():
-        if path.suffix.lower() in _SUPPORTED_EXTENSIONS:
+        if path.suffix.lower() in _READERS:
             yield path
         return
     for candidate in path.rglob("*"):
-        if candidate.is_file() and candidate.suffix.lower() in _SUPPORTED_EXTENSIONS:
+        if candidate.is_file() and candidate.suffix.lower() in _READERS:
             yield candidate
 
 
@@ -255,6 +251,60 @@ def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]
 
     with pymupdf.open(file_path) as doc:
         return [_ocr_pdf_page(conn, page) for page in doc]
+
+
+class Reader:
+    """Reads one file type into its pages. Extend this to support a new file type.
+
+    `file_type` is the label stored in `document_index`/`processing_metrics`/
+    `confidence_metrics` for files this reader handles - most callers branch
+    on it rather than on the reader itself, so readers that should share
+    existing branches (e.g. all image formats today) must share a `file_type`.
+    Persisting a new `file_type`'s pages still needs its own storage (see
+    `_process_file`/`run_ocr`) since `pdf_pages`/`image_pages` aren't generic.
+    """
+
+    file_type: str
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        raise NotImplementedError
+
+
+class PdfReader(Reader):
+    file_type = "pdf"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return _ocr_pdf_file(conn, file_path)
+
+
+class ImageReader(Reader):
+    file_type = "image"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [_ocr_image_file(conn, file_path)]
+
+
+class PngReader(ImageReader):
+    """A .png file - identical to `ImageReader` today, split out as a hook for
+    PNG-specific handling later (e.g. transparency)."""
+
+
+class JpgReader(ImageReader):
+    """A .jpg/.jpeg file - identical to `ImageReader` today, split out as a hook
+    for JPEG-specific handling later."""
+
+
+_READERS: dict[str, Reader] = {
+    ".pdf": PdfReader(),
+    ".png": PngReader(),
+    ".jpg": JpgReader(),
+    ".jpeg": JpgReader(),
+}
+
+
+def new_file_type_counts() -> dict[str, int]:
+    """A zeroed `{file_type: count}` for every file type registered readers handle."""
+    return dict.fromkeys((reader.file_type for reader in _READERS.values()), 0)
 
 
 _CHECKSUM_CHUNK_BYTES = 1024 * 1024
@@ -680,7 +730,7 @@ def _iter_pending_files(
             and not _has_content_changed(file_path, existing)
         ):
             continue
-        file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
+        file_type = _READERS[file_path.suffix.lower()].file_type
         yield file_path, file_type
 
 
@@ -713,7 +763,7 @@ def pending_file_type_counts(
     duration (`processing_metrics`), since a source's remaining files may be
     a mix of pdfs and images that OCR at very different speeds.
     """
-    counts = {"pdf": 0, "image": 0}
+    counts = new_file_type_counts()
     for _, file_type in _iter_pending_files(
         conn, source, only_new_files=only_new_files, only_failed=only_failed
     ):
@@ -877,7 +927,7 @@ def run_ocr(
         ):
             continue
 
-        file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
+        file_type = _READERS[file_path.suffix.lower()].file_type
         document_id, duplicate_of_id = _upsert_document(conn, source.id, file_path, file_type)
         conn.commit()
         processed_paths.append(str(file_path))
@@ -895,6 +945,7 @@ def run_ocr(
         process.cpu_percent(interval=None)  # prime; the next call reports usage since now
         mem_before = process.memory_info().rss
 
+        reader = _READERS[file_path.suffix.lower()]
         max_attempts = 1 + get_ocr_retry_attempts(conn)
         attempt = 0
         last_exc: Exception | None = None
@@ -902,8 +953,8 @@ def run_ocr(
         while attempt < max_attempts and not succeeded:
             attempt += 1
             try:
+                pages = reader.ocr(conn, file_path)
                 if file_type == "pdf":
-                    page_results = _ocr_pdf_file(conn, file_path)
                     conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
                     conn.executemany(
                         "INSERT INTO pdf_pages "
@@ -922,11 +973,11 @@ def run_ocr(
                                 page.image_width,
                                 page.image_height,
                             )
-                            for page_number, page in enumerate(page_results, start=1)
+                            for page_number, page in enumerate(pages, start=1)
                         ],
                     )
                 else:
-                    page = _ocr_image_file(conn, file_path)
+                    page = pages[0]
                     conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
                     conn.execute(
                         "INSERT INTO image_pages "
@@ -1018,19 +1069,16 @@ def _process_file(
     process.cpu_percent(interval=None)  # prime; the next call reports usage since now
     mem_before = process.memory_info().rss
 
+    reader = _READERS[file_path.suffix.lower()]
     max_attempts = 1 + get_ocr_retry_attempts(conn)
     attempt = 0
     last_exc: Exception | None = None
     succeeded = False
-    pdf_pages: list[PageResult] | None = None
-    image_page: PageResult | None = None
+    pages: list[PageResult] | None = None
     while attempt < max_attempts and not succeeded:
         attempt += 1
         try:
-            if file_type == "pdf":
-                pdf_pages = _ocr_pdf_file(conn, file_path)
-            else:
-                image_page = _ocr_image_file(conn, file_path)
+            pages = reader.ocr(conn, file_path)
         except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
             last_exc = exc
         else:
@@ -1038,8 +1086,8 @@ def _process_file(
 
     with db_lock:
         if succeeded:
+            assert pages is not None
             if file_type == "pdf":
-                assert pdf_pages is not None
                 conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
                 conn.executemany(
                     "INSERT INTO pdf_pages "
@@ -1058,11 +1106,11 @@ def _process_file(
                             page.image_width,
                             page.image_height,
                         )
-                        for page_number, page in enumerate(pdf_pages, start=1)
+                        for page_number, page in enumerate(pages, start=1)
                     ],
                 )
             else:
-                assert image_page is not None
+                image_page = pages[0]
                 conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
                 conn.execute(
                     "INSERT INTO image_pages "
@@ -1168,7 +1216,7 @@ def _run_auto_elastic(
     the whole run.
     """
     max_slots = max(1, min(THREAD_WORKERS_MAX, len(pending)))
-    remaining_counts = {"pdf": 0, "image": 0}
+    remaining_counts = new_file_type_counts()
     for item in pending:
         remaining_counts[item.file_type] += 1
 

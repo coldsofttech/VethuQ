@@ -30,7 +30,7 @@ from vethuq_core.index_runner import (
     resolve_targets,
     start_run,
 )
-from vethuq_core.ocr import get_document_results, pending_file_type_counts
+from vethuq_core.ocr import get_document_results, new_file_type_counts, pending_file_type_counts
 from vethuq_core.settings import THREAD_WORKERS_AUTO
 from vethuq_core.sources import SourceNotFoundError, get_source, list_sources
 
@@ -65,7 +65,7 @@ def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
     except SourceNotFoundError:
         return None
 
-    remaining_by_type = {"pdf": 0, "image": 0}
+    remaining_by_type = new_file_type_counts()
     for source in sources:
         counts = pending_file_type_counts(
             conn,
