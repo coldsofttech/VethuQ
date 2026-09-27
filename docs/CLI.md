@@ -180,6 +180,33 @@ a time on Enter and doesn't render colors.
 vethuq search "invoice total"
 ```
 
+## `stats`
+
+### `show`
+
+Show accumulated OCR statistics in two panels: Processing (per file
+type — documents indexed, average duration, average peak memory,
+average CPU) and Confidence (per file type and text-source — native,
+OCR, mixed — page count and average confidence). Both are running
+averages folded in after each successfully indexed document/page; the
+Processing figures also feed `vethuq index run`'s ETA estimate.
+
+```bash
+vethuq stats show
+```
+
+### `reset [--force]`
+
+Clear both statistics tables. Asks for confirmation first unless
+`--force` is given — resetting means `vethuq index run`'s ETA is
+unavailable again until enough files have been (re)indexed to rebuild
+the averages.
+
+```bash
+vethuq stats reset
+vethuq stats reset --force
+```
+
 ## `settings`
 
 ### `gpu enable|disable|status`

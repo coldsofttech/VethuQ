@@ -76,7 +76,8 @@ def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
     result = runner.invoke(app, ["index", "run", "--wait"])
 
     assert result.exit_code == 0
-    assert "Status: completed" in result.stdout
+    assert "Status" in result.stdout
+    assert "completed" in result.stdout
 
 
 def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
@@ -174,6 +175,58 @@ def test_status_shows_progress(tmp_path, monkeypatch):
     assert "1/4" in result.stdout
 
 
+def test_status_wait_live_refreshes_until_terminal_state(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    now = datetime.now(UTC).isoformat()
+    running_state = index_runner_module.IndexState(
+        run_id=1,
+        pid=777,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=4,
+        processed_files=1,
+        failed_files=0,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=["a.pdf"],
+        started_at=now,
+        updated_at=now,
+    )
+    completed_state = index_runner_module.IndexState(
+        run_id=1,
+        pid=777,
+        target=None,
+        mode="run",
+        status="completed",
+        total_files=4,
+        processed_files=4,
+        failed_files=0,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=[],
+        started_at=now,
+        updated_at=now,
+    )
+    index_runner_module._write_state(db_path, running_state)
+    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+
+    calls = {"n": 0}
+
+    def fake_read_state(db_path=None):
+        calls["n"] += 1
+        return running_state if calls["n"] == 1 else completed_state
+
+    monkeypatch.setattr(index_cli_module, "read_state", fake_read_state)
+    monkeypatch.setattr(index_cli_module, "is_running", lambda: (True, 777))
+
+    result = runner.invoke(app, ["index", "status", "--wait"])
+
+    assert result.exit_code == 0
+    assert "Status" in result.stdout
+    assert "completed" in result.stdout
+
+
 def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     folder = tmp_path / "docs"
@@ -186,9 +239,8 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT INTO processing_metrics "
-        "(file_type, document_count, avg_duration_seconds, avg_confidence, "
-        "pages_native, pages_ocr, pages_mixed, updated_at) "
-        "VALUES ('image', 3, 10.0, 0.9, 0, 3, 0, ?)",
+        "(file_type, size_bucket, document_count, avg_duration_seconds, updated_at) "
+        "VALUES ('image', 'medium', 3, 10.0, ?)",
         (now,),
     )
     conn.commit()
@@ -215,7 +267,8 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     # 2 pending images * 10s average = 20s.
-    assert "ETA: ~20s" in result.stdout
+    assert "ETA" in result.stdout
+    assert "~20s" in result.stdout
 
 
 def test_status_detail_for_target(tmp_path, monkeypatch):

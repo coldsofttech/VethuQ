@@ -459,14 +459,15 @@ def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> Non
 
 
 def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
-    """Fold one freshly-indexed document into `processing_metrics`'s running averages.
+    """Fold one freshly-indexed document's duration/memory/cpu into `processing_metrics`'s
+    running averages.
 
-    Called only for successfully indexed documents - a failed document has no
-    confidence and a duration that doesn't reflect a full OCR pass, so it
-    would skew the averages `vethuq index run` uses to estimate ETAs.
+    Called only for successfully indexed documents - a failed document has a
+    duration that doesn't reflect a full OCR pass, so it would skew the
+    averages `vethuq index run` uses to estimate ETAs.
     """
     doc = conn.execute(
-        "SELECT started_at, completed_at, peak_memory_mb, cpu_percent "
+        "SELECT started_at, completed_at, peak_memory_mb, cpu_percent, file_size_bytes "
         "FROM document_index WHERE id = ?",
         (document_id,),
     ).fetchone()
@@ -475,7 +476,60 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     ).total_seconds()
     peak_memory_mb = doc["peak_memory_mb"] or 0.0
     cpu_percent = doc["cpu_percent"] or 0.0
+    size_bucket = _size_bucket(doc["file_size_bytes"] or 0)
 
+    now = datetime.now(UTC).isoformat()
+    existing = conn.execute(
+        "SELECT document_count, avg_duration_seconds, "
+        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
+        "WHERE file_type = ? AND size_bucket = ?",
+        (file_type, size_bucket),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            "INSERT INTO processing_metrics "
+            "(file_type, size_bucket, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+            "avg_cpu_percent, updated_at) "
+            "VALUES (?, ?, 1, ?, ?, ?, ?)",
+            (file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now),
+        )
+        return
+
+    new_count = existing["document_count"] + 1
+    avg_duration = (
+        existing["avg_duration_seconds"] + (duration - existing["avg_duration_seconds"]) / new_count
+    )
+    avg_peak_memory_mb = (
+        existing["avg_peak_memory_mb"]
+        + (peak_memory_mb - existing["avg_peak_memory_mb"]) / new_count
+    )
+    avg_cpu_percent = (
+        existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
+    )
+    conn.execute(
+        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
+        "avg_peak_memory_mb = ?, avg_cpu_percent = ?, updated_at = ? "
+        "WHERE file_type = ? AND size_bucket = ?",
+        (
+            new_count,
+            avg_duration,
+            avg_peak_memory_mb,
+            avg_cpu_percent,
+            now,
+            file_type,
+            size_bucket,
+        ),
+    )
+
+
+def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
+    """Fold one freshly-indexed document's pages into `confidence_metrics`'s running
+    averages, grouped independently by (file_type, process_type).
+
+    Native pages run near-100% confidence while OCR/mixed pages don't, so
+    blending them into a single average would dilute the OCR/mixed signal -
+    tracking each process_type separately keeps them meaningful.
+    """
     if file_type == "pdf":
         pages = conn.execute(
             "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
@@ -487,60 +541,42 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     if not pages:
         return
 
-    confidence = sum(page["confidence"] for page in pages) / len(pages)
-    native = sum(1 for page in pages if file_type == "pdf" and page["source"] == "native")
-    ocr = sum(1 for page in pages if file_type == "image" or page["source"] == "ocr")
-    mixed = sum(1 for page in pages if file_type == "pdf" and page["source"] == "mixed")
+    by_process_type: dict[str, list[float]] = {}
+    for page in pages:
+        process_type = page["source"] if file_type == "pdf" else "ocr"
+        by_process_type.setdefault(process_type, []).append(page["confidence"])
 
     now = datetime.now(UTC).isoformat()
-    existing = conn.execute(
-        "SELECT document_count, avg_duration_seconds, avg_confidence, "
-        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics WHERE file_type = ?",
-        (file_type,),
-    ).fetchone()
-    if existing is None:
-        conn.execute(
-            "INSERT INTO processing_metrics "
-            "(file_type, document_count, avg_duration_seconds, avg_confidence, "
-            "pages_native, pages_ocr, pages_mixed, avg_peak_memory_mb, avg_cpu_percent, "
-            "updated_at) "
-            "VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (file_type, duration, confidence, native, ocr, mixed, peak_memory_mb, cpu_percent, now),
-        )
-        return
+    for process_type, confidences in by_process_type.items():
+        existing = conn.execute(
+            "SELECT page_count, avg_confidence FROM confidence_metrics "
+            "WHERE file_type = ? AND process_type = ?",
+            (file_type, process_type),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO confidence_metrics "
+                "(file_type, process_type, page_count, avg_confidence, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    file_type,
+                    process_type,
+                    len(confidences),
+                    sum(confidences) / len(confidences),
+                    now,
+                ),
+            )
+            continue
 
-    new_count = existing["document_count"] + 1
-    avg_duration = (
-        existing["avg_duration_seconds"] + (duration - existing["avg_duration_seconds"]) / new_count
-    )
-    avg_confidence = (
-        existing["avg_confidence"] + (confidence - existing["avg_confidence"]) / new_count
-    )
-    avg_peak_memory_mb = (
-        existing["avg_peak_memory_mb"]
-        + (peak_memory_mb - existing["avg_peak_memory_mb"]) / new_count
-    )
-    avg_cpu_percent = (
-        existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
-    )
-    conn.execute(
-        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
-        "avg_confidence = ?, pages_native = pages_native + ?, pages_ocr = pages_ocr + ?, "
-        "pages_mixed = pages_mixed + ?, avg_peak_memory_mb = ?, avg_cpu_percent = ?, "
-        "updated_at = ? WHERE file_type = ?",
-        (
-            new_count,
-            avg_duration,
-            avg_confidence,
-            native,
-            ocr,
-            mixed,
-            avg_peak_memory_mb,
-            avg_cpu_percent,
-            now,
-            file_type,
-        ),
-    )
+        new_count = existing["page_count"] + len(confidences)
+        avg_confidence = (
+            existing["avg_confidence"] * existing["page_count"] + sum(confidences)
+        ) / new_count
+        conn.execute(
+            "UPDATE confidence_metrics SET page_count = ?, avg_confidence = ?, updated_at = ? "
+            "WHERE file_type = ? AND process_type = ?",
+            (new_count, avg_confidence, now, file_type, process_type),
+        )
 
 
 @dataclass(frozen=True)
@@ -689,6 +725,20 @@ _ENGINE_FOOTPRINT_MB = 700  # rough resident memory of one PaddleOCR CPU engine 
 _PDF_WEIGHT = 1.5  # a pending set that's mostly PDFs costs more per worker than mostly images
 _CPU_BUSY_THRESHOLD = 70.0
 _MEMORY_BUSY_THRESHOLD = 80.0
+
+# Keep these in sync with the literal byte thresholds in db.py's version-16
+# migration, which buckets historical document_index rows the same way.
+_SIZE_BUCKET_SMALL_MAX_BYTES = 500_000
+_SIZE_BUCKET_MEDIUM_MAX_BYTES = 3_000_000
+
+
+def _size_bucket(file_size_bytes: int) -> str:
+    """Classify a file's size into the coarse bucket `processing_metrics` is keyed by."""
+    if file_size_bytes < _SIZE_BUCKET_SMALL_MAX_BYTES:
+        return "small"
+    if file_size_bytes < _SIZE_BUCKET_MEDIUM_MAX_BYTES:
+        return "medium"
+    return "large"
 
 
 def resolve_thread_workers(conn: sqlite3.Connection, pending_type_counts: dict[str, int]) -> int:
@@ -911,6 +961,7 @@ def run_ocr(
         else:
             _mark_indexed(conn, document_id)
             _update_processing_metrics(conn, document_id, file_type)
+            _update_confidence_metrics(conn, document_id, file_type)
 
         conn.commit()
         if on_file_done is not None:
@@ -1041,6 +1092,7 @@ def _process_file(
         else:
             _mark_indexed(conn, document_id)
             _update_processing_metrics(conn, document_id, file_type)
+            _update_confidence_metrics(conn, document_id, file_type)
 
         conn.commit()
 
@@ -1055,6 +1107,43 @@ class _Wait:
 
 
 _WAIT = _Wait()
+
+
+def _would_exceed_budget(conn: sqlite3.Connection, item: _PendingFile) -> bool:
+    """Whether starting `item` right now would push CPU/memory past the busy thresholds.
+
+    Projects live system usage (`psutil`, not just this run's own workers -
+    other processes share the same headroom) forward by `item`'s historical
+    footprint for its file_type + size bucket (`processing_metrics`). Missing
+    file size or no history yet for that bucket both just skip the check -
+    this only holds a file back when there's real evidence it would hurt,
+    never on the strength of a guess. Caller already holds `db_lock`.
+    """
+    try:
+        file_size_bytes = item.path.stat().st_size
+    except OSError:
+        return False
+
+    row = conn.execute(
+        "SELECT avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
+        "WHERE file_type = ? AND size_bucket = ?",
+        (item.file_type, _size_bucket(file_size_bytes)),
+    ).fetchone()
+    if row is None:
+        return False
+
+    memory = psutil.virtual_memory()
+    projected_memory_percent = memory.percent + (
+        row["avg_peak_memory_mb"] / (memory.total / (1024 * 1024)) * 100
+    )
+    # interval=None (non-blocking, delta since the last call) rather than the
+    # brief blocking sample `_auto_worker_count` takes once per run - this is
+    # checked on every dequeue attempt, far too often to afford a sleep each time.
+    projected_cpu_percent = psutil.cpu_percent(interval=None) + row["avg_cpu_percent"]
+    return (
+        projected_memory_percent >= _MEMORY_BUSY_THRESHOLD
+        or projected_cpu_percent >= _CPU_BUSY_THRESHOLD
+    )
 
 
 def _run_auto_elastic(
@@ -1085,10 +1174,11 @@ def _run_auto_elastic(
 
     coord_lock = threading.Lock()
     next_index = 0
+    in_flight = 0
     active_workers = max(1, min(initial_workers, max_slots))
 
     def take_next(slot: int) -> _PendingFile | _Wait | None:
-        nonlocal next_index
+        nonlocal next_index, in_flight
         with coord_lock:
             # Checked in this order deliberately: once the queue is drained,
             # every slot must be able to exit - including one parked past
@@ -1100,13 +1190,24 @@ def _run_auto_elastic(
             if slot >= active_workers:
                 return _WAIT
             item = pending[next_index]
+            # Only defer for a heavier-than-usual file when something else is
+            # already running - if this slot is the only thing left, nothing
+            # will ever free up the budget it's waiting on, so it must proceed
+            # regardless (queue order is otherwise preserved either way: the
+            # head of the queue is never skipped, just held).
+            if in_flight > 0:
+                with db_lock:
+                    if _would_exceed_budget(conn, item):
+                        return _WAIT
             next_index += 1
+            in_flight += 1
             return item
 
     def report_done(file_type: str) -> None:
-        nonlocal active_workers
+        nonlocal active_workers, in_flight
         changed_to: int | None = None
         with coord_lock:
+            in_flight -= 1
             remaining_counts[file_type] -= 1
             if sum(remaining_counts.values()) > 0:
                 # `db_lock`, not just `coord_lock`: `resolve_thread_workers`

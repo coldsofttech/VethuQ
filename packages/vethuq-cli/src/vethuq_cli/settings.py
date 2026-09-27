@@ -7,12 +7,14 @@ from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.settings import (
     SEARCH_EXPORT_FORMATS,
+    STALE_LOCK_VALUES,
     THREAD_WORKERS_AUTO,
     THREAD_WORKERS_MAX,
     get_ocr_retry_attempts,
     get_removed_source_retention_minutes,
     get_search_export_format,
     get_search_snippet_context_chars,
+    get_stale_lock,
     get_thread_workers,
     is_gpu_enabled,
     set_gpu_enabled,
@@ -20,6 +22,7 @@ from vethuq_core.settings import (
     set_removed_source_retention_minutes,
     set_search_export_format,
     set_search_snippet_context_chars,
+    set_stale_lock,
     set_thread_workers,
 )
 
@@ -38,6 +41,10 @@ ocr_retry_app = typer.Typer(
     help="Configure how many times to retry a file's OCR after a transient failure."
 )
 thread_workers_app = typer.Typer(help="Configure how many worker threads background indexing uses.")
+stale_lock_app = typer.Typer(
+    help="Configure whether a lock left behind by a run that didn't exit cleanly "
+    "is auto-cleared on the next run."
+)
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
@@ -46,6 +53,7 @@ app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(ocr_retry_app, name="ocr-retry")
 index_app.add_typer(thread_workers_app, name="thread-workers")
+index_app.add_typer(stale_lock_app, name="stale-lock")
 
 
 @gpu_app.command("enable")
@@ -265,5 +273,34 @@ def thread_workers_set(
             raise typer.Exit(code=1) from exc
         label = "disabled (sequential)" if value == "0" else value
         console.print(Text.assemble("Thread workers set to ", (label, "bright_blue"), "."))
+    finally:
+        conn.close()
+
+
+@stale_lock_app.command("show")
+def stale_lock_show() -> None:
+    """Show whether a stale lock is auto-cleared on the next run."""
+    conn = connect()
+    try:
+        console.print(Text.assemble("Stale lock: ", (get_stale_lock(conn), "bright_blue")))
+    finally:
+        conn.close()
+
+
+@stale_lock_app.command("set")
+def stale_lock_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(STALE_LOCK_VALUES)}."
+    ),
+) -> None:
+    """Set whether a stale lock is auto-cleared on the next run."""
+    conn = connect()
+    try:
+        try:
+            set_stale_lock(conn, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style="bold red")
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Stale lock set to ", (value, "bright_blue"), "."))
     finally:
         conn.close()

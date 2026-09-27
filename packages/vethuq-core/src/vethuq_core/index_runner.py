@@ -37,7 +37,7 @@ from vethuq_core.ocr import (
     resolve_thread_workers,
     run_ocr_batch,
 )
-from vethuq_core.settings import get_thread_workers
+from vethuq_core.settings import get_stale_lock, get_thread_workers
 from vethuq_core.sources import Source, get_source, list_sources
 
 _STATE_FILENAME = "index_state.json"
@@ -216,12 +216,22 @@ def start_run(
         raise AlreadyRunningError(f"An index run is already in progress (pid {pid}).")
 
     lock_path = _lock_path(db_path)
-    if lock_path.exists() and not force:
-        raise StaleLockError(
-            "Found a lock left behind by a run that didn't exit cleanly. "
-            "Use --force to clear it and start a new run."
-        )
-    lock_path.unlink(missing_ok=True)
+    if lock_path.exists():
+        if not force:
+            conn = connect(db_path)
+            try:
+                auto_clear = get_stale_lock(conn) != "disable"
+            finally:
+                conn.close()
+            if not auto_clear:
+                raise StaleLockError(
+                    "Found a lock left behind by a run that didn't exit cleanly. "
+                    "Use --force to clear it and start a new run, or "
+                    "`vethuq settings index stale-lock set enable` to clear it "
+                    "automatically next time."
+                )
+        lock_path.unlink(missing_ok=True)
+        _reconcile_orphaned_run(db_path)
 
     conn = connect(db_path)
     try:
@@ -260,6 +270,28 @@ def start_run(
         )
     _atomic_write(lock_path, str(process.pid))
     return process.pid
+
+
+def _reconcile_orphaned_run(db_path: Path) -> None:
+    """Mark the bookkeeping left by a run that didn't exit cleanly as failed.
+
+    Called right after clearing a stale lock, so `index status`/`index history`
+    and the desktop app stop showing a run as still "running" once it's known
+    the process behind it is gone.
+    """
+    state = read_state(db_path)
+    if state is not None and state.status == "running":
+        _mark_run_ended(db_path, state, "failed")
+        return
+    conn = connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE index_runs SET status = 'failed', completed_at = ? WHERE status = 'running'",
+            (datetime.now(UTC).isoformat(),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
