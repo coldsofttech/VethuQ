@@ -170,7 +170,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
 
 @app.command("run")
 def run(
-    target: str = typer.Argument(
+    target: str | None = typer.Argument(
         None, help="Source id or path to index. Omit to index every pending source."
     ),
     wait: bool = typer.Option(
@@ -193,7 +193,7 @@ def run(
 
 @app.command("restart")
 def restart(
-    target: str = typer.Argument(
+    target: str | None = typer.Argument(
         None, help="Source id or path to retry. Omit to retry every source's failed files."
     ),
     wait: bool = typer.Option(
@@ -214,7 +214,7 @@ def restart(
 
 @app.command("status")
 def status(
-    target: str = typer.Argument(
+    target: str | None = typer.Argument(
         None, help="Show detailed per-file status for this source id or path."
     ),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
@@ -337,7 +337,7 @@ def resume() -> None:
 
 @app.command("history")
 def history(
-    target: str = typer.Argument(
+    target: str | None = typer.Argument(
         None, help="Source id or path to filter to (also includes runs over all sources)."
     ),
     limit: int = typer.Option(10, "--limit", help="Number of past runs to show."),

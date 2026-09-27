@@ -7,6 +7,8 @@ The `vethuq` CLI works on both Windows and Linux. The desktop app is Windows-onl
 
 ## Usage
 
+Run `vethuq` on its own to open an interactive menu for Search, Sources, Index, and Settings — handy if you'd rather navigate than remember flags. Everything below also works as a direct command.
+
 Add a file or folder as a source, then index it so its text becomes searchable:
 
 ```bash
