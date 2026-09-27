@@ -24,13 +24,20 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq_core.db import connect, default_db_path
-from vethuq_core.ocr import pending_file_count, run_ocr
+from vethuq_core.ocr import (
+    pending_file_count,
+    pending_file_type_counts,
+    resolve_thread_workers,
+    run_ocr_batch,
+)
+from vethuq_core.settings import get_thread_workers
 from vethuq_core.sources import Source, get_source, list_sources
 
 _STATE_FILENAME = "index_state.json"
@@ -63,7 +70,9 @@ class IndexState:
     total_files: int
     processed_files: int
     failed_files: int
-    current_file: str | None
+    thread_workers_setting: str  # raw `thread_workers` setting for this run: "0" | "1"-"8" | "auto"
+    workers: int  # current effective worker count (see resolve_thread_workers) - live for "auto"
+    current_files: list[str]  # files each active worker is on right now (0-N of them)
     started_at: str
     updated_at: str
 
@@ -351,7 +360,10 @@ def resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source
 
 
 def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:
-    conn = connect(db_path)
+    # check_same_thread=False: `run_ocr_batch` below may hand this connection
+    # to worker threads when `workers` > 1 - every use of it is already
+    # serialized through `db_lock` there.
+    conn = connect(db_path, check_same_thread=False)
     pid = os.getpid()
     started_at = datetime.now(UTC).isoformat()
     run_id: int | None = None
@@ -363,11 +375,21 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             pending_file_count(conn, s, only_new_files=s.status != "pending", only_failed=restart)
             for s in sources
         )
+        type_counts = {"pdf": 0, "image": 0}
+        for source in sources:
+            counts = pending_file_type_counts(
+                conn, source, only_new_files=source.status != "pending", only_failed=restart
+            )
+            for file_type, count in counts.items():
+                type_counts[file_type] += count
+        thread_workers_setting = get_thread_workers(conn)
+        workers = resolve_thread_workers(conn, type_counts)
 
         cursor = conn.execute(
-            "INSERT INTO index_runs (target, mode, status, pid, total_files, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?)",
-            (target, mode, pid, total, started_at),
+            "INSERT INTO index_runs "
+            "(target, mode, status, pid, total_files, workers, started_at) "
+            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
+            (target, mode, pid, total, workers, started_at),
         )
         conn.commit()
         run_id = cursor.lastrowid
@@ -382,47 +404,66 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             total_files=total,
             processed_files=0,
             failed_files=0,
-            current_file=None,
+            thread_workers_setting=thread_workers_setting,
+            workers=workers,
+            current_files=[],
             started_at=started_at,
             updated_at=started_at,
         )
         _write_state(db_path, state)
 
-        def on_file_done(file_path: str) -> None:
-            state.processed_files += 1
-            state.current_file = file_path
-            doc = conn.execute(
-                "SELECT status FROM document_index WHERE file_path = ?", (file_path,)
-            ).fetchone()
-            if doc is not None and doc["status"] == "error":
-                state.failed_files += 1
-            _write_state(db_path, state)
+        state_lock = threading.Lock()
+
+        def on_file_start(file_path: str) -> None:
+            with state_lock:
+                state.current_files.append(file_path)
+                _write_state(db_path, state)
+
+        def on_file_done(file_path: str, succeeded: bool) -> None:
+            with state_lock:
+                if file_path in state.current_files:
+                    state.current_files.remove(file_path)
+                state.processed_files += 1
+                if not succeeded:
+                    state.failed_files += 1
+                _write_state(db_path, state)
+
+        def on_workers_changed(new_workers: int) -> None:
+            with state_lock:
+                state.workers = new_workers
+                _write_state(db_path, state)
 
         def should_stop() -> bool:
+            # Called from every active worker thread once `run_ocr_batch`
+            # resolves to more than one worker - `state_lock` keeps their
+            # writes to the shared state file from racing each other the
+            # same way `on_file_start`/`on_file_done` already do.
             nonlocal stopped
             control = _read_control(db_path)
             while control == "pause":
-                state.status = "paused"
-                _write_state(db_path, state)
+                with state_lock:
+                    state.status = "paused"
+                    _write_state(db_path, state)
                 time.sleep(_PAUSE_POLL_SECONDS)
                 control = _read_control(db_path)
             if control == "stop":
-                stopped = True
+                with state_lock:
+                    stopped = True
                 return True
-            state.status = "running"
+            with state_lock:
+                state.status = "running"
             return False
 
-        for source in sources:
-            run_ocr(
-                conn,
-                source,
-                only_new_files=source.status != "pending",
-                only_failed=restart,
-                on_file_done=on_file_done,
-                should_stop=should_stop,
-            )
-            if stopped:
-                break
+        run_ocr_batch(
+            conn,
+            sources,
+            only_failed=restart,
+            workers=workers,
+            on_file_start=on_file_start,
+            on_file_done=on_file_done,
+            on_workers_changed=on_workers_changed,
+            should_stop=should_stop,
+        )
 
         final_status = "stopped" if stopped else "completed"
         _mark_run_ended(db_path, state, final_status)

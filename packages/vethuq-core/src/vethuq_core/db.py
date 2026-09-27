@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS index_runs (
     total_files INTEGER NOT NULL DEFAULT 0,
     processed_files INTEGER NOT NULL DEFAULT 0,
     failed_files INTEGER NOT NULL DEFAULT 0,
+    workers INTEGER,
     started_at TEXT NOT NULL,
     completed_at TEXT
 );
@@ -115,10 +116,17 @@ def default_db_path() -> Path:
     return data_dir / DB_FILENAME
 
 
-def connect(db_path: Path | None = None) -> sqlite3.Connection:
-    """Open a connection to the VethuQ database, creating the schema if needed."""
+def connect(db_path: Path | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection:
+    """Open a connection to the VethuQ database, creating the schema if needed.
+
+    `check_same_thread=False` is only for a connection that's deliberately
+    shared across threads (background indexing with worker threads - see
+    `vethuq_core.ocr.run_ocr_batch`'s `db_lock`, which serializes every use
+    of such a connection since SQLite connections aren't safe for
+    unsynchronized concurrent access on their own).
+    """
     path = db_path or default_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     _ensure_schema(conn)
@@ -256,3 +264,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             conn.execute(
                 "ALTER TABLE processing_metrics ADD COLUMN avg_cpu_percent REAL NOT NULL DEFAULT 0"
             )
+    if from_version < 14:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(index_runs)")}
+        if "workers" not in columns:
+            conn.execute("ALTER TABLE index_runs ADD COLUMN workers INTEGER")

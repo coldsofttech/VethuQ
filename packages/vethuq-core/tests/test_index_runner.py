@@ -55,16 +55,26 @@ def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
     add_source(conn, folder)
 
 
-def _fake_run_ocr(
-    conn, source, *, only_new_files=False, only_failed=False, on_file_done=None, should_stop=None
+def _fake_run_ocr_batch(
+    conn,
+    sources,
+    *,
+    only_failed=False,
+    workers=1,
+    on_file_start=None,
+    on_file_done=None,
+    on_workers_changed=None,
+    should_stop=None,
 ):
     processed = []
     for file_path in ("a.pdf", "b.pdf", "c.pdf"):
         if should_stop is not None and should_stop():
             break
+        if on_file_start is not None:
+            on_file_start(file_path)
         processed.append(file_path)
         if on_file_done is not None:
-            on_file_done(file_path)
+            on_file_done(file_path, True)
     return processed
 
 
@@ -74,7 +84,7 @@ def test_run_worker_completes(db_path, conn, tmp_path):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr", side_effect=_fake_run_ocr),
+        patch.object(index_runner, "run_ocr_batch", side_effect=_fake_run_ocr_batch),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -82,6 +92,7 @@ def test_run_worker_completes(db_path, conn, tmp_path):
     assert state is not None
     assert state.status == "completed"
     assert state.processed_files == 3
+    assert state.current_files == []
     assert not index_runner._lock_path(db_path).exists()
 
     result_conn = connect(db_path)
@@ -95,13 +106,15 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
     _register_source(conn, tmp_path)
     conn.close()
 
-    def fake_run_ocr(
+    def fake_run_ocr_batch(
         conn,
-        source,
+        sources,
         *,
-        only_new_files=False,
         only_failed=False,
+        workers=1,
+        on_file_start=None,
         on_file_done=None,
+        on_workers_changed=None,
         should_stop=None,
     ):
         processed = []
@@ -110,14 +123,16 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
                 break
             if file_path == "b.pdf":
                 index_runner._set_control(db_path, "stop")
+            if on_file_start is not None:
+                on_file_start(file_path)
             processed.append(file_path)
             if on_file_done is not None:
-                on_file_done(file_path)
+                on_file_done(file_path, True)
         return processed
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr", side_effect=fake_run_ocr),
+        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -139,13 +154,15 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
 
     monkeypatch.setattr(index_runner.time, "sleep", fake_sleep)
 
-    def fake_run_ocr(
+    def fake_run_ocr_batch(
         conn,
-        source,
+        sources,
         *,
-        only_new_files=False,
         only_failed=False,
+        workers=1,
+        on_file_start=None,
         on_file_done=None,
+        on_workers_changed=None,
         should_stop=None,
     ):
         assert should_stop() is False
@@ -155,7 +172,7 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=0),
-        patch.object(index_runner, "run_ocr", side_effect=fake_run_ocr),
+        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -171,13 +188,15 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
 
     seen = {}
 
-    def fake_run_ocr(
+    def fake_run_ocr_batch(
         conn,
-        source,
+        sources,
         *,
-        only_new_files=False,
         only_failed=False,
+        workers=1,
+        on_file_start=None,
         on_file_done=None,
+        on_workers_changed=None,
         should_stop=None,
     ):
         seen["only_failed"] = only_failed
@@ -185,7 +204,7 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=0) as fake_count,
-        patch.object(index_runner, "run_ocr", side_effect=fake_run_ocr),
+        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
     ):
         index_runner._run_worker(db_path, None, restart=True)
 
@@ -314,7 +333,9 @@ def test_request_stop_honors_custom_timeout(db_path, conn, tmp_path, monkeypatch
         total_files=5,
         processed_files=1,
         failed_files=0,
-        current_file=None,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=[],
         started_at=started_at,
         updated_at=started_at,
     )
@@ -374,7 +395,9 @@ def test_request_stop_marks_state_and_history(db_path, conn, tmp_path, monkeypat
         total_files=5,
         processed_files=2,
         failed_files=0,
-        current_file=None,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=[],
         started_at=started_at,
         updated_at=started_at,
     )

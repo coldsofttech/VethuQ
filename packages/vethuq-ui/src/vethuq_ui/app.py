@@ -620,7 +620,11 @@ class MainWindow(tk.Tk):
         if state.status == "paused":
             self._status_var.set(f"Paused ({state.processed_files}/{state.total_files})")
         else:
-            current = f": {Path(state.current_file).name}" if state.current_file else ""
+            current = (
+                f": {', '.join(Path(f).name for f in state.current_files)}"
+                if state.current_files
+                else ""
+            )
             self._status_var.set(f"Indexing ({state.processed_files}/{state.total_files}){current}")
         self._status_progress.start(10)
 

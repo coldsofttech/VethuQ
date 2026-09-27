@@ -14,7 +14,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.settings import SEARCH_EXPORT_FORMATS
+from vethuq_core.settings import SEARCH_EXPORT_FORMATS, THREAD_WORKERS_AUTO, THREAD_WORKERS_MAX
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index import history as index_history
@@ -37,6 +37,8 @@ from vethuq_cli.settings import (
     removed_retention_show,
     snippet_set,
     snippet_show,
+    thread_workers_set,
+    thread_workers_show,
 )
 from vethuq_cli.source import add as source_add
 from vethuq_cli.source import list_ as source_list
@@ -251,20 +253,48 @@ def _settings_ocr_retry_menu() -> None:
             _run_safely(ocr_retry_set, attempts=attempts)
 
 
+def _settings_thread_workers_menu() -> None:
+    while True:
+        console.print()
+        _print_menu(
+            "Settings > Index > Thread Workers", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+        )
+        choice = _prompt_choice(["1", "2", "0"])
+        if choice == "0":
+            return
+        if choice == "1":
+            _run_safely(thread_workers_show)
+        elif choice == "2":
+            choices = [str(n) for n in range(THREAD_WORKERS_MAX + 1)] + [THREAD_WORKERS_AUTO]
+            value = Prompt.ask(
+                f"0 (disable), 1-{THREAD_WORKERS_MAX}, or '{THREAD_WORKERS_AUTO}'",
+                console=console,
+                choices=choices,
+            )
+            _run_safely(thread_workers_set, value=value)
+
+
 def _settings_index_menu() -> None:
     while True:
         console.print()
         _print_menu(
             "Settings > Index",
-            [("1", "Removed Retention"), ("2", "OCR Retry"), ("0", "Back")],
+            [
+                ("1", "Removed Retention"),
+                ("2", "OCR Retry"),
+                ("3", "Thread Workers"),
+                ("0", "Back"),
+            ],
         )
-        choice = _prompt_choice(["1", "2", "0"])
+        choice = _prompt_choice(["1", "2", "3", "0"])
         if choice == "0":
             return
         if choice == "1":
             _settings_removed_retention_menu()
         elif choice == "2":
             _settings_ocr_retry_menu()
+        elif choice == "3":
+            _settings_thread_workers_menu()
 
 
 def _settings_menu() -> None:

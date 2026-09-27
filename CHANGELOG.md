@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The CLI's colored output now uses your system pager (e.g. `less`) to scroll through `vethuq search` results, instead of a custom built-in one.
 - Running `vethuq` with no subcommand now opens an interactive menu for Search, Sources, Index, and Settings, instead of just printing help text.
 - While viewing `search` results, pressing `e` now lets you export them to a file (asking for the filename and format) instead of having to re-run the search with `--export`.
+- Background indexing can now process files with multiple worker threads instead of one at a time — configurable with `vethuq settings index thread-workers set/show` (also available from the interactive menu; disabled by default, set a fixed 1-8, or `auto` to keep it sized to current CPU/memory usage throughout the run). Pending files across all sources are now indexed in filename order together, rather than one whole source at a time.
 
 ### Fixed
 

@@ -7,16 +7,20 @@ from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.settings import (
     SEARCH_EXPORT_FORMATS,
+    THREAD_WORKERS_AUTO,
+    THREAD_WORKERS_MAX,
     get_ocr_retry_attempts,
     get_removed_source_retention_minutes,
     get_search_export_format,
     get_search_snippet_context_chars,
+    get_thread_workers,
     is_gpu_enabled,
     set_gpu_enabled,
     set_ocr_retry_attempts,
     set_removed_source_retention_minutes,
     set_search_export_format,
     set_search_snippet_context_chars,
+    set_thread_workers,
 )
 
 from vethuq_cli.console import console, error_console
@@ -33,6 +37,7 @@ removed_retention_app = typer.Typer(
 ocr_retry_app = typer.Typer(
     help="Configure how many times to retry a file's OCR after a transient failure."
 )
+thread_workers_app = typer.Typer(help="Configure how many worker threads background indexing uses.")
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
@@ -40,6 +45,7 @@ search_app.add_typer(export_format_app, name="export-format")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(ocr_retry_app, name="ocr-retry")
+index_app.add_typer(thread_workers_app, name="thread-workers")
 
 
 @gpu_app.command("enable")
@@ -225,5 +231,39 @@ def ocr_retry_set(
         console.print(
             Text.assemble("OCR retry attempts set to ", (str(attempts), "bright_blue"), ".")
         )
+    finally:
+        conn.close()
+
+
+@thread_workers_app.command("show")
+def thread_workers_show() -> None:
+    """Show how many worker threads background indexing uses."""
+    conn = connect()
+    try:
+        value = get_thread_workers(conn)
+        label = "disabled (sequential)" if value == "0" else value
+        console.print(Text.assemble("Thread workers: ", (label, "bright_blue")))
+    finally:
+        conn.close()
+
+
+@thread_workers_app.command("set")
+def thread_workers_set(
+    value: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"0 (disable), 1-{THREAD_WORKERS_MAX}, or '{THREAD_WORKERS_AUTO}'.",
+    ),
+) -> None:
+    """Set how many worker threads background indexing uses."""
+    conn = connect()
+    try:
+        try:
+            set_thread_workers(conn, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style="bold red")
+            raise typer.Exit(code=1) from exc
+        label = "disabled (sequential)" if value == "0" else value
+        console.print(Text.assemble("Thread workers set to ", (label, "bright_blue"), "."))
     finally:
         conn.close()

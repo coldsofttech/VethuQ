@@ -14,6 +14,10 @@ DEFAULT_OCR_RETRY_ATTEMPTS = 3
 SEARCH_EXPORT_FORMAT_KEY = "search_export_format"
 DEFAULT_SEARCH_EXPORT_FORMAT = "json"
 SEARCH_EXPORT_FORMATS = ("json", "html")
+THREAD_WORKERS_KEY = "thread_workers"
+DEFAULT_THREAD_WORKERS = "0"
+THREAD_WORKERS_AUTO = "auto"
+THREAD_WORKERS_MAX = 8
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -85,3 +89,21 @@ def set_search_export_format(conn: sqlite3.Connection, format_: str) -> None:
     if format_ not in SEARCH_EXPORT_FORMATS:
         raise ValueError(f"format must be one of {SEARCH_EXPORT_FORMATS}")
     set_setting(conn, SEARCH_EXPORT_FORMAT_KEY, format_)
+
+
+def get_thread_workers(conn: sqlite3.Connection) -> str:
+    """How many worker threads background indexing uses. '0' (disabled) by default.
+
+    One of '0' (disabled - sequential, single-threaded indexing), '1'-'8'
+    (a fixed worker count), or 'auto' (sized at run time from current CPU/
+    memory headroom - see `vethuq_core.ocr.resolve_thread_workers`).
+    """
+    value = get_setting(conn, THREAD_WORKERS_KEY)
+    return value if value is not None else DEFAULT_THREAD_WORKERS
+
+
+def set_thread_workers(conn: sqlite3.Connection, value: str) -> None:
+    if value != THREAD_WORKERS_AUTO:
+        if not value.isdigit() or not 0 <= int(value) <= THREAD_WORKERS_MAX:
+            raise ValueError(f"value must be 0-{THREAD_WORKERS_MAX} or '{THREAD_WORKERS_AUTO}'")
+    set_setting(conn, THREAD_WORKERS_KEY, value)

@@ -58,7 +58,9 @@ def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
         total_files=1,
         processed_files=1,
         failed_files=0,
-        current_file="a.pdf",
+        thread_workers_setting="1",
+        workers=1,
+        current_files=["a.pdf"],
         started_at=now,
         updated_at=now,
     )
@@ -158,7 +160,9 @@ def test_status_shows_progress(tmp_path, monkeypatch):
         total_files=4,
         processed_files=1,
         failed_files=0,
-        current_file="a.pdf",
+        thread_workers_setting="1",
+        workers=1,
+        current_files=["a.pdf"],
         started_at=now,
         updated_at=now,
     )
@@ -199,7 +203,9 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
         total_files=2,
         processed_files=0,
         failed_files=0,
-        current_file=None,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=[],
         started_at=now,
         updated_at=now,
     )
