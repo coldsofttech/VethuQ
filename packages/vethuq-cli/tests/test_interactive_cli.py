@@ -18,7 +18,7 @@ def _use_temp_db(monkeypatch, tmp_path):
 def test_no_args_shows_banner_and_main_menu(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
-    result = runner.invoke(app, [], input="5\n")
+    result = runner.invoke(app, [], input="6\n")
 
     assert result.exit_code == 0
     assert "VethuQ" in result.stdout
@@ -29,7 +29,7 @@ def test_no_args_shows_banner_and_main_menu(tmp_path, monkeypatch):
 def test_sources_list_then_back_then_exit(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
-    result = runner.invoke(app, [], input="2\n1\n0\n5\n")
+    result = runner.invoke(app, [], input="2\n1\n0\n6\n")
 
     assert result.exit_code == 0
     assert "No sources registered yet." in result.stdout
@@ -38,7 +38,7 @@ def test_sources_list_then_back_then_exit(tmp_path, monkeypatch):
 def test_settings_gpu_status_navigation(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
-    result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n5\n")
+    result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n6\n")
 
     assert result.exit_code == 0
     assert "GPU: " in result.stdout
