@@ -149,3 +149,30 @@ def test_thread_workers_set_rejects_out_of_range_value(tmp_path, monkeypatch):
     result = runner.invoke(app, ["settings", "index", "thread-workers", "set", "9"])
 
     assert result.exit_code == 1
+
+
+def test_stale_lock_show_defaults_to_auto(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "stale-lock", "show"])
+
+    assert result.exit_code == 0
+    assert "auto" in result.stdout
+
+
+def test_stale_lock_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "index", "stale-lock", "set", "disable"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "index", "stale-lock", "show"])
+    assert "disable" in show_result.stdout
+
+
+def test_stale_lock_set_rejects_invalid_value(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "stale-lock", "set", "sometimes"])
+
+    assert result.exit_code == 1

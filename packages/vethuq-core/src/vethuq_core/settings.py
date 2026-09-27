@@ -18,6 +18,9 @@ THREAD_WORKERS_KEY = "thread_workers"
 DEFAULT_THREAD_WORKERS = "0"
 THREAD_WORKERS_AUTO = "auto"
 THREAD_WORKERS_MAX = 8
+STALE_LOCK_KEY = "stale_lock"
+DEFAULT_STALE_LOCK = "auto"
+STALE_LOCK_VALUES = ("enable", "disable", "auto")
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -107,3 +110,20 @@ def set_thread_workers(conn: sqlite3.Connection, value: str) -> None:
         if not value.isdigit() or not 0 <= int(value) <= THREAD_WORKERS_MAX:
             raise ValueError(f"value must be 0-{THREAD_WORKERS_MAX} or '{THREAD_WORKERS_AUTO}'")
     set_setting(conn, THREAD_WORKERS_KEY, value)
+
+
+def get_stale_lock(conn: sqlite3.Connection) -> str:
+    """Whether a lock left behind by a run that didn't exit cleanly is auto-cleared
+    on the next run. 'auto' by default.
+
+    One of 'auto' (auto-clear - the default), 'enable' (auto-clear - an explicit
+    opt-in with the same effect as 'auto'), or 'disable' (require `--force`, as before).
+    """
+    value = get_setting(conn, STALE_LOCK_KEY)
+    return value if value is not None else DEFAULT_STALE_LOCK
+
+
+def set_stale_lock(conn: sqlite3.Connection, value: str) -> None:
+    if value not in STALE_LOCK_VALUES:
+        raise ValueError(f"value must be one of {STALE_LOCK_VALUES}")
+    set_setting(conn, STALE_LOCK_KEY, value)

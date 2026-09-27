@@ -111,11 +111,13 @@ class MainWindow(tk.Tk):
             start_run(db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
             # AlreadyRunningError: lost a race with something else starting a
-            # run just now - fine, we'll just poll it. StaleLockError: a
-            # previous run didn't exit cleanly; leave clearing that to the
-            # user (`vethuq index run --force`) rather than doing it silently
-            # here. SourceNotFoundError can't actually happen (no target is
-            # passed), but is one of start_run's declared errors.
+            # run just now - fine, we'll just poll it. StaleLockError: only
+            # reachable if the user has set `stale-lock disable`, since the
+            # default ("auto") has start_run clear a stale lock itself; leave
+            # clearing it to the user (`vethuq index run --force`) rather
+            # than doing it silently here. SourceNotFoundError can't actually
+            # happen (no target is passed), but is one of start_run's
+            # declared errors.
             pass
 
     def _poll_index_status(self) -> None:

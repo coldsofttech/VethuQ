@@ -14,7 +14,12 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.settings import SEARCH_EXPORT_FORMATS, THREAD_WORKERS_AUTO, THREAD_WORKERS_MAX
+from vethuq_core.settings import (
+    SEARCH_EXPORT_FORMATS,
+    STALE_LOCK_VALUES,
+    THREAD_WORKERS_AUTO,
+    THREAD_WORKERS_MAX,
+)
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index import history as index_history
@@ -37,6 +42,8 @@ from vethuq_cli.settings import (
     removed_retention_show,
     snippet_set,
     snippet_show,
+    stale_lock_set,
+    stale_lock_show,
     thread_workers_set,
     thread_workers_show,
 )
@@ -274,6 +281,24 @@ def _settings_thread_workers_menu() -> None:
             _run_safely(thread_workers_set, value=value)
 
 
+def _settings_stale_lock_menu() -> None:
+    while True:
+        console.print()
+        _print_menu("Settings > Index > Stale Lock", [("1", "Show"), ("2", "Set"), ("0", "Back")])
+        choice = _prompt_choice(["1", "2", "0"])
+        if choice == "0":
+            return
+        if choice == "1":
+            _run_safely(stale_lock_show)
+        elif choice == "2":
+            value = Prompt.ask(
+                "Auto-clear a lock left behind by a run that didn't exit cleanly",
+                console=console,
+                choices=list(STALE_LOCK_VALUES),
+            )
+            _run_safely(stale_lock_set, value=value)
+
+
 def _settings_index_menu() -> None:
     while True:
         console.print()
@@ -283,10 +308,11 @@ def _settings_index_menu() -> None:
                 ("1", "Removed Retention"),
                 ("2", "OCR Retry"),
                 ("3", "Thread Workers"),
+                ("4", "Stale Lock"),
                 ("0", "Back"),
             ],
         )
-        choice = _prompt_choice(["1", "2", "3", "0"])
+        choice = _prompt_choice(["1", "2", "3", "4", "0"])
         if choice == "0":
             return
         if choice == "1":
@@ -295,6 +321,8 @@ def _settings_index_menu() -> None:
             _settings_ocr_retry_menu()
         elif choice == "3":
             _settings_thread_workers_menu()
+        elif choice == "4":
+            _settings_stale_lock_menu()
 
 
 def _settings_menu() -> None:

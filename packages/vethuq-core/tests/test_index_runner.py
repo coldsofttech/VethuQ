@@ -264,7 +264,10 @@ def test_start_run_raises_when_already_running(db_path, monkeypatch):
         index_runner.start_run(None, db_path=db_path)
 
 
-def test_start_run_raises_on_stale_lock_without_force(db_path, monkeypatch):
+def test_start_run_raises_on_stale_lock_when_disabled(db_path, conn, monkeypatch):
+    from vethuq_core.settings import set_stale_lock
+
+    set_stale_lock(conn, "disable")
     monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
     index_runner._atomic_write(index_runner._lock_path(db_path), "999")
 
@@ -272,7 +275,10 @@ def test_start_run_raises_on_stale_lock_without_force(db_path, monkeypatch):
         index_runner.start_run(None, db_path=db_path)
 
 
-def test_start_run_force_clears_stale_lock(db_path, monkeypatch):
+def test_start_run_force_clears_stale_lock(db_path, conn, monkeypatch):
+    from vethuq_core.settings import set_stale_lock
+
+    set_stale_lock(conn, "disable")
     monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
     index_runner._atomic_write(index_runner._lock_path(db_path), "999")
     monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
@@ -280,6 +286,51 @@ def test_start_run_force_clears_stale_lock(db_path, monkeypatch):
     pid = index_runner.start_run(None, force=True, db_path=db_path)
 
     assert pid == 555
+
+
+def test_start_run_auto_clears_stale_lock_by_default(db_path, monkeypatch):
+    monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
+    index_runner._atomic_write(index_runner._lock_path(db_path), "999")
+    monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+
+    pid = index_runner.start_run(None, db_path=db_path)
+
+    assert pid == 555
+
+
+def test_start_run_reconciles_orphaned_run_as_failed(db_path, conn, monkeypatch):
+    started_at = datetime.now(UTC).isoformat()
+    conn.execute(
+        "INSERT INTO index_runs (id, mode, status, pid, started_at) "
+        "VALUES (1, 'run', 'running', 999, ?)",
+        (started_at,),
+    )
+    conn.commit()
+    state = index_runner.IndexState(
+        run_id=1,
+        pid=999,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=3,
+        processed_files=1,
+        failed_files=0,
+        thread_workers_setting="0",
+        workers=1,
+        current_files=[],
+        started_at=started_at,
+        updated_at=started_at,
+    )
+    index_runner._write_state(db_path, state)
+    monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
+    index_runner._atomic_write(index_runner._lock_path(db_path), "999")
+    monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+
+    index_runner.start_run(None, db_path=db_path)
+
+    row = conn.execute("SELECT status FROM index_runs WHERE id = 1").fetchone()
+    assert row["status"] == "failed"
+    assert index_runner.read_state(db_path).status == "failed"
 
 
 def test_start_run_raises_for_unknown_target(db_path):
