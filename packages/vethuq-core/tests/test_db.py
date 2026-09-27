@@ -275,6 +275,7 @@ def test_connect_creates_processing_metrics_table(tmp_path):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
         assert columns == {
             "file_type",
+            "size_bucket",
             "document_count",
             "avg_duration_seconds",
             "avg_peak_memory_mb",
@@ -387,7 +388,7 @@ def test_connect_migrates_processing_metrics_confidence_split(tmp_path):
 
         pdf_metrics = conn.execute(
             "SELECT document_count, avg_duration_seconds, avg_peak_memory_mb, avg_cpu_percent "
-            "FROM processing_metrics WHERE file_type = 'pdf'"
+            "FROM processing_metrics WHERE file_type = 'pdf' AND size_bucket = 'medium'"
         ).fetchone()
         assert pdf_metrics["document_count"] == 1
         assert pdf_metrics["avg_duration_seconds"] == 5.0

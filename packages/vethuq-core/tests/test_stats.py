@@ -18,8 +18,8 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT INTO processing_metrics "
-        "(file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
-        "avg_cpu_percent, updated_at) VALUES ('pdf', 2, 5.0, 100.0, 10.0, ?)",
+        "(file_type, size_bucket, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+        "avg_cpu_percent, updated_at) VALUES ('pdf', 'medium', 2, 5.0, 100.0, 10.0, ?)",
         (now,),
     )
     conn.execute(

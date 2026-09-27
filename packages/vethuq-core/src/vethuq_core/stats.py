@@ -9,6 +9,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ProcessingMetric:
     file_type: str
+    size_bucket: str
     document_count: int
     avg_duration_seconds: float
     avg_peak_memory_mb: float
@@ -26,10 +27,11 @@ class ConfidenceMetric:
 
 
 def get_processing_metrics(conn: sqlite3.Connection) -> list[ProcessingMetric]:
-    """Return `processing_metrics`' per-file_type running averages."""
+    """Return `processing_metrics`' per-(file_type, size_bucket) running averages."""
     rows = conn.execute(
-        "SELECT file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
-        "avg_cpu_percent, updated_at FROM processing_metrics ORDER BY file_type"
+        "SELECT file_type, size_bucket, document_count, avg_duration_seconds, "
+        "avg_peak_memory_mb, avg_cpu_percent, updated_at FROM processing_metrics "
+        "ORDER BY file_type, size_bucket"
     ).fetchall()
     return [ProcessingMetric(**dict(row)) for row in rows]
 

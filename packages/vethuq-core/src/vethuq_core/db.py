@@ -11,7 +11,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -96,12 +96,14 @@ CREATE TABLE IF NOT EXISTS index_runs (
 );
 
 CREATE TABLE IF NOT EXISTS processing_metrics (
-    file_type TEXT PRIMARY KEY CHECK (file_type IN ('pdf', 'image')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
     document_count INTEGER NOT NULL DEFAULT 0,
     avg_duration_seconds REAL NOT NULL DEFAULT 0,
     avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
     avg_cpu_percent REAL NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (file_type, size_bucket)
 );
 
 CREATE TABLE IF NOT EXISTS confidence_metrics (
@@ -320,3 +322,40 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             "FROM image_pages HAVING COUNT(*) > 0",
             (now,),
         )
+    if from_version < 16:
+        # processing_metrics used to average duration/memory/cpu per file_type
+        # alone, blending a 20KB image with a 10MB one - not granular enough
+        # for the "auto" scheduler to tell whether the *next specific* pending
+        # file would tip the machine over its resource budget. size_bucket
+        # splits each file_type's average by rough file size instead; the
+        # thresholds here (bytes) must match `ocr._size_bucket`.
+        conn.execute(
+            """
+            CREATE TABLE processing_metrics_new (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, size_bucket)
+            )
+            """
+        )
+        # The existing per-file_type average is carried over as-is into the
+        # 'medium' bucket (the old data doesn't know which sizes produced it,
+        # so there's nothing more precise to assign it to) - future documents
+        # then fold into whichever bucket their own size actually lands in.
+        conn.execute(
+            """
+            INSERT INTO processing_metrics_new
+                (file_type, size_bucket, document_count, avg_duration_seconds,
+                 avg_peak_memory_mb, avg_cpu_percent, updated_at)
+            SELECT file_type, 'medium', document_count, avg_duration_seconds,
+                avg_peak_memory_mb, avg_cpu_percent, updated_at
+            FROM processing_metrics
+            """
+        )
+        conn.execute("DROP TABLE processing_metrics")
+        conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
