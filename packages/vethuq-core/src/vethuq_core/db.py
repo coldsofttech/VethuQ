@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -35,14 +35,16 @@ CREATE TABLE IF NOT EXISTS document_index (
     file_path TEXT NOT NULL UNIQUE,
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
     status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'indexed', 'error')),
+        CHECK (status IN ('pending', 'indexed', 'error', 'removed')),
     error_message TEXT,
     indexed_at TEXT,
     started_at TEXT,
     completed_at TEXT,
     file_size_bytes INTEGER,
     checksum TEXT,
-    duplicate_of_id INTEGER REFERENCES document_index(id)
+    duplicate_of_id INTEGER REFERENCES document_index(id),
+    mtime REAL,
+    removed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -108,9 +110,10 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     _ensure_schema(conn)
 
-    from vethuq_core.sources import purge_expired_removed_sources
+    from vethuq_core.sources import purge_expired_removed_documents, purge_expired_removed_sources
 
     purge_expired_removed_sources(conn)
+    purge_expired_removed_documents(conn)
     return conn
 
 
@@ -163,3 +166,49 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
                 "ALTER TABLE document_index ADD COLUMN duplicate_of_id "
                 "INTEGER REFERENCES document_index(id)"
             )
+    if from_version < 10:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "mtime" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN mtime REAL")
+    if from_version < 11:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "removed_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN removed_at TEXT")
+        # SQLite can't widen a CHECK constraint in place - rebuild the table
+        # (the documented SQLite pattern for constraint changes) so `status`
+        # also allows 'removed', for a file that's gone missing from a
+        # still-active source without the whole source being removed.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            """
+            CREATE TABLE document_index_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                checksum TEXT,
+                duplicate_of_id INTEGER REFERENCES document_index_new(id),
+                mtime REAL,
+                removed_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO document_index_new "
+            "(id, source_id, file_path, file_type, status, error_message, indexed_at, "
+            "started_at, completed_at, file_size_bytes, checksum, duplicate_of_id, mtime, "
+            "removed_at) "
+            "SELECT id, source_id, file_path, file_type, status, error_message, indexed_at, "
+            "started_at, completed_at, file_size_bytes, checksum, duplicate_of_id, mtime, "
+            "removed_at FROM document_index"
+        )
+        conn.execute("DROP TABLE document_index")
+        conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
+        conn.execute("PRAGMA foreign_keys = ON")

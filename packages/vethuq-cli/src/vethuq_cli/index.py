@@ -151,8 +151,10 @@ def run(
     """Start OCR indexing in the background and return immediately.
 
     A source that's already fully indexed is still checked for files added
-    to it since the last run - only genuinely new (or previously failed)
-    files are (re)processed. Use 'vethuq index status' to check progress.
+    or modified since the last run - genuinely new files, files whose
+    content has changed (by checksum), and previously failed files are
+    (re)processed; unchanged files are left untouched. Use 'vethuq index
+    status' to check progress.
     """
     _start_and_report(target, force=force, wait=wait, restart=False)
 

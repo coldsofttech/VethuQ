@@ -225,6 +225,21 @@ def _find_duplicate_original(
     return row["id"] if row is not None else None
 
 
+def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
+    """Return whether `file_path`'s content differs from its `document_index` row.
+
+    A file's mtime and size are checked first - if neither moved since it was
+    last indexed, its content is assumed unchanged and the (expensive) full
+    checksum is skipped entirely. Only when mtime or size differ is the
+    checksum recomputed and compared, to confirm this is an actual content
+    change rather than e.g. a touch that left the bytes alone.
+    """
+    stat = file_path.stat()
+    if stat.st_mtime == existing["mtime"] and stat.st_size == existing["file_size_bytes"]:
+        return False
+    return _compute_checksum(file_path) != existing["checksum"]
+
+
 def _upsert_document(
     conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
 ) -> tuple[int, int | None]:
@@ -233,28 +248,125 @@ def _upsert_document(
     Returns `(document_id, duplicate_of_id)` - `duplicate_of_id` is the id of
     the original document this one's content (by checksum) already matches,
     or None if this document is new/unique content.
+
+    If this document's checksum is changing (its content was modified since
+    it was last indexed) and other documents were deduped against its old
+    content, the earliest of them is promoted to take over as the original
+    for that old content first - see `_promote_surviving_duplicate` - so
+    they keep reusing the OCR text that actually matches their (unchanged)
+    bytes instead of silently inheriting this document's new, unrelated one.
     """
     started_at = datetime.now(UTC).isoformat()
-    file_size_bytes = file_path.stat().st_size
+    stat = file_path.stat()
+    file_size_bytes = stat.st_size
+    mtime = stat.st_mtime
     checksum = _compute_checksum(file_path)
+
+    existing = conn.execute(
+        "SELECT id, checksum FROM document_index WHERE file_path = ?", (str(file_path),)
+    ).fetchone()
+    if existing is not None and existing["checksum"] != checksum:
+        from vethuq_core.sources import _promote_surviving_duplicate
+
+        _promote_surviving_duplicate(conn, existing["id"], set())
+
     conn.execute(
         """
         INSERT INTO document_index
-            (source_id, file_path, file_type, status, started_at, file_size_bytes, checksum)
-        VALUES (?, ?, ?, 'pending', ?, ?, ?)
+            (source_id, file_path, file_type, status, started_at, file_size_bytes, checksum, mtime)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
             status = 'pending', error_message = NULL, indexed_at = NULL,
             started_at = excluded.started_at, completed_at = NULL,
             file_size_bytes = excluded.file_size_bytes, checksum = excluded.checksum,
-            duplicate_of_id = NULL
+            mtime = excluded.mtime, duplicate_of_id = NULL
         """,
-        (source_id, str(file_path), file_type, started_at, file_size_bytes, checksum),
+        (source_id, str(file_path), file_type, started_at, file_size_bytes, checksum, mtime),
     )
     row = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
     ).fetchone()
     document_id = row["id"]
     return document_id, _find_duplicate_original(conn, checksum, document_id)
+
+
+def _reconcile_renamed_and_removed_files(
+    conn: sqlite3.Connection, source: Source, disk_files: list[Path]
+) -> set[str]:
+    """Detect files renamed/moved within `source`, and files missing from it.
+
+    Compares `source`'s tracked (non-'removed') `document_index` rows
+    against `disk_files` (every supported file currently found under this
+    source). A brand-new path whose checksum exactly matches a tracked path
+    that's no longer on disk is treated as that file renamed or moved: the
+    existing row's `file_path` (and mtime/size) is updated in place, with no
+    OCR re-run, rather than indexing it as an unrelated new file and leaving
+    the old row to be purged as removed.
+
+    When more than one candidate shares a checksum (e.g. two files with
+    identical content, one deleted and one renamed), pairing is done in a
+    deterministic but otherwise arbitrary order (tracked rows by id, new
+    paths alphabetically) rather than left unmatched. This is safe even
+    when "wrong": whichever row ends up representing that content, a
+    document that owned OCR pages other rows were deduped against still
+    hands them off correctly via `_promote_surviving_duplicate` once it's
+    actually purged, so no OCR text is ever lost or misattributed.
+
+    A tracked path that's gone missing and isn't claimed by a rename is
+    marked 'removed' (with `removed_at` set) so `purge_expired_removed_documents`
+    can clean it up after the retention window, promoting a surviving
+    duplicate first if other documents had been deduped against it.
+
+    Returns the set of new on-disk paths (as strings) claimed by a rename,
+    so the caller can skip (re-)indexing them.
+    """
+    disk_path_strs = {str(path) for path in disk_files}
+    tracked = conn.execute(
+        "SELECT id, file_path, checksum FROM document_index "
+        "WHERE source_id = ? AND status != 'removed'",
+        (source.id,),
+    ).fetchall()
+    tracked_paths = {row["file_path"] for row in tracked}
+
+    missing_rows = [row for row in tracked if row["file_path"] not in disk_path_strs]
+    new_paths = sorted(disk_path_strs - tracked_paths)
+
+    claimed_paths: set[str] = set()
+    claimed_row_ids: set[int] = set()
+
+    if missing_rows and new_paths:
+        new_checksums = {path: _compute_checksum(Path(path)) for path in new_paths}
+        missing_by_checksum: dict[str, list[sqlite3.Row]] = {}
+        for row in sorted(missing_rows, key=lambda r: r["id"]):
+            missing_by_checksum.setdefault(row["checksum"], []).append(row)
+        new_by_checksum: dict[str, list[str]] = {}
+        for path in new_paths:
+            new_by_checksum.setdefault(new_checksums[path], []).append(path)
+
+        for checksum, rows in missing_by_checksum.items():
+            matching_paths = new_by_checksum.get(checksum)
+            if not matching_paths:
+                continue
+            for row, new_path in zip(rows, matching_paths, strict=False):
+                stat = Path(new_path).stat()
+                conn.execute(
+                    "UPDATE document_index SET file_path = ?, mtime = ?, "
+                    "file_size_bytes = ? WHERE id = ?",
+                    (new_path, stat.st_mtime, stat.st_size, row["id"]),
+                )
+                claimed_paths.add(new_path)
+                claimed_row_ids.add(row["id"])
+
+    removed_at = datetime.now(UTC).isoformat()
+    for row in missing_rows:
+        if row["id"] in claimed_row_ids:
+            continue
+        conn.execute(
+            "UPDATE document_index SET status = 'removed', removed_at = ? WHERE id = ?",
+            (removed_at, row["id"]),
+        )
+
+    return claimed_paths
 
 
 def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
@@ -432,12 +544,19 @@ def _iter_pending_files(
         existing = None
         if only_new_files or only_failed:
             existing = conn.execute(
-                "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
+                "SELECT status, mtime, file_size_bytes, checksum FROM document_index "
+                "WHERE file_path = ?",
+                (str(file_path),),
             ).fetchone()
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
-        elif only_new_files and existing is not None and existing["status"] == "indexed":
+        elif (
+            only_new_files
+            and existing is not None
+            and existing["status"] == "indexed"
+            and not _has_content_changed(file_path, existing)
+        ):
             continue
         file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"
         yield file_path, file_type
@@ -496,17 +615,29 @@ def run_ocr(
     rest of the source; `sources.status` reflects the overall outcome.
 
     When `only_new_files` is True, a file that already has a successful
-    `document_index` row is left untouched - only new or previously failed
-    files are (re)processed. Use this for a source that's already been
-    indexed, to pick up files added since the last run without redoing OCR
-    on everything. When False (the default), every supported file under the
-    source is (re)processed unconditionally - appropriate for a source that's
-    freshly added or reactivated after removal.
+    `document_index` row is left untouched unless its content has changed
+    since - checked via mtime/size first, falling back to a full checksum
+    comparison when either moved. A changed file is treated as modified and
+    (re)processed just like a new one. Use this for a source that's already
+    been indexed, to pick up files added or edited since the last run
+    without redoing OCR on everything else. When False (the default), every
+    supported file under the source is (re)processed unconditionally -
+    appropriate for a source that's freshly added or reactivated after
+    removal.
 
     When `only_failed` is True, only files whose `document_index` row has
     status='error' are (re)processed - new and already-indexed files are
     left untouched. Use this to retry failures without touching anything
     else. Takes precedence over `only_new_files` if both are set.
+
+    When `only_new_files` is True (and `only_failed` is False), this also
+    reconciles the source's tracked files against what's actually on disk
+    before processing anything - see `_reconcile_renamed_and_removed_files`.
+    A file that was renamed/moved within the source is detected by content
+    and has its `document_index` row updated in place rather than being
+    reprocessed as new; a tracked file that's gone missing (and wasn't
+    claimed by a rename) is marked 'removed' for later cleanup by
+    `purge_expired_removed_documents`.
 
     `on_file_done`, when given, is called with a file's path immediately after
     it's (re)processed - used to report progress. `should_stop`, when given,
@@ -518,20 +649,39 @@ def run_ocr(
     root = Path(source.path)
     had_error = False
     processed_paths: list[str] = []
+    disk_files = list(_iter_supported_files(root))
 
-    for file_path in _iter_supported_files(root):
+    renamed_paths: set[str] = set()
+    if only_new_files and not only_failed:
+        renamed_paths = _reconcile_renamed_and_removed_files(conn, source, disk_files)
+        conn.commit()
+        for new_path in sorted(renamed_paths):
+            processed_paths.append(new_path)
+            if on_file_done is not None:
+                on_file_done(new_path)
+
+    for file_path in disk_files:
         if should_stop is not None and should_stop():
             break
+        if str(file_path) in renamed_paths:
+            continue
 
         existing = None
         if only_new_files or only_failed:
             existing = conn.execute(
-                "SELECT status FROM document_index WHERE file_path = ?", (str(file_path),)
+                "SELECT status, mtime, file_size_bytes, checksum FROM document_index "
+                "WHERE file_path = ?",
+                (str(file_path),),
             ).fetchone()
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
-        elif only_new_files and existing is not None and existing["status"] == "indexed":
+        elif (
+            only_new_files
+            and existing is not None
+            and existing["status"] == "indexed"
+            and not _has_content_changed(file_path, existing)
+        ):
             continue
 
         file_type = "pdf" if file_path.suffix.lower() in _PDF_EXTENSIONS else "image"

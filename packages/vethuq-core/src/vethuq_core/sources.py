@@ -243,3 +243,46 @@ def purge_expired_removed_sources(
 
     conn.commit()
     return len(expired)
+
+
+def purge_expired_removed_documents(
+    conn: sqlite3.Connection, retention_minutes: int | None = None
+) -> int:
+    """Permanently delete individual documents marked 'removed' past their retention window.
+
+    A document is marked 'removed' (rather than deleted outright) when its
+    file goes missing from an otherwise still-active source - see
+    `vethuq_core.ocr._reconcile_renamed_and_removed_files` - so it survives
+    briefly in case the file reappears (e.g. it was moved out and back, or
+    the miss was transient). This mirrors `purge_expired_removed_sources`
+    but at the individual-file level, and shares the same retention setting.
+
+    Returns the number of documents purged.
+    """
+    from vethuq_core.settings import get_removed_source_retention_minutes
+
+    if retention_minutes is None:
+        retention_minutes = get_removed_source_retention_minutes(conn)
+
+    cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
+    expired = conn.execute(
+        "SELECT id FROM document_index "
+        "WHERE status = 'removed' AND removed_at IS NOT NULL AND removed_at <= ?",
+        (cutoff,),
+    ).fetchall()
+
+    if not expired:
+        return 0
+
+    doomed_ids = {row["id"] for row in expired}
+    for document_id in doomed_ids:
+        _promote_surviving_duplicate(conn, document_id, doomed_ids)
+
+    for document_id in doomed_ids:
+        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
+        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
+    placeholders = ",".join("?" * len(doomed_ids))
+    conn.execute(f"DELETE FROM document_index WHERE id IN ({placeholders})", list(doomed_ids))
+
+    conn.commit()
+    return len(doomed_ids)

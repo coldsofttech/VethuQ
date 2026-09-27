@@ -148,6 +148,127 @@ def test_connect_migrates_document_index_missing_checksum_columns(tmp_path):
         conn.close()
 
 
+def test_connect_migrates_document_index_missing_mtime_column(tmp_path):
+    db_path = tmp_path / "vethuq.db"
+
+    # Simulate a database created by an older version of this code: a
+    # document_index table that predates the "mtime" column, at schema
+    # version 9.
+    old_conn = sqlite3.connect(db_path)
+    old_conn.executescript(
+        """
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (9);
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            added_at TEXT NOT NULL,
+            last_scanned_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            removed_at TEXT
+        );
+        CREATE TABLE document_index (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            file_path TEXT NOT NULL UNIQUE,
+            file_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            indexed_at TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            file_size_bytes INTEGER,
+            checksum TEXT,
+            duplicate_of_id INTEGER REFERENCES document_index(id)
+        );
+        """
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    conn = connect(db_path)
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        assert "mtime" in columns
+
+        version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+        assert version == SCHEMA_VERSION
+    finally:
+        conn.close()
+
+
+def test_connect_migrates_document_index_status_check_and_removed_at(tmp_path):
+    db_path = tmp_path / "vethuq.db"
+
+    # Simulate a database created by an older version of this code: a
+    # document_index table that predates the "removed_at" column and the
+    # wider 'removed' status value, at schema version 10.
+    old_conn = sqlite3.connect(db_path)
+    old_conn.executescript(
+        """
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version (version) VALUES (10);
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            source_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            added_at TEXT NOT NULL,
+            last_scanned_at TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            removed_at TEXT
+        );
+        CREATE TABLE document_index (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            file_path TEXT NOT NULL UNIQUE,
+            file_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'indexed', 'error')),
+            error_message TEXT,
+            indexed_at TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            file_size_bytes INTEGER,
+            checksum TEXT,
+            duplicate_of_id INTEGER REFERENCES document_index(id),
+            mtime REAL
+        );
+        """
+    )
+    old_conn.execute(
+        "INSERT INTO sources (id, path, source_type, status, added_at) "
+        "VALUES (1, 'C:/docs', 'folder', 'indexed', '2026-01-01T00:00:00')"
+    )
+    old_conn.execute(
+        "INSERT INTO document_index (id, source_id, file_path, file_type, status) "
+        "VALUES (1, 1, 'C:/docs/a.png', 'image', 'indexed')"
+    )
+    old_conn.commit()
+    old_conn.close()
+
+    conn = connect(db_path)
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        assert "removed_at" in columns
+
+        # The pre-existing row survives the table rebuild with its data intact.
+        row = conn.execute("SELECT * FROM document_index WHERE id = 1").fetchone()
+        assert row["file_path"] == "C:/docs/a.png"
+        assert row["status"] == "indexed"
+
+        # The widened CHECK constraint now accepts 'removed'.
+        conn.execute("UPDATE document_index SET status = 'removed' WHERE id = 1")
+        conn.commit()
+
+        version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+        assert version == SCHEMA_VERSION
+    finally:
+        conn.close()
+
+
 def test_connect_creates_processing_metrics_table(tmp_path):
     conn = connect(tmp_path / "vethuq.db")
     try:
