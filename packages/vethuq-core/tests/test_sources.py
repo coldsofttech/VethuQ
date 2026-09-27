@@ -197,6 +197,85 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
     )
 
 
+def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate(
+    conn: sqlite3.Connection, tmp_path
+):
+    """Regression: both the original and its duplicate are doomed, in different sources.
+
+    `_promote_surviving_duplicate` leaves `duplicate_of_id` pointing at the
+    original since there's no surviving duplicate to promote - the whole
+    content cluster is being deleted together. That must not trip the
+    self-referential FK on `document_index.duplicate_of_id`.
+    """
+    original_folder = tmp_path / "original_source"
+    original_folder.mkdir()
+    original_source = add_source(conn, original_folder)
+    duplicate_folder = tmp_path / "duplicate_source"
+    duplicate_folder.mkdir()
+    duplicate_source = add_source(conn, duplicate_folder)
+
+    original_id = conn.execute(
+        "INSERT INTO document_index (source_id, file_path, file_type, status, checksum) "
+        "VALUES (?, '/original_source/a.pdf', 'pdf', 'indexed', 'abc')",
+        (original_source.id,),
+    ).lastrowid
+    duplicate_id = conn.execute(
+        "INSERT INTO document_index "
+        "(source_id, file_path, file_type, status, checksum, duplicate_of_id) "
+        "VALUES (?, '/duplicate_source/a.pdf', 'pdf', 'indexed', 'abc', ?)",
+        (duplicate_source.id, original_id),
+    ).lastrowid
+    conn.commit()
+
+    remove_source(conn, original_source.id)
+    remove_source(conn, duplicate_source.id)
+    stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
+    conn.execute(
+        "UPDATE sources SET removed_at = ? WHERE id IN (?, ?)",
+        (stale_removed_at, original_source.id, duplicate_source.id),
+    )
+    conn.commit()
+
+    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+
+    assert purged == 2
+    assert (
+        conn.execute("SELECT * FROM document_index WHERE id = ?", (original_id,)).fetchone() is None
+    )
+    assert (
+        conn.execute("SELECT * FROM document_index WHERE id = ?", (duplicate_id,)).fetchone()
+        is None
+    )
+
+
+def test_purge_expired_removed_sources_clears_stale_index_runs_target(
+    conn: sqlite3.Connection, tmp_path
+):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    run_by_id = conn.execute(
+        "INSERT INTO index_runs (target, started_at) VALUES (?, ?)",
+        (str(source.id), datetime.now(UTC).isoformat()),
+    ).lastrowid
+    run_by_path = conn.execute(
+        "INSERT INTO index_runs (target, started_at) VALUES (?, ?)",
+        (source.path, datetime.now(UTC).isoformat()),
+    ).lastrowid
+    conn.commit()
+
+    remove_source(conn, source.id)
+    stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
+    conn.execute("UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, source.id))
+    conn.commit()
+
+    purge_expired_removed_sources(conn, retention_minutes=30)
+
+    for run_id in (run_by_id, run_by_path):
+        row = conn.execute("SELECT target FROM index_runs WHERE id = ?", (run_id,)).fetchone()
+        assert row["target"] is None
+
+
 def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
