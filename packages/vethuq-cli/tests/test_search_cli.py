@@ -71,10 +71,14 @@ def _seed_indexed_image(db_path, file_path: str, text: str) -> int:
         conn.close()
 
 
+def _fail_on_export():
+    raise AssertionError("should not export")
+
+
 def test_page_prints_everything_directly_when_not_a_tty(monkeypatch, capsys):
     monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: False)
 
-    search_module._page("line one\nline two\nline three")
+    search_module._page("line one\nline two\nline three", _fail_on_export)
 
     out = capsys.readouterr().out
     assert out.splitlines() == ["line one", "line two", "line three"]
@@ -92,7 +96,7 @@ def test_page_reveals_one_more_line_on_down_and_quits_on_q(monkeypatch):
     monkeypatch.setattr(search_module, "_write_line", lambda message: written.append(message))
 
     with pytest.raises(KeyboardInterrupt):
-        search_module._page("l1\nl2\nl3\nl4\nl5")
+        search_module._page("l1\nl2\nl3\nl4\nl5", _fail_on_export)
 
     # terminal_size.lines=3 reserves one line for the status prompt, so the
     # first screen is 2 lines; pressing "down" reveals exactly one more.
@@ -111,9 +115,25 @@ def test_page_stops_without_prompting_when_content_fits_one_screen(monkeypatch, 
     monkeypatch.setattr(search_module, "_read_key_windows", lambda: _fail())
     monkeypatch.setattr(search_module, "_read_key_posix", lambda: _fail())
 
-    search_module._page("l1\nl2\nl3")
+    search_module._page("l1\nl2\nl3", _fail_on_export)
 
     assert capsys.readouterr().out.splitlines() == ["l1", "l2", "l3"]
+
+
+def test_page_exports_and_closes_on_e(monkeypatch):
+    monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(
+        search_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3))
+    )
+    keys = iter(["export"])
+    monkeypatch.setattr(search_module, "_read_key_windows", lambda: next(keys))
+    monkeypatch.setattr(search_module, "_read_key_posix", lambda: next(keys))
+    monkeypatch.setattr(search_module, "_write_line", lambda message: None)
+    exported = []
+
+    search_module._page("l1\nl2\nl3\nl4\nl5", lambda: exported.append(True))
+
+    assert exported == [True]
 
 
 def test_search_reports_no_matches(tmp_path, monkeypatch):
@@ -266,6 +286,31 @@ def test_search_without_export_does_not_touch_output(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "Results: 1 match" in result.stdout
+
+
+def test_search_pager_export_prompts_and_writes_file(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+    monkeypatch.setattr(search_module, "_page", lambda rendered, on_export: on_export())
+    output = tmp_path / "out.json"
+
+    result = runner.invoke(app, ["search", "amount due"], input=f"{output}\n\n")
+
+    assert result.exit_code == 0
+    assert output.exists()
+    assert json.loads(output.read_text())
+    assert "Exported" in result.stdout
+
+
+def test_search_pager_export_cancelled_on_blank_filename(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+    monkeypatch.setattr(search_module, "_page", lambda rendered, on_export: on_export())
+
+    result = runner.invoke(app, ["search", "amount due"], input="\n")
+
+    assert result.exit_code == 0
+    assert "Export cancelled." in result.stdout
 
 
 def test_search_different_files_each_get_their_own_file_line(tmp_path, monkeypatch):
