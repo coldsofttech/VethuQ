@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OCR results now record which engine and language processed them, the image resolution used, and memory/CPU usage during processing.
 - A file that fails OCR is now automatically retried before being marked as failed — configurable with `vethuq settings index ocr-retry set/show` (3 attempts by default).
 - The CLI's colored output now uses your system pager (e.g. `less`) to scroll through `vethuq search` results, instead of a custom built-in one.
+- Running `vethuq` with no subcommand now opens an interactive menu for Search, Sources, Index, and Settings, instead of just printing help text.
+- While viewing `search` results, pressing `e` now lets you export them to a file (asking for the filename and format) instead of having to re-run the search with `--export`.
 
 ### Fixed
 

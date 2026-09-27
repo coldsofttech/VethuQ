@@ -5,9 +5,11 @@ from __future__ import annotations
 import shutil
 import sys
 import textwrap
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
+from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.export import export_search_results
@@ -23,7 +25,7 @@ from vethuq_cli.console import console, error_console
 _MIN_BOX_WIDTH = 20
 _HEADER_STYLE = "bold bright_white"
 _ACCENT_STYLES = ["bright_cyan", "bright_magenta"]
-_MORE_PROMPT = "-- More (Enter key for new line; q for quit)  --"
+_MORE_PROMPT = "-- More (Enter key for new line; e to export; q for quit)  --"
 _MORE_PROMPT_STYLE = "bold green"
 _CLEAR_LINE = "\r\x1b[2K"
 
@@ -42,6 +44,8 @@ def _read_key_windows() -> str:
             continue
         if ch in (b"q", b"Q", b"\x1b"):
             return "quit"
+        if ch in (b"e", b"E"):
+            return "export"
         if ch == b"\x03":  # Ctrl+C
             raise KeyboardInterrupt
         if ch == b" ":
@@ -73,6 +77,8 @@ def _read_key_posix() -> str:
                 continue
             if ch in ("q", "Q"):
                 return "quit"
+            if ch in ("e", "E"):
+                return "export"
             if ch == "\x03":
                 raise KeyboardInterrupt
             if ch == " ":
@@ -93,16 +99,18 @@ def _render_prompt() -> str:
     return capture.get()
 
 
-def _page(rendered: str) -> None:
+def _page(rendered: str, on_export: Callable[[], None]) -> None:
     """Show `rendered` a screen at a time with no external pager process.
 
     The down arrow (or Enter) reveals one more line, space/page-down reveals
-    a screenful, and `q` closes the results immediately - exactly like
-    Ctrl+C, since Click already handles a `KeyboardInterrupt` that way.
-    Falls back to printing everything at once when stdout isn't an
-    interactive terminal (piped output, or under test). `rendered` is
-    expected to already carry any ANSI styling (e.g. from `console.capture()`),
-    which is written straight through rather than re-parsed by Rich.
+    a screenful, `e` exports the results (via `on_export`) and closes the
+    pager, and `q` closes the results immediately - exactly like Ctrl+C,
+    since Click already handles a `KeyboardInterrupt` that way. Falls back
+    to printing everything at once when stdout isn't an interactive
+    terminal (piped output, or under test) - `e` isn't available there.
+    `rendered` is expected to already carry any ANSI styling (e.g. from
+    `console.capture()`), which is written straight through rather than
+    re-parsed by Rich.
     """
     lines = rendered.split("\n")
     if not sys.stdout.isatty():
@@ -125,6 +133,9 @@ def _page(rendered: str) -> None:
         sys.stdout.write(_CLEAR_LINE)
         if key == "quit":
             raise KeyboardInterrupt
+        if key == "export":
+            on_export()
+            return
         step = height if key == "page" else 1 if key == "down" else 0
         next_top = min(top + step, total)
         for line in lines[top:next_top]:
@@ -152,8 +163,9 @@ def search(
     """Search indexed content for CONTENT and print matching pages.
 
     Only successfully indexed documents are searched. Results open in a
-    pager at the top - scroll (e.g. the down arrow) to reveal more, `q` to
-    close. A file with several matching pages prints its `File:` line once,
+    pager at the top - scroll (e.g. the down arrow) to reveal more, `e` to
+    export what's been found and close the pager, `q` to close without
+    exporting. A file with several matching pages prints its `File:` line once,
     followed by one `Page: X of Y` and boxed, highlighted snippet per match;
     consecutive files alternate accent colors to make them easier to tell
     apart. How much context the box shows is configurable via
@@ -189,6 +201,27 @@ def search(
             )
             return
 
+        def _export_from_pager() -> None:
+            output = Prompt.ask("Export to file", console=console).strip()
+            if not output:
+                console.print("Export cancelled.", style="bright_black")
+                return
+            resolved_format = Prompt.ask(
+                "Export format",
+                console=console,
+                default=get_search_export_format(conn),
+                choices=list(SEARCH_EXPORT_FORMATS),
+            ).strip()
+            output_path = Path(output)
+            export_search_results(matches, content, output_path, resolved_format)
+            console.print(
+                Text.assemble(
+                    "Exported ",
+                    (str(len(matches)), "bright_blue"),
+                    f" match(es) to {output_path} ({resolved_format}).",
+                )
+            )
+
         width = max(get_search_snippet_context_chars(conn), _MIN_BOX_WIDTH)
         match_word = "match" if len(matches) == 1 else "matches"
 
@@ -215,7 +248,7 @@ def search(
                 for line in _render_box(match, width, accent):
                     console.print(line)
                 console.print()
-        _page(capture.get())
+        _page(capture.get(), _export_from_pager)
     finally:
         conn.close()
 

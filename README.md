@@ -7,6 +7,8 @@ The `vethuq` CLI works on both Windows and Linux. The desktop app is Windows-onl
 
 ## Usage
 
+Run `vethuq` on its own to open an interactive menu for Search, Sources, Index, and Settings — handy if you'd rather navigate than remember flags. Everything below also works as a direct command.
+
 Add a file or folder as a source, then index it so its text becomes searchable:
 
 ```bash
@@ -26,7 +28,7 @@ Once your files are indexed, search them from the CLI:
 vethuq search "invoice total"
 ```
 
-Each result shows the file it was found in and a snippet of the matching text, with your search term highlighted. How much surrounding text is shown can be adjusted with `vethuq settings search snippet set <characters>`.
+Each result shows the file it was found in and a snippet of the matching text, with your search term highlighted. How much surrounding text is shown can be adjusted with `vethuq settings search snippet set <characters>`. While viewing results, press `e` to export them to a file (you'll be asked for a filename and format), or `q` to close without exporting.
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 
