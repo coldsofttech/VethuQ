@@ -7,14 +7,18 @@ import sys
 import textwrap
 
 import typer
+from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.search import SearchMatch, search_indexed_content
 from vethuq_core.settings import get_search_snippet_context_chars
 
+from vethuq_cli.console import console
+
 _MIN_BOX_WIDTH = 20
-_HEADER_COLOR = typer.colors.BRIGHT_WHITE
-_ACCENT_COLORS = [typer.colors.BRIGHT_CYAN, typer.colors.BRIGHT_MAGENTA]
-_MORE_PROMPT_COLOR = typer.colors.BRIGHT_GREEN
+_HEADER_STYLE = "bold bright_white"
+_ACCENT_STYLES = ["bright_cyan", "bright_magenta"]
+_MORE_PROMPT = "-- More (Enter key for new line; q for quit)  --"
+_MORE_PROMPT_STYLE = "bold green"
 _CLEAR_LINE = "\r\x1b[2K"
 
 
@@ -73,6 +77,16 @@ def _read_key_posix() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
+def _write_line(line: str) -> None:
+    sys.stdout.write(line + "\n")
+
+
+def _render_prompt() -> str:
+    with console.capture() as capture:
+        console.print(Text(_MORE_PROMPT, style=_MORE_PROMPT_STYLE), end="")
+    return capture.get()
+
+
 def _page(rendered: str) -> None:
     """Show `rendered` a screen at a time with no external pager process.
 
@@ -80,12 +94,14 @@ def _page(rendered: str) -> None:
     a screenful, and `q` closes the results immediately - exactly like
     Ctrl+C, since Click already handles a `KeyboardInterrupt` that way.
     Falls back to printing everything at once when stdout isn't an
-    interactive terminal (piped output, or under test).
+    interactive terminal (piped output, or under test). `rendered` is
+    expected to already carry any ANSI styling (e.g. from `console.capture()`),
+    which is written straight through rather than re-parsed by Rich.
     """
     lines = rendered.split("\n")
     if not sys.stdout.isatty():
         for line in lines:
-            typer.echo(line)
+            _write_line(line)
         return
 
     read_key = _read_key_windows if sys.platform == "win32" else _read_key_posix
@@ -93,20 +109,20 @@ def _page(rendered: str) -> None:
     height = max(shutil.get_terminal_size().lines - 1, 1)
     top = min(height, total)
     for line in lines[:top]:
-        typer.echo(line)
+        _write_line(line)
 
+    prompt = _render_prompt()
     while top < total:
-        typer.echo(
-            typer.style("-- more (q to quit) --", fg=_MORE_PROMPT_COLOR, bold=True), nl=False
-        )
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
         key = read_key()
-        typer.echo(_CLEAR_LINE, nl=False)
+        sys.stdout.write(_CLEAR_LINE)
         if key == "quit":
             raise KeyboardInterrupt
         step = height if key == "page" else 1 if key == "down" else 0
         next_top = min(top + step, total)
         for line in lines[top:next_top]:
-            typer.echo(line)
+            _write_line(line)
         top = next_top
         height = max(shutil.get_terminal_size().lines - 1, 1)
 
@@ -128,41 +144,41 @@ def search(
     try:
         matches = search_indexed_content(conn, content)
         if not matches:
-            typer.secho("No matches found.", fg=typer.colors.YELLOW)
+            console.print("No matches found.", style="yellow")
             return
 
         width = max(get_search_snippet_context_chars(conn), _MIN_BOX_WIDTH)
-
         match_word = "match" if len(matches) == 1 else "matches"
-        lines = [
-            typer.style(f"Results: {len(matches)} {match_word}", fg=_HEADER_COLOR, bold=True),
-            "",
-        ]
-        last_file_path: str | None = None
-        file_index = -1
-        accent = _ACCENT_COLORS[0]
-        for match in matches:
-            if match.file_path != last_file_path:
-                last_file_path = match.file_path
-                file_index += 1
-                accent = _ACCENT_COLORS[file_index % len(_ACCENT_COLORS)]
-                file_line = f"File: {match.file_path}"
-                if match.duplicate_of_path is not None:
-                    file_line += f"  (duplicate of {match.duplicate_of_path})"
-                lines.append(typer.style(file_line, fg=accent, bold=True))
-            if match.page_number is not None:
-                lines.append(
-                    typer.style(f"Page: {match.page_number} of {match.total_pages}", fg=accent)
-                )
-            lines.append("")
-            lines.extend(_render_box(match, width, accent))
-            lines.append("")
-        _page("\n".join(lines))
+
+        with console.capture() as capture:
+            console.print(Text(f"Results: {len(matches)} {match_word}", style=_HEADER_STYLE))
+            console.print()
+            last_file_path: str | None = None
+            file_index = -1
+            accent = _ACCENT_STYLES[0]
+            for match in matches:
+                if match.file_path != last_file_path:
+                    last_file_path = match.file_path
+                    file_index += 1
+                    accent = _ACCENT_STYLES[file_index % len(_ACCENT_STYLES)]
+                    file_line = f"File: {match.file_path}"
+                    if match.duplicate_of_path is not None:
+                        file_line += f"  (duplicate of {match.duplicate_of_path})"
+                    console.print(Text(file_line, style=f"bold {accent}"))
+                if match.page_number is not None:
+                    console.print(
+                        Text(f"Page: {match.page_number} of {match.total_pages}", style=accent)
+                    )
+                console.print()
+                for line in _render_box(match, width, accent):
+                    console.print(line)
+                console.print()
+        _page(capture.get())
     finally:
         conn.close()
 
 
-def _render_box(match: SearchMatch, width: int, accent: str) -> list[str]:
+def _render_box(match: SearchMatch, width: int, accent: str) -> list[Text]:
     prefix = "..." if match.truncated_before else ""
     suffix = "..." if match.truncated_after else ""
     full_text = f"{prefix}{match.before}{match.matched}{match.after}{suffix}"
@@ -170,30 +186,20 @@ def _render_box(match: SearchMatch, width: int, accent: str) -> list[str]:
     match_end = match_start + len(match.matched)
 
     interior_width = width + 4
-    border = typer.style("|", fg=accent)
+    border: tuple[str, str] = ("|", accent)
     box = [
-        typer.style("_" * interior_width, fg=accent),
-        f"{border}{' ' * interior_width}{border}",
+        Text("_" * interior_width, style=accent),
+        Text.assemble(border, " " * interior_width, border),
     ]
     for line, start in _wrap_with_offsets(full_text, width):
         padded = line.ljust(width)
         local_start = max(0, match_start - start)
         local_end = min(len(padded), match_end - start)
+        body = Text(padded)
         if 0 <= local_start < local_end:
-            styled = (
-                padded[:local_start]
-                + typer.style(
-                    padded[local_start:local_end],
-                    fg=typer.colors.BLACK,
-                    bg=typer.colors.BRIGHT_YELLOW,
-                    bold=True,
-                )
-                + padded[local_end:]
-            )
-        else:
-            styled = padded
-        box.append(f"{border}   {styled} {border}")
-    box.append(f"{border}{typer.style('_' * interior_width, fg=accent)}{border}")
+            body.stylize(f"bold black on {accent}", local_start, local_end)
+        box.append(Text.assemble(border, "   ", body, " ", border))
+    box.append(Text.assemble(border, ("_" * interior_width, accent), border))
     return box
 
 

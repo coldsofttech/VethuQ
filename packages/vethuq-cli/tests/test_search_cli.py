@@ -79,10 +79,6 @@ def test_page_prints_everything_directly_when_not_a_tty(monkeypatch, capsys):
 
 
 def test_page_reveals_one_more_line_on_down_and_quits_on_q(monkeypatch):
-    # The status prompt is erased and redrawn via raw ANSI cursor codes meant
-    # for a real terminal to interpret, so a plain stdout capture can't tell
-    # what ends up "on screen" - recording each echoed line's content instead
-    # keeps this test independent of that rendering detail.
     monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr(
         search_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3))
@@ -90,18 +86,15 @@ def test_page_reveals_one_more_line_on_down_and_quits_on_q(monkeypatch):
     keys = iter(["down", "quit"])
     monkeypatch.setattr(search_module, "_read_key_windows", lambda: next(keys))
     monkeypatch.setattr(search_module, "_read_key_posix", lambda: next(keys))
-    echoed = []
-    monkeypatch.setattr(
-        search_module.typer, "echo", lambda message="", nl=True: echoed.append(message)
-    )
+    written: list[str] = []
+    monkeypatch.setattr(search_module, "_write_line", lambda message: written.append(message))
 
     with pytest.raises(KeyboardInterrupt):
         search_module._page("l1\nl2\nl3\nl4\nl5")
 
     # terminal_size.lines=3 reserves one line for the status prompt, so the
     # first screen is 2 lines; pressing "down" reveals exactly one more.
-    content_lines = [message for message in echoed if message in ("l1", "l2", "l3", "l4", "l5")]
-    assert content_lines == ["l1", "l2", "l3"]
+    assert written == ["l1", "l2", "l3"]
 
 
 def test_page_stops_without_prompting_when_content_fits_one_screen(monkeypatch, capsys):

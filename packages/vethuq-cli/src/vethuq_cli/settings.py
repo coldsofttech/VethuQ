@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import typer
+from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.settings import (
     get_ocr_retry_attempts,
@@ -14,6 +15,8 @@ from vethuq_core.settings import (
     set_removed_source_retention_minutes,
     set_search_snippet_context_chars,
 )
+
+from vethuq_cli.console import console, error_console
 
 app = typer.Typer(help="Manage VethuQ settings.")
 gpu_app = typer.Typer(help="Configure whether OCR should use the GPU when available.")
@@ -44,9 +47,10 @@ def gpu_enable() -> None:
     conn = connect()
     try:
         set_gpu_enabled(conn, True)
-        typer.echo(
+        console.print(
             "GPU enabled. It will be used next time OCR runs, if a CUDA-capable "
-            "PaddleOCR build is installed; otherwise CPU is used."
+            "PaddleOCR build is installed; otherwise CPU is used.",
+            style="bold green",
         )
     finally:
         conn.close()
@@ -58,7 +62,7 @@ def gpu_disable() -> None:
     conn = connect()
     try:
         set_gpu_enabled(conn, False)
-        typer.echo("GPU disabled. OCR will run on CPU.")
+        console.print("GPU disabled. OCR will run on CPU.", style="bright_black")
     finally:
         conn.close()
 
@@ -68,7 +72,12 @@ def gpu_status() -> None:
     """Show whether GPU use is currently enabled."""
     conn = connect()
     try:
-        typer.echo(f"GPU: {'enabled' if is_gpu_enabled(conn) else 'disabled'}")
+        enabled = is_gpu_enabled(conn)
+        line = Text("GPU: ")
+        line.append(
+            "enabled" if enabled else "disabled", style="green" if enabled else "bright_black"
+        )
+        console.print(line)
     finally:
         conn.close()
 
@@ -78,7 +87,13 @@ def snippet_show() -> None:
     """Show how many characters of context `search` shows around a match."""
     conn = connect()
     try:
-        typer.echo(f"Search snippet context: {get_search_snippet_context_chars(conn)} characters")
+        console.print(
+            Text.assemble(
+                "Search snippet context: ",
+                (str(get_search_snippet_context_chars(conn)), "bright_blue"),
+                " characters",
+            )
+        )
     finally:
         conn.close()
 
@@ -93,9 +108,13 @@ def snippet_set(
         try:
             set_search_snippet_context_chars(conn, chars)
         except ValueError as exc:
-            typer.echo(f"Error: {exc}", err=True)
+            error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
-        typer.echo(f"Search snippet context set to {chars} characters.")
+        console.print(
+            Text.assemble(
+                "Search snippet context set to ", (str(chars), "bright_blue"), " characters."
+            )
+        )
     finally:
         conn.close()
 
@@ -105,8 +124,12 @@ def removed_retention_show() -> None:
     """Show, in minutes, how long a removed source is kept before it's purged from the DB."""
     conn = connect()
     try:
-        typer.echo(
-            f"Removed source retention: {get_removed_source_retention_minutes(conn)} minutes"
+        console.print(
+            Text.assemble(
+                "Removed source retention: ",
+                (str(get_removed_source_retention_minutes(conn)), "bright_blue"),
+                " minutes",
+            )
         )
     finally:
         conn.close()
@@ -124,9 +147,13 @@ def removed_retention_set(
         try:
             set_removed_source_retention_minutes(conn, minutes)
         except ValueError as exc:
-            typer.echo(f"Error: {exc}", err=True)
+            error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
-        typer.echo(f"Removed source retention set to {minutes} minutes.")
+        console.print(
+            Text.assemble(
+                "Removed source retention set to ", (str(minutes), "bright_blue"), " minutes."
+            )
+        )
     finally:
         conn.close()
 
@@ -136,7 +163,11 @@ def ocr_retry_show() -> None:
     """Show how many times a file's OCR is retried after a transient failure."""
     conn = connect()
     try:
-        typer.echo(f"OCR retry attempts: {get_ocr_retry_attempts(conn)}")
+        console.print(
+            Text.assemble(
+                "OCR retry attempts: ", (str(get_ocr_retry_attempts(conn)), "bright_blue")
+            )
+        )
     finally:
         conn.close()
 
@@ -153,8 +184,10 @@ def ocr_retry_set(
         try:
             set_ocr_retry_attempts(conn, attempts)
         except ValueError as exc:
-            typer.echo(f"Error: {exc}", err=True)
+            error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
-        typer.echo(f"OCR retry attempts set to {attempts}.")
+        console.print(
+            Text.assemble("OCR retry attempts set to ", (str(attempts), "bright_blue"), ".")
+        )
     finally:
         conn.close()
