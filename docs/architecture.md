@@ -94,7 +94,7 @@ Storage, alongside `sources`:
 
 | Table | Purpose |
 | --- | --- |
-| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`), `error_message`, `indexed_at`, `file_size_bytes`, `checksum` (SHA-256 of file contents), `duplicate_of_id` (self-FK; set when this file's checksum matches an already-indexed original, in which case OCR is skipped and this row has no rows of its own in the pages tables — it reuses the original's). Central table joining the type-specific pages tables. |
+| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`\|`removed`), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time, used to cheaply rule out unchanged files before re-hashing), `checksum` (SHA-256 of file contents), `duplicate_of_id` (self-FK; set when this file's checksum matches an already-indexed original, in which case OCR is skipped and this row has no rows of its own in the pages tables — it reuses the original's), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
 | `pdf_pages` | One row per PDF page: `document_id`, `page_number`, `ocr_text`, `confidence`. |
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_confidence`, `pages_native`/`pages_ocr`/`pages_mixed`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
@@ -117,6 +117,45 @@ later purged (see the removed-source retention window below), the
 earliest-indexed surviving duplicate is promoted in its place: it
 inherits the original's `pdf_pages`/`image_pages` rows and any other
 duplicates are repointed to it (`vethuq_core.sources._promote_surviving_duplicate`).
+
+Modified-file detection (`vethuq_core.ocr._has_content_changed`) lets
+`vethuq index run` (`only_new_files=True`) also pick up files whose
+content changed since they were last indexed, not just newly-added ones.
+For each already-`indexed` file, its current mtime/size are compared
+against the values stored on its `document_index` row; only if either
+differs is the file's checksum recomputed and compared against the
+stored one, to confirm an actual content change before re-running OCR on
+it. This avoids re-hashing every file's full contents on every run for
+large, mostly-unchanged sources.
+
+If a modified file was itself an original that other documents were
+deduped against, `_upsert_document` promotes the earliest of those
+duplicates (via the same `_promote_surviving_duplicate` used for purging,
+above) before applying the new checksum — otherwise those still-unchanged
+duplicates would silently keep reusing what's about to become this
+document's new, unrelated OCR text.
+
+Rename/move and removal detection
+(`vethuq_core.ocr._reconcile_renamed_and_removed_files`) runs before the
+main indexing loop whenever `vethuq index run` scans an already-indexed
+source. It compares the source's tracked file paths against what's
+actually on disk: a brand-new path whose checksum exactly matches a
+tracked path that's no longer there is treated as that file renamed or
+moved — the existing row's `file_path` is updated in place and OCR isn't
+re-run — while a tracked path that's gone missing and wasn't claimed by a
+rename is marked `status='removed'` (`removed_at` set) rather than
+deleted outright, in case the file reappears. When several files share a
+checksum (e.g. two identical files, one deleted and one renamed), pairing
+is deterministic but otherwise arbitrary; this is safe regardless of which
+row "wins" because a removed original's pages are handed off to a
+surviving duplicate via `_promote_surviving_duplicate` when it's actually
+purged, so no OCR text is ever lost or shown against the wrong content.
+`purge_expired_removed_documents` (mirroring
+`purge_expired_removed_sources`, and sharing its retention setting)
+permanently deletes documents that have stayed `removed` past the
+retention window. A `removed` document is excluded from search (which
+only matches `status='indexed'` rows) but still shows up in `index
+status`, flagged with that status, until it's purged.
 
 ## Conventions per package
 

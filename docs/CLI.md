@@ -42,12 +42,17 @@ vethuq source remove ./path/to/folder-or-file
 
 Start OCR indexing as a background process and return immediately. A
 freshly added/reactivated (`pending`) source is (re)processed in full; an
-already-`indexed`/`error` source is checked for files added since the
-last run, and only those new (or previously failed) files are processed
-— already-indexed files are left untouched. Extracts text (English; PDF,
-PNG, and JPEG files supported) and stores it locally. PDF pages with a
-real text layer are read directly from it; OCR only runs on scanned
-pages/regions.
+already-`indexed`/`error` source is checked for files added or modified
+since the last run — a file's checksum is compared against the last time
+it was indexed, and only new, modified, or previously failed files are
+processed, while unchanged files are left untouched. A file that was
+renamed or moved within the source is recognized by its unchanged content
+and simply relabeled, without re-running OCR on it; a file that's gone
+missing from the source is flagged and automatically cleaned up after a
+retention period (like a removed source — see `vethuq settings` below).
+Extracts text (English; PDF, PNG, and JPEG files supported) and stores it
+locally. PDF pages with a real text layer are read directly from it; OCR
+only runs on scanned pages/regions.
 
 Pass a source id or path to index only that source; omit it to index
 every active source. `--wait` blocks until the run finishes, printing
