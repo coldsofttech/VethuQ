@@ -208,7 +208,7 @@ def purge_expired_removed_sources(
 
     cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
     expired = conn.execute(
-        "SELECT id FROM sources "
+        "SELECT id, path FROM sources "
         "WHERE status = 'removed' AND removed_at IS NOT NULL AND removed_at <= ?",
         (cutoff,),
     ).fetchall()
@@ -218,6 +218,10 @@ def purge_expired_removed_sources(
 
     source_ids = [row["id"] for row in expired]
     placeholders = ",".join("?" * len(source_ids))
+    # `vethuq index run <target>` records whichever of a source's id or path
+    # the caller typed into index_runs.target - once the source is gone,
+    # either form is a dangling reference, so both are cleared.
+    stale_targets = [str(row["id"]) for row in expired] + [row["path"] for row in expired]
     doomed_ids = {
         row["id"]
         for row in conn.execute(
@@ -228,18 +232,24 @@ def purge_expired_removed_sources(
     for document_id in doomed_ids:
         _promote_surviving_duplicate(conn, document_id, doomed_ids)
 
-    for source_id in source_ids:
-        document_ids = [
-            r["id"]
-            for r in conn.execute(
-                "SELECT id FROM document_index WHERE source_id = ?", (source_id,)
-            ).fetchall()
-        ]
-        for document_id in document_ids:
-            conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-            conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
-        conn.execute("DELETE FROM document_index WHERE source_id = ?", (source_id,))
-        conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+    for document_id in doomed_ids:
+        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
+        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
+    # One statement across every doomed source, not one per source_id: a
+    # doomed document can be duplicate_of_id'd by another doomed document in
+    # a *different* expired source (_promote_surviving_duplicate leaves that
+    # reference alone when every duplicate is doomed too - see its
+    # docstring). Deleting source-by-source would try to delete the
+    # referenced row before the referencing one, in its own statement,
+    # tripping the self-referential FK even though both rows are about to go.
+    conn.execute(f"DELETE FROM document_index WHERE source_id IN ({placeholders})", source_ids)
+    conn.execute(f"DELETE FROM sources WHERE id IN ({placeholders})", source_ids)
+
+    target_placeholders = ",".join("?" * len(stale_targets))
+    conn.execute(
+        f"UPDATE index_runs SET target = NULL WHERE target IN ({target_placeholders})",
+        stale_targets,
+    )
 
     conn.commit()
     return len(expired)
