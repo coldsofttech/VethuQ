@@ -281,6 +281,8 @@ def test_connect_creates_processing_metrics_table(tmp_path):
             "pages_native",
             "pages_ocr",
             "pages_mixed",
+            "avg_peak_memory_mb",
+            "avg_cpu_percent",
             "updated_at",
         }
     finally:
