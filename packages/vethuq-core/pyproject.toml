@@ -22,6 +22,7 @@ dependencies = [
     # which corrupts both and crashes Paddle's inference calls with a native
     # access violation - so `cv2` here is provided solely by paddlex's pin.
     "numpy>=1.26",
+    "psutil>=5.9",
 ]
 
 [build-system]

@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Files with identical content to one already indexed are now detected as duplicates and linked to the original instead of being OCR'd again; both the CLI and the desktop app flag duplicates in search results and index status.
 - `vethuq index run` now also re-indexes files whose content has changed since they were last indexed, not just newly added ones; if a changed file was one others were flagged as duplicates of, one of them takes over as the original instead.
 - `vethuq index run` now recognizes a file that's been renamed or moved within its source (by content, without re-running OCR), and flags a file that's gone missing from its source for cleanup after the same retention period used for removed sources.
+- OCR results now record which engine and language processed them, the image resolution used, and memory/CPU usage during processing.
+- A file that fails OCR is now automatically retried before being marked as failed — configurable with `vethuq settings index ocr-retry set/show` (3 attempts by default).
 
 ### Fixed
 

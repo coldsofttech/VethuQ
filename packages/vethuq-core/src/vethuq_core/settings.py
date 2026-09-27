@@ -9,6 +9,8 @@ SEARCH_SNIPPET_CONTEXT_CHARS_KEY = "search_snippet_context_chars"
 DEFAULT_SEARCH_SNIPPET_CONTEXT_CHARS = 80
 REMOVED_SOURCE_RETENTION_MINUTES_KEY = "removed_source_retention_minutes"
 DEFAULT_REMOVED_SOURCE_RETENTION_MINUTES = 7 * 24 * 60  # 7 days
+OCR_RETRY_ATTEMPTS_KEY = "ocr_retry_attempts"
+DEFAULT_OCR_RETRY_ATTEMPTS = 3
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -56,3 +58,15 @@ def set_removed_source_retention_minutes(conn: sqlite3.Connection, minutes: int)
     if minutes < 0:
         raise ValueError("minutes must be non-negative")
     set_setting(conn, REMOVED_SOURCE_RETENTION_MINUTES_KEY, str(minutes))
+
+
+def get_ocr_retry_attempts(conn: sqlite3.Connection) -> int:
+    """How many times to retry a file's OCR after a transient failure. 3 by default."""
+    value = get_setting(conn, OCR_RETRY_ATTEMPTS_KEY)
+    return int(value) if value is not None else DEFAULT_OCR_RETRY_ATTEMPTS
+
+
+def set_ocr_retry_attempts(conn: sqlite3.Connection, attempts: int) -> None:
+    if attempts < 0:
+        raise ValueError("attempts must be non-negative")
+    set_setting(conn, OCR_RETRY_ATTEMPTS_KEY, str(attempts))

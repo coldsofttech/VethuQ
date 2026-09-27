@@ -5,10 +5,12 @@ from __future__ import annotations
 import typer
 from vethuq_core.db import connect
 from vethuq_core.settings import (
+    get_ocr_retry_attempts,
     get_removed_source_retention_minutes,
     get_search_snippet_context_chars,
     is_gpu_enabled,
     set_gpu_enabled,
+    set_ocr_retry_attempts,
     set_removed_source_retention_minutes,
     set_search_snippet_context_chars,
 )
@@ -21,11 +23,15 @@ index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
     help="Configure, in minutes, how long a removed source is kept before it's purged from the DB."
 )
+ocr_retry_app = typer.Typer(
+    help="Configure how many times to retry a file's OCR after a transient failure."
+)
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
+index_app.add_typer(ocr_retry_app, name="ocr-retry")
 
 
 @gpu_app.command("enable")
@@ -121,5 +127,34 @@ def removed_retention_set(
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
         typer.echo(f"Removed source retention set to {minutes} minutes.")
+    finally:
+        conn.close()
+
+
+@ocr_retry_app.command("show")
+def ocr_retry_show() -> None:
+    """Show how many times a file's OCR is retried after a transient failure."""
+    conn = connect()
+    try:
+        typer.echo(f"OCR retry attempts: {get_ocr_retry_attempts(conn)}")
+    finally:
+        conn.close()
+
+
+@ocr_retry_app.command("set")
+def ocr_retry_set(
+    attempts: int = typer.Argument(
+        ..., help="Times to retry a file's OCR after a transient failure."
+    ),
+) -> None:
+    """Set how many times a file's OCR is retried after a transient failure."""
+    conn = connect()
+    try:
+        try:
+            set_ocr_retry_attempts(conn, attempts)
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"OCR retry attempts set to {attempts}.")
     finally:
         conn.close()
