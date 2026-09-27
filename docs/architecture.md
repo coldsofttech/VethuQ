@@ -99,12 +99,45 @@ Storage, alongside `sources`:
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_confidence`, `pages_native`/`pages_ocr`/`pages_mixed`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
 
-A single PaddleOCR engine instance is lazily created and reused per
-process (`vethuq_core.ocr._get_engine`) since model init is expensive.
-A failure on one file is recorded on that file's `document_index` row
-(`status='error'`, `error_message`) without aborting the rest of the
-source; `sources.status` reflects the overall outcome (`indexed` if all
-files succeeded, `error` if any failed).
+A PaddleOCR engine instance is lazily created and reused per *thread*
+(`vethuq_core.ocr._get_engine`, backed by `threading.local`) since model
+init is expensive — a background run with multiple worker threads gets one
+engine per thread, so OCR inference itself parallelizes, at the cost of
+one engine's memory footprint per worker. A failure on one file is
+recorded on that file's `document_index` row (`status='error'`,
+`error_message`) without aborting the rest of the source; `sources.status`
+reflects the overall outcome (`indexed` if all files succeeded, `error` if
+any failed).
+
+### Background indexing: worker threads
+
+`vethuq_core.index_runner._run_worker` (the detached process `vethuq
+index run`/`restart` launches) no longer processes one source at a time:
+`vethuq_core.ocr.run_ocr_batch` flattens every targeted source's pending
+files into a single list ordered by filename (`Path.name`, not the full
+path or source grouping) before processing, so a run over multiple
+sources reads as them indexing in parallel rather than strictly one
+source at a time.
+
+How many files are actually OCR'd concurrently is controlled by the
+`thread_workers` setting (`vethuq_core.settings`; CLI: `vethuq settings
+index thread-workers set/show`) — `0` (default) processes the list
+sequentially in the calling thread with no pool at all; `1`-`8` uses a
+fixed-size `ThreadPoolExecutor`; `auto` uses an elastic pool
+(`vethuq_core.ocr._run_auto_elastic`) that re-resolves the active worker
+count after every file via `resolve_thread_workers`, from current
+CPU/memory headroom (`psutil`) and the file-type mix (PDFs weighted
+heavier than images) still remaining — up to `min(THREAD_WORKERS_MAX,
+len(pending))` worker threads are spawned up front, but only the current
+active count of them (by slot index) actually pull work at a time; the
+rest just idle-poll, so the pool grows or shrinks without spinning up or
+tearing down OS threads mid-run.
+
+Since worker threads share one sqlite connection (opened with
+`check_same_thread=False`), every read/write against it — including the
+`thread_workers` setting lookup on each re-resolution — is serialized
+through a single `threading.Lock` (`db_lock`); only the OCR inference
+itself runs unlocked, which is the actual point of the parallelism.
 
 Duplicate detection (`vethuq_core.ocr._upsert_document`) hashes every file
 (SHA-256) as it's processed and, if another *indexed*, non-duplicate

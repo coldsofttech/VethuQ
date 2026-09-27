@@ -26,6 +26,7 @@ from vethuq_core.index_runner import (
     start_run,
 )
 from vethuq_core.ocr import get_document_results, pending_file_type_counts
+from vethuq_core.settings import THREAD_WORKERS_AUTO
 from vethuq_core.sources import SourceNotFoundError, get_source, list_sources
 
 from vethuq_cli.console import console, error_console
@@ -102,8 +103,18 @@ def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
         f"Progress: {state.processed_files}/{state.total_files} ({percent:.0f}%), "
         f"{state.failed_files} failed"
     )
-    if state.current_file:
-        console.print(f"Current file: {Path(state.current_file).name}")
+    if state.thread_workers_setting == "0":
+        workers_label = "disabled (sequential)"
+    elif state.thread_workers_setting == THREAD_WORKERS_AUTO:
+        thread_word = "thread" if state.workers == 1 else "threads"
+        workers_label = f"auto (currently {state.workers} {thread_word})"
+    else:
+        workers_label = f"{state.workers} threads"
+    console.print(f"Workers: {workers_label}")
+    if state.current_files:
+        names = ", ".join(Path(f).name for f in state.current_files)
+        label = "Current files" if len(state.current_files) > 1 else "Current file"
+        console.print(f"{label}: {names}")
     if state.status == "running":
         eta = _estimate_eta(conn, state)
         if eta is not None:
@@ -377,6 +388,7 @@ def history(
 
     for row in rows:
         target = row["target"] or "all sources"
+        workers = row["workers"]
         line = Text.assemble(
             "[",
             (str(row["id"]), "bright_black"),
@@ -388,5 +400,6 @@ def history(
             (row["status"], _RUN_STATUS_STYLES.get(row["status"], "default")),
             f"  {row['processed_files']}/{row['total_files']} processed, "
             f"{row['failed_files']} failed",
+            f"  workers={workers if workers is not None else 'n/a'}",
         )
         console.print(line)

@@ -122,3 +122,30 @@ def test_removed_retention_set_rejects_negative(tmp_path, monkeypatch):
     result = runner.invoke(app, ["settings", "index", "removed-retention", "set", "--", "-1"])
 
     assert result.exit_code == 1
+
+
+def test_thread_workers_show_defaults_to_disabled(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "thread-workers", "show"])
+
+    assert result.exit_code == 0
+    assert "disabled" in result.stdout
+
+
+def test_thread_workers_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "index", "thread-workers", "set", "auto"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "index", "thread-workers", "show"])
+    assert "auto" in show_result.stdout
+
+
+def test_thread_workers_set_rejects_out_of_range_value(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "thread-workers", "set", "9"])
+
+    assert result.exit_code == 1

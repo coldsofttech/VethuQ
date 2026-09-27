@@ -11,7 +11,10 @@ import hashlib
 import logging
 import os
 import sqlite3
+import threading
+import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.metadata import version as _package_version
@@ -33,7 +36,13 @@ if TYPE_CHECKING:
     import pymupdf
     from paddleocr import PaddleOCR
 
-from vethuq_core.settings import get_ocr_retry_attempts, is_gpu_enabled
+from vethuq_core.settings import (
+    THREAD_WORKERS_AUTO,
+    THREAD_WORKERS_MAX,
+    get_ocr_retry_attempts,
+    get_thread_workers,
+    is_gpu_enabled,
+)
 from vethuq_core.sources import Source
 
 _logger = logging.getLogger(__name__)
@@ -54,9 +63,12 @@ _MIN_NATIVE_TEXT_WORDS = 3
 # a non-trivial share of the page - small logos/rules shouldn't trigger it.
 _MIN_IMAGE_AREA_FRACTION = 0.05
 
-# PaddleOCR model init is expensive; share one English-language engine per process.
+# PaddleOCR model init is expensive; share one English-language engine per
+# *thread* rather than per process - a run with N worker threads (see
+# `resolve_thread_workers`) gets N engine instances so OCR inference itself
+# actually parallelizes, at the cost of N times the model memory footprint.
 # Constructed lazily so PDFs whose text is fully native never trigger it at all.
-_engine: PaddleOCR | None = None
+_engine_local = threading.local()
 
 
 def _ocr_engine_name() -> str:
@@ -86,11 +98,11 @@ def _resolve_device(conn: sqlite3.Connection) -> str:
 
 
 def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
-    global _engine
-    if _engine is None:
+    engine = getattr(_engine_local, "engine", None)
+    if engine is None:
         from paddleocr import PaddleOCR
 
-        _engine = PaddleOCR(
+        engine = PaddleOCR(
             lang=_OCR_LANGUAGE,
             device=_resolve_device(conn),
             use_doc_orientation_classify=False,
@@ -98,7 +110,8 @@ def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
             use_textline_orientation=False,
             enable_mkldnn=False,
         )
-    return _engine
+        _engine_local.engine = engine
+    return engine
 
 
 @dataclass(frozen=True)
@@ -672,6 +685,63 @@ def pending_file_type_counts(
     return counts
 
 
+_ENGINE_FOOTPRINT_MB = 700  # rough resident memory of one PaddleOCR CPU engine instance
+_PDF_WEIGHT = 1.5  # a pending set that's mostly PDFs costs more per worker than mostly images
+_CPU_BUSY_THRESHOLD = 70.0
+_MEMORY_BUSY_THRESHOLD = 80.0
+
+
+def resolve_thread_workers(conn: sqlite3.Connection, pending_type_counts: dict[str, int]) -> int:
+    """Resolve the effective worker count for a run from the `thread_workers` setting.
+
+    '0' disables concurrency entirely - the caller should process its file
+    list sequentially, in its own thread, with no pool at all. '1'-'8' is
+    used as given. 'auto' sizes workers dynamically from current CPU/memory
+    headroom and the pending file mix - see `_auto_worker_count`. Either
+    way, the result never exceeds the number of pending files, since
+    starting more workers than there is work to hand them doesn't help.
+    """
+    total_pending = sum(pending_type_counts.values())
+    setting = get_thread_workers(conn)
+    workers = (
+        _auto_worker_count(pending_type_counts, total_pending)
+        if setting == THREAD_WORKERS_AUTO
+        else int(setting)
+    )
+    return min(workers, total_pending) if total_pending and workers else workers
+
+
+def _auto_worker_count(pending_type_counts: dict[str, int], total_pending: int) -> int:
+    """Pick a worker count that uses headroom without pushing CPU/memory to their limit.
+
+    Each worker loads its own OCR engine (see `_get_engine`), so the ceiling
+    is set by whichever is scarcer: free CPU capacity, or free memory divided
+    by one engine's rough footprint (`_ENGINE_FOOTPRINT_MB`). A pending set
+    that's mostly PDFs (multi-page, heavier to render/OCR than a single
+    image) scales the result down further. Already-busy CPU or memory (past
+    `_CPU_BUSY_THRESHOLD`/`_MEMORY_BUSY_THRESHOLD`) caps it at a single
+    worker rather than trying to squeeze more out of an already-loaded
+    machine.
+    """
+    if total_pending == 0:
+        return 1
+
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory = psutil.virtual_memory()
+    if cpu_percent >= _CPU_BUSY_THRESHOLD or memory.percent >= _MEMORY_BUSY_THRESHOLD:
+        return 1
+
+    cpu_count = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1
+    cpu_headroom = max(1, round(cpu_count * (1 - cpu_percent / 100)))
+    memory_headroom = max(1, int(memory.available / (1024 * 1024) / _ENGINE_FOOTPRINT_MB))
+
+    pdf_share = pending_type_counts.get("pdf", 0) / total_pending
+    weight = 1 + pdf_share * (_PDF_WEIGHT - 1)
+    workers = max(1, round(min(cpu_headroom, memory_headroom) / weight))
+
+    return min(workers, THREAD_WORKERS_MAX, total_pending)
+
+
 def run_ocr(
     conn: sqlite3.Connection,
     source: Source,
@@ -855,4 +925,336 @@ def run_ocr(
         ),
     )
     conn.commit()
+    return processed_paths
+
+
+@dataclass(frozen=True)
+class _PendingFile:
+    source: Source
+    path: Path
+    file_type: str
+
+
+def _process_file(
+    conn: sqlite3.Connection,
+    source: Source,
+    file_path: Path,
+    file_type: str,
+    *,
+    db_lock: threading.Lock,
+) -> bool:
+    """Index one file: upsert its row, dedupe by checksum, and OCR it if new content.
+
+    Returns whether it succeeded (False on an OCR failure recorded as an
+    error). This is `run_ocr`'s per-file body, pulled out separately so
+    `run_ocr_batch` can process files interleaved across sources rather than
+    one whole source at a time, and so OCR inference - the actual work
+    worth parallelizing - runs without `db_lock` held; every sqlite read/
+    write around it is serialized through `db_lock` since a single
+    connection isn't safe for unsynchronized concurrent use.
+    """
+    with db_lock:
+        document_id, duplicate_of_id = _upsert_document(conn, source.id, file_path, file_type)
+        conn.commit()
+
+    if duplicate_of_id is not None:
+        with db_lock:
+            _mark_duplicate(conn, document_id, duplicate_of_id)
+            conn.commit()
+        return True
+
+    process = psutil.Process()
+    process.cpu_percent(interval=None)  # prime; the next call reports usage since now
+    mem_before = process.memory_info().rss
+
+    max_attempts = 1 + get_ocr_retry_attempts(conn)
+    attempt = 0
+    last_exc: Exception | None = None
+    succeeded = False
+    pdf_pages: list[PageResult] | None = None
+    image_page: PageResult | None = None
+    while attempt < max_attempts and not succeeded:
+        attempt += 1
+        try:
+            if file_type == "pdf":
+                pdf_pages = _ocr_pdf_file(conn, file_path)
+            else:
+                image_page = _ocr_image_file(conn, file_path)
+        except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
+            last_exc = exc
+        else:
+            succeeded = True
+
+    with db_lock:
+        if succeeded:
+            if file_type == "pdf":
+                assert pdf_pages is not None
+                conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
+                conn.executemany(
+                    "INSERT INTO pdf_pages "
+                    "(document_id, page_number, ocr_text, confidence, source, "
+                    "ocr_engine, language, image_width, image_height) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (
+                            document_id,
+                            page_number,
+                            page.text,
+                            page.confidence,
+                            page.source,
+                            page.ocr_engine,
+                            page.language,
+                            page.image_width,
+                            page.image_height,
+                        )
+                        for page_number, page in enumerate(pdf_pages, start=1)
+                    ],
+                )
+            else:
+                assert image_page is not None
+                conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
+                conn.execute(
+                    "INSERT INTO image_pages "
+                    "(document_id, ocr_text, confidence, ocr_engine, language, "
+                    "image_width, image_height) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        document_id,
+                        image_page.text,
+                        image_page.confidence,
+                        image_page.ocr_engine,
+                        image_page.language,
+                        image_page.image_width,
+                        image_page.image_height,
+                    ),
+                )
+
+        peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
+        cpu_percent = process.cpu_percent(interval=None)
+        conn.execute(
+            "UPDATE document_index SET retry_count = ?, peak_memory_mb = ?, cpu_percent = ? "
+            "WHERE id = ?",
+            (attempt - 1, peak_memory_mb, cpu_percent, document_id),
+        )
+
+        if not succeeded:
+            _mark_error(conn, document_id, str(last_exc))
+        else:
+            _mark_indexed(conn, document_id)
+            _update_processing_metrics(conn, document_id, file_type)
+
+        conn.commit()
+
+    return succeeded
+
+
+_IDLE_POLL_SECONDS = 0.5
+
+
+class _Wait:
+    """Sentinel: this slot is idle - parked past the current active worker count."""
+
+
+_WAIT = _Wait()
+
+
+def _run_auto_elastic(
+    conn: sqlite3.Connection,
+    pending: list[_PendingFile],
+    initial_workers: int,
+    handle_one: Callable[[_PendingFile], None],
+    should_stop: Callable[[], bool] | None,
+    on_workers_changed: Callable[[int], None] | None,
+    *,
+    db_lock: threading.Lock,
+) -> None:
+    """Process `pending` with a worker count re-resolved after every file.
+
+    Spawns up to `min(THREAD_WORKERS_MAX, len(pending))` worker threads up
+    front - an idle one just waits (cheap), never torn down or recreated -
+    but only lets `active_workers` of them (by slot index) actually pull
+    work at a time. `active_workers` is recomputed via
+    `resolve_thread_workers` after every file finishes, from the file-type
+    mix still remaining, so the active count grows or shrinks with current
+    CPU/memory headroom as the run progresses rather than being fixed for
+    the whole run.
+    """
+    max_slots = max(1, min(THREAD_WORKERS_MAX, len(pending)))
+    remaining_counts = {"pdf": 0, "image": 0}
+    for item in pending:
+        remaining_counts[item.file_type] += 1
+
+    coord_lock = threading.Lock()
+    next_index = 0
+    active_workers = max(1, min(initial_workers, max_slots))
+
+    def take_next(slot: int) -> _PendingFile | _Wait | None:
+        nonlocal next_index
+        with coord_lock:
+            # Checked in this order deliberately: once the queue is drained,
+            # every slot must be able to exit - including one parked past
+            # `active_workers` - rather than waiting forever for a turn that
+            # active_workers shrinking (as remaining work runs low) may
+            # never actually give it.
+            if next_index >= len(pending):
+                return None
+            if slot >= active_workers:
+                return _WAIT
+            item = pending[next_index]
+            next_index += 1
+            return item
+
+    def report_done(file_type: str) -> None:
+        nonlocal active_workers
+        changed_to: int | None = None
+        with coord_lock:
+            remaining_counts[file_type] -= 1
+            if sum(remaining_counts.values()) > 0:
+                # `db_lock`, not just `coord_lock`: `resolve_thread_workers`
+                # reads `conn` (the `thread_workers` setting), and every use
+                # of this connection across worker threads is serialized
+                # through `db_lock` - see `_process_file`.
+                with db_lock:
+                    resolved = resolve_thread_workers(conn, remaining_counts)
+                new_active_workers = max(1, min(resolved, max_slots))
+                if new_active_workers != active_workers:
+                    active_workers = new_active_workers
+                    changed_to = new_active_workers
+        if changed_to is not None and on_workers_changed is not None:
+            on_workers_changed(changed_to)
+
+    def worker_loop(slot: int) -> None:
+        while True:
+            if should_stop is not None and should_stop():
+                return
+            item = take_next(slot)
+            if item is None:
+                return
+            if isinstance(item, _Wait):
+                time.sleep(_IDLE_POLL_SECONDS)
+                continue
+            handle_one(item)
+            report_done(item.file_type)
+
+    threads = [threading.Thread(target=worker_loop, args=(slot,)) for slot in range(max_slots)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+
+def run_ocr_batch(
+    conn: sqlite3.Connection,
+    sources: list[Source],
+    *,
+    only_failed: bool = False,
+    workers: int = 1,
+    on_file_start: Callable[[str], None] | None = None,
+    on_file_done: Callable[[str, bool], None] | None = None,
+    on_workers_changed: Callable[[int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> list[str]:
+    """Like `run_ocr`, but across every source in `sources` at once.
+
+    Every source's pending files are flattened into a single list ordered
+    by filename - `Path.name`, not the full path, and not grouped by source
+    - before processing, so a run over multiple sources reads as them
+    indexing in parallel rather than strictly one source at a time. This
+    ordering is independent of `workers`, which separately controls how
+    many files are actually OCR'd concurrently (see `resolve_thread_workers`
+    for how that count is chosen; 0 or 1 processes the list sequentially in
+    the calling thread with no pool at all).
+
+    `only_failed` and the per-source `only_new_files` choice (a source
+    that's already been indexed only has new/changed/failed files
+    reconsidered; a fresh/reactivated source has every file reprocessed)
+    match `run_ocr`'s semantics exactly, just applied per source before the
+    combined list is built.
+
+    `should_stop` is checked before each file is started; once it returns
+    True, no further files are started - in-flight ones still finish - and
+    the rest of the list is left untouched. `on_file_start`, when given, is
+    called with a file's path right before it's (re)processed; `on_file_done`
+    is called with its path and whether it succeeded immediately after -
+    both from whichever thread actually processed that file.
+
+    When the `thread_workers` setting is 'auto', the worker count is instead
+    re-resolved after every file (see `_run_auto_elastic`) rather than fixed
+    for the whole run at `workers` - so it keeps adapting to CPU/memory
+    headroom and the shrinking pending mix as the run progresses; whenever
+    that changes it, `on_workers_changed` (when given) is called with the
+    new count, so a caller reporting progress can keep it current.
+
+    A source's `sources.status` is only updated once at least one of its
+    files in this run's list was attempted, using the outcome of whichever
+    of its files got processed before the run stopped (if it did) - a
+    source with no files attempted this run is left untouched.
+
+    Returns the paths of the files actually (re)processed, in the order
+    they finished (not the processing order for `workers` > 1).
+    """
+    pending: list[_PendingFile] = []
+    for source in sources:
+        only_new_files = source.status != "pending"
+        if only_new_files and not only_failed:
+            disk_files = list(_iter_supported_files(Path(source.path)))
+            renamed_paths = _reconcile_renamed_and_removed_files(conn, source, disk_files)
+            conn.commit()
+            for renamed_path in sorted(renamed_paths):
+                if on_file_done is not None:
+                    on_file_done(renamed_path, True)
+        for file_path, file_type in _iter_pending_files(
+            conn, source, only_new_files=only_new_files, only_failed=only_failed
+        ):
+            pending.append(_PendingFile(source, file_path, file_type))
+
+    pending.sort(key=lambda item: (item.path.name, str(item.path)))
+
+    attempted_source_ids: set[int] = set()
+    had_error_by_source: dict[int, bool] = {}
+    processed_paths: list[str] = []
+    state_lock = threading.Lock()
+    db_lock = threading.Lock()
+
+    def handle_one(item: _PendingFile) -> None:
+        path_str = str(item.path)
+        if on_file_start is not None:
+            on_file_start(path_str)
+        succeeded = _process_file(conn, item.source, item.path, item.file_type, db_lock=db_lock)
+        with state_lock:
+            processed_paths.append(path_str)
+            attempted_source_ids.add(item.source.id)
+            had_error_by_source[item.source.id] = (
+                had_error_by_source.get(item.source.id, False) or not succeeded
+            )
+        if on_file_done is not None:
+            on_file_done(path_str, succeeded)
+
+    if get_thread_workers(conn) == THREAD_WORKERS_AUTO:
+        _run_auto_elastic(
+            conn, pending, workers, handle_one, should_stop, on_workers_changed, db_lock=db_lock
+        )
+    elif workers <= 1:
+        for item in pending:
+            if should_stop is not None and should_stop():
+                break
+            handle_one(item)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = []
+            for item in pending:
+                if should_stop is not None and should_stop():
+                    break
+                futures.append(executor.submit(handle_one, item))
+            for future in futures:
+                future.result()
+
+    now = datetime.now(UTC).isoformat()
+    for source in sources:
+        if source.id in attempted_source_ids:
+            conn.execute(
+                "UPDATE sources SET status = ?, last_scanned_at = ? WHERE id = ?",
+                ("error" if had_error_by_source[source.id] else "indexed", now, source.id),
+            )
+    conn.commit()
+
     return processed_paths

@@ -6,11 +6,13 @@ from vethuq_core.settings import (
     get_search_export_format,
     get_search_snippet_context_chars,
     get_setting,
+    get_thread_workers,
     is_gpu_enabled,
     set_gpu_enabled,
     set_search_export_format,
     set_search_snippet_context_chars,
     set_setting,
+    set_thread_workers,
 )
 
 
@@ -71,3 +73,19 @@ def test_set_search_snippet_context_chars_roundtrip(conn: sqlite3.Connection):
 def test_set_search_snippet_context_chars_rejects_negative(conn: sqlite3.Connection):
     with pytest.raises(ValueError, match="non-negative"):
         set_search_snippet_context_chars(conn, -1)
+
+
+def test_thread_workers_defaults_to_disabled(conn: sqlite3.Connection):
+    assert get_thread_workers(conn) == "0"
+
+
+@pytest.mark.parametrize("value", ["0", "1", "8", "auto"])
+def test_set_thread_workers_roundtrip(conn: sqlite3.Connection, value: str):
+    set_thread_workers(conn, value)
+    assert get_thread_workers(conn) == value
+
+
+@pytest.mark.parametrize("value", ["-1", "9", "abc", ""])
+def test_set_thread_workers_rejects_out_of_range_value(conn: sqlite3.Connection, value: str):
+    with pytest.raises(ValueError):
+        set_thread_workers(conn, value)
