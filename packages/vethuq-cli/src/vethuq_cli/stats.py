@@ -36,6 +36,7 @@ def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         cpu_count = os.cpu_count() or 1
         body = Table(box=box.SIMPLE, header_style="bold cyan", border_style="cyan")
         body.add_column("File type")
+        body.add_column("Size")
         body.add_column("Documents", justify="right")
         body.add_column("Avg duration", justify="right")
         body.add_column("Avg peak memory", justify="right")
@@ -43,6 +44,7 @@ def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         for m in metrics:
             body.add_row(
                 m.file_type,
+                m.size_bucket,
                 str(m.document_count),
                 f"{m.avg_duration_seconds:.1f}s",
                 f"{m.avg_peak_memory_mb:.0f} MB",

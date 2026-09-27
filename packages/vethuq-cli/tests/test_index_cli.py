@@ -239,8 +239,8 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT INTO processing_metrics "
-        "(file_type, document_count, avg_duration_seconds, updated_at) "
-        "VALUES ('image', 3, 10.0, ?)",
+        "(file_type, size_bucket, document_count, avg_duration_seconds, updated_at) "
+        "VALUES ('image', 'medium', 3, 10.0, ?)",
         (now,),
     )
     conn.commit()

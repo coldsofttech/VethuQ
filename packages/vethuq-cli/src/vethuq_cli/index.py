@@ -79,11 +79,16 @@ def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
     if not any(remaining_by_type.values()):
         return None
 
+    # processing_metrics has one row per (file_type, size_bucket) - weight each
+    # bucket's average by its document_count so a file_type with an uneven mix
+    # of small/large files still gets one sensible average duration back.
     averages = {
         row["file_type"]: row["avg_duration_seconds"]
         for row in conn.execute(
-            "SELECT file_type, avg_duration_seconds FROM processing_metrics "
-            "WHERE document_count > 0"
+            "SELECT file_type, "
+            "SUM(avg_duration_seconds * document_count) / SUM(document_count) "
+            "AS avg_duration_seconds "
+            "FROM processing_metrics WHERE document_count > 0 GROUP BY file_type"
         )
     }
     seconds_left = sum(

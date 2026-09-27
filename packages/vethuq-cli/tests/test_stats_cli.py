@@ -24,9 +24,9 @@ def _seed_metrics(db_path):
     try:
         conn.execute(
             "INSERT INTO processing_metrics "
-            "(file_type, document_count, avg_duration_seconds, avg_peak_memory_mb, "
+            "(file_type, size_bucket, document_count, avg_duration_seconds, avg_peak_memory_mb, "
             "avg_cpu_percent, updated_at) "
-            "VALUES ('pdf', 2, 5.0, 100.0, 10.0, '2026-01-01T00:00:00+00:00')"
+            "VALUES ('pdf', 'medium', 2, 5.0, 100.0, 10.0, '2026-01-01T00:00:00+00:00')"
         )
         conn.execute(
             "INSERT INTO confidence_metrics "
@@ -64,6 +64,7 @@ def test_processing_panel_normalizes_cpu_percent_by_core_count(monkeypatch):
     monkeypatch.setattr(stats_module.os, "cpu_count", lambda: 4)
     metric = ProcessingMetric(
         file_type="pdf",
+        size_bucket="medium",
         document_count=1,
         avg_duration_seconds=1.0,
         avg_peak_memory_mb=1.0,
