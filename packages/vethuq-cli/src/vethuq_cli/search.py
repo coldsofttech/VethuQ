@@ -5,14 +5,20 @@ from __future__ import annotations
 import shutil
 import sys
 import textwrap
+from pathlib import Path
 
 import typer
 from rich.text import Text
 from vethuq_core.db import connect
+from vethuq_core.export import export_search_results
 from vethuq_core.search import SearchMatch, search_indexed_content
-from vethuq_core.settings import get_search_snippet_context_chars
+from vethuq_core.settings import (
+    SEARCH_EXPORT_FORMATS,
+    get_search_export_format,
+    get_search_snippet_context_chars,
+)
 
-from vethuq_cli.console import console
+from vethuq_cli.console import console, error_console
 
 _MIN_BOX_WIDTH = 20
 _HEADER_STYLE = "bold bright_white"
@@ -129,6 +135,19 @@ def _page(rendered: str) -> None:
 
 def search(
     content: str = typer.Argument(..., help="Text to search for in indexed content."),
+    export: str | None = typer.Option(
+        None,
+        "--export",
+        help=(
+            "Also export results to this file, instead of printing them here. The format "
+            "defaults to `vethuq settings search export-format` unless --format overrides it."
+        ),
+    ),
+    format_: str | None = typer.Option(
+        None,
+        "--format",
+        help="Export format: 'json' or 'html'. Only used with --export.",
+    ),
 ) -> None:
     """Search indexed content for CONTENT and print matching pages.
 
@@ -139,12 +158,35 @@ def search(
     consecutive files alternate accent colors to make them easier to tell
     apart. How much context the box shows is configurable via
     `vethuq settings search snippet`.
+
+    With `--export`, results are written to that file as JSON or HTML
+    instead of being printed here.
     """
     conn = connect()
     try:
         matches = search_indexed_content(conn, content)
         if not matches:
             console.print("No matches found.", style="yellow")
+            return
+
+        if export is not None:
+            resolved_format = format_ if format_ is not None else get_search_export_format(conn)
+            if resolved_format not in SEARCH_EXPORT_FORMATS:
+                error_console.print(
+                    f"Error: unsupported export format '{resolved_format}'. "
+                    f"Use one of: {', '.join(SEARCH_EXPORT_FORMATS)}.",
+                    style="bold red",
+                )
+                raise typer.Exit(code=1)
+            output_path = Path(export)
+            export_search_results(matches, content, output_path, resolved_format)
+            console.print(
+                Text.assemble(
+                    "Exported ",
+                    (str(len(matches)), "bright_blue"),
+                    f" match(es) to {output_path} ({resolved_format}).",
+                )
+            )
             return
 
         width = max(get_search_snippet_context_chars(conn), _MIN_BOX_WIDTH)

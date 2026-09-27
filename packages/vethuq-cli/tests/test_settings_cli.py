@@ -70,6 +70,33 @@ def test_snippet_set_rejects_negative(tmp_path, monkeypatch):
     assert result.exit_code == 1
 
 
+def test_export_format_show_defaults_to_json(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "search", "export-format", "show"])
+
+    assert result.exit_code == 0
+    assert "json" in result.stdout
+
+
+def test_export_format_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "search", "export-format", "set", "html"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "search", "export-format", "show"])
+    assert "html" in show_result.stdout
+
+
+def test_export_format_set_rejects_unsupported_format(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "search", "export-format", "set", "xml"])
+
+    assert result.exit_code == 1
+
+
 def test_removed_retention_show_defaults_to_7_days(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
