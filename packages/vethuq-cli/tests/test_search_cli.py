@@ -1,6 +1,8 @@
+import json
 import os
 from datetime import UTC, datetime
 from functools import partial
+from pathlib import Path
 
 import pytest
 import vethuq_cli.search as search_module
@@ -199,6 +201,71 @@ def test_search_multiple_pages_of_same_file_print_file_once(tmp_path, monkeypatc
     assert lines.count("File: /docs/report.pdf") == 1
     assert "Page: 1 of 3" in lines
     assert "Page: 3 of 3" in lines
+
+
+def test_search_export_requires_a_value(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(tmp_path / "vethuq.db", "/docs/invoice.pdf", "Total amount due: $1,200.00")
+
+    result = runner.invoke(app, ["search", "amount due", "--export"])
+
+    assert result.exit_code == 2
+
+
+def test_search_export_defaults_to_json(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+    output = tmp_path / "out.json"
+
+    result = runner.invoke(app, ["search", "amount due", "--export", str(output)])
+
+    assert result.exit_code == 0
+    data = json.loads(output.read_text())
+    assert data["query"] == "amount due"
+    assert data["result_count"] == 1
+    assert data["matches"][0]["file_path"] == "/docs/invoice.pdf"
+    assert "amount due" in data["matches"][0]["matched_text"]
+    assert "Exported 1 match(es)" in result.stdout
+    assert "Results:" not in result.stdout
+    assert "File:" not in result.stdout
+
+
+def test_search_export_html_links_the_file_path(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+    output = tmp_path / "out.html"
+
+    result = runner.invoke(
+        app, ["search", "amount due", "--export", str(output), "--format", "html"]
+    )
+
+    assert result.exit_code == 0
+    html = output.read_text()
+    assert Path("/docs/invoice.pdf").resolve().as_uri() in html
+    assert "<mark>amount due</mark>" in html
+
+
+def test_search_export_rejects_unsupported_format(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+    output = tmp_path / "out.xml"
+
+    result = runner.invoke(
+        app, ["search", "amount due", "--export", str(output), "--format", "xml"]
+    )
+
+    assert result.exit_code == 1
+    assert not output.exists()
+
+
+def test_search_without_export_does_not_touch_output(tmp_path, monkeypatch):
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+
+    result = runner.invoke(app, ["search", "amount due"])
+
+    assert result.exit_code == 0
+    assert "Results: 1 match" in result.stdout
 
 
 def test_search_different_files_each_get_their_own_file_line(tmp_path, monkeypatch):

@@ -3,10 +3,12 @@ import sqlite3
 import pytest
 from vethuq_core.db import connect
 from vethuq_core.settings import (
+    get_search_export_format,
     get_search_snippet_context_chars,
     get_setting,
     is_gpu_enabled,
     set_gpu_enabled,
+    set_search_export_format,
     set_search_snippet_context_chars,
     set_setting,
 )
@@ -37,6 +39,20 @@ def test_set_setting_overwrites_existing_value(conn: sqlite3.Connection):
     set_setting(conn, "key", "second")
 
     assert get_setting(conn, "key") == "second"
+
+
+def test_search_export_format_defaults_to_json(conn: sqlite3.Connection):
+    assert get_search_export_format(conn) == "json"
+
+
+def test_set_search_export_format_roundtrip(conn: sqlite3.Connection):
+    set_search_export_format(conn, "html")
+    assert get_search_export_format(conn) == "html"
+
+
+def test_set_search_export_format_rejects_unsupported_format(conn: sqlite3.Connection):
+    with pytest.raises(ValueError):
+        set_search_export_format(conn, "xml")
 
 
 def test_get_setting_missing_key_returns_none(conn: sqlite3.Connection):

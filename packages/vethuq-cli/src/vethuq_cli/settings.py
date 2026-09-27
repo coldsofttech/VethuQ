@@ -6,13 +6,16 @@ import typer
 from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.settings import (
+    SEARCH_EXPORT_FORMATS,
     get_ocr_retry_attempts,
     get_removed_source_retention_minutes,
+    get_search_export_format,
     get_search_snippet_context_chars,
     is_gpu_enabled,
     set_gpu_enabled,
     set_ocr_retry_attempts,
     set_removed_source_retention_minutes,
+    set_search_export_format,
     set_search_snippet_context_chars,
 )
 
@@ -22,6 +25,7 @@ app = typer.Typer(help="Manage VethuQ settings.")
 gpu_app = typer.Typer(help="Configure whether OCR should use the GPU when available.")
 search_app = typer.Typer(help="Configure `search` behavior.")
 snippet_app = typer.Typer(help="Configure how much context `search` shows around a match.")
+export_format_app = typer.Typer(help="Configure the default format `search --export` writes to.")
 index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
     help="Configure, in minutes, how long a removed source is kept before it's purged from the DB."
@@ -32,6 +36,7 @@ ocr_retry_app = typer.Typer(
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
+search_app.add_typer(export_format_app, name="export-format")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(ocr_retry_app, name="ocr-retry")
@@ -115,6 +120,37 @@ def snippet_set(
                 "Search snippet context set to ", (str(chars), "bright_blue"), " characters."
             )
         )
+    finally:
+        conn.close()
+
+
+@export_format_app.command("show")
+def export_format_show() -> None:
+    """Show the default format `search --export` writes to when none is given."""
+    conn = connect()
+    try:
+        console.print(
+            Text.assemble("Search export format: ", (get_search_export_format(conn), "bright_blue"))
+        )
+    finally:
+        conn.close()
+
+
+@export_format_app.command("set")
+def export_format_set(
+    format_: str = typer.Argument(
+        ..., metavar="FORMAT", help=f"One of: {', '.join(SEARCH_EXPORT_FORMATS)}."
+    ),
+) -> None:
+    """Set the default format `search --export` writes to when none is given."""
+    conn = connect()
+    try:
+        try:
+            set_search_export_format(conn, format_)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style="bold red")
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Search export format set to ", (format_, "bright_blue"), "."))
     finally:
         conn.close()
 

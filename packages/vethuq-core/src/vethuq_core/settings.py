@@ -11,6 +11,9 @@ REMOVED_SOURCE_RETENTION_MINUTES_KEY = "removed_source_retention_minutes"
 DEFAULT_REMOVED_SOURCE_RETENTION_MINUTES = 7 * 24 * 60  # 7 days
 OCR_RETRY_ATTEMPTS_KEY = "ocr_retry_attempts"
 DEFAULT_OCR_RETRY_ATTEMPTS = 3
+SEARCH_EXPORT_FORMAT_KEY = "search_export_format"
+DEFAULT_SEARCH_EXPORT_FORMAT = "json"
+SEARCH_EXPORT_FORMATS = ("json", "html")
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -70,3 +73,15 @@ def set_ocr_retry_attempts(conn: sqlite3.Connection, attempts: int) -> None:
     if attempts < 0:
         raise ValueError("attempts must be non-negative")
     set_setting(conn, OCR_RETRY_ATTEMPTS_KEY, str(attempts))
+
+
+def get_search_export_format(conn: sqlite3.Connection) -> str:
+    """Default format `search --export` writes to when none is given. 'json' by default."""
+    value = get_setting(conn, SEARCH_EXPORT_FORMAT_KEY)
+    return value if value is not None else DEFAULT_SEARCH_EXPORT_FORMAT
+
+
+def set_search_export_format(conn: sqlite3.Connection, format_: str) -> None:
+    if format_ not in SEARCH_EXPORT_FORMATS:
+        raise ValueError(f"format must be one of {SEARCH_EXPORT_FORMATS}")
+    set_setting(conn, SEARCH_EXPORT_FORMAT_KEY, format_)
