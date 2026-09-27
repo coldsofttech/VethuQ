@@ -7,8 +7,9 @@ VethuQ Desktop is the point-and-click version of VethuQ — everything the
 
 Download `VethuQ-Setup.exe` from the
 [latest release](https://github.com/coldsofttech/VethuQ/releases) and run
-it. It installs VethuQ and adds a Start Menu (and optional desktop)
-shortcut — no Python or other setup needed.
+it. It installs both VethuQ Desktop and the `vethuq` CLI, adds a Start Menu
+(and optional desktop) shortcut, and offers to add VethuQ to your PATH so
+`vethuq` works from any terminal — no Python or other setup needed.
 
 ## Adding sources
 
