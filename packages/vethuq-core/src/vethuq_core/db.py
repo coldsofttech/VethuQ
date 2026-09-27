@@ -10,7 +10,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 13
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -44,7 +44,10 @@ CREATE TABLE IF NOT EXISTS document_index (
     checksum TEXT,
     duplicate_of_id INTEGER REFERENCES document_index(id),
     mtime REAL,
-    removed_at TEXT
+    removed_at TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    peak_memory_mb REAL,
+    cpu_percent REAL
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (
@@ -53,14 +56,22 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     page_number INTEGER NOT NULL,
     ocr_text TEXT NOT NULL,
     confidence REAL NOT NULL,
-    source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed'))
+    source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed')),
+    ocr_engine TEXT,
+    language TEXT,
+    image_width INTEGER,
+    image_height INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS image_pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id INTEGER NOT NULL REFERENCES document_index(id),
     ocr_text TEXT NOT NULL,
-    confidence REAL NOT NULL
+    confidence REAL NOT NULL,
+    ocr_engine TEXT,
+    language TEXT,
+    image_width INTEGER,
+    image_height INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -90,6 +101,8 @@ CREATE TABLE IF NOT EXISTS processing_metrics (
     pages_native INTEGER NOT NULL DEFAULT 0,
     pages_ocr INTEGER NOT NULL DEFAULT 0,
     pages_mixed INTEGER NOT NULL DEFAULT 0,
+    avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+    avg_cpu_percent REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 );
 """
@@ -212,3 +225,34 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         conn.execute("DROP TABLE document_index")
         conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
         conn.execute("PRAGMA foreign_keys = ON")
+    if from_version < 12:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "retry_count" not in columns:
+            conn.execute(
+                "ALTER TABLE document_index ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"
+            )
+        if "peak_memory_mb" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN peak_memory_mb REAL")
+        if "cpu_percent" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN cpu_percent REAL")
+        for table in ("pdf_pages", "image_pages"):
+            columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "ocr_engine" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN ocr_engine TEXT")
+            if "language" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN language TEXT")
+            if "image_width" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN image_width INTEGER")
+            if "image_height" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN image_height INTEGER")
+    if from_version < 13:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
+        if "avg_peak_memory_mb" not in columns:
+            conn.execute(
+                "ALTER TABLE processing_metrics ADD COLUMN avg_peak_memory_mb "
+                "REAL NOT NULL DEFAULT 0"
+            )
+        if "avg_cpu_percent" not in columns:
+            conn.execute(
+                "ALTER TABLE processing_metrics ADD COLUMN avg_cpu_percent REAL NOT NULL DEFAULT 0"
+            )

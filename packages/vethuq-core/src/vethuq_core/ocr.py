@@ -14,8 +14,11 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import version as _package_version
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import psutil
 
 # Must be set before `paddleocr` is imported: skips its startup check for
 # connectivity to the model hoster, which is slow and unnecessary once models
@@ -30,10 +33,12 @@ if TYPE_CHECKING:
     import pymupdf
     from paddleocr import PaddleOCR
 
-from vethuq_core.settings import is_gpu_enabled
+from vethuq_core.settings import get_ocr_retry_attempts, is_gpu_enabled
 from vethuq_core.sources import Source
 
 _logger = logging.getLogger(__name__)
+
+_OCR_LANGUAGE = "en"
 
 _PDF_EXTENSIONS = {".pdf"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
@@ -52,6 +57,10 @@ _MIN_IMAGE_AREA_FRACTION = 0.05
 # PaddleOCR model init is expensive; share one English-language engine per process.
 # Constructed lazily so PDFs whose text is fully native never trigger it at all.
 _engine: PaddleOCR | None = None
+
+
+def _ocr_engine_name() -> str:
+    return f"paddleocr {_package_version('paddleocr')}"
 
 
 def _resolve_device(conn: sqlite3.Connection) -> str:
@@ -82,7 +91,7 @@ def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
         from paddleocr import PaddleOCR
 
         _engine = PaddleOCR(
-            lang="en",
+            lang=_OCR_LANGUAGE,
             device=_resolve_device(conn),
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
@@ -97,6 +106,10 @@ class PageResult:
     text: str
     confidence: float
     source: str  # 'native' | 'ocr' | 'mixed'
+    ocr_engine: str | None = None
+    language: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
 
 
 def _iter_supported_files(path: Path) -> Iterator[Path]:
@@ -109,19 +122,36 @@ def _iter_supported_files(path: Path) -> Iterator[Path]:
             yield candidate
 
 
-def _ocr_image_array(conn: sqlite3.Connection, image: str | np.ndarray) -> tuple[str, float]:
+def _ocr_image_array(
+    conn: sqlite3.Connection, image: str | np.ndarray
+) -> tuple[str, float, int | None, int | None]:
+    import cv2
+
     engine = _get_engine(conn)
     result = engine.predict(image)
     page = result[0] if result else {}
     texts = page.get("rec_texts", [])
     scores = page.get("rec_scores", [])
     confidence = sum(scores) / len(scores) if scores else 0.0
-    return "\n".join(texts), confidence
+
+    array = cv2.imread(image) if isinstance(image, str) else image
+    if array is None:
+        return "\n".join(texts), confidence, None, None
+    height, width = array.shape[:2]
+    return "\n".join(texts), confidence, width, height
 
 
 def _ocr_image_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
-    text, confidence = _ocr_image_array(conn, str(file_path))
-    return PageResult(text=text, confidence=confidence, source="ocr")
+    text, confidence, width, height = _ocr_image_array(conn, str(file_path))
+    return PageResult(
+        text=text,
+        confidence=confidence,
+        source="ocr",
+        ocr_engine=_ocr_engine_name(),
+        language=_OCR_LANGUAGE,
+        image_width=width,
+        image_height=height,
+    )
 
 
 def _render_page_array(
@@ -176,16 +206,35 @@ def _ocr_pdf_page(conn: sqlite3.Connection, page: pymupdf.Page) -> PageResult:
     if _is_native_text(native_text) and image_blocks:
         region_texts = []
         region_scores = []
+        width = height = None
         for bbox in image_blocks:
-            text, confidence = _ocr_image_array(conn, _render_page_array(page, clip=bbox))
+            text, confidence, width, height = _ocr_image_array(
+                conn, _render_page_array(page, clip=bbox)
+            )
             region_texts.append(text)
             region_scores.append(confidence)
         combined_text = "\n".join([native_text.strip(), *region_texts])
         combined_confidence = sum(region_scores) / len(region_scores)
-        return PageResult(text=combined_text, confidence=combined_confidence, source="mixed")
+        return PageResult(
+            text=combined_text,
+            confidence=combined_confidence,
+            source="mixed",
+            ocr_engine=_ocr_engine_name(),
+            language=_OCR_LANGUAGE,
+            image_width=width,
+            image_height=height,
+        )
 
-    text, confidence = _ocr_image_array(conn, _render_page_array(page))
-    return PageResult(text=text, confidence=confidence, source="ocr")
+    text, confidence, width, height = _ocr_image_array(conn, _render_page_array(page))
+    return PageResult(
+        text=text,
+        confidence=confidence,
+        source="ocr",
+        ocr_engine=_ocr_engine_name(),
+        language=_OCR_LANGUAGE,
+        image_width=width,
+        image_height=height,
+    )
 
 
 def _ocr_pdf_file(conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
@@ -404,11 +453,15 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     would skew the averages `vethuq index run` uses to estimate ETAs.
     """
     doc = conn.execute(
-        "SELECT started_at, completed_at FROM document_index WHERE id = ?", (document_id,)
+        "SELECT started_at, completed_at, peak_memory_mb, cpu_percent "
+        "FROM document_index WHERE id = ?",
+        (document_id,),
     ).fetchone()
     duration = (
         datetime.fromisoformat(doc["completed_at"]) - datetime.fromisoformat(doc["started_at"])
     ).total_seconds()
+    peak_memory_mb = doc["peak_memory_mb"] or 0.0
+    cpu_percent = doc["cpu_percent"] or 0.0
 
     if file_type == "pdf":
         pages = conn.execute(
@@ -428,17 +481,18 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
 
     now = datetime.now(UTC).isoformat()
     existing = conn.execute(
-        "SELECT document_count, avg_duration_seconds, avg_confidence "
-        "FROM processing_metrics WHERE file_type = ?",
+        "SELECT document_count, avg_duration_seconds, avg_confidence, "
+        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics WHERE file_type = ?",
         (file_type,),
     ).fetchone()
     if existing is None:
         conn.execute(
             "INSERT INTO processing_metrics "
             "(file_type, document_count, avg_duration_seconds, avg_confidence, "
-            "pages_native, pages_ocr, pages_mixed, updated_at) "
-            "VALUES (?, 1, ?, ?, ?, ?, ?, ?)",
-            (file_type, duration, confidence, native, ocr, mixed, now),
+            "pages_native, pages_ocr, pages_mixed, avg_peak_memory_mb, avg_cpu_percent, "
+            "updated_at) "
+            "VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (file_type, duration, confidence, native, ocr, mixed, peak_memory_mb, cpu_percent, now),
         )
         return
 
@@ -449,11 +503,30 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     avg_confidence = (
         existing["avg_confidence"] + (confidence - existing["avg_confidence"]) / new_count
     )
+    avg_peak_memory_mb = (
+        existing["avg_peak_memory_mb"]
+        + (peak_memory_mb - existing["avg_peak_memory_mb"]) / new_count
+    )
+    avg_cpu_percent = (
+        existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
+    )
     conn.execute(
         "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
         "avg_confidence = ?, pages_native = pages_native + ?, pages_ocr = pages_ocr + ?, "
-        "pages_mixed = pages_mixed + ?, updated_at = ? WHERE file_type = ?",
-        (new_count, avg_duration, avg_confidence, native, ocr, mixed, now, file_type),
+        "pages_mixed = pages_mixed + ?, avg_peak_memory_mb = ?, avg_cpu_percent = ?, "
+        "updated_at = ? WHERE file_type = ?",
+        (
+            new_count,
+            avg_duration,
+            avg_confidence,
+            native,
+            ocr,
+            mixed,
+            avg_peak_memory_mb,
+            avg_cpu_percent,
+            now,
+            file_type,
+        ),
     )
 
 
@@ -698,29 +771,73 @@ def run_ocr(
                 on_file_done(str(file_path))
             continue
 
-        try:
-            if file_type == "pdf":
-                page_results = _ocr_pdf_file(conn, file_path)
-                conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-                conn.executemany(
-                    "INSERT INTO pdf_pages "
-                    "(document_id, page_number, ocr_text, confidence, source) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    [
-                        (document_id, page_number, page.text, page.confidence, page.source)
-                        for page_number, page in enumerate(page_results, start=1)
-                    ],
-                )
+        process = psutil.Process()
+        process.cpu_percent(interval=None)  # prime; the next call reports usage since now
+        mem_before = process.memory_info().rss
+
+        max_attempts = 1 + get_ocr_retry_attempts(conn)
+        attempt = 0
+        last_exc: Exception | None = None
+        succeeded = False
+        while attempt < max_attempts and not succeeded:
+            attempt += 1
+            try:
+                if file_type == "pdf":
+                    page_results = _ocr_pdf_file(conn, file_path)
+                    conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
+                    conn.executemany(
+                        "INSERT INTO pdf_pages "
+                        "(document_id, page_number, ocr_text, confidence, source, "
+                        "ocr_engine, language, image_width, image_height) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            (
+                                document_id,
+                                page_number,
+                                page.text,
+                                page.confidence,
+                                page.source,
+                                page.ocr_engine,
+                                page.language,
+                                page.image_width,
+                                page.image_height,
+                            )
+                            for page_number, page in enumerate(page_results, start=1)
+                        ],
+                    )
+                else:
+                    page = _ocr_image_file(conn, file_path)
+                    conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
+                    conn.execute(
+                        "INSERT INTO image_pages "
+                        "(document_id, ocr_text, confidence, ocr_engine, language, "
+                        "image_width, image_height) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            document_id,
+                            page.text,
+                            page.confidence,
+                            page.ocr_engine,
+                            page.language,
+                            page.image_width,
+                            page.image_height,
+                        ),
+                    )
+            except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the source
+                last_exc = exc
             else:
-                page = _ocr_image_file(conn, file_path)
-                conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
-                conn.execute(
-                    "INSERT INTO image_pages (document_id, ocr_text, confidence) VALUES (?, ?, ?)",
-                    (document_id, page.text, page.confidence),
-                )
-        except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the source
+                succeeded = True
+
+        peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
+        cpu_percent = process.cpu_percent(interval=None)
+        conn.execute(
+            "UPDATE document_index SET retry_count = ?, peak_memory_mb = ?, cpu_percent = ? "
+            "WHERE id = ?",
+            (attempt - 1, peak_memory_mb, cpu_percent, document_id),
+        )
+
+        if not succeeded:
             had_error = True
-            _mark_error(conn, document_id, str(exc))
+            _mark_error(conn, document_id, str(last_exc))
         else:
             _mark_indexed(conn, document_id)
             _update_processing_metrics(conn, document_id, file_type)
