@@ -11,7 +11,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -48,8 +48,10 @@ CREATE TABLE IF NOT EXISTS document_index (
     started_at TEXT,
     completed_at TEXT,
     file_size_bytes INTEGER,
-    checksum TEXT,
+    sha256 TEXT,
     mtime REAL,
+    created_at TEXT,
+    modified_at TEXT,
     removed_at TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0,
     peak_memory_mb REAL,
@@ -163,7 +165,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     # rather than inline in `_SCHEMA`, since that script runs before
     # migrations and would otherwise fail against a pre-migration table.
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_document_index_checksum ON document_index(checksum)"
+        "CREATE INDEX IF NOT EXISTS idx_document_index_sha256 ON document_index(sha256)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_document_index_document_id "
@@ -455,3 +457,17 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         conn.execute("DROP TABLE document_index")
         conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
         conn.execute("PRAGMA foreign_keys = ON")
+    if from_version < 18:
+        # `checksum` already held a SHA-256 digest - renamed to `sha256` so the
+        # column name says so, rather than changing what's stored in it.
+        # `created_at`/`modified_at` are new: OS-level file creation/modification
+        # timestamps captured at scan time, alongside (not replacing) `mtime`,
+        # which the fast dirty-check in `_has_content_changed` still uses as-is.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "checksum" in columns and "sha256" not in columns:
+            conn.execute("ALTER TABLE document_index RENAME COLUMN checksum TO sha256")
+            conn.execute("DROP INDEX IF EXISTS idx_document_index_checksum")
+        if "created_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN created_at TEXT")
+        if "modified_at" not in columns:
+            conn.execute("ALTER TABLE document_index ADD COLUMN modified_at TEXT")

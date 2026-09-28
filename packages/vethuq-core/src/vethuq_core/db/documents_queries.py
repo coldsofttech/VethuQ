@@ -103,19 +103,19 @@ def delete_document_index_by_ids(conn: sqlite3.Connection, ids: list[int]) -> No
 
 
 def find_duplicate_document_index(
-    conn: sqlite3.Connection, checksum: str, exclude_id: int
+    conn: sqlite3.Connection, sha256: str, exclude_id: int
 ) -> sqlite3.Row | None:
-    """Return the earliest-indexed `document_index` row (id, document_id) matching `checksum`."""
+    """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`."""
     return conn.execute(
         "SELECT id, document_id FROM document_index "
-        "WHERE checksum = ? AND id != ? AND status = 'indexed' ORDER BY id ASC LIMIT 1",
-        (checksum, exclude_id),
+        "WHERE sha256 = ? AND id != ? AND status = 'indexed' ORDER BY id ASC LIMIT 1",
+        (sha256, exclude_id),
     ).fetchone()
 
 
 def get_document_index_by_path(conn: sqlite3.Connection, file_path: str) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT id, document_id, checksum FROM document_index WHERE file_path = ?",
+        "SELECT id, document_id, sha256 FROM document_index WHERE file_path = ?",
         (file_path,),
     ).fetchone()
 
@@ -134,21 +134,24 @@ def upsert_document_index(
     file_type: str,
     started_at: str,
     file_size_bytes: int,
-    checksum: str,
+    sha256: str,
     mtime: float,
+    created_at: str,
+    modified_at: str,
 ) -> None:
     conn.execute(
         """
         INSERT INTO document_index
             (source_id, document_id, file_path, file_type, status, started_at,
-             file_size_bytes, checksum, mtime)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+             file_size_bytes, sha256, mtime, created_at, modified_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
             document_id = excluded.document_id,
             status = 'pending', error_message = NULL, indexed_at = NULL,
             started_at = excluded.started_at, completed_at = NULL,
-            file_size_bytes = excluded.file_size_bytes, checksum = excluded.checksum,
-            mtime = excluded.mtime
+            file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,
+            mtime = excluded.mtime, created_at = excluded.created_at,
+            modified_at = excluded.modified_at
         """,
         (
             source_id,
@@ -157,26 +160,35 @@ def upsert_document_index(
             file_type,
             started_at,
             file_size_bytes,
-            checksum,
+            sha256,
             mtime,
+            created_at,
+            modified_at,
         ),
     )
 
 
 def list_tracked_document_index_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
     return conn.execute(
-        "SELECT id, file_path, checksum FROM document_index "
+        "SELECT id, file_path, sha256 FROM document_index "
         "WHERE source_id = ? AND status != 'removed'",
         (source_id,),
     ).fetchall()
 
 
 def update_document_index_path(
-    conn: sqlite3.Connection, row_id: int, new_path: str, mtime: float, file_size_bytes: int
+    conn: sqlite3.Connection,
+    row_id: int,
+    new_path: str,
+    mtime: float,
+    file_size_bytes: int,
+    created_at: str,
+    modified_at: str,
 ) -> None:
     conn.execute(
-        "UPDATE document_index SET file_path = ?, mtime = ?, file_size_bytes = ? WHERE id = ?",
-        (new_path, mtime, file_size_bytes, row_id),
+        "UPDATE document_index SET file_path = ?, mtime = ?, file_size_bytes = ?, "
+        "created_at = ?, modified_at = ? WHERE id = ?",
+        (new_path, mtime, file_size_bytes, created_at, modified_at, row_id),
     )
 
 
@@ -234,7 +246,7 @@ def get_document_index_pending_check(
     conn: sqlite3.Connection, file_path: str
 ) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT status, mtime, file_size_bytes, checksum FROM document_index WHERE file_path = ?",
+        "SELECT status, mtime, file_size_bytes, sha256 FROM document_index WHERE file_path = ?",
         (file_path,),
     ).fetchone()
 

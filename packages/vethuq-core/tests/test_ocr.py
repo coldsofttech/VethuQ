@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import connect
-from vethuq_core.ocr import _has_content_changed, _is_native_text, _resolve_device, run_ocr
+from vethuq_core.ocr import (
+    _capture_timestamps,
+    _has_content_changed,
+    _is_native_text,
+    _resolve_device,
+    run_ocr,
+)
 from vethuq_core.settings import set_gpu_enabled
 from vethuq_core.sources import add_source, purge_expired_removed_documents
 
@@ -52,6 +58,8 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
     ).fetchone()
     assert updated_source["status"] == "indexed"
     assert doc["file_size_bytes"] == image_path.stat().st_size
+    assert doc["created_at"] is not None
+    assert doc["modified_at"] is not None
 
 
 @patch("vethuq_core.ocr._get_engine")
@@ -90,7 +98,7 @@ def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     assert original["status"] == "indexed"
     assert duplicate["status"] == "indexed"
     assert duplicate["document_id"] == original["document_id"]
-    assert original["checksum"] == duplicate["checksum"]
+    assert original["sha256"] == duplicate["sha256"]
 
     assert (
         conn.execute(
@@ -365,7 +373,7 @@ def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
 
     run_ocr(conn, source)
 
-    with patch("vethuq_core.ocr._compute_checksum") as mock_checksum:
+    with patch("vethuq_core.ocr._compute_sha256") as mock_checksum:
         second_run = run_ocr(conn, source, only_new_files=True)
         mock_checksum.assert_not_called()
 
@@ -573,10 +581,10 @@ def test_has_content_changed_skips_hash_when_mtime_and_size_unchanged(tmp_path):
     existing = {
         "mtime": stat.st_mtime,
         "file_size_bytes": stat.st_size,
-        "checksum": "irrelevant",
+        "sha256": "irrelevant",
     }
 
-    with patch("vethuq_core.ocr._compute_checksum") as mock_checksum:
+    with patch("vethuq_core.ocr._compute_sha256") as mock_checksum:
         assert _has_content_changed(file_path, existing) is False
         mock_checksum.assert_not_called()
 
@@ -588,10 +596,48 @@ def test_has_content_changed_true_when_checksum_differs_despite_same_size(tmp_pa
     existing = {
         "mtime": stat.st_mtime - 10,
         "file_size_bytes": stat.st_size,
-        "checksum": "not-the-real-checksum",
+        "sha256": "not-the-real-checksum",
     }
 
     assert _has_content_changed(file_path, existing) is True
+
+
+class _FakeStat:
+    """A minimal stand-in for `os.stat_result` that only defines the
+    attributes it's given - so `hasattr(fake_stat, "st_birthtime")` behaves
+    like it would on a platform that doesn't expose that field at all."""
+
+    def __init__(self, **attrs):
+        for name, value in attrs.items():
+            setattr(self, name, value)
+
+
+def test_capture_timestamps_uses_st_birthtime_when_available():
+    fake_stat = _FakeStat(st_mtime=1_700_000_000.0, st_birthtime=1_600_000_000.0)
+
+    created_at, modified_at = _capture_timestamps(fake_stat)
+
+    assert created_at != modified_at
+
+
+def test_capture_timestamps_falls_back_to_mtime_without_birthtime():
+    fake_stat = _FakeStat(st_mtime=1_700_000_000.0)
+    assert not hasattr(fake_stat, "st_birthtime")
+
+    with patch.object(sys, "platform", "linux"):
+        created_at, modified_at = _capture_timestamps(fake_stat)
+
+    assert created_at == modified_at
+
+
+def test_capture_timestamps_uses_st_ctime_on_windows_without_birthtime():
+    fake_stat = _FakeStat(st_mtime=1_700_000_000.0, st_ctime=1_600_000_000.0)
+    assert not hasattr(fake_stat, "st_birthtime")
+
+    with patch.object(sys, "platform", "win32"):
+        created_at, modified_at = _capture_timestamps(fake_stat)
+
+    assert created_at != modified_at
 
 
 def test_resolve_device_defaults_to_cpu(conn: sqlite3.Connection):

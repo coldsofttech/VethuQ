@@ -187,7 +187,7 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
         file_path="/removed/original.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     logical_document_id = conn.execute(
         "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
@@ -204,7 +204,7 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
         file_path="/kept/copy.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     conn.commit()
 
@@ -255,7 +255,7 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
         file_path="/original_source/a.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     logical_document_id = conn.execute(
         "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
@@ -267,7 +267,7 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
         file_path="/duplicate_source/a.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     conn.commit()
 

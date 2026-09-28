@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import sqlite3
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -340,7 +341,7 @@ def new_file_type_counts() -> dict[str, int]:
 _CHECKSUM_CHUNK_BYTES = 1024 * 1024
 
 
-def _compute_checksum(file_path: Path) -> str:
+def _compute_sha256(file_path: Path) -> str:
     """Return the SHA-256 hex digest of a file's contents, read in chunks."""
     digest = hashlib.sha256()
     with file_path.open("rb") as handle:
@@ -349,17 +350,37 @@ def _compute_checksum(file_path: Path) -> str:
     return digest.hexdigest()
 
 
+def _capture_timestamps(stat: os.stat_result) -> tuple[str, str]:
+    """Return `(created_at, modified_at)` ISO-8601 timestamps from a file's `stat` result.
+
+    `modified_at` is always `st_mtime`. `created_at` uses the OS's actual
+    file-birth time where one is exposed - `st_birthtime` (macOS/BSD) or, on
+    Windows, `st_ctime` (which is creation time there, not metadata-change
+    time as on POSIX). Linux exposes neither via `os.stat`, so `created_at`
+    falls back to `st_mtime` there too, same as `modified_at`.
+    """
+    modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
+    # getattr with a default, not hasattr: `st_birthtime` isn't in typeshed's
+    # stat_result (it's only actually present on macOS/BSD at runtime), so a
+    # plain attribute access would be a static type error.
+    created = getattr(stat, "st_birthtime", None)
+    if created is None:
+        created = stat.st_ctime if sys.platform == "win32" else stat.st_mtime
+    created_at = datetime.fromtimestamp(created, tz=UTC).isoformat()
+    return created_at, modified_at
+
+
 def _find_duplicate_source(
-    conn: sqlite3.Connection, checksum: str, row_id: int
+    conn: sqlite3.Connection, sha256: str, row_id: int
 ) -> sqlite3.Row | None:
-    """Return the earliest-indexed `document_index` row (id, document_id) matching `checksum`.
+    """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`.
 
     Excludes `row_id` itself. Used to link a (re)indexed row to an existing
     logical document (`documents.id`) with identical content, rather than
     creating a new one - the earliest-indexed match is used so a whole
     duplicate group always converges on a single `documents` row.
     """
-    return find_duplicate_document_index(conn, checksum, row_id)
+    return find_duplicate_document_index(conn, sha256, row_id)
 
 
 def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
@@ -367,14 +388,14 @@ def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
 
     A file's mtime and size are checked first - if neither moved since it was
     last indexed, its content is assumed unchanged and the (expensive) full
-    checksum is skipped entirely. Only when mtime or size differ is the
-    checksum recomputed and compared, to confirm this is an actual content
-    change rather than e.g. a touch that left the bytes alone.
+    hash is skipped entirely. Only when mtime or size differ is the SHA-256
+    recomputed and compared, to confirm this is an actual content change
+    rather than e.g. a touch that left the bytes alone.
     """
     stat = file_path.stat()
     if stat.st_mtime == existing["mtime"] and stat.st_size == existing["file_size_bytes"]:
         return False
-    return _compute_checksum(file_path) != existing["checksum"]
+    return _compute_sha256(file_path) != existing["sha256"]
 
 
 def _upsert_document(
@@ -403,19 +424,20 @@ def _upsert_document(
     stat = file_path.stat()
     file_size_bytes = stat.st_size
     mtime = stat.st_mtime
-    checksum = _compute_checksum(file_path)
+    created_at, modified_at = _capture_timestamps(stat)
+    sha256 = _compute_sha256(file_path)
 
     existing = get_document_index_by_path(conn, str(file_path))
-    if existing is not None and existing["checksum"] != checksum:
+    if existing is not None and existing["sha256"] != sha256:
         _promote_surviving_duplicate(conn, existing["id"], set())
 
     existing_id = existing["id"] if existing is not None else -1
-    duplicate_source = _find_duplicate_source(conn, checksum, existing_id)
+    duplicate_source = _find_duplicate_source(conn, sha256, existing_id)
 
     old_document_id = existing["document_id"] if existing is not None else None
     if duplicate_source is not None:
         document_id = duplicate_source["document_id"]
-    elif existing is not None and existing["checksum"] == checksum:
+    elif existing is not None and existing["sha256"] == sha256:
         document_id = old_document_id
     else:
         document_id = insert_document(conn, started_at)
@@ -428,8 +450,10 @@ def _upsert_document(
         file_type,
         started_at,
         file_size_bytes,
-        checksum,
+        sha256,
         mtime,
+        created_at,
+        modified_at,
     )
     if old_document_id is not None and old_document_id != document_id:
         _prune_orphaned_documents(conn, {old_document_id})
@@ -481,21 +505,24 @@ def _reconcile_renamed_and_removed_files(
     claimed_row_ids: set[int] = set()
 
     if missing_rows and new_paths:
-        new_checksums = {path: _compute_checksum(Path(path)) for path in new_paths}
-        missing_by_checksum: dict[str, list[sqlite3.Row]] = {}
+        new_sha256s = {path: _compute_sha256(Path(path)) for path in new_paths}
+        missing_by_sha256: dict[str, list[sqlite3.Row]] = {}
         for row in sorted(missing_rows, key=lambda r: r["id"]):
-            missing_by_checksum.setdefault(row["checksum"], []).append(row)
-        new_by_checksum: dict[str, list[str]] = {}
+            missing_by_sha256.setdefault(row["sha256"], []).append(row)
+        new_by_sha256: dict[str, list[str]] = {}
         for path in new_paths:
-            new_by_checksum.setdefault(new_checksums[path], []).append(path)
+            new_by_sha256.setdefault(new_sha256s[path], []).append(path)
 
-        for checksum, rows in missing_by_checksum.items():
-            matching_paths = new_by_checksum.get(checksum)
+        for sha256, rows in missing_by_sha256.items():
+            matching_paths = new_by_sha256.get(sha256)
             if not matching_paths:
                 continue
             for row, new_path in zip(rows, matching_paths, strict=False):
                 stat = Path(new_path).stat()
-                update_document_index_path(conn, row["id"], new_path, stat.st_mtime, stat.st_size)
+                created_at, modified_at = _capture_timestamps(stat)
+                update_document_index_path(
+                    conn, row["id"], new_path, stat.st_mtime, stat.st_size, created_at, modified_at
+                )
                 claimed_paths.add(new_path)
                 claimed_row_ids.add(row["id"])
 

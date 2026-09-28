@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq stats show` displays accumulated OCR processing and confidence statistics, and `vethuq stats reset` (with confirmation, or `--force`) clears them for a fresh baseline.
 - If VethuQ is closed abruptly (e.g. a crash or power loss) mid-indexing, the next run now recovers on its own instead of needing `--force` — configurable with `vethuq settings index stale-lock set/show` (auto-recovers by default).
 - Each indexed document now has a stable logical identity, independent of its file path, so duplicate copies of the same content can be tracked as one document behind the scenes rather than only ever chaining to a specific file row.
+- Indexed documents now also record OS-level file creation/modification timestamps captured at scan time, alongside their content hash; the hash column is now named `sha256` for what it's always held.
 
 ### Fixed
 
