@@ -63,6 +63,40 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
 
 
 @patch("vethuq_core.ocr._get_engine")
+def test_run_ocr_marks_document_processing_while_in_flight(
+    mock_get_engine, conn: sqlite3.Connection, tmp_path
+):
+    image_path = tmp_path / "scan.png"
+    image_path.write_bytes(b"fake png bytes")
+    captured: dict[str, object] = {}
+
+    def _predict(_image):
+        row = conn.execute(
+            "SELECT status, started_at FROM document_index WHERE file_path = ?",
+            (str(image_path.resolve()),),
+        ).fetchone()
+        captured["status"] = row["status"]
+        captured["started_at"] = row["started_at"]
+        return _fake_ocr_result()
+
+    engine = MagicMock()
+    engine.predict.side_effect = _predict
+    mock_get_engine.return_value = engine
+
+    source = add_source(conn, image_path)
+
+    run_ocr(conn, source)
+
+    assert captured["status"] == "processing"
+    assert captured["started_at"] is not None
+
+    doc = conn.execute(
+        "SELECT status FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
+    ).fetchone()
+    assert doc["status"] == "indexed"
+
+
+@patch("vethuq_core.ocr._get_engine")
 def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):

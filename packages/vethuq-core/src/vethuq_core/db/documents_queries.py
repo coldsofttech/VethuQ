@@ -144,10 +144,10 @@ def upsert_document_index(
         INSERT INTO document_index
             (source_id, document_id, file_path, file_type, status, started_at,
              file_size_bytes, sha256, mtime, created_at, modified_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
             document_id = excluded.document_id,
-            status = 'pending', error_message = NULL, indexed_at = NULL,
+            status = 'processing', error_message = NULL, indexed_at = NULL,
             started_at = excluded.started_at, completed_at = NULL,
             file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,
             mtime = excluded.mtime, created_at = excluded.created_at,
