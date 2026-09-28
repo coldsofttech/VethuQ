@@ -35,6 +35,8 @@ packages/vethuq/src/vethuq/_cli/
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ...except the hand-written desktop build spec, which is source, not generated.
+!packages/vethuq-ui/installer/vethuq.spec
 
 # Installer logs
 pip-log.txt

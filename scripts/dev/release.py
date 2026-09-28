@@ -14,12 +14,16 @@ fails on every PR, not on release day.
      `dist/` at the repo root.
 
 `--desktop` (Windows only - no-ops elsewhere):
-  1. Runs PyInstaller over vethuq-ui's entry point (VethuQ.exe, windowed)
-     and vethuq-cli's entry point (vethuq.exe, console).
-  2. Wraps both with Inno Setup, if `iscc` is on PATH (warns and skips the
+  1. Runs PyInstaller once, over vethuq-ui's entry point (VethuQ-UI.exe,
+     windowed), vethuq-cli's entry point (vethuq.exe, console) and the
+     background index worker (vethuq-worker.exe, console, spawned by the
+     other two). All three land in one shared folder (build/desktop/VethuQ/).
+  2. Wraps that folder with Inno Setup, if `iscc` is on PATH (warns and skips the
      installer step otherwise - a dev machine may not have Inno Setup
      installed; CI does). The installer optionally adds its install dir to
-     PATH so `vethuq` works from any terminal.
+     PATH so `vethuq` works from any terminal. `--version` sets the version
+     shown in the installer and in Windows' Apps & Features (defaults to
+     vethuq.iss's own MyAppVersion fallback, "0.1.0", if omitted).
 """
 
 from __future__ import annotations
@@ -59,53 +63,7 @@ def build_package() -> None:
     print(f"built {wheels[-1]}")
 
 
-def _build_exe(
-    *,
-    name: str,
-    entry: Path,
-    dist_dir: Path,
-    build_dir: Path,
-    windowed: bool,
-    extra_args: list[str] | None = None,
-) -> Path:
-    # PyInstaller's own scratch output (--workpath, the .spec file) is
-    # intermediate and disposable - keep it out of dist_dir and clean it
-    # up after a successful build, so only the exe is left behind. Each
-    # build gets its own work/spec dirs so the two PyInstaller runs (UI,
-    # CLI) don't clobber each other.
-    work_dir = build_dir / f"_pyinstaller_work_{name}"
-    spec_dir = build_dir / f"_pyinstaller_spec_{name}"
-    cmd = [
-        "uv",
-        "run",
-        "pyinstaller",
-        "--noconfirm",
-        "--onefile",
-        "--name",
-        name,
-        "--distpath",
-        str(dist_dir),
-        "--workpath",
-        str(work_dir),
-        "--specpath",
-        str(spec_dir),
-    ]
-    if windowed:
-        cmd.append("--windowed")
-    cmd.extend(extra_args or [])
-    cmd.append(str(entry))
-    _run(cmd)
-    shutil.rmtree(work_dir, ignore_errors=True)
-    shutil.rmtree(spec_dir, ignore_errors=True)
-
-    exe_path = dist_dir / f"{name}.exe"
-    if not exe_path.exists():
-        raise ReleaseBuildError(f"expected PyInstaller output at {exe_path}")
-    print(f"built {exe_path}")
-    return exe_path
-
-
-def build_desktop() -> None:
+def build_desktop(*, version: str | None = None) -> None:
     if platform.system() != "Windows":
         print("desktop build is Windows-only - skipping on this platform.")
         return
@@ -121,36 +79,37 @@ def build_desktop() -> None:
     build_dir = REPO_ROOT / "build"
     dist_dir = build_dir / "desktop"
 
-    print("== building vethuq-ui with PyInstaller ==")
-    ui_src = REPO_ROOT / "packages" / "vethuq-ui" / "src" / "vethuq_ui"
-    _build_exe(
-        name="VethuQ",
-        entry=ui_src / "app.py",
-        dist_dir=dist_dir,
-        build_dir=build_dir,
-        windowed=True,
-        extra_args=[
-            "--add-data",
-            f"{ui_src / 'assets'};vethuq_ui/assets",
-            "--collect-all",
-            "sv_ttk",
-        ],
-    )
+    # One spec builds all three exes (VethuQ-UI.exe, vethuq.exe,
+    # vethuq-worker.exe) into a single shared folder, so the OCR libraries
+    # aren't duplicated per exe - see packages/vethuq-ui/installer/vethuq.spec.
+    spec_path = REPO_ROOT / "packages" / "vethuq-ui" / "installer" / "vethuq.spec"
+    if not spec_path.exists():
+        raise ReleaseBuildError(f"expected PyInstaller spec at {spec_path}")
 
-    print("== building vethuq-cli with PyInstaller ==")
-    cli_src = REPO_ROOT / "packages" / "vethuq-cli" / "src" / "vethuq_cli"
-    _build_exe(
-        name="vethuq",
-        entry=cli_src / "main.py",
-        dist_dir=dist_dir,
-        build_dir=build_dir,
-        windowed=False,
-        # rich lazily imports a Unicode-version-specific submodule
-        # (rich._unicode_data.unicodeNN_0_0) that PyInstaller's static
-        # analysis can't see, so it's missing from the bundle without this
-        # - same class of issue as --collect-all sv_ttk above.
-        extra_args=["--collect-all", "rich"],
+    # PyInstaller's scratch output is intermediate and disposable - keep it
+    # out of dist_dir and clean it up after a successful build.
+    work_dir = build_dir / "_pyinstaller_work"
+    print("== building VethuQ Desktop with PyInstaller ==")
+    _run(
+        [
+            "uv",
+            "run",
+            "pyinstaller",
+            "--noconfirm",
+            "--distpath",
+            str(dist_dir),
+            "--workpath",
+            str(work_dir),
+            str(spec_path),
+        ]
     )
+    shutil.rmtree(work_dir, ignore_errors=True)
+
+    app_dir = dist_dir / "VethuQ"
+    for exe_name in ("VethuQ-UI.exe", "vethuq.exe", "vethuq-worker.exe"):
+        if not (app_dir / exe_name).exists():
+            raise ReleaseBuildError(f"expected PyInstaller output at {app_dir / exe_name}")
+    print(f"built {app_dir}")
 
     iscc = shutil.which("iscc")
     if iscc is None:
@@ -162,7 +121,11 @@ def build_desktop() -> None:
         raise ReleaseBuildError(f"expected Inno Setup script at {installer_script}")
 
     print("== wrapping with Inno Setup ==")
-    _run([iscc, str(installer_script)])
+    iscc_cmd = [iscc]
+    if version is not None:
+        iscc_cmd.append(f"/DMyAppVersion={version}")
+    iscc_cmd.append(str(installer_script))
+    _run(iscc_cmd)
     print(f"built {REPO_ROOT / 'dist' / 'VethuQ-Setup.exe'}")
 
 
@@ -176,6 +139,12 @@ def main() -> None:
     parser.add_argument(
         "--desktop", action="store_true", help="build the VethuQ Desktop installer (Windows only)"
     )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="version to stamp the desktop installer with (--desktop only); "
+        "e.g. the desktop-v* release tag with its prefix stripped",
+    )
     args = parser.parse_args()
 
     if not args.package and not args.desktop:
@@ -185,7 +154,7 @@ def main() -> None:
         if args.package:
             build_package()
         if args.desktop:
-            build_desktop()
+            build_desktop(version=args.version)
     except (ReleaseBuildError, subprocess.CalledProcessError) as exc:
         print(f"release build failed: {exc}", file=sys.stderr)
         sys.exit(1)
