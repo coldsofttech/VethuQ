@@ -36,6 +36,36 @@ if TYPE_CHECKING:
     import pymupdf
     from paddleocr import PaddleOCR
 
+from vethuq_core.db import (
+    delete_image_pages_for_document,
+    delete_pdf_pages_for_document,
+    find_duplicate_document_index,
+    get_confidence_metrics_row,
+    get_document_index_by_path,
+    get_document_index_id_by_path,
+    get_document_index_metrics_stats,
+    get_document_index_pending_check,
+    get_document_result_rows,
+    get_page_confidences,
+    get_pdf_page_sources,
+    get_processing_metrics_budget_row,
+    get_processing_metrics_row,
+    insert_confidence_metrics,
+    insert_document,
+    insert_image_page,
+    insert_pdf_pages,
+    insert_processing_metrics,
+    list_tracked_document_index_rows,
+    mark_document_index_error,
+    mark_document_index_indexed,
+    mark_document_index_removed,
+    update_confidence_metrics,
+    update_document_index_path,
+    update_document_index_retry_stats,
+    update_processing_metrics,
+    update_source_scan_status,
+    upsert_document_index,
+)
 from vethuq_core.settings import (
     THREAD_WORKERS_AUTO,
     THREAD_WORKERS_MAX,
@@ -329,11 +359,7 @@ def _find_duplicate_source(
     creating a new one - the earliest-indexed match is used so a whole
     duplicate group always converges on a single `documents` row.
     """
-    return conn.execute(
-        "SELECT id, document_id FROM document_index "
-        "WHERE checksum = ? AND id != ? AND status = 'indexed' ORDER BY id ASC LIMIT 1",
-        (checksum, row_id),
-    ).fetchone()
+    return find_duplicate_document_index(conn, checksum, row_id)
 
 
 def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
@@ -379,10 +405,7 @@ def _upsert_document(
     mtime = stat.st_mtime
     checksum = _compute_checksum(file_path)
 
-    existing = conn.execute(
-        "SELECT id, document_id, checksum FROM document_index WHERE file_path = ?",
-        (str(file_path),),
-    ).fetchone()
+    existing = get_document_index_by_path(conn, str(file_path))
     if existing is not None and existing["checksum"] != checksum:
         _promote_surviving_duplicate(conn, existing["id"], set())
 
@@ -395,40 +418,24 @@ def _upsert_document(
     elif existing is not None and existing["checksum"] == checksum:
         document_id = old_document_id
     else:
-        document_id = conn.execute(
-            "INSERT INTO documents (created_at) VALUES (?)", (started_at,)
-        ).lastrowid
+        document_id = insert_document(conn, started_at)
 
-    conn.execute(
-        """
-        INSERT INTO document_index
-            (source_id, document_id, file_path, file_type, status, started_at,
-             file_size_bytes, checksum, mtime)
-        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-        ON CONFLICT(file_path) DO UPDATE SET
-            document_id = excluded.document_id,
-            status = 'pending', error_message = NULL, indexed_at = NULL,
-            started_at = excluded.started_at, completed_at = NULL,
-            file_size_bytes = excluded.file_size_bytes, checksum = excluded.checksum,
-            mtime = excluded.mtime
-        """,
-        (
-            source_id,
-            document_id,
-            str(file_path),
-            file_type,
-            started_at,
-            file_size_bytes,
-            checksum,
-            mtime,
-        ),
+    upsert_document_index(
+        conn,
+        source_id,
+        document_id,
+        str(file_path),
+        file_type,
+        started_at,
+        file_size_bytes,
+        checksum,
+        mtime,
     )
     if old_document_id is not None and old_document_id != document_id:
         _prune_orphaned_documents(conn, {old_document_id})
 
-    row = conn.execute(
-        "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
-    ).fetchone()
+    row = get_document_index_id_by_path(conn, str(file_path))
+    assert row is not None
     row_id = row["id"]
     return row_id, (duplicate_source["id"] if duplicate_source is not None else None)
 
@@ -464,11 +471,7 @@ def _reconcile_renamed_and_removed_files(
     so the caller can skip (re-)indexing them.
     """
     disk_path_strs = {str(path) for path in disk_files}
-    tracked = conn.execute(
-        "SELECT id, file_path, checksum FROM document_index "
-        "WHERE source_id = ? AND status != 'removed'",
-        (source.id,),
-    ).fetchall()
+    tracked = list_tracked_document_index_rows(conn, source.id)
     tracked_paths = {row["file_path"] for row in tracked}
 
     missing_rows = [row for row in tracked if row["file_path"] not in disk_path_strs]
@@ -492,11 +495,7 @@ def _reconcile_renamed_and_removed_files(
                 continue
             for row, new_path in zip(rows, matching_paths, strict=False):
                 stat = Path(new_path).stat()
-                conn.execute(
-                    "UPDATE document_index SET file_path = ?, mtime = ?, "
-                    "file_size_bytes = ? WHERE id = ?",
-                    (new_path, stat.st_mtime, stat.st_size, row["id"]),
-                )
+                update_document_index_path(conn, row["id"], new_path, stat.st_mtime, stat.st_size)
                 claimed_paths.add(new_path)
                 claimed_row_ids.add(row["id"])
 
@@ -504,21 +503,13 @@ def _reconcile_renamed_and_removed_files(
     for row in missing_rows:
         if row["id"] in claimed_row_ids:
             continue
-        conn.execute(
-            "UPDATE document_index SET status = 'removed', removed_at = ? WHERE id = ?",
-            (removed_at, row["id"]),
-        )
+        mark_document_index_removed(conn, row["id"], removed_at)
 
     return claimed_paths
 
 
 def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
-    now = datetime.now(UTC).isoformat()
-    conn.execute(
-        "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
-        "WHERE id = ?",
-        (now, now, document_id),
-    )
+    mark_document_index_indexed(conn, document_id, datetime.now(UTC).isoformat())
 
 
 def _mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
@@ -528,20 +519,11 @@ def _mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
     content) was already set by `_upsert_document`, so there's nothing left
     to link here beyond the status itself.
     """
-    now = datetime.now(UTC).isoformat()
-    conn.execute(
-        "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
-        "WHERE id = ?",
-        (now, now, document_id),
-    )
+    mark_document_index_indexed(conn, document_id, datetime.now(UTC).isoformat())
 
 
 def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> None:
-    conn.execute(
-        "UPDATE document_index SET status = 'error', error_message = ?, completed_at = ? "
-        "WHERE id = ?",
-        (message, datetime.now(UTC).isoformat(), document_id),
-    )
+    mark_document_index_error(conn, document_id, message, datetime.now(UTC).isoformat())
 
 
 def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
@@ -552,11 +534,7 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     duration that doesn't reflect a full OCR pass, so it would skew the
     averages `vethuq index run` uses to estimate ETAs.
     """
-    doc = conn.execute(
-        "SELECT started_at, completed_at, peak_memory_mb, cpu_percent, file_size_bytes "
-        "FROM document_index WHERE id = ?",
-        (document_id,),
-    ).fetchone()
+    doc = get_document_index_metrics_stats(conn, document_id)
     duration = (
         datetime.fromisoformat(doc["completed_at"]) - datetime.fromisoformat(doc["started_at"])
     ).total_seconds()
@@ -565,19 +543,10 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     size_bucket = _size_bucket(doc["file_size_bytes"] or 0)
 
     now = datetime.now(UTC).isoformat()
-    existing = conn.execute(
-        "SELECT document_count, avg_duration_seconds, "
-        "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
-        "WHERE file_type = ? AND size_bucket = ?",
-        (file_type, size_bucket),
-    ).fetchone()
+    existing = get_processing_metrics_row(conn, file_type, size_bucket)
     if existing is None:
-        conn.execute(
-            "INSERT INTO processing_metrics "
-            "(file_type, size_bucket, document_count, avg_duration_seconds, avg_peak_memory_mb, "
-            "avg_cpu_percent, updated_at) "
-            "VALUES (?, ?, 1, ?, ?, ?, ?)",
-            (file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now),
+        insert_processing_metrics(
+            conn, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now
         )
         return
 
@@ -592,19 +561,15 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     avg_cpu_percent = (
         existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
     )
-    conn.execute(
-        "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
-        "avg_peak_memory_mb = ?, avg_cpu_percent = ?, updated_at = ? "
-        "WHERE file_type = ? AND size_bucket = ?",
-        (
-            new_count,
-            avg_duration,
-            avg_peak_memory_mb,
-            avg_cpu_percent,
-            now,
-            file_type,
-            size_bucket,
-        ),
+    update_processing_metrics(
+        conn,
+        file_type,
+        size_bucket,
+        new_count,
+        avg_duration,
+        avg_peak_memory_mb,
+        avg_cpu_percent,
+        now,
     )
 
 
@@ -617,13 +582,9 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
     tracking each process_type separately keeps them meaningful.
     """
     if file_type == "pdf":
-        pages = conn.execute(
-            "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
-        ).fetchall()
+        pages = get_pdf_page_sources(conn, document_id)
     else:
-        pages = conn.execute(
-            "SELECT confidence FROM image_pages WHERE document_id = ?", (document_id,)
-        ).fetchall()
+        pages = get_page_confidences(conn, file_type, document_id)
     if not pages:
         return
 
@@ -634,23 +595,15 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
 
     now = datetime.now(UTC).isoformat()
     for process_type, confidences in by_process_type.items():
-        existing = conn.execute(
-            "SELECT page_count, avg_confidence FROM confidence_metrics "
-            "WHERE file_type = ? AND process_type = ?",
-            (file_type, process_type),
-        ).fetchone()
+        existing = get_confidence_metrics_row(conn, file_type, process_type)
         if existing is None:
-            conn.execute(
-                "INSERT INTO confidence_metrics "
-                "(file_type, process_type, page_count, avg_confidence, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (
-                    file_type,
-                    process_type,
-                    len(confidences),
-                    sum(confidences) / len(confidences),
-                    now,
-                ),
+            insert_confidence_metrics(
+                conn,
+                file_type,
+                process_type,
+                len(confidences),
+                sum(confidences) / len(confidences),
+                now,
             )
             continue
 
@@ -658,10 +611,44 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
         avg_confidence = (
             existing["avg_confidence"] * existing["page_count"] + sum(confidences)
         ) / new_count
-        conn.execute(
-            "UPDATE confidence_metrics SET page_count = ?, avg_confidence = ?, updated_at = ? "
-            "WHERE file_type = ? AND process_type = ?",
-            (new_count, avg_confidence, now, file_type, process_type),
+        update_confidence_metrics(conn, file_type, process_type, new_count, avg_confidence, now)
+
+
+def _store_pages(
+    conn: sqlite3.Connection, document_id: int, file_type: str, pages: list[PageResult]
+) -> None:
+    """Replace a document's OCR pages with freshly (re)extracted `pages`."""
+    if file_type == "pdf":
+        delete_pdf_pages_for_document(conn, document_id)
+        insert_pdf_pages(
+            conn,
+            [
+                (
+                    document_id,
+                    page_number,
+                    page.text,
+                    page.confidence,
+                    page.source,
+                    page.ocr_engine,
+                    page.language,
+                    page.image_width,
+                    page.image_height,
+                )
+                for page_number, page in enumerate(pages, start=1)
+            ],
+        )
+    else:
+        page = pages[0]
+        delete_image_pages_for_document(conn, document_id)
+        insert_image_page(
+            conn,
+            document_id,
+            page.text,
+            page.confidence,
+            page.ocr_engine,
+            page.language,
+            page.image_width,
+            page.image_height,
         )
 
 
@@ -691,39 +678,15 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     # `document_id` actually carries OCR pages of its own (itself, if it does)
     # - duplicates are detected globally, so that carrier may belong to a
     # different source than `source_id`.
-    rows = conn.execute(
-        "SELECT di.id AS id, di.file_path AS file_path, di.file_type AS file_type, "
-        "di.status AS status, di.error_message AS error_message, "
-        "di.started_at AS started_at, di.completed_at AS completed_at, "
-        "COALESCE("
-        "  (SELECT peer.id FROM document_index peer "
-        "   WHERE peer.document_id = di.document_id AND ("
-        "     EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-        "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
-        "   ) LIMIT 1), "
-        "  di.id"
-        ") AS canonical_id, "
-        "(SELECT peer.file_path FROM document_index peer "
-        " WHERE peer.document_id = di.document_id AND peer.id != di.id AND ("
-        "   EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-        "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
-        " ) LIMIT 1) AS duplicate_of_path "
-        "FROM document_index di "
-        "WHERE di.source_id = ? ORDER BY di.file_path",
-        (source_id,),
-    ).fetchall()
+    rows = get_document_result_rows(conn, source_id)
 
     results = []
     for row in rows:
         confidence = None
         if row["status"] == "indexed":
-            table = "pdf_pages" if row["file_type"] == "pdf" else "image_pages"
             scores = [
                 page["confidence"]
-                for page in conn.execute(
-                    f"SELECT confidence FROM {table} WHERE document_id = ?",
-                    (row["canonical_id"],),
-                )
+                for page in get_page_confidences(conn, row["file_type"], row["canonical_id"])
             ]
             confidence = sum(scores) / len(scores) if scores else None
 
@@ -765,11 +728,7 @@ def _iter_pending_files(
     for file_path in _iter_supported_files(root):
         existing = None
         if only_new_files or only_failed:
-            existing = conn.execute(
-                "SELECT status, mtime, file_size_bytes, checksum FROM document_index "
-                "WHERE file_path = ?",
-                (str(file_path),),
-            ).fetchone()
+            existing = get_document_index_pending_check(conn, str(file_path))
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
@@ -961,11 +920,7 @@ def run_ocr(
 
         existing = None
         if only_new_files or only_failed:
-            existing = conn.execute(
-                "SELECT status, mtime, file_size_bytes, checksum FROM document_index "
-                "WHERE file_path = ?",
-                (str(file_path),),
-            ).fetchone()
+            existing = get_document_index_pending_check(conn, str(file_path))
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
@@ -1004,45 +959,7 @@ def run_ocr(
             attempt += 1
             try:
                 pages = reader.ocr(conn, file_path)
-                if file_type == "pdf":
-                    conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-                    conn.executemany(
-                        "INSERT INTO pdf_pages "
-                        "(document_id, page_number, ocr_text, confidence, source, "
-                        "ocr_engine, language, image_width, image_height) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        [
-                            (
-                                document_id,
-                                page_number,
-                                page.text,
-                                page.confidence,
-                                page.source,
-                                page.ocr_engine,
-                                page.language,
-                                page.image_width,
-                                page.image_height,
-                            )
-                            for page_number, page in enumerate(pages, start=1)
-                        ],
-                    )
-                else:
-                    page = pages[0]
-                    conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
-                    conn.execute(
-                        "INSERT INTO image_pages "
-                        "(document_id, ocr_text, confidence, ocr_engine, language, "
-                        "image_width, image_height) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            document_id,
-                            page.text,
-                            page.confidence,
-                            page.ocr_engine,
-                            page.language,
-                            page.image_width,
-                            page.image_height,
-                        ),
-                    )
+                _store_pages(conn, document_id, file_type, pages)
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the source
                 last_exc = exc
             else:
@@ -1050,10 +967,8 @@ def run_ocr(
 
         peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
         cpu_percent = process.cpu_percent(interval=None)
-        conn.execute(
-            "UPDATE document_index SET retry_count = ?, peak_memory_mb = ?, cpu_percent = ? "
-            "WHERE id = ?",
-            (attempt - 1, peak_memory_mb, cpu_percent, document_id),
+        update_document_index_retry_stats(
+            conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
         )
 
         if not succeeded:
@@ -1068,13 +983,8 @@ def run_ocr(
         if on_file_done is not None:
             on_file_done(str(file_path))
 
-    conn.execute(
-        "UPDATE sources SET status = ?, last_scanned_at = ? WHERE id = ?",
-        (
-            "error" if had_error else "indexed",
-            datetime.now(UTC).isoformat(),
-            source.id,
-        ),
+    update_source_scan_status(
+        conn, source.id, "error" if had_error else "indexed", datetime.now(UTC).isoformat()
     )
     conn.commit()
     return processed_paths
@@ -1137,52 +1047,12 @@ def _process_file(
     with db_lock:
         if succeeded:
             assert pages is not None
-            if file_type == "pdf":
-                conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-                conn.executemany(
-                    "INSERT INTO pdf_pages "
-                    "(document_id, page_number, ocr_text, confidence, source, "
-                    "ocr_engine, language, image_width, image_height) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        (
-                            document_id,
-                            page_number,
-                            page.text,
-                            page.confidence,
-                            page.source,
-                            page.ocr_engine,
-                            page.language,
-                            page.image_width,
-                            page.image_height,
-                        )
-                        for page_number, page in enumerate(pages, start=1)
-                    ],
-                )
-            else:
-                image_page = pages[0]
-                conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
-                conn.execute(
-                    "INSERT INTO image_pages "
-                    "(document_id, ocr_text, confidence, ocr_engine, language, "
-                    "image_width, image_height) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        document_id,
-                        image_page.text,
-                        image_page.confidence,
-                        image_page.ocr_engine,
-                        image_page.language,
-                        image_page.image_width,
-                        image_page.image_height,
-                    ),
-                )
+            _store_pages(conn, document_id, file_type, pages)
 
         peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
         cpu_percent = process.cpu_percent(interval=None)
-        conn.execute(
-            "UPDATE document_index SET retry_count = ?, peak_memory_mb = ?, cpu_percent = ? "
-            "WHERE id = ?",
-            (attempt - 1, peak_memory_mb, cpu_percent, document_id),
+        update_document_index_retry_stats(
+            conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
         )
 
         if not succeeded:
@@ -1222,11 +1092,7 @@ def _would_exceed_budget(conn: sqlite3.Connection, item: _PendingFile) -> bool:
     except OSError:
         return False
 
-    row = conn.execute(
-        "SELECT avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
-        "WHERE file_type = ? AND size_bucket = ?",
-        (item.file_type, _size_bucket(file_size_bytes)),
-    ).fetchone()
+    row = get_processing_metrics_budget_row(conn, item.file_type, _size_bucket(file_size_bytes))
     if row is None:
         return False
 
@@ -1450,10 +1316,8 @@ def run_ocr_batch(
     now = datetime.now(UTC).isoformat()
     for source in sources:
         if source.id in attempted_source_ids:
-            conn.execute(
-                "UPDATE sources SET status = ?, last_scanned_at = ? WHERE id = ?",
-                ("error" if had_error_by_source[source.id] else "indexed", now, source.id),
-            )
+            status = "error" if had_error_by_source[source.id] else "indexed"
+            update_source_scan_status(conn, source.id, status, now)
     conn.commit()
 
     return processed_paths

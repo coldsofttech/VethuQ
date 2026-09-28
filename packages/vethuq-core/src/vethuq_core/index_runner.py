@@ -30,7 +30,17 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from vethuq_core.db import connect, default_db_path
+from vethuq_core.db import (
+    connect,
+    default_db_path,
+    end_running_index_run,
+    fail_all_running_index_runs,
+    fail_index_run,
+    insert_index_run,
+)
+from vethuq_core.db import (
+    list_index_runs as db_list_index_runs,
+)
 from vethuq_core.ocr import (
     new_file_type_counts,
     pending_file_count,
@@ -286,10 +296,7 @@ def _reconcile_orphaned_run(db_path: Path) -> None:
         return
     conn = connect(db_path)
     try:
-        conn.execute(
-            "UPDATE index_runs SET status = 'failed', completed_at = ? WHERE status = 'running'",
-            (datetime.now(UTC).isoformat(),),
-        )
+        fail_all_running_index_runs(conn, datetime.now(UTC).isoformat())
         conn.commit()
     finally:
         conn.close()
@@ -300,16 +307,13 @@ def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
     _write_state(db_path, state)
     conn = connect(db_path)
     try:
-        conn.execute(
-            "UPDATE index_runs SET status = ?, processed_files = ?, failed_files = ?, "
-            "completed_at = ? WHERE id = ? AND status = 'running'",
-            (
-                status,
-                state.processed_files,
-                state.failed_files,
-                datetime.now(UTC).isoformat(),
-                state.run_id,
-            ),
+        end_running_index_run(
+            conn,
+            state.run_id,
+            status,
+            state.processed_files,
+            state.failed_files,
+            datetime.now(UTC).isoformat(),
         )
         conn.commit()
     finally:
@@ -418,16 +422,7 @@ def list_index_runs(
     A run over "all sources" (`target` column IS NULL) covered every source,
     so it's included alongside runs targeted at just the given `target`.
     """
-    if target is None:
-        rows = conn.execute(
-            "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT ?", (limit,)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
-            "ORDER BY started_at DESC LIMIT ?",
-            (target, limit),
-        ).fetchall()
+    rows = db_list_index_runs(conn, target, limit)
     return [IndexRun._from_row(row) for row in rows]
 
 
@@ -470,15 +465,8 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
         thread_workers_setting = get_thread_workers(conn)
         workers = resolve_thread_workers(conn, type_counts)
 
-        cursor = conn.execute(
-            "INSERT INTO index_runs "
-            "(target, mode, status, pid, total_files, workers, started_at) "
-            "VALUES (?, ?, 'running', ?, ?, ?, ?)",
-            (target, mode, pid, total, workers, started_at),
-        )
+        run_id = insert_index_run(conn, target, mode, pid, total, workers, started_at)
         conn.commit()
-        run_id = cursor.lastrowid
-        assert run_id is not None
 
         state = IndexState(
             run_id=run_id,
@@ -554,10 +542,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
         _mark_run_ended(db_path, state, final_status)
     except Exception:  # noqa: BLE001 - record the crash, then re-raise for the process exit code
         if run_id is not None:
-            conn.execute(
-                "UPDATE index_runs SET status = 'failed', completed_at = ? WHERE id = ?",
-                (datetime.now(UTC).isoformat(), run_id),
-            )
+            fail_index_run(conn, run_id, datetime.now(UTC).isoformat())
             conn.commit()
         crashed_state = read_state(db_path)
         if crashed_state is not None:

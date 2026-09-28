@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from vethuq_core.db import get_setting_value, upsert_setting
+
 GPU_ENABLED_KEY = "gpu_enabled"
 SEARCH_SNIPPET_CONTEXT_CHARS_KEY = "search_snippet_context_chars"
 DEFAULT_SEARCH_SNIPPET_CONTEXT_CHARS = 80
@@ -37,17 +39,11 @@ class InvalidSettingValueError(SettingsError, ValueError):
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
-    return row["value"] if row is not None else None
+    return get_setting_value(conn, key)
 
 
 def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (key, value),
-    )
-    conn.commit()
+    upsert_setting(conn, key, value)
 
 
 def is_gpu_enabled(conn: sqlite3.Connection) -> bool:
