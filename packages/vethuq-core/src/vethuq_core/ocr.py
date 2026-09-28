@@ -101,9 +101,14 @@ def _get_engine(conn: sqlite3.Connection) -> PaddleOCR:
         engine = PaddleOCR(
             lang=_OCR_LANGUAGE,
             device=_resolve_device(conn),
-            use_doc_orientation_classify=False,
+            # Corrects whole-page rotation (0/90/180/270) and per-line rotated
+            # text so scanned/photographed pages that aren't perfectly upright
+            # still OCR correctly. use_doc_unwarping (perspective/warp, not
+            # angle, correction) stays off - it's a heavier pass and unrelated
+            # to angle handling.
+            use_doc_orientation_classify=True,
             use_doc_unwarping=False,
-            use_textline_orientation=False,
+            use_textline_orientation=True,
             enable_mkldnn=False,
         )
         _engine_local.engine = engine
