@@ -31,34 +31,34 @@ def _indexed_pages(
 ) -> list[tuple[int, str, str, int | None, int, str | None]]:
     """Return `(document_id, file_path, ocr_text, page_number, canonical_id, duplicate_of_path)`.
 
-    `canonical_id` is the id whose `pdf_pages`/`image_pages` rows actually hold
-    the text - a duplicate document has none of its own, so it's the id of the
-    original it matches; `duplicate_of_path` is that original's file path, or
-    None if this document isn't a duplicate. A duplicate is thus returned as
-    its own row here (with its own `document_id`/`file_path`), reusing the
-    original's OCR text, so it still surfaces as its own search result.
+    `canonical_id` is the `document_index.id` whose `pdf_pages`/`image_pages`
+    rows actually hold the text - among every row sharing this one's logical
+    document (`document_index.document_id`), exactly one carries OCR pages of
+    its own (the rest are checksum links with none); `duplicate_of_path` is
+    that carrier's file path, or None if this row is the carrier itself. A
+    duplicate is thus returned as its own row here (with its own
+    `document_id`/`file_path`), reusing the carrier's OCR text, so it still
+    surfaces as its own search result.
     """
     pdf_rows = conn.execute(
         "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
-        "pp.page_number AS page_number, "
-        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
-        "orig.file_path AS duplicate_of_path "
+        "pp.page_number AS page_number, carrier.id AS canonical_id, "
+        "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
         "FROM document_index di "
-        "JOIN pdf_pages pp ON pp.document_id = COALESCE(di.duplicate_of_id, di.id) "
         "JOIN sources s ON s.id = di.source_id "
-        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
+        "JOIN document_index carrier ON carrier.document_id = di.document_id "
+        "JOIN pdf_pages pp ON pp.document_id = carrier.id "
         "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
         "ORDER BY di.file_path, pp.page_number"
     ).fetchall()
     image_rows = conn.execute(
         "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
-        "NULL AS page_number, "
-        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
-        "orig.file_path AS duplicate_of_path "
+        "NULL AS page_number, carrier.id AS canonical_id, "
+        "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
         "FROM document_index di "
-        "JOIN image_pages ip ON ip.document_id = COALESCE(di.duplicate_of_id, di.id) "
         "JOIN sources s ON s.id = di.source_id "
-        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
+        "JOIN document_index carrier ON carrier.document_id = di.document_id "
+        "JOIN image_pages ip ON ip.document_id = carrier.id "
         "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
         "ORDER BY di.file_path"
     ).fetchall()

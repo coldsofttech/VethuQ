@@ -32,12 +32,18 @@ def _add_document(
     file_path: str,
     file_type: str = "pdf",
     status: str = "indexed",
-    duplicate_of_id: int | None = None,
+    document_id: int | None = None,
 ) -> int:
+    """Insert a `document_index` row, creating a fresh logical `documents` row unless `document_id`
+    (another row's logical document, to link this one as sharing its content) is given."""
+    if document_id is None:
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES (?)", (datetime.now(UTC).isoformat(),)
+        ).lastrowid
     cursor = conn.execute(
         "INSERT INTO document_index "
-        "(source_id, file_path, file_type, status, duplicate_of_id) VALUES (?, ?, ?, ?, ?)",
-        (source_id, file_path, file_type, status, duplicate_of_id),
+        "(source_id, document_id, file_path, file_type, status) VALUES (?, ?, ?, ?, ?)",
+        (source_id, document_id, file_path, file_type, status),
     )
     conn.commit()
     assert cursor.lastrowid is not None
@@ -172,7 +178,12 @@ def test_search_returns_duplicate_as_its_own_flagged_result(conn: sqlite3.Connec
     source_id = _add_source(conn)
     original_id = _add_document(conn, source_id, "/docs/original.pdf")
     _add_pdf_page(conn, original_id, 1, "Total amount due: $1,200.00 by Friday.")
-    duplicate_id = _add_document(conn, source_id, "/docs/copy.pdf", duplicate_of_id=original_id)
+    original_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
+    ).fetchone()["document_id"]
+    duplicate_id = _add_document(
+        conn, source_id, "/docs/copy.pdf", document_id=original_document_id
+    )
 
     matches = search_indexed_content(conn, "amount due")
 

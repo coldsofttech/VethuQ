@@ -11,7 +11,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -30,9 +30,15 @@ CREATE TABLE IF NOT EXISTS sources (
     removed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS document_index (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_id INTEGER NOT NULL REFERENCES sources(id),
+    document_id INTEGER NOT NULL REFERENCES documents(id),
     file_path TEXT NOT NULL UNIQUE,
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
     status TEXT NOT NULL DEFAULT 'pending'
@@ -43,7 +49,6 @@ CREATE TABLE IF NOT EXISTS document_index (
     completed_at TEXT,
     file_size_bytes INTEGER,
     checksum TEXT,
-    duplicate_of_id INTEGER REFERENCES document_index(id),
     mtime REAL,
     removed_at TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0,
@@ -154,11 +159,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     elif row["version"] < SCHEMA_VERSION:
         _migrate_schema(conn, from_version=row["version"])
         conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
-    # Created after the table (and any migration adding `checksum` to it)
+    # Created after the table (and any migration adding these columns to it)
     # rather than inline in `_SCHEMA`, since that script runs before
     # migrations and would otherwise fail against a pre-migration table.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_document_index_checksum ON document_index(checksum)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_document_index_document_id "
+        "ON document_index(document_id)"
     )
     conn.commit()
 
@@ -359,3 +368,90 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         )
         conn.execute("DROP TABLE processing_metrics")
         conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
+    if from_version < 17:
+        # Introduces logical document identity (`documents`), separate from
+        # the physical file rows in `document_index`. Every document_index
+        # row gets a `document_id` - duplicate content (previously chained
+        # via `duplicate_of_id` to one specific file row) now instead shares
+        # a `documents` row directly, so the group survives independently of
+        # which physical row happens to represent it.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+        if "document_id" not in columns:
+            conn.execute(
+                "ALTER TABLE document_index ADD COLUMN document_id "
+                "INTEGER REFERENCES documents(id)"
+            )
+
+        now = datetime.now(UTC).isoformat()
+        # Every root row (one that isn't itself a duplicate) becomes its own
+        # logical document; a duplicate inherits its root's. A database that
+        # was never actually migrated through version 9 (so never had
+        # `duplicate_of_id` at all - only possible here via a hand-built
+        # fixture, since a real upgrade always ran that migration in order)
+        # has no duplicate bookkeeping to carry over, so every row is a root.
+        has_duplicate_of_id = "duplicate_of_id" in columns
+        roots = conn.execute(
+            "SELECT id FROM document_index WHERE duplicate_of_id IS NULL"
+            if has_duplicate_of_id
+            else "SELECT id FROM document_index"
+        ).fetchall()
+        for root in roots:
+            new_document_id = conn.execute(
+                "INSERT INTO documents (created_at) VALUES (?)", (now,)
+            ).lastrowid
+            if has_duplicate_of_id:
+                conn.execute(
+                    "UPDATE document_index SET document_id = ? "
+                    "WHERE id = ? OR duplicate_of_id = ?",
+                    (new_document_id, root["id"], root["id"]),
+                )
+            else:
+                conn.execute(
+                    "UPDATE document_index SET document_id = ? WHERE id = ?",
+                    (new_document_id, root["id"]),
+                )
+
+        # Rebuild to make `document_id` NOT NULL and drop `duplicate_of_id` -
+        # SQLite can't add a NOT NULL constraint or drop a column in place,
+        # so this follows the same rebuild-the-table pattern the version-11
+        # migration used for its CHECK constraint change. `PRAGMA foreign_keys`
+        # is a no-op inside a pending transaction, and the backfill INSERTs/
+        # UPDATEs above already opened one - commit first so it actually takes.
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute(
+            """
+            CREATE TABLE document_index_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                checksum TEXT,
+                mtime REAL,
+                removed_at TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL,
+                cpu_percent REAL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO document_index_new "
+            "(id, source_id, document_id, file_path, file_type, status, error_message, "
+            "indexed_at, started_at, completed_at, file_size_bytes, checksum, mtime, "
+            "removed_at, retry_count, peak_memory_mb, cpu_percent) "
+            "SELECT id, source_id, document_id, file_path, file_type, status, error_message, "
+            "indexed_at, started_at, completed_at, file_size_bytes, checksum, mtime, "
+            "removed_at, retry_count, peak_memory_mb, cpu_percent FROM document_index"
+        )
+        conn.execute("DROP TABLE document_index")
+        conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
+        conn.execute("PRAGMA foreign_keys = ON")

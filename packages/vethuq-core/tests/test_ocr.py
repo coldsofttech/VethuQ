@@ -74,15 +74,22 @@ def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
 
     docs = conn.execute("SELECT * FROM document_index").fetchall()
     assert len(docs) == 2
-    originals = [doc for doc in docs if doc["duplicate_of_id"] is None]
-    duplicates = [doc for doc in docs if doc["duplicate_of_id"] is not None]
-    assert len(originals) == 1
+    carriers = [
+        doc
+        for doc in docs
+        if conn.execute(
+            "SELECT 1 FROM image_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        is not None
+    ]
+    duplicates = [doc for doc in docs if doc not in carriers]
+    assert len(carriers) == 1
     assert len(duplicates) == 1
-    original, duplicate = originals[0], duplicates[0]
+    original, duplicate = carriers[0], duplicates[0]
 
     assert original["status"] == "indexed"
     assert duplicate["status"] == "indexed"
-    assert duplicate["duplicate_of_id"] == original["id"]
+    assert duplicate["document_id"] == original["document_id"]
     assert original["checksum"] == duplicate["checksum"]
 
     assert (
@@ -117,8 +124,15 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     doc2 = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file2.resolve()),)
     ).fetchone()
-    assert doc1["duplicate_of_id"] is None
-    assert doc2["duplicate_of_id"] == doc1["id"]
+    # file1 ("a.png") is processed first, so it carries the OCR pages; file2
+    # ("b.png") just links to the same logical document.
+    assert (
+        conn.execute(
+            "SELECT 1 FROM image_pages WHERE document_id = ?", (doc1["id"],)
+        ).fetchone()
+        is not None
+    )
+    assert doc2["document_id"] == doc1["document_id"]
 
     # file1 (the original) gets modified; file2 (the duplicate) is untouched.
     new_mtime = file1.stat().st_mtime + 5
@@ -134,10 +148,12 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     doc1_after = conn.execute("SELECT * FROM document_index WHERE id = ?", (doc1["id"],)).fetchone()
     doc2_after = conn.execute("SELECT * FROM document_index WHERE id = ?", (doc2["id"],)).fetchone()
 
-    # file2 is promoted back to being its own original rather than silently
-    # inheriting file1's new (unrelated) OCR text.
-    assert doc2_after["duplicate_of_id"] is None
-    assert doc1_after["duplicate_of_id"] is None
+    # file2 is promoted back to being its own logical document (keeping the
+    # old shared document_id) rather than silently inheriting file1's new,
+    # unrelated content; file1 moves on to a brand-new logical document.
+    assert doc2_after["document_id"] == doc1["document_id"]
+    assert doc1_after["document_id"] != doc1["document_id"]
+    assert doc1_after["document_id"] != doc2_after["document_id"]
 
     page1 = conn.execute(
         "SELECT ocr_text FROM image_pages WHERE document_id = ?", (doc1["id"],)
@@ -450,8 +466,13 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     doc_b = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file_b.resolve()),)
     ).fetchone()
-    assert doc_a["duplicate_of_id"] is None
-    assert doc_b["duplicate_of_id"] == doc_a["id"]
+    assert (
+        conn.execute(
+            "SELECT 1 FROM image_pages WHERE document_id = ?", (doc_a["id"],)
+        ).fetchone()
+        is not None
+    )
+    assert doc_b["document_id"] == doc_a["document_id"]
 
     # The original (file_a) is deleted outright; the duplicate (file_b) is
     # renamed rather than touched.
@@ -476,9 +497,9 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
 
     assert survivor["file_path"] == str(file_c.resolve())
     assert survivor["status"] == "indexed"
-    assert survivor["duplicate_of_id"] is None
     assert gone["status"] == "removed"
     assert gone["removed_at"] is not None
+    assert gone["document_id"] == survivor["document_id"]
 
     page = conn.execute(
         "SELECT ocr_text FROM image_pages WHERE document_id = ?", (survivor["id"],)
@@ -510,7 +531,7 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
     doc_b = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file_b.resolve()),)
     ).fetchone()
-    assert doc_b["duplicate_of_id"] == doc_a["id"]
+    assert doc_b["document_id"] == doc_a["document_id"]
 
     # file_a (the original) is deleted outright, with nothing to rename it to.
     file_a.unlink()
@@ -525,8 +546,12 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
     purge_expired_removed_documents(conn, retention_minutes=-1)
 
     survivor = conn.execute("SELECT * FROM document_index WHERE id = ?", (doc_b["id"],)).fetchone()
-    assert survivor["duplicate_of_id"] is None
+    assert survivor["document_id"] == doc_a["document_id"]
     assert survivor["status"] == "indexed"
+    assert (
+        conn.execute("SELECT * FROM documents WHERE id = ?", (doc_a["document_id"],)).fetchone()
+        is not None
+    )
 
     page = conn.execute(
         "SELECT ocr_text FROM image_pages WHERE document_id = ?", (doc_b["id"],)

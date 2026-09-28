@@ -114,17 +114,32 @@ def test_add_source_reactivates_removed_source(conn: sqlite3.Connection, tmp_pat
     assert len(list_sources(conn)) == 1
 
 
+def _insert_document(conn: sqlite3.Connection, document_id: int | None = None, **fields) -> int:
+    """Insert a `document_index` row for a test, creating a fresh `documents` row if needed."""
+    if document_id is None:
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES (?)", (datetime.now(UTC).isoformat(),)
+        ).lastrowid
+    columns = ["document_id", *fields.keys()]
+    placeholders = ", ".join("?" * len(columns))
+    return conn.execute(
+        f"INSERT INTO document_index ({', '.join(columns)}) VALUES ({placeholders})",
+        (document_id, *fields.values()),
+    ).lastrowid
+
+
 def test_purge_expired_removed_sources_deletes_stale_removed_rows(
     conn: sqlite3.Connection, tmp_path
 ):
     folder = tmp_path / "docs"
     folder.mkdir()
     source = add_source(conn, folder)
-    document_id = conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status) "
-        "VALUES (?, '/docs/a.pdf', 'pdf', 'indexed')",
-        (source.id,),
-    ).lastrowid
+    document_id = _insert_document(
+        conn, source_id=source.id, file_path="/docs/a.pdf", file_type="pdf", status="indexed"
+    )
+    logical_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (document_id,)
+    ).fetchone()["document_id"]
     conn.execute(
         "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
         "VALUES (?, 1, 'text', 0.9)",
@@ -148,6 +163,13 @@ def test_purge_expired_removed_sources_deletes_stale_removed_rows(
         conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (document_id,)).fetchone()
         is None
     )
+    # The logical document is now unreferenced by any physical row - pruned too.
+    assert (
+        conn.execute(
+            "SELECT * FROM documents WHERE id = ?", (logical_document_id,)
+        ).fetchone()
+        is None
+    )
 
 
 def test_purge_expired_removed_sources_promotes_surviving_duplicate(
@@ -159,22 +181,31 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
     (tmp_path / "kept.pdf").write_bytes(b"pdf bytes")
     kept_source = add_source(conn, tmp_path / "kept.pdf")
 
-    original_id = conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status, checksum) "
-        "VALUES (?, '/removed/original.pdf', 'pdf', 'indexed', 'abc')",
-        (removed_source.id,),
-    ).lastrowid
+    original_id = _insert_document(
+        conn,
+        source_id=removed_source.id,
+        file_path="/removed/original.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
+    logical_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
+    ).fetchone()["document_id"]
     conn.execute(
         "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
         "VALUES (?, 1, 'shared text', 0.9)",
         (original_id,),
     )
-    duplicate_id = conn.execute(
-        "INSERT INTO document_index "
-        "(source_id, file_path, file_type, status, checksum, duplicate_of_id) "
-        "VALUES (?, '/kept/copy.pdf', 'pdf', 'indexed', 'abc', ?)",
-        (kept_source.id, original_id),
-    ).lastrowid
+    duplicate_id = _insert_document(
+        conn,
+        document_id=logical_document_id,
+        source_id=kept_source.id,
+        file_path="/kept/copy.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
     conn.commit()
 
     remove_source(conn, removed_source.id)
@@ -188,12 +219,17 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
 
     assert purged == 1
     promoted = conn.execute("SELECT * FROM document_index WHERE id = ?", (duplicate_id,)).fetchone()
-    assert promoted["duplicate_of_id"] is None
+    assert promoted["document_id"] == logical_document_id
     page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (duplicate_id,)).fetchone()
     assert page["ocr_text"] == "shared text"
     assert (
         conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (original_id,)).fetchone()
         is None
+    )
+    # The logical document survives, still referenced by the promoted duplicate.
+    assert (
+        conn.execute("SELECT * FROM documents WHERE id = ?", (logical_document_id,)).fetchone()
+        is not None
     )
 
 
@@ -202,10 +238,9 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
 ):
     """Regression: both the original and its duplicate are doomed, in different sources.
 
-    `_promote_surviving_duplicate` leaves `duplicate_of_id` pointing at the
-    original since there's no surviving duplicate to promote - the whole
-    content cluster is being deleted together. That must not trip the
-    self-referential FK on `document_index.duplicate_of_id`.
+    `_promote_surviving_duplicate` finds no surviving peer to hand pages off to
+    since both are doomed - the whole content cluster (and its shared
+    `documents` row) is being deleted together.
     """
     original_folder = tmp_path / "original_source"
     original_folder.mkdir()
@@ -214,17 +249,26 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
     duplicate_folder.mkdir()
     duplicate_source = add_source(conn, duplicate_folder)
 
-    original_id = conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status, checksum) "
-        "VALUES (?, '/original_source/a.pdf', 'pdf', 'indexed', 'abc')",
-        (original_source.id,),
-    ).lastrowid
-    duplicate_id = conn.execute(
-        "INSERT INTO document_index "
-        "(source_id, file_path, file_type, status, checksum, duplicate_of_id) "
-        "VALUES (?, '/duplicate_source/a.pdf', 'pdf', 'indexed', 'abc', ?)",
-        (duplicate_source.id, original_id),
-    ).lastrowid
+    original_id = _insert_document(
+        conn,
+        source_id=original_source.id,
+        file_path="/original_source/a.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
+    logical_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
+    ).fetchone()["document_id"]
+    duplicate_id = _insert_document(
+        conn,
+        document_id=logical_document_id,
+        source_id=duplicate_source.id,
+        file_path="/duplicate_source/a.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
     conn.commit()
 
     remove_source(conn, original_source.id)
@@ -244,6 +288,10 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
     )
     assert (
         conn.execute("SELECT * FROM document_index WHERE id = ?", (duplicate_id,)).fetchone()
+        is None
+    )
+    assert (
+        conn.execute("SELECT * FROM documents WHERE id = ?", (logical_document_id,)).fetchone()
         is None
     )
 

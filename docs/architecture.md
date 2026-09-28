@@ -103,9 +103,10 @@ Storage, alongside `sources`:
 
 | Table | Purpose |
 | --- | --- |
-| `document_index` | One row per OCR'd file: `source_id`, `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`\|`removed`), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time, used to cheaply rule out unchanged files before re-hashing), `checksum` (SHA-256 of file contents), `duplicate_of_id` (self-FK; set when this file's checksum matches an already-indexed original, in which case OCR is skipped and this row has no rows of its own in the pages tables — it reuses the original's), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
-| `pdf_pages` | One row per PDF page: `document_id`, `page_number`, `ocr_text`, `confidence`. |
-| `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id`, `ocr_text`, `confidence`. |
+| `documents` | One row per logical document, independent of any physical file path: just `id` and `created_at`. Exists so a document's identity survives renames, moves, and having more than one physical copy — see "Logical documents" below. |
+| `document_index` | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`indexed`\|`error`\|`removed`), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time, used to cheaply rule out unchanged files before re-hashing), `checksum` (SHA-256 of file contents), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
+| `pdf_pages` | One row per PDF page: `document_id` (this one's a `document_index.id`, not `documents.id` — see "Logical documents"), `page_number`, `ocr_text`, `confidence`. |
+| `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id` (a `document_index.id`), `ocr_text`, `confidence`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
 | `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal. |
 
@@ -149,17 +150,33 @@ Since worker threads share one sqlite connection (opened with
 through a single `threading.Lock` (`db_lock`); only the OCR inference
 itself runs unlocked, which is the actual point of the parallelism.
 
+### Logical documents
+
+`documents` represents a document's identity independent of any one
+physical file: `document_index.document_id` is a required FK to it, so
+every physical file belongs to exactly one logical document. This is what
+duplicate content shares — two `document_index` rows with identical bytes
+point at the *same* `documents.id`, rather than one physically chaining to
+the other. Only one physical row per logical document actually carries OCR
+pages (in `pdf_pages`/`image_pages`, keyed by `document_index.id` — not
+`documents.id`); the rest are checksum links with no page rows of their
+own, and readers resolve which row is the carrier by checking which one
+actually has page rows for that `document_id` group.
+
 Duplicate detection (`vethuq_core.ocr._upsert_document`) hashes every file
-(SHA-256) as it's processed and, if another *indexed*, non-duplicate
-document already has that checksum, links the new one to it via
-`duplicate_of_id` instead of running OCR — duplicates are detected
-globally across all sources, not just within one. Search and `index
-status` still show a duplicate as its own result/row (reusing the
-original's OCR text), just flagged as a duplicate. If the original is
-later purged (see the removed-source retention window below), the
-earliest-indexed surviving duplicate is promoted in its place: it
-inherits the original's `pdf_pages`/`image_pages` rows and any other
-duplicates are repointed to it (`vethuq_core.sources._promote_surviving_duplicate`).
+(SHA-256) as it's processed and, if another *indexed* document already has
+that checksum, links the new one to that document's `document_id` instead
+of running OCR — duplicates are detected globally across all sources, not
+just within one. Search and `index status` still show a duplicate as its
+own result/row (reusing the carrier's OCR text), just flagged as a
+duplicate. If the row carrying the pages is later deleted (purged, or its
+content changes to something else — see below), the earliest surviving row
+still sharing its `document_id` is promoted to carry those pages instead
+(`vethuq_core.sources._promote_surviving_duplicate`); nothing needs
+repointing on the other rows, since the shared `document_id` never moved.
+If no row is left referencing a `documents` row afterward, it's deleted too
+(`vethuq_core.sources._prune_orphaned_documents`) rather than lingering as
+dead weight.
 
 Modified-file detection (`vethuq_core.ocr._has_content_changed`) lets
 `vethuq index run` (`only_new_files=True`) also pick up files whose
@@ -171,12 +188,14 @@ stored one, to confirm an actual content change before re-running OCR on
 it. This avoids re-hashing every file's full contents on every run for
 large, mostly-unchanged sources.
 
-If a modified file was itself an original that other documents were
-deduped against, `_upsert_document` promotes the earliest of those
-duplicates (via the same `_promote_surviving_duplicate` used for purging,
-above) before applying the new checksum — otherwise those still-unchanged
-duplicates would silently keep reusing what's about to become this
-document's new, unrelated OCR text.
+If a modified file was itself carrying the OCR pages other documents shared
+its `document_id` for, `_upsert_document` promotes the earliest of those
+peers (via the same `_promote_surviving_duplicate` used for purging, above)
+before applying the new checksum and moving this row on to its own new
+(or separately matched) `document_id` — otherwise those still-unchanged
+peers would silently keep reusing what's about to become this document's
+new, unrelated OCR text. If that leaves the old `documents` row with no
+other physical row referencing it, it's pruned.
 
 Rename/move and removal detection
 (`vethuq_core.ocr._reconcile_renamed_and_removed_files`) runs before the
@@ -190,9 +209,10 @@ rename is marked `status='removed'` (`removed_at` set) rather than
 deleted outright, in case the file reappears. When several files share a
 checksum (e.g. two identical files, one deleted and one renamed), pairing
 is deterministic but otherwise arbitrary; this is safe regardless of which
-row "wins" because a removed original's pages are handed off to a
-surviving duplicate via `_promote_surviving_duplicate` when it's actually
-purged, so no OCR text is ever lost or shown against the wrong content.
+row "wins" because a removed carrier's pages are handed off to a
+surviving peer sharing its `document_id` via `_promote_surviving_duplicate`
+when it's actually purged, so no OCR text is ever lost or shown against the
+wrong content.
 `purge_expired_removed_documents` (mirroring
 `purge_expired_removed_sources`, and sharing its retention setting)
 permanently deletes documents that have stayed `removed` past the

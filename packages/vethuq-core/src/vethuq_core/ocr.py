@@ -319,22 +319,21 @@ def _compute_checksum(file_path: Path) -> str:
     return digest.hexdigest()
 
 
-def _find_duplicate_original(
-    conn: sqlite3.Connection, checksum: str, document_id: int
-) -> int | None:
-    """Return the id of the original document `document_id` duplicates, if any.
+def _find_duplicate_source(
+    conn: sqlite3.Connection, checksum: str, row_id: int
+) -> sqlite3.Row | None:
+    """Return the earliest-indexed `document_index` row (id, document_id) matching `checksum`.
 
-    An "original" is the earliest-indexed document with matching content
-    (same checksum) that isn't itself a duplicate of something else -
-    duplicates always link directly to the root original, never to a chain.
+    Excludes `row_id` itself. Used to link a (re)indexed row to an existing
+    logical document (`documents.id`) with identical content, rather than
+    creating a new one - the earliest-indexed match is used so a whole
+    duplicate group always converges on a single `documents` row.
     """
-    row = conn.execute(
-        "SELECT id FROM document_index "
-        "WHERE checksum = ? AND id != ? AND duplicate_of_id IS NULL AND status = 'indexed' "
-        "ORDER BY id ASC LIMIT 1",
-        (checksum, document_id),
+    return conn.execute(
+        "SELECT id, document_id FROM document_index "
+        "WHERE checksum = ? AND id != ? AND status = 'indexed' ORDER BY id ASC LIMIT 1",
+        (checksum, row_id),
     ).fetchone()
-    return row["id"] if row is not None else None
 
 
 def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
@@ -355,19 +354,25 @@ def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
 def _upsert_document(
     conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
 ) -> tuple[int, int | None]:
-    """Insert/reset a document's `document_index` row and check it for duplicates.
+    """Insert/reset a document's `document_index` row, linking it to its logical document.
 
-    Returns `(document_id, duplicate_of_id)` - `duplicate_of_id` is the id of
-    the original document this one's content (by checksum) already matches,
-    or None if this document is new/unique content.
+    Returns `(row_id, duplicate_source_id)` - `duplicate_source_id` is the id
+    of another `document_index` row whose content (by checksum) this one now
+    matches; `row_id` is linked to that row's `documents.id` and the caller
+    should skip OCR. It's None when this row's content is unique among
+    currently indexed documents, in which case it's linked to a brand-new
+    `documents` row (or keeps its existing one, if content is unchanged).
 
     If this document's checksum is changing (its content was modified since
-    it was last indexed) and other documents were deduped against its old
-    content, the earliest of them is promoted to take over as the original
-    for that old content first - see `_promote_surviving_duplicate` - so
-    they keep reusing the OCR text that actually matches their (unchanged)
-    bytes instead of silently inheriting this document's new, unrelated one.
+    it was last indexed) and other documents were linked to its old logical
+    document, the earliest of them is promoted to take over its OCR pages
+    first - see `_promote_surviving_duplicate` - so they keep reusing text
+    that actually matches their (unchanged) bytes instead of losing it when
+    this row moves on to different content. If that leaves the old logical
+    document with no other physical row referencing it, it's pruned.
     """
+    from vethuq_core.sources import _promote_surviving_duplicate, _prune_orphaned_documents
+
     started_at = datetime.now(UTC).isoformat()
     stat = file_path.stat()
     file_size_bytes = stat.st_size
@@ -375,31 +380,57 @@ def _upsert_document(
     checksum = _compute_checksum(file_path)
 
     existing = conn.execute(
-        "SELECT id, checksum FROM document_index WHERE file_path = ?", (str(file_path),)
+        "SELECT id, document_id, checksum FROM document_index WHERE file_path = ?",
+        (str(file_path),),
     ).fetchone()
     if existing is not None and existing["checksum"] != checksum:
-        from vethuq_core.sources import _promote_surviving_duplicate
-
         _promote_surviving_duplicate(conn, existing["id"], set())
+
+    existing_id = existing["id"] if existing is not None else -1
+    duplicate_source = _find_duplicate_source(conn, checksum, existing_id)
+
+    old_document_id = existing["document_id"] if existing is not None else None
+    if duplicate_source is not None:
+        document_id = duplicate_source["document_id"]
+    elif existing is not None and existing["checksum"] == checksum:
+        document_id = old_document_id
+    else:
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES (?)", (started_at,)
+        ).lastrowid
 
     conn.execute(
         """
         INSERT INTO document_index
-            (source_id, file_path, file_type, status, started_at, file_size_bytes, checksum, mtime)
-        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+            (source_id, document_id, file_path, file_type, status, started_at,
+             file_size_bytes, checksum, mtime)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
         ON CONFLICT(file_path) DO UPDATE SET
+            document_id = excluded.document_id,
             status = 'pending', error_message = NULL, indexed_at = NULL,
             started_at = excluded.started_at, completed_at = NULL,
             file_size_bytes = excluded.file_size_bytes, checksum = excluded.checksum,
-            mtime = excluded.mtime, duplicate_of_id = NULL
+            mtime = excluded.mtime
         """,
-        (source_id, str(file_path), file_type, started_at, file_size_bytes, checksum, mtime),
+        (
+            source_id,
+            document_id,
+            str(file_path),
+            file_type,
+            started_at,
+            file_size_bytes,
+            checksum,
+            mtime,
+        ),
     )
+    if old_document_id is not None and old_document_id != document_id:
+        _prune_orphaned_documents(conn, {old_document_id})
+
     row = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(file_path),)
     ).fetchone()
-    document_id = row["id"]
-    return document_id, _find_duplicate_original(conn, checksum, document_id)
+    row_id = row["id"]
+    return row_id, (duplicate_source["id"] if duplicate_source is not None else None)
 
 
 def _reconcile_renamed_and_removed_files(
@@ -490,13 +521,18 @@ def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
     )
 
 
-def _mark_duplicate(conn: sqlite3.Connection, document_id: int, original_id: int) -> None:
-    """Mark a document as indexed via a checksum match instead of running OCR on it."""
+def _mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
+    """Mark a document as indexed via a checksum match instead of running OCR on it.
+
+    Its `document_id` (the logical document it shares with the matched
+    content) was already set by `_upsert_document`, so there's nothing left
+    to link here beyond the status itself.
+    """
     now = datetime.now(UTC).isoformat()
     conn.execute(
-        "UPDATE document_index SET status = 'indexed', duplicate_of_id = ?, "
-        "indexed_at = ?, completed_at = ? WHERE id = ?",
-        (original_id, now, now, document_id),
+        "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
+        "WHERE id = ?",
+        (now, now, document_id),
     )
 
 
@@ -651,14 +687,28 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     duplicate has none of its own. `duration` (in seconds) is derived from
     `started_at`/`completed_at` and is None while a document is still pending.
     """
+    # `canonical_id` is whichever `document_index` row sharing this one's
+    # `document_id` actually carries OCR pages of its own (itself, if it does)
+    # - duplicates are detected globally, so that carrier may belong to a
+    # different source than `source_id`.
     rows = conn.execute(
         "SELECT di.id AS id, di.file_path AS file_path, di.file_type AS file_type, "
         "di.status AS status, di.error_message AS error_message, "
         "di.started_at AS started_at, di.completed_at AS completed_at, "
-        "COALESCE(di.duplicate_of_id, di.id) AS canonical_id, "
-        "orig.file_path AS duplicate_of_path "
+        "COALESCE("
+        "  (SELECT peer.id FROM document_index peer "
+        "   WHERE peer.document_id = di.document_id AND ("
+        "     EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
+        "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+        "   ) LIMIT 1), "
+        "  di.id"
+        ") AS canonical_id, "
+        "(SELECT peer.file_path FROM document_index peer "
+        " WHERE peer.document_id = di.document_id AND peer.id != di.id AND ("
+        "   EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
+        "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+        " ) LIMIT 1) AS duplicate_of_path "
         "FROM document_index di "
-        "LEFT JOIN document_index orig ON orig.id = di.duplicate_of_id "
         "WHERE di.source_id = ? ORDER BY di.file_path",
         (source_id,),
     ).fetchall()
@@ -928,14 +978,14 @@ def run_ocr(
             continue
 
         file_type = _READERS[file_path.suffix.lower()].file_type
-        document_id, duplicate_of_id = _upsert_document(conn, source.id, file_path, file_type)
+        document_id, duplicate_source_id = _upsert_document(conn, source.id, file_path, file_type)
         conn.commit()
         processed_paths.append(str(file_path))
 
-        if duplicate_of_id is not None:
-            # Identical content already indexed under `duplicate_of_id` - link to
-            # it and skip OCR entirely rather than redoing the same work.
-            _mark_duplicate(conn, document_id, duplicate_of_id)
+        if duplicate_source_id is not None:
+            # Identical content already indexed under the same logical document -
+            # skip OCR entirely rather than redoing the same work.
+            _mark_duplicate(conn, document_id)
             conn.commit()
             if on_file_done is not None:
                 on_file_done(str(file_path))
@@ -1056,12 +1106,12 @@ def _process_file(
     connection isn't safe for unsynchronized concurrent use.
     """
     with db_lock:
-        document_id, duplicate_of_id = _upsert_document(conn, source.id, file_path, file_type)
+        document_id, duplicate_source_id = _upsert_document(conn, source.id, file_path, file_type)
         conn.commit()
 
-    if duplicate_of_id is not None:
+    if duplicate_source_id is not None:
         with db_lock:
-            _mark_duplicate(conn, document_id, duplicate_of_id)
+            _mark_duplicate(conn, document_id)
             conn.commit()
         return True
 
