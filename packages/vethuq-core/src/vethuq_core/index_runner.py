@@ -47,6 +47,10 @@ _LOCK_FILENAME = "index.lock"
 _LOG_FILENAME = "index_worker.log"
 _STOP_TIMEOUT_SECONDS = 5.0
 _PAUSE_POLL_SECONDS = 1.0
+# Bundled next to the desktop/CLI exes by the installer build. A frozen exe
+# can't be asked to run `-m vethuq_core.index_runner` (it would just start
+# the app again), so frozen builds spawn this dedicated worker exe instead.
+_WORKER_EXE_NAME = "vethuq-worker.exe"
 
 
 class IndexRunnerError(Exception):
@@ -198,6 +202,16 @@ def _coerce_target(target: str) -> str | int:
     return int(target) if target.isdigit() else target
 
 
+def _worker_command(db_path: Path, target: str | None, restart: bool) -> list[str]:
+    args = [str(db_path), target or "", "restart" if restart else "run"]
+    if getattr(sys, "frozen", False):
+        worker = Path(sys.executable).with_name(_WORKER_EXE_NAME)
+        if not worker.exists():
+            raise IndexRunnerError(f"index worker not found at {worker}")
+        return [str(worker), *args]
+    return [sys.executable, "-m", "vethuq_core.index_runner", *args]
+
+
 def start_run(
     target: str | None = None,
     *,
@@ -255,14 +269,10 @@ def start_run(
     # the only place that failure is visible at all.
     with open(log_path(db_path), "a", encoding="utf-8") as log_file:
         process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
-            [
-                sys.executable,
-                "-m",
-                "vethuq_core.index_runner",
-                str(db_path),
-                target or "",
-                "restart" if restart else "run",
-            ],
+            _worker_command(db_path, target, restart),
+            # Stops a onefile-frozen parent's bundle env from leaking into
+            # the (also onefile) worker exe, which must unpack its own.
+            env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=log_file,
