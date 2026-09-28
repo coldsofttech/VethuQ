@@ -14,10 +14,12 @@ fails on every PR, not on release day.
      `dist/` at the repo root.
 
 `--desktop` (Windows only - no-ops elsewhere):
-  1. Runs PyInstaller over vethuq-ui's entry point.
-  2. Wraps the result with Inno Setup, if `iscc` is on PATH (warns and
-     skips the installer step otherwise - a dev machine may not have
-     Inno Setup installed; CI does).
+  1. Runs PyInstaller over vethuq-ui's entry point (VethuQ.exe, windowed)
+     and vethuq-cli's entry point (vethuq.exe, console).
+  2. Wraps both with Inno Setup, if `iscc` is on PATH (warns and skips the
+     installer step otherwise - a dev machine may not have Inno Setup
+     installed; CI does). The installer optionally adds its install dir to
+     PATH so `vethuq` works from any terminal.
 """
 
 from __future__ import annotations
@@ -57,58 +59,98 @@ def build_package() -> None:
     print(f"built {wheels[-1]}")
 
 
+def _build_exe(
+    *,
+    name: str,
+    entry: Path,
+    dist_dir: Path,
+    build_dir: Path,
+    windowed: bool,
+    extra_args: list[str] | None = None,
+) -> Path:
+    # PyInstaller's own scratch output (--workpath, the .spec file) is
+    # intermediate and disposable - keep it out of dist_dir and clean it
+    # up after a successful build, so only the exe is left behind. Each
+    # build gets its own work/spec dirs so the two PyInstaller runs (UI,
+    # CLI) don't clobber each other.
+    work_dir = build_dir / f"_pyinstaller_work_{name}"
+    spec_dir = build_dir / f"_pyinstaller_spec_{name}"
+    cmd = [
+        "uv",
+        "run",
+        "pyinstaller",
+        "--noconfirm",
+        "--onefile",
+        "--name",
+        name,
+        "--distpath",
+        str(dist_dir),
+        "--workpath",
+        str(work_dir),
+        "--specpath",
+        str(spec_dir),
+    ]
+    if windowed:
+        cmd.append("--windowed")
+    cmd.extend(extra_args or [])
+    cmd.append(str(entry))
+    _run(cmd)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    shutil.rmtree(spec_dir, ignore_errors=True)
+
+    exe_path = dist_dir / f"{name}.exe"
+    if not exe_path.exists():
+        raise ReleaseBuildError(f"expected PyInstaller output at {exe_path}")
+    print(f"built {exe_path}")
+    return exe_path
+
+
 def build_desktop() -> None:
     if platform.system() != "Windows":
         print("desktop build is Windows-only - skipping on this platform.")
         return
 
     # `uv sync` alone only installs the workspace root's own deps, not
-    # member packages like vethuq-ui - without this, PyInstaller's
+    # member packages like vethuq-ui/vethuq-cli - without this, PyInstaller's
     # `--collect-all sv_ttk` below silently collects nothing (sv_ttk isn't
     # installed anywhere) and produces an exe that fails at runtime with
     # ModuleNotFoundError.
     print("== syncing workspace packages for the desktop build ==")
     _run(["uv", "sync", "--all-packages", "--group", "desktop"])
 
-    print("== building vethuq-ui with PyInstaller ==")
-    ui_src = REPO_ROOT / "packages" / "vethuq-ui" / "src" / "vethuq_ui"
     build_dir = REPO_ROOT / "build"
     dist_dir = build_dir / "desktop"
-    # PyInstaller's own scratch output (--workpath, the .spec file) is
-    # intermediate and disposable - keep it out of dist_dir and clean it
-    # up after a successful build, so only VethuQ.exe is left behind.
-    work_dir = build_dir / "_pyinstaller_work"
-    spec_dir = build_dir / "_pyinstaller_spec"
-    _run(
-        [
-            "uv",
-            "run",
-            "pyinstaller",
-            "--noconfirm",
-            "--onefile",
-            "--name",
-            "VethuQ",
-            "--windowed",
-            "--distpath",
-            str(dist_dir),
-            "--workpath",
-            str(work_dir),
-            "--specpath",
-            str(spec_dir),
+
+    print("== building vethuq-ui with PyInstaller ==")
+    ui_src = REPO_ROOT / "packages" / "vethuq-ui" / "src" / "vethuq_ui"
+    _build_exe(
+        name="VethuQ",
+        entry=ui_src / "app.py",
+        dist_dir=dist_dir,
+        build_dir=build_dir,
+        windowed=True,
+        extra_args=[
             "--add-data",
             f"{ui_src / 'assets'};vethuq_ui/assets",
             "--collect-all",
             "sv_ttk",
-            str(ui_src / "app.py"),
-        ]
+        ],
     )
-    shutil.rmtree(work_dir, ignore_errors=True)
-    shutil.rmtree(spec_dir, ignore_errors=True)
 
-    exe_path = dist_dir / "VethuQ.exe"
-    if not exe_path.exists():
-        raise ReleaseBuildError(f"expected PyInstaller output at {exe_path}")
-    print(f"built {exe_path}")
+    print("== building vethuq-cli with PyInstaller ==")
+    cli_src = REPO_ROOT / "packages" / "vethuq-cli" / "src" / "vethuq_cli"
+    _build_exe(
+        name="vethuq",
+        entry=cli_src / "main.py",
+        dist_dir=dist_dir,
+        build_dir=build_dir,
+        windowed=False,
+        # rich lazily imports a Unicode-version-specific submodule
+        # (rich._unicode_data.unicodeNN_0_0) that PyInstaller's static
+        # analysis can't see, so it's missing from the bundle without this
+        # - same class of issue as --collect-all sv_ttk above.
+        extra_args=["--collect-all", "rich"],
+    )
 
     iscc = shutil.which("iscc")
     if iscc is None:

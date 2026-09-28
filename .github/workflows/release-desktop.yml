@@ -49,4 +49,4 @@ jobs:
           files: dist/VethuQ-Setup.exe
           prerelease: ${{ steps.channel.outputs.prerelease }}
           body: |
-            VethuQ Desktop installer. See [docs/DESKTOP.md](https://github.com/${{ github.repository }}/blob/main/docs/DESKTOP.md) for install and usage instructions.
+            VethuQ Desktop installer. Installs both the desktop app and the `vethuq` CLI, with an option to add it to PATH. See [docs/DESKTOP.md](https://github.com/${{ github.repository }}/blob/main/docs/DESKTOP.md) for install and usage instructions.

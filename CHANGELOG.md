@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
+- The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.
 - The Python library now offers a `vethuq.Vethuq()` client with `client.sources` (add/list/remove), `client.index` (run/restart/status/stop/pause/resume/history), `client.settings` (GPU, search snippet/export format, and indexing retention/retry/workers/stale-lock), `client.stats` (processing/confidence statistics), and `client.search` (search indexed content and export results) — no database connection to manage yourself.
 - `vethuq`'s interactive menu (run with no arguments) now includes Stats, matching the `vethuq stats` command.
 - Initial repository scaffold: uv workspace, `vethuq-core` package, CI, and pre-commit setup.
