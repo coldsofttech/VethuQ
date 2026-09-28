@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background indexing can now process files with multiple worker threads instead of one at a time — configurable with `vethuq settings index thread-workers set/show` (also available from the interactive menu; disabled by default, set a fixed 1-8, or `auto` to keep it sized to current CPU/memory usage throughout the run). Pending files across all sources are now indexed in filename order together, rather than one whole source at a time.
 - `vethuq stats show` displays accumulated OCR processing and confidence statistics, and `vethuq stats reset` (with confirmation, or `--force`) clears them for a fresh baseline.
 - If VethuQ is closed abruptly (e.g. a crash or power loss) mid-indexing, the next run now recovers on its own instead of needing `--force` — configurable with `vethuq settings index stale-lock set/show` (auto-recovers by default).
+- Each indexed document now has a stable logical identity, independent of its file path, so duplicate copies of the same content can be tracked as one document behind the scenes rather than only ever chaining to a specific file row.
 
 ### Fixed
 
