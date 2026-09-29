@@ -146,6 +146,26 @@ engine means writing an `OcrEngine` implementation and calling
 Choosing between engines (and languages) isn't wired up yet — one engine and
 language are supported for now.
 
+### Search engines
+
+`vethuq_core.search.Search.indexed_content` is a facade over
+`vethuq_core.search.engines`:
+
+- `SearchEngine` (a `Protocol`, in `search/engines/base.py`) — `name` and
+  `search(query, *, context_chars=None) -> list[SearchMatch]`. An engine may
+  raise `SearchEngineUnavailable` when it can't serve queries.
+- `SearchEngines.get(conn, name=None)` (`search/engines/registry.py`) — builds
+  the engine registered under `name` (default `like`) on a connection.
+- `LikeSearchEngine` (`search/engines/like.py`) — the current `LIKE`-based
+  implementation.
+- `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
+  `primary` raises `SearchEngineUnavailable`.
+
+Adding an engine (e.g. FTS5 `MATCH`, #24) means writing a `SearchEngine` and
+calling `SearchEngines.register(name, factory)`; engines coexist, so it can be
+selected by name or chained in front of `like` as a fallback. Callers are
+unchanged.
+
 ### Background indexing: worker threads
 
 `vethuq_core.index.runner.IndexRunner._run_worker` (the detached process `vethuq

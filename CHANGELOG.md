@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Search now runs behind a `SearchEngine` interface, so the current `LIKE`-based engine and future ones (e.g. FTS5) can be selected or chained as fallbacks.
 - `vethuq logs <database|index|ui|cli>` shows the latest log entries, with `--tail`, `--follow`, `--level`, `--date` and `--export`; it's also in the interactive menu and `client.logs.tail` in the Python library.
 - VethuQ now writes separate daily log files for the database, indexing, desktop app and CLI. Choose how verbose they are and how many days are kept with `vethuq settings logs level|retention` (also `client.settings.logs` in the Python library).
 - VethuQ's data folder is now organised into `db/`, `run/` and `logs/`; an existing database is moved into `db/` automatically.
