@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 
 import typer
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
@@ -35,7 +36,7 @@ app.command("logs")(LogsCommand.run)
 def main(ctx: typer.Context) -> None:
     """Run a subcommand, or launch the interactive console when none is given."""
     Logs.setup("cli", default_db_path())
-    _logger.info("vethuq %s", " ".join(sys.argv[1:]) or "(interactive)")
+    _logger.info("Started: vethuq %s", " ".join(sys.argv[1:]) or "(interactive)")
     if ctx.invoked_subcommand is None:
         InteractiveMenu.run()
 
@@ -44,12 +45,24 @@ class Cli:
     @staticmethod
     def run() -> None:
         """Console-script entry point: run `app`, reporting an unsupported database cleanly."""
+        started = time.monotonic()
+        code: int | str | None = 0
         try:
             app()
         except SchemaVersionError as exc:
             _logger.error("%s", exc)
             error_console.print(f"Error: {exc}", style="bold red")
+            code = 1
             raise SystemExit(1) from None
+        except SystemExit as exc:  # typer/click exit through SystemExit, even on success
+            code = exc.code
+            raise
+        except BaseException:
+            code = 1
+            _logger.exception("Unhandled error")
+            raise
+        finally:
+            _logger.info("Finished: exit code %s after %.2fs", code, time.monotonic() - started)
 
 
 if __name__ == "__main__":

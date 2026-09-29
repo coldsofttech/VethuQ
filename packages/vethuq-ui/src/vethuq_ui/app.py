@@ -81,6 +81,7 @@ class MainWindow(tk.Tk):
 
     def destroy(self) -> None:
         self.index_controls.shutdown()
+        _logger.info("VethuQ UI stopped")
         super().destroy()
 
     def on_show_source_list(self) -> None:

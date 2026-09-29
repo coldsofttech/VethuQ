@@ -237,9 +237,9 @@ Each log file has one owner (`vethuq_core.logs.Logs`):
 | File           | Logger            | Covers                                                                                                            |
 | -------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `database.log` | `vethuq.database` | schema creation and migrations, pre-migration backup, purges of removed sources/documents, integrity checks       |
-| `index.log`    | `vethuq.index`    | index runs (start/end/crash), every OCR worker thread (the thread name is on each line), stop/stale-lock handling |
+| `index.log`    | `vethuq.index`    | index worker start/exit, index runs (start/end/crash), every OCR worker thread (the thread name is on each line), stop/stale-lock handling |
 | `ui.log`       | `vethuq.ui`       | the desktop app                                                                                                   |
-| `cli.log`      | `vethuq.cli`      | each `vethuq` command invocation and CLI-level errors                                                             |
+| `cli.log`      | `vethuq.cli`      | each `vethuq` command's start and finish (exit code, duration) and CLI-level errors                                                             |
 
 Each log rolls over at midnight: the previous day becomes `<name>.log.YYYY-MM-DD`
 and the last `log_retention_days` (15 by default) days are kept, older files

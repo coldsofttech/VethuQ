@@ -718,7 +718,11 @@ class IndexRunner:
         target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"
         Logs.setup("index", db_path)
-        IndexRunner._run_worker(db_path, target, restart=mode == "restart")
+        IndexRunner._logger.info("Index worker pid=%d started", os.getpid())
+        try:
+            IndexRunner._run_worker(db_path, target, restart=mode == "restart")
+        finally:
+            IndexRunner._logger.info("Index worker pid=%d exiting", os.getpid())
 
 
 if __name__ == "__main__":
