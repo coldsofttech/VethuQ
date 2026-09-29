@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 import typer
 from rich.panel import Panel
-from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.settings import (
@@ -55,6 +55,8 @@ from vethuq_cli.settings import (
     removed_retention_show,
     snippet_set,
     snippet_show,
+    stability_check_set,
+    stability_check_show,
     stale_lock_set,
     stale_lock_show,
     thread_workers_set,
@@ -403,6 +405,25 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(engine_set, value=value)
 
     @staticmethod
+    def _settings_stability_check_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Index > Stability Check", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(stability_check_show)
+            elif choice == "2":
+                seconds = FloatPrompt.ask(
+                    "Seconds a file must stay unchanged before it's indexed (0 disables)",
+                    console=console,
+                )
+                InteractiveMenu._run_safely(stability_check_set, seconds=seconds)
+
+    @staticmethod
     def _settings_index_menu() -> None:
         while True:
             console.print()
@@ -414,10 +435,11 @@ class InteractiveMenu:
                     ("3", "Thread Workers"),
                     ("4", "Stale Lock"),
                     ("5", "OCR Engine"),
+                    ("6", "Stability Check"),
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -430,6 +452,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_stale_lock_menu()
             elif choice == "5":
                 InteractiveMenu._settings_engine_menu()
+            elif choice == "6":
+                InteractiveMenu._settings_stability_check_menu()
 
     @staticmethod
     def _stats_menu() -> None:

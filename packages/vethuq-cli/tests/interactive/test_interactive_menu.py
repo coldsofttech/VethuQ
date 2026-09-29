@@ -95,3 +95,12 @@ class TestInteractiveMenu:
 
         assert result.exit_code == 0
         assert "Main Menu" not in result.stdout
+
+    def test_settings_index_stability_check_set_and_show_navigation(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n3\n6\n2\n0.5\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Stability check set to 0.5 seconds." in result.stdout
+        assert "Stability check: 0.5 seconds" in result.stdout
