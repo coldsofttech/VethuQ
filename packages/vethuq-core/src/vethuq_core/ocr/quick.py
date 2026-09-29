@@ -624,7 +624,7 @@ class Quick:
                 [path for path in unsupported_files if str(path) not in renamed_paths],
             )
             _logger.info("Scanning source id=%d path=%s", source.id, source.path)
-            before = len(pending)
+            pending_before = len(pending)
             for file_path, file_type in Pending.iter_files(
                 storage,
                 source,
@@ -637,7 +637,7 @@ class Quick:
                 "Scanned source id=%d path=%s: %d file(s) to process",
                 source.id,
                 source.path,
-                len(pending) - before,
+                len(pending) - pending_before,
             )
 
         pending.sort(key=lambda item: (item.path.name, str(item.path)))

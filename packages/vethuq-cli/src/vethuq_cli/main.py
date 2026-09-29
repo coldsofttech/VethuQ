@@ -32,11 +32,20 @@ app.command("search")(search_command)
 app.command("logs")(LogsCommand.run)
 
 
+def _loggable_command(argv: list[str]) -> str:
+    """The invocation for the log, without what a user searched for (it can be sensitive)."""
+    if not argv:
+        return "(interactive)"
+    if argv[0] == "search":
+        return "search <query omitted>"
+    return " ".join(argv)
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
     """Run a subcommand, or launch the interactive console when none is given."""
     Logs.setup("cli", default_db_path())
-    _logger.info("Started: vethuq %s", " ".join(sys.argv[1:]) or "(interactive)")
+    _logger.info("Started: vethuq %s", _loggable_command(sys.argv[1:]))
     if ctx.invoked_subcommand is None:
         InteractiveMenu.run()
 

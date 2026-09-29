@@ -101,7 +101,12 @@ class TestFailureLogging:
                 Search.indexed_content(storage, "invoice")
 
         text = "\n".join(database_log.messages)
-        assert "Search failed" in text and "'invoice'" in text and "disk I/O error" in text
+        assert (
+            "Search failed" in text
+            and "query_length=7" in text
+            and "invoice" not in text
+            and "disk I/O error" in text
+        )
 
     def test_database_open_failure_is_logged(self, tmp_path, database_log):
         # connect() re-points the logger at the data dir's file, dropping the capture handler.

@@ -45,9 +45,9 @@ class Search:
             return SearchEngines.get(storage, engine).search(query, context_chars=context_chars)
         except Exception as exc:
             _logger.error(
-                "Search failed: engine=%s query=%r error=%s: %s",
+                "Search failed: engine=%s query_length=%d error=%s: %s",
                 engine or "default",
-                query,
+                len(query),
                 type(exc).__name__,
                 exc,
                 exc_info=True,
