@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from vethuq_core.db.queries import Ocr as OcrQuery
 from vethuq_core.logs import Logs
-from vethuq_core.ocr.engine import Engine
+from vethuq_core.ocr.engines import Engines
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.reader import PdfReader, Readers
 from vethuq_core.ocr.scheduler import Scheduler
@@ -165,18 +165,15 @@ class Deepening:
         conn: sqlite3.Connection, arrays: list[np.ndarray], angle: int
     ) -> tuple[list[str], list[float]]:
         """OCR each of `arrays` rotated by `angle`; return its confident lines and their scores."""
-        engine = Engine.get(conn)
+        engine = Engines.get(conn)
         texts: list[str] = []
         scores: list[float] = []
         for array in arrays:
-            result = engine.predict(Deepening.rotate_array(array, angle))
-            page = result[0] if result else {}
-            for text, score in zip(
-                page.get("rec_texts", []), page.get("rec_scores", []), strict=False
-            ):
+            result = engine.recognize(Deepening.rotate_array(array, angle))
+            for text, score in result.lines:
                 if score >= Deepening.MIN_ROTATED_LINE_SCORE and text.strip():
                     texts.append(text)
-                    scores.append(float(score))
+                    scores.append(score)
         return texts, scores
 
     @staticmethod

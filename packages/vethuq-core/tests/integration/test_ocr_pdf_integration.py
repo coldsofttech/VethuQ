@@ -1,8 +1,9 @@
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from conftest import PaddleStub
 from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
@@ -110,7 +111,7 @@ _PDF_CASES = [
 
 class TestPdfIntegration:
     @pytest.mark.integration
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_digital_pdf_skips_engine_entirely(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
@@ -135,11 +136,11 @@ class TestPdfIntegration:
         assert len(page["ocr_text"]) > 0
 
     @pytest.mark.integration
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_scanned_pdf_runs_full_page_ocr(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("scanned page text")
         mock_get_engine.return_value = engine
 
@@ -161,11 +162,11 @@ class TestPdfIntegration:
         assert page["ocr_text"] == "scanned page text"
 
     @pytest.mark.integration
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("banner region text")
         mock_get_engine.return_value = engine
 
@@ -195,7 +196,7 @@ class TestPdfIntegration:
         _PDF_CASES,
         ids=[case[0][:2] for case in _PDF_CASES],
     )
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_fixture_pdf_indexes_expected_pages(
         self,
         mock_get_engine,
@@ -207,7 +208,7 @@ class TestPdfIntegration:
         conn: sqlite3.Connection,
         tmp_path,
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("ocr text")
         mock_get_engine.return_value = engine
 
@@ -242,7 +243,7 @@ class TestPdfIntegration:
         ],
         ids=["protected", "corrupted"],
     )
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_unreadable_pdf_records_error_without_aborting(
         self, mock_get_engine, fixture_name, conn: sqlite3.Connection, tmp_path
     ):

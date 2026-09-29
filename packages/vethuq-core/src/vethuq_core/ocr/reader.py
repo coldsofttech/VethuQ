@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.logs import Logs
-from vethuq_core.ocr.engine import Engine
+from vethuq_core.ocr.engines import Engines, OcrResult
 
 _logger = Logs.get_logger("index")
 
@@ -64,36 +64,20 @@ class ImageReader(Reader):
         return [ImageReader.ocr_file(conn, file_path)]
 
     @staticmethod
-    def ocr_array(
-        conn: sqlite3.Connection, image: str | np.ndarray
-    ) -> tuple[str, float, int | None, int | None]:
-        import cv2
-
-        engine = Engine.get(conn)
-        result = engine.predict(image)
-        page = result[0] if result else {}
-        texts = page.get("rec_texts", [])
-        scores = page.get("rec_scores", [])
-        confidence = sum(scores) / len(scores) if scores else 0.0
-
-        array = cv2.imread(image) if isinstance(image, str) else image
-        if array is None:
-            return "\n".join(texts), confidence, None, None
-        height, width = array.shape[:2]
-        return "\n".join(texts), confidence, width, height
+    def page_result(result: OcrResult) -> PageResult:
+        return PageResult(
+            text=result.text,
+            confidence=result.confidence,
+            source="ocr",
+            ocr_engine=result.engine,
+            language=result.language,
+            image_width=result.image_width,
+            image_height=result.image_height,
+        )
 
     @staticmethod
     def ocr_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
-        text, confidence, width, height = ImageReader.ocr_array(conn, str(file_path))
-        return PageResult(
-            text=text,
-            confidence=confidence,
-            source="ocr",
-            ocr_engine=Engine.name(),
-            language=Engine.LANGUAGE,
-            image_width=width,
-            image_height=height,
-        )
+        return ImageReader.page_result(Engines.get(conn).recognize(str(file_path)))
 
 
 class PdfReader(Reader):
@@ -164,38 +148,26 @@ class PdfReader(Reader):
             return PageResult(text=native_text.strip(), confidence=1.0, source="native")
 
         if PdfReader.is_native_text(native_text) and image_blocks:
-            region_texts = []
-            region_scores = []
-            width = height = None
-            for bbox in image_blocks:
-                text, confidence, width, height = ImageReader.ocr_array(
-                    conn, PdfReader.render_page_array(page, clip=bbox)
-                )
-                region_texts.append(text)
-                region_scores.append(confidence)
-            combined_text = "\n".join([native_text.strip(), *region_texts])
-            combined_confidence = sum(region_scores) / len(region_scores)
+            engine = Engines.get(conn)
+            regions = [
+                engine.recognize(PdfReader.render_page_array(page, clip=bbox))
+                for bbox in image_blocks
+            ]
+            combined_text = "\n".join([native_text.strip(), *(region.text for region in regions)])
+            combined_confidence = sum(region.confidence for region in regions) / len(regions)
+            last = regions[-1]
             return PageResult(
                 text=combined_text,
                 confidence=combined_confidence,
                 source="mixed",
-                ocr_engine=Engine.name(),
-                language=Engine.LANGUAGE,
-                image_width=width,
-                image_height=height,
+                ocr_engine=last.engine,
+                language=last.language,
+                image_width=last.image_width,
+                image_height=last.image_height,
             )
 
-        text, confidence, width, height = ImageReader.ocr_array(
-            conn, PdfReader.render_page_array(page)
-        )
-        return PageResult(
-            text=text,
-            confidence=confidence,
-            source="ocr",
-            ocr_engine=Engine.name(),
-            language=Engine.LANGUAGE,
-            image_width=width,
-            image_height=height,
+        return ImageReader.page_result(
+            Engines.get(conn).recognize(PdfReader.render_page_array(page))
         )
 
     @staticmethod

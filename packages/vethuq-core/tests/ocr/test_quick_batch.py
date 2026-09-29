@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import PaddleStub
 from vethuq_core.ocr import Quick, Scheduler
 from vethuq_core.settings import IndexSettings
 from vethuq_core.source import Sources
@@ -13,11 +14,11 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 
 class TestQuickBatch:
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_orders_files_by_basename_across_sources(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -41,11 +42,11 @@ class TestQuickBatch:
 
         assert seen_order == ["a_report.png", "b_report.png"]
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -65,11 +66,11 @@ class TestQuickBatch:
         ).fetchone()
         assert updated_source["status"] == "indexed"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_skips_file_already_claimed_by_another_run(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -117,11 +118,11 @@ class TestQuickBatch:
         assert claimed["document_id"] == other_run_document_id
         engine.predict.assert_called_once()
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_stops_early_leaves_rest_untouched(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -141,7 +142,7 @@ class TestQuickBatch:
 
         assert [Path(p).name for p in processed] == ["a.png"]
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     @patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
     @patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")
     @patch("vethuq_core.ocr.scheduler.psutil.cpu_count")
@@ -163,7 +164,7 @@ class TestQuickBatch:
             available=32 * 1024 * 1024 * 1024,
             total=64 * 1024 * 1024 * 1024,
         )
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -188,12 +189,12 @@ class TestQuickBatch:
         assert spy_resolve.call_count == len(file_names) - 1
 
     @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_rolls_back_pages_and_status_if_a_later_write_fails(
         self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
     ):
         """Same atomicity guarantee as `Quick.run`, exercised through `Quick.process_file`."""
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
         mock_update_confidence.side_effect = RuntimeError("boom")

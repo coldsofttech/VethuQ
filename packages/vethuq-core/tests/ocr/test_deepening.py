@@ -1,10 +1,11 @@
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 import pytest
+from conftest import PaddleStub
 from vethuq_core.ocr import Deepening, Document, Ocr
 from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Sources
@@ -129,11 +130,11 @@ class TestDeepening:
         assert Deepening.progress(conn, [source], 2) == {2: (2, 3)}
         assert Deepening.progress(conn, [source], 1) == {}
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_deeper_phases_track_timestamps_and_their_own_metrics(
         self, mock_get_engine, conn, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         OcrSettings.set_engine(conn, "deep")
@@ -160,7 +161,7 @@ class TestDeepening:
         }
         assert metrics == {1: 1, 2: 1, 3: 1}
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_interrupted_phase_is_not_completed_or_folded_until_finished(
         self, mock_get_engine, conn, tmp_path, monkeypatch
     ):
@@ -176,7 +177,7 @@ class TestDeepening:
                 _write_png(folder / "b.png", width=50)
             return _result("hello")
 
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = predict
         mock_get_engine.return_value = engine
         OcrSettings.set_engine(conn, "moderate")
@@ -202,11 +203,11 @@ class TestDeepening:
             == 0
         )
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
         self, mock_get_engine, conn, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         OcrSettings.set_engine(conn, "moderate")
@@ -222,11 +223,11 @@ class TestDeepening:
 
         assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 0
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
         self, mock_get_engine, conn, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         # Quick read: one line at 0.9. Every rotated read also finds DIRECTOR at 0.5.
         engine.predict.side_effect = lambda image: (
             _scored(("hello", 0.9))

@@ -86,8 +86,10 @@ without a full migration framework yet.
 ## OCR indexing pipeline
 
 `vethuq_core.ocr.Quick.run(conn, source)` walks a registered source
-(recursively for folders), runs PaddleOCR (`lang="en"`) on every
-supported file, and writes the extracted text to SQLite. Unsupported
+(recursively for folders), runs OCR on every supported file through the
+engine-agnostic `vethuq_core.ocr.engines` interface (see "OCR engines"
+below; PaddleOCR with `lang="en"` today), and writes the extracted text to
+SQLite. Unsupported
 extensions are skipped silently. PDFs are rasterized page-by-page via
 PyMuPDF before OCR; PNG/JPEG files are OCR'd directly.
 
@@ -110,15 +112,39 @@ Storage, alongside `sources`:
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-A PaddleOCR engine instance is lazily created and reused per *thread*
-(`vethuq_core.ocr.Engine.get`, backed by `threading.local`) since model
-init is expensive — a background run with multiple worker threads gets one
+An OCR engine instance is lazily created and reused per *thread*
+(`vethuq_core.ocr.engines.Engines.get`, backed by `threading.local`) since
+model init is expensive — a background run with multiple worker threads gets one
 engine per thread, so OCR inference itself parallelizes, at the cost of
 one engine's memory footprint per worker. A failure on one file is
 recorded on that file's `document_index` row (`status='error'`,
 `error_message`) without aborting the rest of the source; `sources.status`
 reflects the overall outcome (`indexed` if all files succeeded, `error` if
 any failed).
+
+### OCR engines
+
+`vethuq_core.ocr` never talks to a concrete OCR library. It depends on
+`vethuq_core.ocr.engines`:
+
+- `OcrEngine` (a `Protocol`, in `ocr/engines/base.py`) — `name` (engine
+  label with version, stored as `ocr_engine`), `language` (stored as
+  `language`) and `recognize(image) -> OcrResult`, where `image` is a file
+  path or a BGR pixel array and `OcrResult` carries `text`, `confidence`, per-line `lines`,
+  the engine's `engine`/`language` labels and the image's pixel size.
+- `Engines.get(conn)` (`ocr/engines/registry.py`) — returns the calling
+  thread's engine, constructing it on first use through the factory
+  registered for `Engines.DEFAULT`.
+- `PaddleOcrEngine` (`ocr/engines/paddle.py`) — the only implementation
+  today. Only the registry imports it (lazily), so PaddleOCR/Paddle stay
+  entirely behind the interface.
+
+`OcrResult` holds plain values only, and `document_index`/`pdf_pages`/
+`image_pages` store those values, so storage is engine-agnostic. Adding an
+engine means writing an `OcrEngine` implementation and calling
+`Engines.register(name, factory)`; nothing in `ocr/` or the schema changes.
+Choosing between engines (and languages) isn't wired up yet — one engine and
+language are supported for now.
 
 ### Background indexing: worker threads
 
