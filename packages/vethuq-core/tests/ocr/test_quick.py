@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
+from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
@@ -691,3 +692,63 @@ class TestQuick:
         assert page["source"] == "mixed"
         assert "Discover Andhra Pradesh" in page["ocr_text"]
         assert "banner region text" in page["ocr_text"]
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_records_corrupted_pdf_distinctly_without_retrying(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        bad = tmp_path / "bad.pdf"
+        bad.write_bytes(b"this is not a pdf at all")
+        source = Sources.add(storage, bad)
+
+        with patch.object(OcrSettings, "get_retry_attempts", return_value=3):
+            Quick.run(storage, source)
+
+        doc = conn.execute("SELECT * FROM document_index").fetchone()
+        assert doc["status"] == "error"
+        assert "corrupted" in doc["error_message"]
+        assert doc["retry_count"] == 0
+        mock_get_engine.assert_not_called()
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_records_password_protected_pdf_distinctly(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        import pymupdf
+
+        locked = tmp_path / "locked.pdf"
+        doc = pymupdf.open()
+        doc.new_page().insert_text((72, 72), "secret")
+        doc.save(
+            locked,
+            encryption=pymupdf.PDF_ENCRYPT_AES_256,  # type: ignore[attr-defined]
+            user_pw="pw",
+            owner_pw="pw",
+        )
+        doc.close()
+        source = Sources.add(storage, locked)
+
+        Quick.run(storage, source)
+
+        row = conn.execute("SELECT * FROM document_index").fetchone()
+        assert row["status"] == "error"
+        assert "password-protected" in row["error_message"]
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_records_file_removed_during_ocr_distinctly(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        engine = PaddleStub()
+        engine.predict.side_effect = FileNotFoundError("scan.png")
+        mock_get_engine.return_value = engine
+        image_path = tmp_path / "scan.png"
+        image_path.write_bytes(b"fake png bytes")
+        source = Sources.add(storage, image_path)
+
+        with patch.object(OcrSettings, "get_retry_attempts", return_value=3):
+            Quick.run(storage, source)
+
+        row = conn.execute("SELECT * FROM document_index").fetchone()
+        assert row["status"] == "error"
+        assert "removed during indexing" in row["error_message"]
+        assert row["retry_count"] == 0

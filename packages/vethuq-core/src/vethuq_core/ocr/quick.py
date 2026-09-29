@@ -21,7 +21,13 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
-from vethuq_core.readers import PageResult, Reader, Readers
+from vethuq_core.readers import (
+    FileRemovedError,
+    PageResult,
+    Reader,
+    Readers,
+    UnreadableFileError,
+)
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.sources import Source
 from vethuq_core.storage import Storage
@@ -48,7 +54,10 @@ class Quick:
         Kept separate from committing a result so a run of failed OCR attempts
         never touches the database until there's something final to record -
         see `Quick.finalize_result`. Returns `(pages, attempts_used,
-        last_exception)`; `pages` is None if every attempt failed.
+        last_exception)`; `pages` is None if every attempt failed. A file that
+        vanished, is password-protected, or is corrupted (`UnreadableFileError`,
+        or a bare `FileNotFoundError`) fails immediately without further attempts,
+        since retrying can't change the outcome.
         """
         max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
         attempt = 0
@@ -58,6 +67,15 @@ class Quick:
             attempt += 1
             try:
                 pages = PageOcr.ocr_document(storage, reader, file_path)
+            except UnreadableFileError as exc:
+                # Vanished, password-protected, or corrupted - the same on every
+                # attempt, so retrying would only repeat the failure.
+                last_exc = exc
+                break
+            except FileNotFoundError as exc:
+                last_exc = FileRemovedError(file_path)
+                last_exc.__cause__ = exc
+                break
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
                 last_exc = exc
         return pages, attempt, last_exc
@@ -188,8 +206,14 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            with storage.transaction():
-                claim = Document.upsert(storage, source.id, file_path, file_type)
+            try:
+                with storage.transaction():
+                    claim = Document.upsert(storage, source.id, file_path, file_type)
+            except FileNotFoundError:
+                # Vanished between discovery and claiming, so there's nothing to
+                # index; the next run's reconcile marks any tracked row 'removed'.
+                _logger.warning("File removed before indexing, skipped: %s", file_path)
+                continue
             if claim is None:
                 # Already claimed by another concurrently-running index run -
                 # leave it alone, that run owns finishing it.
@@ -260,8 +284,14 @@ class Quick:
         sqlite read/write around it is serialized through `db_lock` since a
         single connection isn't safe for unsynchronized concurrent use.
         """
-        with db_lock, storage.transaction():
-            claim = Document.upsert(storage, source.id, file_path, file_type)
+        try:
+            with db_lock, storage.transaction():
+                claim = Document.upsert(storage, source.id, file_path, file_type)
+        except FileNotFoundError:
+            # Vanished between discovery and claiming - leave it for the next
+            # run's reconcile rather than aborting the batch.
+            _logger.warning("File removed before indexing, skipped: %s", file_path)
+            return None
 
         if claim is None:
             return None
