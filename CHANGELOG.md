@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq search` now shows each result's file name as a bold heading above its full path.
 - Search now returns every occurrence of a query within a page, not just the first.
 - Each indexed page now records its text's character count; existing databases are updated automatically.
 - Database access now goes through a storage interface, so the CLI, desktop app and Python library no longer handle raw database connections.

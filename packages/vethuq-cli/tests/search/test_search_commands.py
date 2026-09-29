@@ -93,6 +93,7 @@ class TestSearch:
         lines = result.stdout.splitlines()
         assert "Results: 1 match" in lines
         assert "File: /docs/invoice.pdf" in lines
+        assert lines[lines.index("File: /docs/invoice.pdf") - 1] == "invoice.pdf"
         assert "Page: 1 of 1" in lines
         assert any(set(line) <= {"_"} for line in lines)
         assert any(line.startswith("|") and line.endswith("|") for line in lines)
