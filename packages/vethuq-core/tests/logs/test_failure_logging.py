@@ -104,7 +104,8 @@ class TestFailureLogging:
         assert "Search failed" in text and "'invoice'" in text and "disk I/O error" in text
 
     def test_database_open_failure_is_logged(self, tmp_path, database_log):
-        with pytest.raises(sqlite3.Error):
+        # connect() re-points the logger at the data dir's file, dropping the capture handler.
+        with patch("vethuq_core.logs.Logs.setup"), pytest.raises(sqlite3.Error):
             Db.connect(tmp_path)  # a directory can't be opened as a database
 
         assert any("Could not open database" in m for m in database_log.messages)
