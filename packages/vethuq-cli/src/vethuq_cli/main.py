@@ -6,8 +6,8 @@ import sys
 
 import typer
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.db import Db, SchemaVersionError
 from vethuq_core.logs import Logs
+from vethuq_core.storage import SchemaVersionError, default_db_path
 
 from vethuq_cli.console import error_console
 from vethuq_cli.db import app as db_app
@@ -34,7 +34,7 @@ app.command("logs")(LogsCommand.run)
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
     """Run a subcommand, or launch the interactive console when none is given."""
-    Logs.setup("cli", Db.default_db_path())
+    Logs.setup("cli", default_db_path())
     _logger.info("vethuq %s", " ".join(sys.argv[1:]) or "(interactive)")
     if ctx.invoked_subcommand is None:
         InteractiveMenu.run()

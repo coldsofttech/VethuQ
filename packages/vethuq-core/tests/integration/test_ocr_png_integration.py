@@ -5,7 +5,8 @@ from unittest.mock import patch
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "png"
 
@@ -21,7 +22,12 @@ class TestPngIntegration:
     @pytest.mark.parametrize("fixture_path", _PNG_FIXTURES, ids=[p.stem for p in _PNG_FIXTURES])
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_fixture_png_indexes_as_single_image_page(
-        self, mock_get_engine, fixture_path: Path, conn: sqlite3.Connection, tmp_path
+        self,
+        mock_get_engine,
+        fixture_path: Path,
+        conn: sqlite3.Connection,
+        storage: Storage,
+        tmp_path,
     ):
         engine = PaddleStub()
         engine.predict.return_value = [{"rec_texts": ["ocr text"], "rec_scores": [0.9]}]
@@ -29,9 +35,9 @@ class TestPngIntegration:
 
         png_path = tmp_path / "scan.png"
         png_path.write_bytes(fixture_path.read_bytes())
-        source = Sources.add(conn, png_path)
+        source = Sources.add(storage, png_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         engine.predict.assert_called_once()
 

@@ -85,7 +85,7 @@ without a full migration framework yet.
 
 ## OCR indexing pipeline
 
-`vethuq_core.ocr.Quick.run(conn, source)` walks a registered source
+`vethuq_core.ocr.Quick.run(storage, source)` walks a registered source
 (recursively for folders), runs OCR on every supported file through the
 engine-agnostic `vethuq_core.ocr.engines` interface (see "OCR engines"
 below; PaddleOCR with `lang="en"` today), and writes the extracted text to
@@ -132,7 +132,7 @@ any failed).
   `language`) and `recognize(image) -> OcrResult`, where `image` is a file
   path or a BGR pixel array and `OcrResult` carries `text`, `confidence`, per-line `lines`,
   the engine's `engine`/`language` labels and the image's pixel size.
-- `Engines.get(conn)` (`ocr/engines/registry.py`) — returns the calling
+- `Engines.get(storage)` (`ocr/engines/registry.py`) — returns the calling
   thread's engine, constructing it on first use through the factory
   registered for `Engines.DEFAULT`.
 - `PaddleOcrEngine` (`ocr/engines/paddle.py`) — the only implementation
@@ -146,6 +146,27 @@ engine means writing an `OcrEngine` implementation and calling
 Choosing between engines (and languages) isn't wired up yet — one engine and
 language are supported for now.
 
+### Storage access
+
+Application code never touches `sqlite3` or `vethuq_core.db` directly; it
+depends on the `Storage` interface in `vethuq_core.storage`:
+
+- `Storage` (a `Protocol`, in `storage/base.py`) — the union of small
+  per-table repositories (`SourceStore`, `DocumentStore`, `SettingsStore`,
+  `StatsStore`, `IndexRunStore`, `OcrStore`, `IntegrityStore`) plus `transaction()`,
+  `commit()` and `close()`. A collaborator can depend on just the slice it needs.
+- `SqliteStorage` (`storage/sqlite.py`) — the SQLite implementation; each method
+  delegates to the matching query method in `vethuq_core.db.queries`, which stays
+  the only place SQL is written.
+- `open_storage(db_path=None)` — connects (creating/migrating the schema) and
+  returns a `Storage`. The CLI, desktop UI, Python library and core modules
+  (`source`, `settings`, `stats`, `db.integrity`, `search`, `ocr`, `index`,
+  readers' page storage, search engines) all take a `Storage`.
+
+A test enforces that no core module outside `db/` and `storage/` imports
+`sqlite3` or `vethuq_core.db`. Swapping the backing store means writing another
+`Storage` implementation.
+
 ### Search engines
 
 `vethuq_core.search.Search.indexed_content` is a facade over
@@ -154,8 +175,8 @@ language are supported for now.
 - `SearchEngine` (a `Protocol`, in `search/engines/base.py`) — `name` and
   `search(query, *, context_chars=None) -> list[SearchMatch]`. An engine may
   raise `SearchEngineUnavailable` when it can't serve queries.
-- `SearchEngines.get(conn, name=None)` (`search/engines/registry.py`) — builds
-  the engine registered under `name` (default `like`) on a connection.
+- `SearchEngines.get(storage, name=None)` (`search/engines/registry.py`) — builds
+  the engine registered under `name` (default `like`) on a `Storage`.
 - `LikeSearchEngine` (`search/engines/like.py`) — the current `LIKE`-based
   implementation.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when

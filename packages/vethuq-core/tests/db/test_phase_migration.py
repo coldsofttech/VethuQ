@@ -2,7 +2,8 @@ import sqlite3
 
 from vethuq_core.db import Db
 from vethuq_core.db.integrity import IntegrityCheck
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 class TestPhaseMigration:
@@ -79,7 +80,7 @@ class TestPhaseMigration:
         setup = Db.connect(db_path)
         folder = tmp_path / "src"
         folder.mkdir()
-        source = Sources.add(setup, folder)
+        source = Sources.add(SqliteStorage(setup), folder)
         setup.execute("INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01')")
         setup.execute(
             "INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status) "

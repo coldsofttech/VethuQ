@@ -4,6 +4,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.ocr.engines.paddle import PaddleOcrEngine
 from vethuq_core.paths import Paths
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 @pytest.fixture
@@ -13,6 +14,12 @@ def conn(tmp_path):
     connection = Db.connect(tmp_path / "vethuq.db", check_same_thread=False)
     yield connection
     connection.close()
+
+
+@pytest.fixture
+def storage(conn):
+    """A `Storage` sharing the test's raw `conn`, so tests can assert on rows directly."""
+    return SqliteStorage(conn)
 
 
 @pytest.fixture(autouse=True)

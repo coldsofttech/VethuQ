@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from vethuq_core.stats import Confidence, Processing, ProcessingMetric, Stats
+from vethuq_core.storage import Storage
 
 
 def _seed_metrics(conn: sqlite3.Connection) -> None:
@@ -30,10 +31,10 @@ class TestProcessing:
 
         assert metric.avg_machine_cpu_percent == pytest.approx(50.0)
 
-    def test_get_processing_metrics_returns_rows(self, conn: sqlite3.Connection):
+    def test_get_processing_metrics_returns_rows(self, conn: sqlite3.Connection, storage: Storage):
         _seed_metrics(conn)
 
-        metrics = Processing.get_metrics(conn)
+        metrics = Processing.get_metrics(storage)
 
         assert len(metrics) == 1
         assert metrics[0].file_type == "pdf"
@@ -42,10 +43,10 @@ class TestProcessing:
 
 
 class TestConfidence:
-    def test_get_confidence_metrics_returns_rows(self, conn: sqlite3.Connection):
+    def test_get_confidence_metrics_returns_rows(self, conn: sqlite3.Connection, storage: Storage):
         _seed_metrics(conn)
 
-        metrics = Confidence.get_metrics(conn)
+        metrics = Confidence.get_metrics(storage)
 
         assert len(metrics) == 1
         assert metrics[0].file_type == "pdf"
@@ -55,14 +56,14 @@ class TestConfidence:
 
 
 class TestStats:
-    def test_get_metrics_empty_when_no_data(self, conn: sqlite3.Connection):
-        assert Processing.get_metrics(conn) == []
-        assert Confidence.get_metrics(conn) == []
+    def test_get_metrics_empty_when_no_data(self, storage: Storage):
+        assert Processing.get_metrics(storage) == []
+        assert Confidence.get_metrics(storage) == []
 
-    def test_reset_metrics_clears_both_tables(self, conn: sqlite3.Connection):
+    def test_reset_metrics_clears_both_tables(self, conn: sqlite3.Connection, storage: Storage):
         _seed_metrics(conn)
 
-        Stats.reset(conn)
+        Stats.reset(storage)
 
-        assert Processing.get_metrics(conn) == []
-        assert Confidence.get_metrics(conn) == []
+        assert Processing.get_metrics(storage) == []
+        assert Confidence.get_metrics(storage) == []

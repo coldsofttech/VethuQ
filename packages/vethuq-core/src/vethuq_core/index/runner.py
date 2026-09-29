@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import os
 import signal
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -31,15 +30,13 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from vethuq_core.db import Db
-from vethuq_core.db.queries import Document as DocumentQuery
-from vethuq_core.db.queries import Index
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
 from vethuq_core.readers import Readers
 from vethuq_core.settings import IndexSettings, OcrSettings
-from vethuq_core.source import Source, Sources
+from vethuq_core.sources import Source, Sources
+from vethuq_core.storage import Row, Storage, default_db_path, open_storage
 
 
 class IndexRunnerError(Exception):
@@ -118,7 +115,7 @@ class IndexRun:
         return asdict(self)
 
     @classmethod
-    def _from_row(cls, row: sqlite3.Row) -> IndexRun:
+    def _from_row(cls, row: Row) -> IndexRun:
         return cls(
             id=row["id"],
             target=row["target"],
@@ -162,7 +159,7 @@ class IndexRunner:
     @staticmethod
     def log_path(db_path: Path | None = None) -> Path:
         """Path to the index log (`index.log`), which records runs, worker threads and crashes."""
-        return Paths.logs_dir(db_path or Db.default_db_path()) / Logs.COMPONENTS["index"]
+        return Paths.logs_dir(db_path or default_db_path()) / Logs.COMPONENTS["index"]
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
@@ -222,7 +219,7 @@ class IndexRunner:
         older version of this code, in a since-changed format, is treated the
         same as no state at all rather than raised as an error.
         """
-        path = IndexRunner._state_path(db_path or Db.default_db_path())
+        path = IndexRunner._state_path(db_path or default_db_path())
         if not path.exists():
             return None
         try:
@@ -249,7 +246,7 @@ class IndexRunner:
     @staticmethod
     def is_running(db_path: Path | None = None) -> tuple[bool, int | None]:
         """Return (running, pid). `running` is False if the lock is stale."""
-        lock_path = IndexRunner._lock_path(db_path or Db.default_db_path())
+        lock_path = IndexRunner._lock_path(db_path or default_db_path())
         if not lock_path.exists():
             return False, None
         try:
@@ -282,7 +279,7 @@ class IndexRunner:
         (see `Quick.run`'s `only_failed`); otherwise new and previously-failed
         files are processed as usual.
         """
-        db_path = db_path or Db.default_db_path()
+        db_path = db_path or default_db_path()
         Logs.setup("index", db_path)
         running, pid = IndexRunner.is_running(db_path)
         if running:
@@ -291,11 +288,11 @@ class IndexRunner:
         lock_path = IndexRunner._lock_path(db_path)
         if lock_path.exists():
             if not force:
-                conn = Db.connect(db_path)
+                storage = open_storage(db_path)
                 try:
-                    auto_clear = IndexSettings.get_stale_lock(conn) != "disable"
+                    auto_clear = IndexSettings.get_stale_lock(storage) != "disable"
                 finally:
-                    conn.close()
+                    storage.close()
                 if not auto_clear:
                     raise StaleLockError(
                         "Found a lock left behind by a run that didn't exit cleanly. "
@@ -309,12 +306,13 @@ class IndexRunner:
             )
             IndexRunner._reconcile_orphaned_run(db_path)
 
-        conn = Db.connect(db_path)
+        storage = open_storage(db_path)
         try:
             if target is not None:
-                Sources.get(conn, Sources.coerce(target))  # raises SourceNotFoundError if invalid
+                # raises SourceNotFoundError if invalid
+                Sources.get(storage, Sources.coerce(target))
         finally:
-            conn.close()
+            storage.close()
 
         IndexRunner._set_control(db_path, "run")
         mode_name = "restart" if restart else "run"
@@ -354,14 +352,14 @@ class IndexRunner:
         after a crash is reconciled at the next run's startup, or right after
         force-killing a run that missed its stop timeout.
         """
-        conn = Db.connect(db_path)
+        storage = open_storage(db_path)
         try:
-            DocumentQuery.fail_stuck_processing_index(
-                conn, IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
+            storage.fail_stuck_processing_document_index(
+                IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
             )
-            conn.commit()
+            storage.commit()
         finally:
-            conn.close()
+            storage.close()
 
     @staticmethod
     def _reconcile_orphaned_run(db_path: Path) -> None:
@@ -378,22 +376,21 @@ class IndexRunner:
         if state is not None and state.status == "running":
             IndexRunner._mark_run_ended(db_path, state, "failed")
         else:
-            conn = Db.connect(db_path)
+            storage = open_storage(db_path)
             try:
-                Index.fail_all_running(conn, datetime.now(UTC).isoformat())
-                conn.commit()
+                storage.fail_all_running_index_runs(datetime.now(UTC).isoformat())
+                storage.commit()
             finally:
-                conn.close()
+                storage.close()
         IndexRunner._reclaim_stuck_processing(db_path)
 
     @staticmethod
     def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
         state.status = status
         IndexRunner._write_state(db_path, state)
-        conn = Db.connect(db_path)
+        storage = open_storage(db_path)
         try:
-            Index.end_running(
-                conn,
+            storage.end_running_index_run(
                 state.run_id,
                 status,
                 state.total_files,
@@ -401,9 +398,9 @@ class IndexRunner:
                 state.failed_files,
                 datetime.now(UTC).isoformat(),
             )
-            conn.commit()
+            storage.commit()
         finally:
-            conn.close()
+            storage.close()
 
     @staticmethod
     def signal_stop(db_path: Path | None = None) -> None:
@@ -419,7 +416,7 @@ class IndexRunner:
         closing. For an interactive "stop it now and tell me" (`vethuq index
         stop`), use `request_stop` instead.
         """
-        db_path = db_path or Db.default_db_path()
+        db_path = db_path or default_db_path()
         if not IndexRunner.is_running(db_path)[0]:
             raise IndexRunnerError("No background index run is currently running.")
         IndexRunner._set_control(db_path, "stop")
@@ -436,7 +433,7 @@ class IndexRunner:
         wants to know it actually stopped before returning. A caller that
         shouldn't block on that should use `signal_stop` instead.
         """
-        db_path = db_path or Db.default_db_path()
+        db_path = db_path or default_db_path()
         running, pid = IndexRunner.is_running(db_path)
         if not running or pid is None:
             raise IndexRunnerError("No background index run is currently running.")
@@ -499,7 +496,7 @@ class IndexRunner:
 
     @staticmethod
     def request_pause(db_path: Path | None = None) -> None:
-        db_path = db_path or Db.default_db_path()
+        db_path = db_path or default_db_path()
         running, _pid = IndexRunner.is_running(db_path)
         if not running:
             raise IndexRunnerError("No background index run is currently running.")
@@ -507,26 +504,24 @@ class IndexRunner:
 
     @staticmethod
     def request_resume(db_path: Path | None = None) -> None:
-        db_path = db_path or Db.default_db_path()
+        db_path = db_path or default_db_path()
         running, _pid = IndexRunner.is_running(db_path)
         if not running:
             raise IndexRunnerError("No background index run is currently running.")
         IndexRunner._set_control(db_path, "run")
 
     @staticmethod
-    def list_runs(
-        conn: sqlite3.Connection, target: str | None = None, limit: int = 10
-    ) -> list[IndexRun]:
+    def list_runs(storage: Storage, target: str | None = None, limit: int = 10) -> list[IndexRun]:
         """Return past index runs, most recent first, optionally filtered to one source.
 
         A run over "all sources" (`target` column IS NULL) covered every source,
         so it's included alongside runs targeted at just the given `target`.
         """
-        rows = Index.list_runs(conn, target, limit)
+        rows = storage.list_index_runs(target, limit)
         return [IndexRun._from_row(row) for row in rows]
 
     @staticmethod
-    def resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source]:
+    def resolve_targets(storage: Storage, target: str | None) -> list[Source]:
         """Return the sources a run/status check against `target` would cover.
 
         `target=None` means every source eligible for indexing (not `removed`);
@@ -536,41 +531,41 @@ class IndexRunner:
         """
         if target is None:
             return [
-                s for s in Sources.list_all(conn) if s.status in ("pending", "indexed", "error")
+                s for s in Sources.list_all(storage) if s.status in ("pending", "indexed", "error")
             ]
-        return [Sources.get(conn, Sources.coerce(target))]
+        return [Sources.get(storage, Sources.coerce(target))]
 
     @staticmethod
     def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:
         # check_same_thread=False: `Quick.run_batch` below may hand this connection
         # to worker threads when `workers` > 1 - every use of it is already
         # serialized through `db_lock` there.
-        conn = Db.connect(db_path, check_same_thread=False)
+        storage = open_storage(db_path, check_same_thread=False)
         pid = os.getpid()
         started_at = datetime.now(UTC).isoformat()
         run_id: int | None = None
         stopped = False
         mode = "restart" if restart else "run"
         try:
-            sources = IndexRunner.resolve_targets(conn, target)
+            sources = IndexRunner.resolve_targets(storage, target)
             total = sum(
                 Pending.file_count(
-                    conn, s, only_new_files=s.status != "pending", only_failed=restart
+                    storage, s, only_new_files=s.status != "pending", only_failed=restart
                 )
                 for s in sources
             )
             type_counts = Readers.new_file_type_counts()
             for source in sources:
                 counts = Pending.file_type_counts(
-                    conn, source, only_new_files=source.status != "pending", only_failed=restart
+                    storage, source, only_new_files=source.status != "pending", only_failed=restart
                 )
                 for file_type, count in counts.items():
                     type_counts[file_type] += count
-            thread_workers_setting = IndexSettings.get_thread_workers(conn)
-            workers = Scheduler.resolve_workers(conn, type_counts)
+            thread_workers_setting = IndexSettings.get_thread_workers(storage)
+            workers = Scheduler.resolve_workers(storage, type_counts)
 
-            run_id = Index.insert_run(conn, target, mode, pid, total, workers, started_at)
-            conn.commit()
+            run_id = storage.insert_index_run(target, mode, pid, total, workers, started_at)
+            storage.commit()
 
             IndexRunner._logger.info(
                 "Index run %d started: mode=%s target=%s files=%d workers=%d (thread_workers=%s)",
@@ -595,7 +590,7 @@ class IndexRunner:
                 current_files=[],
                 started_at=started_at,
                 updated_at=started_at,
-                engine=OcrSettings.get_engine(conn),
+                engine=OcrSettings.get_engine(storage),
             )
             IndexRunner._write_state(db_path, state)
 
@@ -674,8 +669,8 @@ class IndexRunner:
                 return False
 
             Ocr.run_phased(
-                conn,
-                lambda: IndexRunner.resolve_targets(conn, target),
+                storage,
+                lambda: IndexRunner.resolve_targets(storage, target),
                 only_failed=restart,
                 workers=workers,
                 on_file_start=on_file_start,
@@ -699,14 +694,14 @@ class IndexRunner:
         except Exception:  # noqa: BLE001 - record the crash, then re-raise for the process exit code
             IndexRunner._logger.exception("Index run crashed")
             if run_id is not None:
-                Index.fail_run(conn, run_id, datetime.now(UTC).isoformat())
+                storage.fail_index_run(run_id, datetime.now(UTC).isoformat())
             # Whatever file was in flight when this crashed is left claimed
             # ('processing') with nothing left to ever finish it - reset it so a
             # future run retries it instead of its claim blocking that forever.
-            DocumentQuery.fail_stuck_processing_index(
-                conn, IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
+            storage.fail_stuck_processing_document_index(
+                IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
             )
-            conn.commit()
+            storage.commit()
             crashed_state = IndexRunner.read_state(db_path)
             if crashed_state is not None:
                 crashed_state.status = "failed"
@@ -715,7 +710,7 @@ class IndexRunner:
         finally:
             IndexRunner._lock_path(db_path).unlink(missing_ok=True)
             IndexRunner._control_path(db_path).unlink(missing_ok=True)
-            conn.close()
+            storage.close()
 
     @staticmethod
     def main() -> None:

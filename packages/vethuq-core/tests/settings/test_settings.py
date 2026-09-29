@@ -1,5 +1,3 @@
-import sqlite3
-
 import pytest
 from vethuq_core.settings import (
     DbSettings,
@@ -9,102 +7,101 @@ from vethuq_core.settings import (
     SearchSettings,
     Settings,
 )
+from vethuq_core.storage import Storage
 
 
 class TestSettings:
-    def test_set_setting_overwrites_existing_value(self, conn: sqlite3.Connection):
-        Settings.set(conn, "key", "first")
-        Settings.set(conn, "key", "second")
+    def test_set_setting_overwrites_existing_value(self, storage: Storage):
+        Settings.set(storage, "key", "first")
+        Settings.set(storage, "key", "second")
 
-        assert Settings.get(conn, "key") == "second"
+        assert Settings.get(storage, "key") == "second"
 
-    def test_get_setting_missing_key_returns_none(self, conn: sqlite3.Connection):
-        assert Settings.get(conn, "does-not-exist") is None
+    def test_get_setting_missing_key_returns_none(self, storage: Storage):
+        assert Settings.get(storage, "does-not-exist") is None
 
 
 class TestGpuSettings:
-    def test_gpu_disabled_by_default(self, conn: sqlite3.Connection):
-        assert GpuSettings.is_enabled(conn) is False
+    def test_gpu_disabled_by_default(self, storage: Storage):
+        assert GpuSettings.is_enabled(storage) is False
 
-    def test_set_gpu_enabled_roundtrip(self, conn: sqlite3.Connection):
-        GpuSettings.set_enabled(conn, True)
-        assert GpuSettings.is_enabled(conn) is True
+    def test_set_gpu_enabled_roundtrip(self, storage: Storage):
+        GpuSettings.set_enabled(storage, True)
+        assert GpuSettings.is_enabled(storage) is True
 
-        GpuSettings.set_enabled(conn, False)
-        assert GpuSettings.is_enabled(conn) is False
+        GpuSettings.set_enabled(storage, False)
+        assert GpuSettings.is_enabled(storage) is False
 
 
 class TestSearchSettings:
-    def test_resolve_export_format_uses_given_value_else_the_default(self, conn):
-        assert SearchSettings.resolve_export_format(conn, "html") == "html"
-        assert SearchSettings.resolve_export_format(conn) == "json"
-        SearchSettings.set_export_format(conn, "html")
-        assert SearchSettings.resolve_export_format(conn) == "html"
+    def test_resolve_export_format_uses_given_value_else_the_default(self, storage: Storage):
+        assert SearchSettings.resolve_export_format(storage, "html") == "html"
+        assert SearchSettings.resolve_export_format(storage) == "json"
+        SearchSettings.set_export_format(storage, "html")
+        assert SearchSettings.resolve_export_format(storage) == "html"
 
-    def test_resolve_export_format_rejects_unsupported_format(self, conn):
+    def test_resolve_export_format_rejects_unsupported_format(self, storage: Storage):
         with pytest.raises(InvalidSettingValueError, match="unsupported export format 'xml'"):
-            SearchSettings.resolve_export_format(conn, "xml")
+            SearchSettings.resolve_export_format(storage, "xml")
 
-    def test_search_export_format_defaults_to_json(self, conn: sqlite3.Connection):
-        assert SearchSettings.get_export_format(conn) == "json"
+    def test_search_export_format_defaults_to_json(self, storage: Storage):
+        assert SearchSettings.get_export_format(storage) == "json"
 
-    def test_set_search_export_format_roundtrip(self, conn: sqlite3.Connection):
-        SearchSettings.set_export_format(conn, "html")
-        assert SearchSettings.get_export_format(conn) == "html"
+    def test_set_search_export_format_roundtrip(self, storage: Storage):
+        SearchSettings.set_export_format(storage, "html")
+        assert SearchSettings.get_export_format(storage) == "html"
 
-    def test_set_search_export_format_rejects_unsupported_format(self, conn: sqlite3.Connection):
+    def test_set_search_export_format_rejects_unsupported_format(self, storage: Storage):
         with pytest.raises(ValueError):
-            SearchSettings.set_export_format(conn, "xml")
+            SearchSettings.set_export_format(storage, "xml")
 
-    def test_search_snippet_context_chars_defaults_to_80(self, conn: sqlite3.Connection):
-        assert SearchSettings.get_snippet_context_chars(conn) == 80
+    def test_search_snippet_context_chars_defaults_to_80(self, storage: Storage):
+        assert SearchSettings.get_snippet_context_chars(storage) == 80
 
-    def test_set_search_snippet_context_chars_roundtrip(self, conn: sqlite3.Connection):
-        SearchSettings.set_snippet_context_chars(conn, 40)
-        assert SearchSettings.get_snippet_context_chars(conn) == 40
+    def test_set_search_snippet_context_chars_roundtrip(self, storage: Storage):
+        SearchSettings.set_snippet_context_chars(storage, 40)
+        assert SearchSettings.get_snippet_context_chars(storage) == 40
 
-    def test_set_search_snippet_context_chars_rejects_negative(self, conn: sqlite3.Connection):
+    def test_set_search_snippet_context_chars_rejects_negative(self, storage: Storage):
         with pytest.raises(ValueError, match="non-negative"):
-            SearchSettings.set_snippet_context_chars(conn, -1)
+            SearchSettings.set_snippet_context_chars(storage, -1)
 
 
 class TestIndexSettings:
-    def test_thread_workers_defaults_to_disabled(self, conn: sqlite3.Connection):
-        assert IndexSettings.get_thread_workers(conn) == "0"
+    def test_thread_workers_defaults_to_disabled(self, storage: Storage):
+        assert IndexSettings.get_thread_workers(storage) == "0"
 
     @pytest.mark.parametrize("value", ["0", "1", "8", "auto"])
-    def test_set_thread_workers_roundtrip(self, conn: sqlite3.Connection, value: str):
-        IndexSettings.set_thread_workers(conn, value)
-        assert IndexSettings.get_thread_workers(conn) == value
+    def test_set_thread_workers_roundtrip(self, storage: Storage, value: str):
+        IndexSettings.set_thread_workers(storage, value)
+        assert IndexSettings.get_thread_workers(storage) == value
 
     @pytest.mark.parametrize("value", ["-1", "9", "abc", ""])
-    def test_set_thread_workers_rejects_out_of_range_value(
-        self, conn: sqlite3.Connection, value: str
-    ):
+    def test_set_thread_workers_rejects_out_of_range_value(self, storage: Storage, value: str):
         with pytest.raises(ValueError):
-            IndexSettings.set_thread_workers(conn, value)
+            IndexSettings.set_thread_workers(storage, value)
 
 
 class TestDbSettings:
-    def test_integrity_check_defaults_to_auto(self, conn: sqlite3.Connection):
-        assert DbSettings.get_integrity_check(conn) == "auto"
+    def test_integrity_check_defaults_to_auto(self, storage: Storage):
+        assert DbSettings.get_integrity_check(storage) == "auto"
 
     @pytest.mark.parametrize("value", ["enable", "disable", "auto"])
-    def test_set_integrity_check_roundtrip(self, conn: sqlite3.Connection, value: str):
-        DbSettings.set_integrity_check(conn, value)
-        assert DbSettings.get_integrity_check(conn) == value
+    def test_set_integrity_check_roundtrip(self, storage: Storage, value: str):
+        DbSettings.set_integrity_check(storage, value)
+        assert DbSettings.get_integrity_check(storage) == value
 
-    def test_set_integrity_check_rejects_invalid_value(self, conn: sqlite3.Connection):
+    def test_set_integrity_check_rejects_invalid_value(self, storage: Storage):
         with pytest.raises(ValueError):
-            DbSettings.set_integrity_check(conn, "sometimes")
+            DbSettings.set_integrity_check(storage, "sometimes")
 
-    def test_integrity_check_interval_minutes_defaults_to_one_day(self, conn: sqlite3.Connection):
-        assert DbSettings.get_integrity_check_interval_minutes(conn) == 24 * 60
+    def test_integrity_check_interval_minutes_defaults_to_one_day(self, storage: Storage):
+        assert DbSettings.get_integrity_check_interval_minutes(storage) == 24 * 60
 
-    def test_set_integrity_check_interval_minutes_roundtrip(self, conn: sqlite3.Connection):
-        DbSettings.set_integrity_check_interval_minutes(conn, 60)
-        assert DbSettings.get_integrity_check_interval_minutes(conn) == 60
+    def test_set_integrity_check_interval_minutes_roundtrip(self, storage: Storage):
+        DbSettings.set_integrity_check_interval_minutes(storage, 60)
+        assert DbSettings.get_integrity_check_interval_minutes(storage) == 60
 
-    def test_set_integrity_check_interval_minutes_rejects_negative(self, conn: sqlite3.Connection):
+    def test_set_integrity_check_interval_minutes_rejects_negative(self, storage: Storage):
         with pytest.raises(ValueError, match="non-negative"):
-            DbSettings.set_integrity_check_interval_minutes(conn, -1)
+            DbSettings.set_integrity_check_interval_minutes(storage, -1)

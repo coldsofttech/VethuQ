@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING
 
@@ -14,7 +13,8 @@ from vethuq_core.ocr.deepening import Deepening
 from vethuq_core.ocr.pending import Pending
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.scheduler import Scheduler
-from vethuq_core.source import Source
+from vethuq_core.sources import Source
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -22,20 +22,20 @@ _logger = Logs.get_logger("index")
 class Ocr:
     @staticmethod
     def has_pending_quick_work(
-        conn: sqlite3.Connection, sources: list[Source], attempted: Collection[str]
+        storage: Storage, sources: list[Source], attempted: Collection[str]
     ) -> bool:
         """Whether any file under `sources` still needs its first (quick) pass."""
         return any(
             True
             for source in sources
             for _ in Pending.iter_files(
-                conn, source, only_new_files=source.status != "pending", exclude_paths=attempted
+                storage, source, only_new_files=source.status != "pending", exclude_paths=attempted
             )
         )
 
     @staticmethod
     def run_phased(
-        conn: sqlite3.Connection,
+        storage: Storage,
         resolve_sources: Callable[[], list[Source]],
         *,
         only_failed: bool = False,
@@ -73,17 +73,17 @@ class Ocr:
         first = True
 
         def quick_work_waiting() -> bool:
-            return Ocr.has_pending_quick_work(conn, resolve_sources(), attempted)
+            return Ocr.has_pending_quick_work(storage, resolve_sources(), attempted)
 
         while True:
             if should_stop is not None and should_stop():
                 break
             sources = resolve_sources()
             done = Quick.run_batch(
-                conn,
+                storage,
                 sources,
                 only_failed=only_failed and first,
-                workers=Scheduler.batch_workers(conn, workers, first=first),
+                workers=Scheduler.batch_workers(storage, workers, first=first),
                 on_file_start=on_file_start,
                 on_file_done=on_file_done,
                 on_workers_changed=on_workers_changed,
@@ -100,9 +100,9 @@ class Ocr:
             if should_stop is not None and should_stop():
                 break
             passes = Deepening.run_batch(
-                conn,
+                storage,
                 sources,
-                max_phase=Deepening.max_phase(conn),
+                max_phase=Deepening.max_phase(storage),
                 should_stop=should_stop,
                 has_quick_work=quick_work_waiting,
                 skip_units=skip_units,

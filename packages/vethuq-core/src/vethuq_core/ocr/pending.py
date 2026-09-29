@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,11 +10,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
 from vethuq_core.readers import Readers
-from vethuq_core.source import Source
+from vethuq_core.sources import Source
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -30,7 +29,7 @@ class PendingFile:
 class Pending:
     @staticmethod
     def iter_files(
-        conn: sqlite3.Connection,
+        storage: Storage,
         source: Source,
         *,
         only_new_files: bool = False,
@@ -50,7 +49,7 @@ class Pending:
                 continue
             existing = None
             if only_new_files or only_failed:
-                existing = DocumentQuery.get_index_pending_check(conn, str(file_path))
+                existing = storage.get_document_index_pending_check(str(file_path))
             if only_failed:
                 if existing is None or existing["status"] != "error":
                     continue
@@ -66,7 +65,7 @@ class Pending:
 
     @staticmethod
     def file_count(
-        conn: sqlite3.Connection,
+        storage: Storage,
         source: Source,
         *,
         only_new_files: bool = False,
@@ -76,13 +75,13 @@ class Pending:
         return sum(
             1
             for _ in Pending.iter_files(
-                conn, source, only_new_files=only_new_files, only_failed=only_failed
+                storage, source, only_new_files=only_new_files, only_failed=only_failed
             )
         )
 
     @staticmethod
     def file_type_counts(
-        conn: sqlite3.Connection,
+        storage: Storage,
         source: Source,
         *,
         only_new_files: bool = False,
@@ -96,7 +95,7 @@ class Pending:
         """
         counts = Readers.new_file_type_counts()
         for _, file_type in Pending.iter_files(
-            conn, source, only_new_files=only_new_files, only_failed=only_failed
+            storage, source, only_new_files=only_new_files, only_failed=only_failed
         ):
             counts[file_type] += 1
         return counts

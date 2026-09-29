@@ -8,7 +8,6 @@ from pathlib import Path
 import typer
 from rich.prompt import Confirm
 from rich.text import Text
-from vethuq_core.db import Db
 from vethuq_core.index import (
     AlreadyRunningError,
     IndexRunner,
@@ -16,7 +15,8 @@ from vethuq_core.index import (
     StaleLockError,
 )
 from vethuq_core.ocr import Document
-from vethuq_core.source import SourceNotFoundError, Sources
+from vethuq_core.sources import SourceNotFoundError, Sources
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import StatePanel
@@ -27,11 +27,11 @@ app = typer.Typer(help="Run OCR indexing on registered sources.")
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
     if target is None:
-        conn = Db.connect()
+        storage = open_storage()
         try:
-            has_sources = bool(Sources.list_all(conn))
+            has_sources = bool(Sources.list_all(storage))
         finally:
-            conn.close()
+            storage.close()
         if not has_sources:
             console.print(
                 Text.assemble(
@@ -58,11 +58,11 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         )
         return
 
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        StatePanel.live_wait(conn, pid)
+        StatePanel.live_wait(storage, pid)
     finally:
-        conn.close()
+        storage.close()
 
 
 @app.command("run")
@@ -128,26 +128,26 @@ def status(
         if state is None:
             console.print("No index run has been started yet.", style="bright_black")
             return
-        conn = Db.connect()
+        storage = open_storage()
         try:
             if wait and state.is_active:
-                StatePanel.live_wait(conn, state.pid)
+                StatePanel.live_wait(storage, state.pid)
             else:
-                StatePanel.print_state(conn, state)
+                StatePanel.print_state(storage, state)
         finally:
-            conn.close()
+            storage.close()
         return
 
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            source = Sources.get(conn, Sources.coerce(target))
+            source = Sources.get(storage, Sources.coerce(target))
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
-        results = Document.get_results(conn, source.id)
+        results = Document.get_results(storage, source.id)
     finally:
-        conn.close()
+        storage.close()
 
     if as_json:
         console.print(
@@ -247,20 +247,20 @@ def history(
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """List past background index runs, optionally filtered to one source."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         if target is not None:
             try:
-                Sources.get(conn, Sources.coerce(target))
+                Sources.get(storage, Sources.coerce(target))
             except SourceNotFoundError as exc:
                 error_console.print(str(exc), style=Theme.ERROR)
                 raise typer.Exit(code=1) from exc
         # A run over "all sources" (target IS NULL) would have covered a
         # specific `target` source too, so it's included alongside runs
         # targeted at just that source.
-        runs = IndexRunner.list_runs(conn, target, limit)
+        runs = IndexRunner.list_runs(storage, target, limit)
     finally:
-        conn.close()
+        storage.close()
 
     if as_json:
         console.print(json.dumps([run.to_dict() for run in runs]))

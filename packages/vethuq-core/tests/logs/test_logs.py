@@ -6,6 +6,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.logs import LogNotFoundError, Logs
 from vethuq_core.settings import LogSettings
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 def _reset(logger: logging.Logger) -> None:
@@ -42,7 +43,7 @@ class TestLogs:
         db_path = tmp_path / "db" / "vethuq.db"
         db_path.parent.mkdir()
         conn = Db.connect(db_path)
-        LogSettings.set_level(conn, "debug")
+        LogSettings.set_level(SqliteStorage(conn), "debug")
         conn.close()
 
         assert Logs.read_level(db_path) == logging.DEBUG
@@ -68,7 +69,7 @@ class TestLogs:
         assert Logs.read_retention_days(db_path) == 15
 
         conn = Db.connect(db_path)
-        LogSettings.set_retention_days(conn, 4)
+        LogSettings.set_retention_days(SqliteStorage(conn), 4)
         conn.close()
 
         assert Logs.read_retention_days(db_path) == 4
@@ -99,7 +100,7 @@ class TestLogs:
         db_path = tmp_path / "db" / "vethuq.db"
         db_path.parent.mkdir()
         conn = Db.connect(db_path)
-        LogSettings.set_retention_days(conn, 9)
+        LogSettings.set_retention_days(SqliteStorage(conn), 9)
         conn.close()
         logger = Logs.get_logger("ui")
         _reset(logger)

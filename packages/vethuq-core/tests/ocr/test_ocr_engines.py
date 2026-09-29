@@ -12,7 +12,9 @@ from vethuq_core.ocr import Quick
 from vethuq_core.ocr.engines import Engines, OcrEngine, OcrResult
 from vethuq_core.ocr.engines.paddle import PaddleOcrEngine
 from vethuq_core.settings import GpuSettings
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 class FakeEngine:
@@ -64,16 +66,16 @@ class TestEngines:
         assert engine.recognize("x").text == "fake text"
 
     def test_orchestration_stores_whatever_engine_it_is_given(
-        self, conn: sqlite3.Connection, tmp_path, isolated_registry
+        self, conn: sqlite3.Connection, storage: Storage, tmp_path, isolated_registry
     ):
         engine = FakeEngine()
         Engines.register(Engines.DEFAULT, lambda use_gpu: engine)
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         assert engine.images == [str(image_path.resolve())]
         doc = conn.execute(
@@ -100,12 +102,16 @@ class TestEngines:
                     imported.update(alias.name for alias in node.names)
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     imported.add(node.module)
+                    imported.update(f"{node.module}.{alias.name}" for alias in node.names)
 
         assert not {name for name in imported if "paddle" in name}
+        assert {name for name in imported if name.startswith("vethuq_core.ocr.engines")} == {
+            "vethuq_core.ocr.engines",
+            "vethuq_core.ocr.engines.Engines",
+            "vethuq_core.ocr.engines.OcrResult",
+        }
 
-    def test_get_builds_once_per_thread(
-        self, conn: sqlite3.Connection, tmp_path, isolated_registry
-    ):
+    def test_get_builds_once_per_thread(self, storage: Storage, tmp_path, isolated_registry):
         built: list[FakeEngine] = []
 
         def factory(use_gpu: bool) -> FakeEngine:
@@ -115,14 +121,14 @@ class TestEngines:
         Engines.register(Engines.DEFAULT, factory)
 
         db_path = tmp_path / "vethuq.db"
-        main_thread_engine = Engines.get(conn)
-        assert Engines.get(conn) is main_thread_engine
+        main_thread_engine = Engines.get(storage)
+        assert Engines.get(storage) is main_thread_engine
 
         other: list[object] = []
 
         def _in_other_thread() -> None:
             thread_conn = Db.connect(db_path)
-            other.append(Engines.get(thread_conn))
+            other.append(Engines.get(SqliteStorage(thread_conn)))
             thread_conn.close()
 
         thread = threading.Thread(target=_in_other_thread)
@@ -132,9 +138,7 @@ class TestEngines:
         assert other[0] is not main_thread_engine
         assert len(built) == 2
 
-    def test_get_passes_the_gpu_setting_to_the_factory(
-        self, conn: sqlite3.Connection, isolated_registry
-    ):
+    def test_get_passes_the_gpu_setting_to_the_factory(self, storage: Storage, isolated_registry):
         flags: list[bool] = []
 
         def factory(use_gpu: bool) -> FakeEngine:
@@ -143,18 +147,18 @@ class TestEngines:
 
         Engines.register(Engines.DEFAULT, factory)
 
-        GpuSettings.set_enabled(conn, True)
-        Engines.get(conn)
+        GpuSettings.set_enabled(storage, True)
+        Engines.get(storage)
 
         assert flags == [True]
 
     def test_default_engine_is_paddleocr_and_loaded_lazily(
-        self, conn: sqlite3.Connection, isolated_registry
+        self, storage: Storage, isolated_registry
     ):
         assert Engines.DEFAULT == "paddleocr"
 
         with patch("vethuq_core.ocr.engines.paddle.PaddleOcrEngine") as engine_cls:
-            engine = Engines.get(conn)
+            engine = Engines.get(storage)
 
         engine_cls.assert_called_once_with(use_gpu=False)
         assert engine is engine_cls.return_value

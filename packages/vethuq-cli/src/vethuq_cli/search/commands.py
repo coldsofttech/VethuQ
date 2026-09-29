@@ -7,9 +7,9 @@ from pathlib import Path
 import typer
 from rich.prompt import Prompt
 from rich.text import Text
-from vethuq_core.db import Db
 from vethuq_core.search import Export, Search
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.search.pager import Pager
@@ -47,16 +47,16 @@ def search(
     With `--export`, results are written to that file as JSON or HTML
     instead of being printed here.
     """
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        matches = Search.indexed_content(conn, content)
+        matches = Search.indexed_content(storage, content)
         if not matches:
             console.print("No matches found.", style=Theme.NOTICE)
             return
 
         if export is not None:
             try:
-                resolved_format = SearchSettings.resolve_export_format(conn, format_)
+                resolved_format = SearchSettings.resolve_export_format(storage, format_)
             except InvalidSettingValueError as exc:
                 error_console.print(f"Error: {exc}", style=Theme.ERROR)
                 raise typer.Exit(code=1) from exc
@@ -79,7 +79,7 @@ def search(
             resolved_format = Prompt.ask(
                 "Export format",
                 console=console,
-                default=SearchSettings.get_export_format(conn),
+                default=SearchSettings.get_export_format(storage),
                 choices=list(SearchSettings.EXPORT_FORMATS),
             ).strip()
             output_path = Path(output)
@@ -92,7 +92,7 @@ def search(
                 )
             )
 
-        width = max(SearchSettings.get_snippet_context_chars(conn), ResultRenderer.MIN_BOX_WIDTH)
+        width = max(SearchSettings.get_snippet_context_chars(storage), ResultRenderer.MIN_BOX_WIDTH)
         match_word = "match" if len(matches) == 1 else "matches"
 
         with console.capture() as capture:
@@ -124,4 +124,4 @@ def search(
                 console.print()
         Pager.page(capture.get(), _export_from_pager)
     finally:
-        conn.close()
+        storage.close()

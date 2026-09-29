@@ -5,13 +5,13 @@ from __future__ import annotations
 import typer
 from rich.prompt import Confirm
 from rich.text import Text
-from vethuq_core.db import Db
-from vethuq_core.source import (
+from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
     Sources,
 )
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -28,9 +28,9 @@ def add(
     ),
 ) -> None:
     """Register a file or folder as a VethuQ source."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        source = Sources.add(conn, path)
+        source = Sources.add(storage, path)
     except (SourcePathError, SourceAlreadyExistsError) as exc:
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
@@ -43,17 +43,17 @@ def add(
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @app.command("list")
 def list_() -> None:
     """List registered sources."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        sources = Sources.list_all(conn)
+        sources = Sources.list_all(storage)
     finally:
-        conn.close()
+        storage.close()
 
     if not sources:
         console.print("No sources registered yet.", style="bright_black")
@@ -78,11 +78,11 @@ def remove(
     force: bool = typer.Option(False, "--force", help="Remove without asking for confirmation."),
 ) -> None:
     """Remove a registered source."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         target = Sources.coerce(path_or_id)
         try:
-            source = Sources.get(conn, target)
+            source = Sources.get(storage, target)
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
@@ -95,8 +95,8 @@ def remove(
                 console.print("Aborted.", style="bright_black")
                 raise typer.Exit(code=0)
 
-        source = Sources.remove(conn, target)
+        source = Sources.remove(storage, target)
     finally:
-        conn.close()
+        storage.close()
 
     console.print(Text.assemble((f"Removed {source.source_type}: ", Theme.OK), source.path))

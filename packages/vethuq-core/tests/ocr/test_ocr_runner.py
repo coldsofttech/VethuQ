@@ -7,7 +7,8 @@ import numpy as np
 from conftest import PaddleStub
 from vethuq_core.ocr import Deepening, Ocr
 from vethuq_core.settings import OcrSettings
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 
 def _write_png(path: Path, width: int = 40) -> None:
@@ -29,16 +30,18 @@ def _image_page(conn: sqlite3.Connection, name: str) -> sqlite3.Row:
 
 class TestOcr:
     @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_quick_engine_reads_each_file_once(self, mock_get_engine, conn, tmp_path):
+    def test_quick_engine_reads_each_file_once(
+        self, mock_get_engine, conn, storage: Storage, tmp_path
+    ):
         engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         assert engine.predict.call_count == 1
         page = _image_page(conn, "a.png")
@@ -46,7 +49,7 @@ class TestOcr:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_moderate_engine_adds_rotated_text_and_records_progress(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         # Quick read finds one line; every rotated read finds the same extra one.
         engine = PaddleStub()
@@ -54,13 +57,13 @@ class TestOcr:
             _result("hello") if isinstance(image, str) else _result("DIRECTOR", "hello")
         )
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "moderate")
+        OcrSettings.set_engine(storage, "moderate")
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         page = _image_page(conn, "a.png")
         assert page["ocr_text"].split("\n") == ["hello", "DIRECTOR"]
@@ -69,28 +72,28 @@ class TestOcr:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_deep_engine_reads_every_angle_and_is_not_repeated(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "deep")
+        OcrSettings.set_engine(storage, "deep")
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
         assert _image_page(conn, "a.png")["ocr_phase"] == 3
         assert engine.predict.call_count == 360 // 15
 
         # Already at the deepest phase: a second run has nothing left to read.
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
         assert engine.predict.call_count == 360 // 15
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_raising_engine_setting_deepens_already_indexed_files(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _result("hello")
@@ -98,12 +101,12 @@ class TestOcr:
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        source = Sources.add(storage, folder)
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
         assert engine.predict.call_count == 1
 
-        OcrSettings.set_engine(conn, "moderate")
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        OcrSettings.set_engine(storage, "moderate")
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         assert _image_page(conn, "a.png")["ocr_phase"] == 2
         # Only the new angles were read - the quick pass wasn't redone.
@@ -111,7 +114,7 @@ class TestOcr:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
-        self, mock_get_engine, conn, tmp_path, monkeypatch
+        self, mock_get_engine, conn, storage: Storage, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(Deepening, "QUICK_WORK_CHECK_SECONDS", 0.0)
         folder = tmp_path / "src"
@@ -129,10 +132,10 @@ class TestOcr:
         engine = PaddleStub()
         engine.predict.side_effect = predict
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "moderate")
-        source = Sources.add(conn, folder)
+        OcrSettings.set_engine(storage, "moderate")
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         # a.png quick, one angle of a.png, then b.png's quick pass jumps the queue.
         assert calls[:3] == ["a.png", "angle", "b.png"], calls
@@ -141,17 +144,19 @@ class TestOcr:
         assert _image_page(conn, "b.png")["ocr_angles"] == "0,90,180,270"
 
     @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_failed_file_is_not_retried_by_later_rounds(self, mock_get_engine, conn, tmp_path):
+    def test_failed_file_is_not_retried_by_later_rounds(
+        self, mock_get_engine, storage: Storage, tmp_path
+    ):
         engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("boom")
         mock_get_engine.return_value = engine
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "bad.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
         attempts = 1 + 3  # first try plus the default retries
 
-        processed = Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        processed = Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         assert len(processed) == 1
         assert engine.predict.call_count == attempts

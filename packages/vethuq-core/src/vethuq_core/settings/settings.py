@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
-
-from vethuq_core.db.queries import Settings as SettingsQuery
+from vethuq_core.storage import Storage
 
 
 class SettingsError(Exception):
@@ -22,9 +20,9 @@ class InvalidSettingValueError(SettingsError, ValueError):
 
 class Settings:
     @staticmethod
-    def get(conn: sqlite3.Connection, key: str) -> str | None:
-        return SettingsQuery.get_value(conn, key)
+    def get(storage: Storage, key: str) -> str | None:
+        return storage.get_setting_value(key)
 
     @staticmethod
-    def set(conn: sqlite3.Connection, key: str, value: str) -> None:
-        SettingsQuery.upsert(conn, key, value)
+    def set(storage: Storage, key: str, value: str) -> None:
+        storage.upsert_setting(key, value)

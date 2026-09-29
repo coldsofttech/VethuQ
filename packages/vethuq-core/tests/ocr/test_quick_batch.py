@@ -6,7 +6,8 @@ import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick, Scheduler
 from vethuq_core.settings import IndexSettings
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
@@ -16,7 +17,7 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 class TestQuickBatch:
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_orders_files_by_basename_across_sources(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -29,12 +30,12 @@ class TestQuickBatch:
         second.mkdir()
         (second / "a_report.png").write_bytes(b"second bytes")
 
-        source_a = Sources.add(conn, first)
-        source_b = Sources.add(conn, second)
+        source_a = Sources.add(storage, first)
+        source_b = Sources.add(storage, second)
 
         seen_order: list[str] = []
         Quick.run_batch(
-            conn,
+            storage,
             [source_a, source_b],
             workers=1,
             on_file_done=lambda path, succeeded: seen_order.append(Path(path).name),
@@ -44,7 +45,7 @@ class TestQuickBatch:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -54,9 +55,9 @@ class TestQuickBatch:
         folder.mkdir()
         for name in ("a.png", "b.png", "c.png", "d.png"):
             (folder / name).write_bytes(f"bytes for {name}".encode())
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        processed = Quick.run_batch(conn, [source], workers=4)
+        processed = Quick.run_batch(storage, [source], workers=4)
 
         assert len(processed) == 4
         docs = conn.execute("SELECT status FROM document_index").fetchall()
@@ -68,7 +69,7 @@ class TestQuickBatch:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_skips_file_already_claimed_by_another_run(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -80,7 +81,7 @@ class TestQuickBatch:
         free_path = folder / "b.png"
         claimed_path.write_bytes(b"bytes for a")
         free_path.write_bytes(b"bytes for b")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
         now = "2026-01-01T00:00:00+00:00"
         other_run_document_id = conn.execute(
@@ -96,7 +97,7 @@ class TestQuickBatch:
 
         done_results: dict[str, bool | None] = {}
         processed = Quick.run_batch(
-            conn,
+            storage,
             [source],
             workers=1,
             on_file_done=lambda path, succeeded: done_results.__setitem__(
@@ -120,7 +121,7 @@ class TestQuickBatch:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_stops_early_leaves_rest_untouched(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -130,7 +131,7 @@ class TestQuickBatch:
         folder.mkdir()
         for name in ("a.png", "b.png", "c.png"):
             (folder / name).write_bytes(f"bytes for {name}".encode())
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
         calls = {"n": 0}
 
@@ -138,7 +139,7 @@ class TestQuickBatch:
             calls["n"] += 1
             return calls["n"] > 1
 
-        processed = Quick.run_batch(conn, [source], workers=1, should_stop=should_stop)
+        processed = Quick.run_batch(storage, [source], workers=1, should_stop=should_stop)
 
         assert [Path(p).name for p in processed] == ["a.png"]
 
@@ -153,6 +154,7 @@ class TestQuickBatch:
         mock_virtual_memory,
         mock_get_engine,
         conn: sqlite3.Connection,
+        storage: Storage,
         tmp_path,
     ):
         mock_cpu_count.return_value = 8
@@ -173,13 +175,13 @@ class TestQuickBatch:
         file_names = ("a.png", "b.png", "c.png", "d.png", "e.png")
         for name in file_names:
             (folder / name).write_bytes(f"bytes for {name}".encode())
-        source = Sources.add(conn, folder)
-        IndexSettings.set_thread_workers(conn, "auto")
+        source = Sources.add(storage, folder)
+        IndexSettings.set_thread_workers(storage, "auto")
 
         with patch.object(
             Scheduler, "resolve_workers", wraps=Scheduler.resolve_workers
         ) as spy_resolve:
-            processed = Quick.run_batch(conn, [source], workers=1)
+            processed = Quick.run_batch(storage, [source], workers=1)
 
         assert len(processed) == len(file_names)
         docs = conn.execute("SELECT status FROM document_index").fetchall()
@@ -191,7 +193,12 @@ class TestQuickBatch:
     @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_batch_rolls_back_pages_and_status_if_a_later_write_fails(
-        self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
+        self,
+        mock_get_engine,
+        mock_update_confidence,
+        conn: sqlite3.Connection,
+        storage: Storage,
+        tmp_path,
     ):
         """Same atomicity guarantee as `Quick.run`, exercised through `Quick.process_file`."""
         engine = PaddleStub()
@@ -201,10 +208,10 @@ class TestQuickBatch:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
         with pytest.raises(RuntimeError, match="boom"):
-            Quick.run_batch(conn, [source], workers=1)
+            Quick.run_batch(storage, [source], workers=1)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)

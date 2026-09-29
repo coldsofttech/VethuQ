@@ -8,7 +8,8 @@ import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Deepening, Document, Ocr
 from vethuq_core.settings import OcrSettings
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 
 def _write_png(path: Path, width: int = 40) -> None:
@@ -33,12 +34,12 @@ def _scored(*lines: tuple[str, float]):
 
 
 class TestDeepening:
-    def test_max_phase_follows_the_engine_setting(self, conn):
-        assert Deepening.max_phase(conn) == 1
-        OcrSettings.set_engine(conn, "moderate")
-        assert Deepening.max_phase(conn) == 2
-        OcrSettings.set_engine(conn, "deep")
-        assert Deepening.max_phase(conn) == 3
+    def test_max_phase_follows_the_engine_setting(self, storage: Storage):
+        assert Deepening.max_phase(storage) == 1
+        OcrSettings.set_engine(storage, "moderate")
+        assert Deepening.max_phase(storage) == 2
+        OcrSettings.set_engine(storage, "deep")
+        assert Deepening.max_phase(storage) == 3
         assert Deepening.PHASE_NAMES == {1: "quick", 2: "moderate", 3: "deep"}
 
     def test_phase_angles_cover_every_15_degrees_once(self):
@@ -73,10 +74,12 @@ class TestDeepening:
         rotated = Deepening.rotate_array(array, 45)
         assert rotated.shape[0] > 20 and rotated.shape[1] > 20
 
-    def test_deepening_units_order_moderate_before_deep_and_skip_native(self, conn, tmp_path):
+    def test_deepening_units_order_moderate_before_deep_and_skip_native(
+        self, conn, storage: Storage, tmp_path
+    ):
         folder = tmp_path / "src"
         folder.mkdir()
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
         for index, (phase, page_source) in enumerate(
             [(2, "ocr"), (1, "ocr"), (1, "native")], start=1
         ):
@@ -95,18 +98,18 @@ class TestDeepening:
             )
         conn.commit()
 
-        units = Deepening.find_units(conn, [source], max_phase=3)
+        units = Deepening.find_units(storage, [source], max_phase=3)
 
         # The phase-1 page (next: moderate) goes before the phase-2 one (next: deep);
         # the native-text page has nothing to read.
         assert [(unit.document_id, unit.phase) for unit in units] == [(2, 2), (1, 3)]
-        assert Deepening.find_units(conn, [source], max_phase=1) == []
+        assert Deepening.find_units(storage, [source], max_phase=1) == []
 
-    def test_deepening_progress_counts_pages_done_per_phase(self, conn, tmp_path):
+    def test_deepening_progress_counts_pages_done_per_phase(self, conn, storage: Storage, tmp_path):
 
         folder = tmp_path / "src"
         folder.mkdir()
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
         for index, (phase, page_source) in enumerate(
             [(1, "ocr"), (2, "ocr"), (3, "ocr"), (1, "native")], start=1
         ):
@@ -126,24 +129,24 @@ class TestDeepening:
         conn.commit()
 
         # The native page isn't counted; of the three OCR pages, 2 reached moderate, 1 deep.
-        assert Deepening.progress(conn, [source], 3) == {2: (2, 3), 3: (1, 3)}
-        assert Deepening.progress(conn, [source], 2) == {2: (2, 3)}
-        assert Deepening.progress(conn, [source], 1) == {}
+        assert Deepening.progress(storage, [source], 3) == {2: (2, 3), 3: (1, 3)}
+        assert Deepening.progress(storage, [source], 2) == {2: (2, 3)}
+        assert Deepening.progress(storage, [source], 1) == {}
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_deeper_phases_track_timestamps_and_their_own_metrics(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "deep")
+        OcrSettings.set_engine(storage, "deep")
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         phases = {
             row["phase"]: row
@@ -163,7 +166,7 @@ class TestDeepening:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_interrupted_phase_is_not_completed_or_folded_until_finished(
-        self, mock_get_engine, conn, tmp_path, monkeypatch
+        self, mock_get_engine, conn, storage: Storage, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(Deepening, "QUICK_WORK_CHECK_SECONDS", 0.0)
         folder = tmp_path / "src"
@@ -180,8 +183,8 @@ class TestDeepening:
         engine = PaddleStub()
         engine.predict.side_effect = predict
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "moderate")
-        source = Sources.add(conn, folder)
+        OcrSettings.set_engine(storage, "moderate")
+        source = Sources.add(storage, folder)
         stop_after = {"pending": False}
 
         # Stop the run as soon as the new file has had its quick pass.
@@ -189,7 +192,7 @@ class TestDeepening:
             return stop_after["pending"] and _image_page(conn, "b.png") is not None
 
         stop_after["pending"] = True
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)], should_stop=should_stop)
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)], should_stop=should_stop)
 
         a_row = conn.execute(
             "SELECT dp.* FROM document_phases dp "
@@ -205,27 +208,27 @@ class TestDeepening:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "moderate")
+        OcrSettings.set_engine(storage, "moderate")
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        source = Sources.add(storage, folder)
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
         assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 1
 
         _write_png(folder / "a.png", width=60)  # content changes
-        Document.upsert(conn, source.id, folder / "a.png", "image")
+        Document.upsert(storage, source.id, folder / "a.png", "image")
 
         assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 0
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
-        self, mock_get_engine, conn, tmp_path
+        self, mock_get_engine, conn, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         # Quick read: one line at 0.9. Every rotated read also finds DIRECTOR at 0.5.
@@ -235,13 +238,13 @@ class TestDeepening:
             else _scored(("hello", 0.9), ("DIRECTOR", 0.5))
         )
         mock_get_engine.return_value = engine
-        OcrSettings.set_engine(conn, "moderate")
+        OcrSettings.set_engine(storage, "moderate")
         folder = tmp_path / "src"
         folder.mkdir()
         _write_png(folder / "a.png")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
 
         # DIRECTOR is added once (later angles find it already there): (0.9 * 1 + 0.5) / 2.
         assert _image_page(conn, "a.png")["confidence"] == pytest.approx(0.7)

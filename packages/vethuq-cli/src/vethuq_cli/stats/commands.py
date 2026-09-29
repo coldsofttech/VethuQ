@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import typer
 from rich.prompt import Confirm
-from vethuq_core.db import Db
 from vethuq_core.stats import Confidence, Processing, Stats
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console
 from vethuq_cli.stats.renderer import StatsRenderer
@@ -17,12 +17,12 @@ app = typer.Typer(help="View and reset OCR processing/confidence statistics.")
 @app.command("show")
 def show() -> None:
     """Show accumulated OCR processing and confidence statistics."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        processing = Processing.get_metrics(conn)
-        confidence = Confidence.get_metrics(conn)
+        processing = Processing.get_metrics(storage)
+        confidence = Confidence.get_metrics(storage)
     finally:
-        conn.close()
+        storage.close()
     processing_panel = StatsRenderer.processing_panel(processing)
     confidence_panel = StatsRenderer.confidence_panel(confidence)
     StatsRenderer.align_widths(console, processing_panel, confidence_panel)
@@ -51,9 +51,9 @@ def reset(
         console.print("Aborted.", style="bright_black")
         raise typer.Exit(code=0)
 
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        Stats.reset(conn)
+        Stats.reset(storage)
     finally:
-        conn.close()
+        storage.close()
     console.print("Statistics reset.", style=Theme.OK)

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import typer
-from vethuq_core.db import Db
 from vethuq_core.db.integrity import IntegrityCheck
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -21,11 +21,11 @@ def integrity_check() -> None:
     db integrity-check' to control whether this also runs automatically
     when the database is opened.
     """
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        result = IntegrityCheck.run(conn)
+        result = IntegrityCheck.run(storage)
     finally:
-        conn.close()
+        storage.close()
 
     if result.ok:
         console.print("Database integrity check passed.", style=Theme.OK)
