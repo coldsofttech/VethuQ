@@ -315,13 +315,13 @@ class TestStabilityCheck:
 
 
 class TestSearchEngineSettings:
-    def test_engine_show_defaults_to_like(self, use_temp_db):
+    def test_engine_show_defaults_to_all(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["settings", "search", "engine", "show"])
 
         assert result.exit_code == 0
-        assert "like" in result.stdout
+        assert "all" in result.stdout
 
     def test_engine_set_then_show(self, use_temp_db):
         use_temp_db()

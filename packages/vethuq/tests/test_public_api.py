@@ -142,7 +142,7 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.gpu.is_enabled() is False
     assert client.settings.search.snippet.get() == 80
     assert client.settings.search.export_format.get() == "json"
-    assert client.settings.search.engine.get() == "like"
+    assert client.settings.search.engine.get() == "all"
     assert client.settings.search.case_sensitive.get() is False
     assert client.settings.index.removed_retention.get() == 7 * 24 * 60
     assert client.settings.ocr.retry.get() == 3
@@ -382,7 +382,7 @@ def test_search_full_text_engine_ranks_and_scores(indexed_client: vethuq.Vethuq)
 
 
 def test_search_case_sensitive_applies_to_like(indexed_client: vethuq.Vethuq):
-    matches = indexed_client.search.run("INVOICE", case_sensitive=True)
+    matches = indexed_client.search.run("INVOICE", engine="like", case_sensitive=True)
 
     assert [m.file_path for m in matches] == ["/docs/scan.png"]
 

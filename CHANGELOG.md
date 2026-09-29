@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq search` now runs every engine at once by default and lists each page once, ranked by how strictly it matched (Exact, Contains, Near, Word, then Similar) and labelled with how it was found. Press `h` in the results pager for what each label means. Pick a single engine with `--engine`; `client.search.run_pages` returns the ranked pages.
 - `vethuq source list <id-or-path>` lists the files under a source with their id and index status; add `--detail` for timestamps, OCR phases and more. Also in the interactive menu (Sources > List Files). `--export <file> [--format json|html]` writes any `source list` form (sources, files, or files with `--detail`) to a file, like `search --export`. Sort with `--sort asc|desc` and `--sort-by filename|id|status` (ascending by filename by default).
 - `client.sources.files(path_or_id)` returns the files under a source with their status and detail.
 - If the index worker crashes hard (for example inside the OCR library), the fault trace now lands in `index.log` and `index status` names the crash; deeper OCR passes also log each page and angle before reading it.

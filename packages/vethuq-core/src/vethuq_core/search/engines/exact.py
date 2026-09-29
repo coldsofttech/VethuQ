@@ -42,6 +42,7 @@ class ExactSearchEngine:
             query,
             lambda text: ((m.start(), m.end()) for m in pattern.finditer(text)),
             context_chars=context_chars,
+            engine=self.name,
         )
 
     @staticmethod

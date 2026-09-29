@@ -50,6 +50,7 @@ class SearchEngineHelpers:
         start: int,
         end: int,
         chars: int,
+        engine: str,
         score: float | None = None,
     ) -> SearchMatch:
         """Build the `SearchMatch` for `text[start:end]`, with `chars` of context either side."""
@@ -69,6 +70,9 @@ class SearchEngineHelpers:
             duplicate_of_path=duplicate_of_path,
             source=source,
             score=score,
+            start=start,
+            end=end,
+            engine=engine,
         )
 
     @staticmethod
@@ -84,6 +88,7 @@ class SearchEngineHelpers:
         find: Callable[[str], Iterable[tuple[int, int]]],
         *,
         context_chars: int | None,
+        engine: str,
     ) -> list[SearchMatch]:
         """Find `query` on indexed pages, one `SearchMatch` per span `find` yields for a page.
 
@@ -130,6 +135,7 @@ class SearchEngineHelpers:
                         start=start,
                         end=end,
                         chars=chars,
+                        engine=engine,
                     )
                 )
 

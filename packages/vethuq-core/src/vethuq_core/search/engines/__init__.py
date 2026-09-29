@@ -7,10 +7,13 @@ from vethuq_core.search.engines.base import (
     SearchMatch,
     SearchQueryError,
 )
+from vethuq_core.search.engines.ranking import PageResult, Ranking
 from vethuq_core.search.engines.registry import SearchEngines
 
 __all__ = [
     "FallbackSearchEngine",
+    "PageResult",
+    "Ranking",
     "SearchEngine",
     "SearchEngineUnavailable",
     "SearchEngines",

@@ -104,6 +104,7 @@ class FuzzySearchEngine:
                     start=hit.start,
                     end=hit.end,
                     chars=chars,
+                    engine=self.name,
                     score=hit.score,
                 )
                 for hit in hits

@@ -353,3 +353,13 @@ class TestInteractiveSearchEngines:
         assert result.exit_code == 0
         assert "Search proximity distance set to tight." in result.stdout
         assert "Search proximity distance: tight (3 words)" in result.stdout
+
+    def test_search_defaults_to_all_engines_and_asks_about_case(self, use_temp_db):
+        _seed_page(use_temp_db(), "Visit the Museum today")
+
+        # Search > text > Enter accepts the default engine (all) > case-sensitive? no.
+        result = runner.invoke(app, [], input="1\nMuseum\n\nn\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results: 1 page (engine: all)" in result.stdout
+        assert "[Exact]" in result.stdout

@@ -11,12 +11,14 @@ from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.search import (
     Export,
+    PageResult,
     Search,
     SearchMatch,
     SearchOptionError,
     SearchOptions,
     SearchQueryError,
 )
+from vethuq_core.search.engines import Ranking
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_core.storage import Storage, open_storage
 
@@ -80,7 +82,11 @@ class SearchHelp:
         "Search indexed content for CONTENT and print matching pages. Only successfully "
         "indexed documents are searched.\n\n"
         "--engine picks how CONTENT is matched:\n\n"
-        "like (the default) - finds CONTENT anywhere, even inside a word, ignoring case. "
+        "all (the default) - runs every engine and lists each page once, ranked by the "
+        "strictest way it matched: Exact, Contains, Near, Word, then Similar. Each page is "
+        "labelled with that, the other engines that found it, and any hit found less "
+        "strictly than the page's best. Each engine applies the options it can.\n\n"
+        "like - finds CONTENT anywhere, even inside a word, ignoring case. "
         '`mus` finds "Museum". Results are ordered by file path.\n\n'
         "exact - finds CONTENT exactly as typed: same case, as a whole word. `Museum` finds "
         '"Museum" but not "museum" or "Museums". Always case-sensitive.\n\n'
@@ -97,8 +103,9 @@ class SearchHelp:
         "as `payment` and `termination` in the same clause. One result per passage, best "
         "pages first. Never case-sensitive.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
-        "`e` to export what's been found and close the pager, `q` to close without "
-        "exporting. A file with several matching pages prints its file name as a bold "
+        "`e` to export what's been found and close the pager, `h` (with the default `all` "
+        "engine) to see what Exact, Contains, Near, Word and Similar mean, `q` to close "
+        "without exporting. A file with several matching pages prints its file name as a bold "
         "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
         "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
         "How much context the box shows is set by `vethuq settings search snippet`.\n\n"
@@ -113,7 +120,8 @@ def search(
         None,
         "--engine",
         help=(
-            "How to match: 'like' (substring, even inside a word), 'exact' (as typed, "
+            "How to match: 'all' (every engine at once, the pages ranked together - the "
+            "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
             "misreads) or 'proximity' (all your words near each other). Defaults to "
@@ -126,7 +134,7 @@ def search(
         help=(
             "Match case. Only 'like' and 'fuzzy' honour it (default: `vethuq settings "
             "search case-sensitive`); 'exact' is always case-sensitive, 'full-text' and "
-            "'proximity' never are."
+            "'proximity' never are. With 'all', each engine applies what it can."
         ),
     ),
     threshold: str | None = typer.Option(
@@ -173,15 +181,26 @@ def search(
     storage = open_storage()
     try:
         options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness, distance)
+        pages: list[PageResult] | None = None
         try:
-            matches = Search.indexed_content(
-                storage,
-                content,
-                engine=options.engine,
-                case_sensitive=options.case_sensitive,
-                threshold=options.threshold,
-                distance=options.distance,
-            )
+            if options.engine == SearchSettings.ENGINE_ALL:
+                pages = Search.indexed_pages(
+                    storage,
+                    content,
+                    case_sensitive=options.case_sensitive,
+                    threshold=options.threshold,
+                    distance=options.distance,
+                )
+                matches = Ranking.flatten(pages)
+            else:
+                matches = Search.indexed_content(
+                    storage,
+                    content,
+                    engine=options.engine,
+                    case_sensitive=options.case_sensitive,
+                    threshold=options.threshold,
+                    distance=options.distance,
+                )
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
         if not matches:
@@ -253,33 +272,44 @@ def search(
                 )
             )
 
+        items: list[SearchMatch] | list[PageResult]
+        if pages is not None:
+            items, title = pages, ResultRenderer.page_heading(len(pages), options)
+        else:
+            items, title = matches, ResultRenderer.heading(len(matches), options)
+
+        def entries_for(item: SearchMatch | PageResult, accent: str) -> list[RenderableType]:
+            if isinstance(item, PageResult):
+                return ResultRenderer.page_entries(item, accent)
+            return ResultRenderer.match_entries(item, options, accent)
+
         file_panels: list[Panel] = []
         entries: list[RenderableType] = []
-        first_match: SearchMatch | None = None
+        first: SearchMatch | PageResult | None = None
         last_file_path: str | None = None
         accent = ResultRenderer.ACCENT_STYLES[0]
 
         def _close_file() -> None:
-            if first_match is not None:
-                file_panels.append(ResultRenderer.file_panel(first_match, accent, entries))
+            if first is not None:
+                file_panels.append(ResultRenderer.file_panel(first, accent, entries))
 
-        for match in matches:
-            if match.file_path != last_file_path:
+        for item in items:
+            if item.file_path != last_file_path:
                 _close_file()
                 accent = ResultRenderer.ACCENT_STYLES[
                     len(file_panels) % len(ResultRenderer.ACCENT_STYLES)
                 ]
-                first_match, last_file_path, entries = match, match.file_path, []
-            entries.append(ResultRenderer.match_label(match, options, accent))
-            entries.append(ResultRenderer.match_panel(match, accent))
+                first, last_file_path, entries = item, item.file_path, []
+            entries.extend(entries_for(item, accent))
         _close_file()
 
         with console.capture() as capture:
-            console.print(
-                ResultRenderer.results_panel(
-                    ResultRenderer.heading(len(matches), options), file_panels
-                )
-            )
-        Pager.page(capture.get(), _export_from_pager)
+            console.print(ResultRenderer.results_panel(title, file_panels))
+        help_text = None
+        if pages is not None:  # only the combined search labels its matches
+            with console.capture() as legend:
+                console.print(ResultRenderer.legend())
+            help_text = legend.get()
+        Pager.page(capture.get(), _export_from_pager, help_text)
     finally:
         storage.close()

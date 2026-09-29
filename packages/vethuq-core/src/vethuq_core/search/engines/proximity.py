@@ -107,6 +107,7 @@ class ProximitySearchEngine:
                             start=start,
                             end=end,
                             chars=chars,
+                            engine=self.name,
                             score=row["score"],
                         )
                     )

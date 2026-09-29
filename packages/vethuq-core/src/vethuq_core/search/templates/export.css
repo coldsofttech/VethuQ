@@ -14,7 +14,7 @@
   }
   .row-cells {
     display: grid;
-    grid-template-columns: 20px 1.4fr 2fr 70px 100px;
+    grid-template-columns: 20px 1.4fr 2fr 70px 100px 110px;
     align-items: center;
     gap: 0.75rem;
   }

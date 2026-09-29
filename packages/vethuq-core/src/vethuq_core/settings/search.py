@@ -13,8 +13,9 @@ class SearchSettings:
     DEFAULT_EXPORT_FORMAT = "json"
     EXPORT_FORMATS = ("json", "html")
     ENGINE_KEY = "search_engine"
-    DEFAULT_ENGINE = "like"
-    ENGINES = ("like", "exact", "full-text", "fuzzy", "proximity")
+    DEFAULT_ENGINE = "all"
+    ENGINE_ALL = "all"  # not an engine: runs every engine and ranks the pages together
+    ENGINES = (ENGINE_ALL, "like", "exact", "full-text", "fuzzy", "proximity")
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
     DEFAULT_FUZZY_THRESHOLD = "balanced"
@@ -67,7 +68,7 @@ class SearchSettings:
 
     @staticmethod
     def get_engine(storage: Storage) -> str:
-        """Default engine `search` uses when none is given. 'like' by default."""
+        """Default engine `search` uses when none is given. 'all' (every engine) by default."""
         value = Settings.get(storage, SearchSettings.ENGINE_KEY)
         return value if value in SearchSettings.ENGINES else SearchSettings.DEFAULT_ENGINE
 

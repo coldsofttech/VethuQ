@@ -224,6 +224,25 @@ threshold and (proximity only) distance from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
 settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
+### Combined search and ranking
+
+`vethuq_core.ranking.search_all` (`search --engine all`, the default) runs every
+engine, groups their hits by page and ranks the pages, returning `PageResult`s
+(`search.search_indexed_pages`; `search_indexed_content(engine="all")` flattens them).
+Engine scores aren't comparable, so ranking is by **match quality**, not by blending
+numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `fuzzy`
+(`proximity` above `full-text` because every page it finds `full-text` finds too),
+pages are ordered by the strictest engine that found them, then by that engine's own
+signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, best
+similarity for `fuzzy`), then by how many engines agreed, then by path and page.
+Since the engines' matches nest, a page is one result and overlapping hits are
+merged (`_merge_overlapping`): the union span, labelled with the strictest engine,
+listing every engine in `matched_by`; a `proximity` passage thereby absorbs the word
+hits inside it. `ENGINE_BADGES` names the tiers for users (Exact, Contains, Near,
+Word, Similar) and is shared by the CLI and the UI. Each engine gets only the
+options it accepts, and `proximity` is skipped for one-term queries.
+`SearchMatch.start`/`end`/`engine`/`matched_by` carry what the merge needs.
+
 Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected
 by name or chained in front of another as a fallback. Callers are unchanged.

@@ -66,8 +66,8 @@ class TestSearchSettings:
         with pytest.raises(ValueError, match="non-negative"):
             SearchSettings.set_snippet_context_chars(storage, -1)
 
-    def test_search_engine_defaults_to_like(self, storage: Storage):
-        assert SearchSettings.get_engine(storage) == "like"
+    def test_search_engine_defaults_to_all(self, storage: Storage):
+        assert SearchSettings.get_engine(storage) == "all"
 
     def test_set_search_engine_roundtrip(self, storage: Storage):
         SearchSettings.set_engine(storage, "full-text")

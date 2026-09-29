@@ -37,6 +37,7 @@ class LikeSearchEngine:
             query,
             lambda text: LikeSearchEngine._occurrences(text, query, case_sensitive=case_sensitive),
             context_chars=context_chars,
+            engine=self.name,
         )
 
     @staticmethod
