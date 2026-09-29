@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Logs now cover scanning and processing per area: `index.log` records each source scan (start, files found, outcome), duplicate skips, per-attempt retries, and OCR, native-extraction and indexing failures with file, page, engine and exception; `database.log` records database open/schema/write failures and search failures (with the query and engine).
 - Logging now records shutdown as well as startup: `cli.log` gets a `Finished` line with the exit code and duration for every command, `ui.log` a `VethuQ UI stopped` line, and `index.log` marks each index worker's start and exit.
 - `vethuq search` now tags each match with how its page's text was obtained (`[native]`, `[ocr]` or `[mixed]`).
 - `vethuq search` now shows each result's file name as a bold heading above its full path.
