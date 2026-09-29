@@ -214,52 +214,16 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            try:
-                with storage.transaction():
-                    claim = Document.upsert(storage, source.id, file_path, file_type)
-            except FileNotFoundError:
-                # Vanished between discovery and claiming, so there's nothing to
-                # index; the next run's reconcile marks any tracked row 'removed'.
-                _logger.warning("File removed before indexing, skipped: %s", file_path)
-                continue
-            if claim is None:
-                # Already claimed by another concurrently-running index run -
-                # leave it alone, that run owns finishing it.
-                continue
-            document_id, duplicate_source_id = claim
-            processed_paths.append(str(file_path))
-
-            if duplicate_source_id is not None:
-                # Identical content already indexed under the same logical document -
-                # skip OCR entirely rather than redoing the same work.
-                with storage.transaction():
-                    Document.mark_duplicate(storage, document_id)
-                if on_file_done is not None:
-                    on_file_done(str(file_path))
-                continue
-
-            process = psutil.Process()
-            process.cpu_percent(interval=None)  # prime; the next call reports usage since now
-            mem_before = process.memory_info().rss
-
-            reader = Readers.for_path(file_path)
-            pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
-
-            peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
-            cpu_percent = process.cpu_percent(interval=None)
-            succeeded = Quick.finalize_result(
-                storage,
-                document_id,
-                file_type,
-                pages,
-                attempts_used,
-                last_exc,
-                peak_memory_mb,
-                cpu_percent,
+            succeeded = Quick.process_file(
+                storage, source, file_path, file_type, db_lock=threading.Lock()
             )
+            if succeeded is None:
+                # Already claimed by another run, vanished, or still being written -
+                # left alone; whichever run owns it (or a later scan) finishes it.
+                continue
+            processed_paths.append(str(file_path))
             if not succeeded:
                 had_error = True
-
             if on_file_done is not None:
                 on_file_done(str(file_path))
 
@@ -271,6 +235,43 @@ class Quick:
             )
         return processed_paths
 
+    class FileChangedError(Exception):
+        """A file's size/mtime moved while it was being processed, so what was read is stale."""
+
+        def __init__(self, file_path: Path) -> None:
+            super().__init__(f"File was modified during processing: {file_path}")
+            self.file_path = file_path
+
+    @staticmethod
+    def is_file_stable(file_path: Path, interval_seconds: float) -> bool:
+        """Whether `file_path`'s size/mtime are unchanged across two stats `interval_seconds` apart.
+
+        A file still being written (a copy or download in progress) fails this,
+        and should be left for a later scan rather than indexed as a partial
+        snapshot. An interval of 0 disables the check. Raises FileNotFoundError
+        if the file vanishes.
+        """
+        if interval_seconds <= 0:
+            return True
+        before = file_path.stat()
+        time.sleep(interval_seconds)
+        after = file_path.stat()
+        return (before.st_mtime_ns, before.st_size) == (after.st_mtime_ns, after.st_size)
+
+    @staticmethod
+    def changed_since_claim(storage: Storage, file_path: Path) -> bool:
+        """Whether `file_path`'s size/mtime differ from what its claimed row recorded.
+
+        The row's mtime/size were captured together with the checksum at claim
+        time (see `Document.upsert`), so a difference means whatever was read
+        since no longer matches the stored checksum.
+        """
+        row = storage.get_document_index_pending_check(str(file_path))
+        if row is None:
+            return False
+        stat = file_path.stat()
+        return stat.st_mtime != row["mtime"] or stat.st_size != row["file_size_bytes"]
+
     @staticmethod
     def process_file(
         storage: Storage,
@@ -280,6 +281,36 @@ class Quick:
         *,
         db_lock: threading.Lock,
     ) -> bool | None:
+        """Index one file, retrying from the claim if it changes while being read.
+
+        Guards against transient files on both sides of processing: before
+        claiming, the file must be stable (see `Quick.is_file_stable`) or it's left
+        for the next scan (returns None); after OCR, if its size/mtime moved from
+        what the claim recorded, the extraction is discarded rather than stored
+        against a stale checksum, and - like an OCR failure - the file is retried
+        up to the retry-attempts setting before being left as 'error'.
+        See `Quick.process_file_once` for the rest of the contract.
+        """
+        with db_lock:
+            max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
+        result: bool | None = False
+        for _ in range(max_attempts):
+            result, changed = Quick.process_file_once(
+                storage, source, file_path, file_type, db_lock=db_lock
+            )
+            if not changed:
+                return result
+        return result
+
+    @staticmethod
+    def process_file_once(
+        storage: Storage,
+        source: Source,
+        file_path: Path,
+        file_type: str,
+        *,
+        db_lock: threading.Lock,
+    ) -> tuple[bool | None, bool]:
         """Index one file: upsert its row, dedupe by checksum, and OCR it if new content.
 
         Returns whether it succeeded (False on an OCR failure recorded as an
@@ -292,23 +323,30 @@ class Quick:
         sqlite read/write around it is serialized through `db_lock` since a
         single connection isn't safe for unsynchronized concurrent use.
         """
+        with db_lock:
+            stability_seconds = OcrSettings.get_stability_check_seconds(storage)
         try:
+            if not Quick.is_file_stable(file_path, stability_seconds):
+                # Still being written - no row is claimed, so the next scan simply
+                # picks it up again.
+                _logger.warning("File still changing, deferred to next scan: %s", file_path)
+                return None, False
             with db_lock, storage.transaction():
                 claim = Document.upsert(storage, source.id, file_path, file_type)
         except FileNotFoundError:
             # Vanished between discovery and claiming - leave it for the next
             # run's reconcile rather than aborting the batch.
             _logger.warning("File removed before indexing, skipped: %s", file_path)
-            return None
+            return None, False
 
         if claim is None:
-            return None
+            return None, False
         document_id, duplicate_source_id = claim
 
         if duplicate_source_id is not None:
             with db_lock, storage.transaction():
                 Document.mark_duplicate(storage, document_id)
-            return True
+            return True, False
 
         process = psutil.Process()
         process.cpu_percent(interval=None)  # prime; the next call reports usage since now
@@ -317,10 +355,24 @@ class Quick:
         reader = Readers.for_path(file_path)
         pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
 
+        changed = False
+        if pages is not None:
+            try:
+                with db_lock:
+                    changed = Quick.changed_since_claim(storage, file_path)
+            except FileNotFoundError as exc:
+                pages, last_exc = None, FileRemovedError(file_path)
+                last_exc.__cause__ = exc
+            if changed:
+                _logger.warning(
+                    "File changed while being processed, result discarded: %s", file_path
+                )
+                pages, last_exc = None, Quick.FileChangedError(file_path)
+
         with db_lock:
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
-            return Quick.finalize_result(
+            succeeded = Quick.finalize_result(
                 storage,
                 document_id,
                 file_type,
@@ -330,6 +382,8 @@ class Quick:
                 peak_memory_mb,
                 cpu_percent,
             )
+
+        return succeeded, changed
 
     @staticmethod
     def run_auto_elastic(

@@ -293,3 +293,22 @@ class TestLogs:
         result = runner.invoke(app, ["settings", "logs", "retention", "set", "0"])
 
         assert result.exit_code == 1
+
+
+class TestStabilityCheck:
+    def test_stability_check_defaults_then_set(self, use_temp_db):
+        use_temp_db()
+
+        show = runner.invoke(app, ["settings", "index", "stability-check", "show"])
+        assert "Stability check" in show.stdout
+        set_result = runner.invoke(app, ["settings", "index", "stability-check", "set", "0.5"])
+        assert set_result.exit_code == 0
+        show = runner.invoke(app, ["settings", "index", "stability-check", "show"])
+        assert "0.5" in show.stdout
+
+    def test_stability_check_rejects_negative(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "index", "stability-check", "set", "--", "-1"])
+
+        assert result.exit_code == 1
