@@ -11,7 +11,7 @@ from platformdirs import user_data_dir
 APP_NAME = "VethuQ"
 DB_FILENAME = "vethuq.db"
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 20
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     ocr_engine TEXT,
     language TEXT,
     image_width INTEGER,
-    image_height INTEGER
+    image_height INTEGER,
+    ocr_phase INTEGER NOT NULL DEFAULT 1,
+    ocr_angles TEXT NOT NULL DEFAULT '0'
 );
 
 CREATE TABLE IF NOT EXISTS image_pages (
@@ -72,7 +74,9 @@ CREATE TABLE IF NOT EXISTS image_pages (
     ocr_engine TEXT,
     language TEXT,
     image_width INTEGER,
-    image_height INTEGER
+    image_height INTEGER,
+    ocr_phase INTEGER NOT NULL DEFAULT 1,
+    ocr_angles TEXT NOT NULL DEFAULT '0'
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -96,6 +100,7 @@ CREATE TABLE IF NOT EXISTS index_runs (
 );
 
 CREATE TABLE IF NOT EXISTS processing_metrics (
+    phase INTEGER NOT NULL DEFAULT 1,
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
     size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
     document_count INTEGER NOT NULL DEFAULT 0,
@@ -103,7 +108,21 @@ CREATE TABLE IF NOT EXISTS processing_metrics (
     avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
     avg_cpu_percent REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (file_type, size_bucket)
+    PRIMARY KEY (phase, file_type, size_bucket)
+);
+
+-- Phase 1 (quick) timings live on document_index; this holds the deeper
+-- phases (2+), one row per document and phase.
+CREATE TABLE IF NOT EXISTS document_phases (
+    document_id INTEGER NOT NULL REFERENCES document_index(id) ON DELETE CASCADE,
+    phase INTEGER NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    indexed_at TEXT,
+    duration_seconds REAL NOT NULL DEFAULT 0,
+    peak_memory_mb REAL,
+    cpu_percent REAL,
+    PRIMARY KEY (document_id, phase)
 );
 
 CREATE TABLE IF NOT EXISTS confidence_metrics (
@@ -359,3 +378,62 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         )
         conn.execute("DROP TABLE processing_metrics")
         conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
+    if from_version < 17:
+        # Pages indexed so far only had the upright (0 degree) pass, which is
+        # exactly what the column defaults record - so they're picked up by
+        # deeper OCR phases (see `ocr.OCR_PHASE_ANGLES`) when the engine
+        # setting asks for them.
+        for table in ("pdf_pages", "image_pages"):
+            columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "ocr_phase" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN ocr_phase INTEGER NOT NULL DEFAULT 1")
+            if "ocr_angles" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN ocr_angles TEXT NOT NULL DEFAULT '0'")
+    if from_version < 18:
+        # Indexing settings now share an `index_` prefix in the settings table.
+        # A value saved under an old key moves to the new one; if the new key
+        # somehow already has a value, that one wins and the old row is dropped.
+        for old_key, new_key in (
+            ("removed_source_retention_minutes", "index_removed_source_retention_minutes"),
+            ("ocr_retry_attempts", "index_ocr_retry_attempts"),
+            ("thread_workers", "index_thread_workers"),
+            ("stale_lock", "index_stale_lock"),
+            ("ocr_engine", "index_engine"),
+        ):
+            conn.execute("UPDATE OR IGNORE settings SET key = ? WHERE key = ?", (new_key, old_key))
+            conn.execute("DELETE FROM settings WHERE key = ?", (old_key,))
+    if from_version < 19:
+        # Native-text PDF pages were briefly recorded at the final phase (3) as
+        # "nothing left to do", which read as if deep OCR had run on them. They're
+        # quick-phase pages like any other; deeper phases skip them by `source`.
+        conn.execute("UPDATE pdf_pages SET ocr_phase = 1 WHERE source = 'native' AND ocr_phase > 1")
+    if from_version < 20:
+        # processing_metrics now tracks every OCR phase, not just the quick first
+        # pass: `phase` joins the primary key, and what's there so far is phase 1.
+        # (`document_phases`, for the deeper phases, came from `_SCHEMA` above.)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
+        if "phase" not in columns:
+            conn.execute(
+                """
+                CREATE TABLE processing_metrics_new (
+                    phase INTEGER NOT NULL DEFAULT 1,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                    size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                    document_count INTEGER NOT NULL DEFAULT 0,
+                    avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                    avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                    avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (phase, file_type, size_bucket)
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO processing_metrics_new "
+                "(phase, file_type, size_bucket, document_count, avg_duration_seconds, "
+                "avg_peak_memory_mb, avg_cpu_percent, updated_at) "
+                "SELECT 1, file_type, size_bucket, document_count, avg_duration_seconds, "
+                "avg_peak_memory_mb, avg_cpu_percent, updated_at FROM processing_metrics"
+            )
+            conn.execute("DROP TABLE processing_metrics")
+            conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")

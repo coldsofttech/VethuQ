@@ -32,6 +32,7 @@ from vethuq._core.ocr import get_document_results as _get_document_results
 from vethuq._core.search import SearchMatch
 from vethuq._core.search import search_indexed_content as _search_indexed_content
 from vethuq._core.settings import (
+    OCR_ENGINE_MODES,
     SEARCH_EXPORT_FORMATS,
     STALE_LOCK_VALUES,
     InvalidSettingValueError,
@@ -39,6 +40,7 @@ from vethuq._core.settings import (
 )
 from vethuq._core.settings import THREAD_WORKERS_AUTO as _THREAD_WORKERS_AUTO
 from vethuq._core.settings import THREAD_WORKERS_MAX as _THREAD_WORKERS_MAX
+from vethuq._core.settings import get_ocr_engine as _get_ocr_engine
 from vethuq._core.settings import get_ocr_retry_attempts as _get_ocr_retry_attempts
 from vethuq._core.settings import (
     get_removed_source_retention_minutes as _get_removed_source_retention_minutes,
@@ -51,6 +53,7 @@ from vethuq._core.settings import get_stale_lock as _get_stale_lock
 from vethuq._core.settings import get_thread_workers as _get_thread_workers
 from vethuq._core.settings import is_gpu_enabled as _is_gpu_enabled
 from vethuq._core.settings import set_gpu_enabled as _set_gpu_enabled
+from vethuq._core.settings import set_ocr_engine as _set_ocr_engine
 from vethuq._core.settings import set_ocr_retry_attempts as _set_ocr_retry_attempts
 from vethuq._core.settings import (
     set_removed_source_retention_minutes as _set_removed_source_retention_minutes,
@@ -83,6 +86,7 @@ DB_PATH = _default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
 
 __all__ = [
+    "OCR_ENGINE_MODES",
     "SEARCH_EXPORT_FORMATS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
@@ -97,6 +101,7 @@ __all__ = [
     "IndexSettings",
     "IndexState",
     "InvalidSettingValueError",
+    "OcrEngineSettings",
     "OcrRetrySettings",
     "ProcessingMetric",
     "RemovedRetentionSettings",
@@ -470,6 +475,39 @@ class StaleLockSettings:
             conn.close()
 
 
+class OcrEngineSettings:
+    """How thoroughly OCR looks for rotated text. Not instantiated directly — use
+    `Vethuq().settings.index.engine`."""
+
+    def get(self) -> str:
+        """How thoroughly OCR looks for rotated text. 'quick' by default.
+
+        One of `OCR_ENGINE_MODES`: 'quick' (upright text only), 'moderate'
+        (also 90/180/270 degree rotations), or 'deep' (also every 15
+        degrees). Each includes the ones before it. Files are always indexed
+        'quick' first so they're searchable right away; the deeper passes
+        then run in the background while indexing continues.
+        """
+        conn = _connect()
+        try:
+            return _get_ocr_engine(conn)
+        finally:
+            conn.close()
+
+    def set(self, value: str) -> None:
+        """Set how thoroughly OCR looks for rotated text.
+
+        `value` must be one of `OCR_ENGINE_MODES`. Raises
+        `InvalidSettingValueError` otherwise. Files already indexed are
+        brought up to the new level the next time indexing runs.
+        """
+        conn = _connect()
+        try:
+            _set_ocr_engine(conn, value)
+        finally:
+            conn.close()
+
+
 class IndexSettings:
     """Configure indexing behavior. Not instantiated directly — use `Vethuq().settings.index`."""
 
@@ -478,6 +516,7 @@ class IndexSettings:
         self.ocr_retry = OcrRetrySettings()
         self.thread_workers = ThreadWorkersSettings()
         self.stale_lock = StaleLockSettings()
+        self.engine = OcrEngineSettings()
 
 
 class Settings:
@@ -496,7 +535,7 @@ class Stats:
     """
 
     def processing(self) -> list[ProcessingMetric]:
-        """Return per-(file_type, size_bucket) running averages of OCR processing."""
+        """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
         conn = _connect()
         try:
             return _get_processing_metrics(conn)
