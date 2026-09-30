@@ -57,6 +57,10 @@ def insert_document(conn: sqlite3.Connection, created_at: str) -> int:
     return cursor.lastrowid
 
 
+def delete_document_phases(conn: sqlite3.Connection, document_id: int) -> None:
+    conn.execute("DELETE FROM document_phases WHERE document_id = ?", (document_id,))
+
+
 def list_document_index_rows_for_sources(
     conn: sqlite3.Connection, source_ids: list[int]
 ) -> list[sqlite3.Row]:
@@ -165,7 +169,7 @@ def upsert_document_index(
 
 def list_tracked_document_index_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
     return conn.execute(
-        "SELECT id, file_path, checksum FROM document_index "
+        "SELECT id, document_id, file_path, checksum FROM document_index "
         "WHERE source_id = ? AND status != 'removed'",
         (source_id,),
     ).fetchall()
@@ -257,8 +261,8 @@ def insert_pdf_pages(conn: sqlite3.Connection, rows: list[tuple]) -> None:
     conn.executemany(
         "INSERT INTO pdf_pages "
         "(document_id, page_number, ocr_text, confidence, source, "
-        "ocr_engine, language, image_width, image_height) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "ocr_engine, language, image_width, image_height, ocr_phase, ocr_angles) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
 
@@ -272,12 +276,24 @@ def insert_image_page(
     language: str | None,
     image_width: int | None,
     image_height: int | None,
+    ocr_phase: int,
+    ocr_angles: str,
 ) -> None:
     conn.execute(
         "INSERT INTO image_pages "
         "(document_id, ocr_text, confidence, ocr_engine, language, "
-        "image_width, image_height) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (document_id, ocr_text, confidence, ocr_engine, language, image_width, image_height),
+        "image_width, image_height, ocr_phase, ocr_angles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            document_id,
+            ocr_text,
+            confidence,
+            ocr_engine,
+            language,
+            image_width,
+            image_height,
+            ocr_phase,
+            ocr_angles,
+        ),
     )
 
 
@@ -344,3 +360,14 @@ def get_pdf_page_counts_by_document(conn: sqlite3.Connection) -> list[sqlite3.Ro
     return conn.execute(
         "SELECT document_id, COUNT(*) AS total FROM pdf_pages GROUP BY document_id"
     ).fetchall()
+
+
+def refresh_document_file_path(conn: sqlite3.Connection, document_id: int) -> None:
+    """Point a `documents` row's `file_path` at its earliest non-'removed' copy (or NULL)."""
+    conn.execute(
+        "UPDATE documents SET file_path = ("
+        "SELECT file_path FROM document_index "
+        "WHERE document_id = documents.id AND status != 'removed' "
+        "ORDER BY id ASC LIMIT 1) WHERE id = ?",
+        (document_id,),
+    )

@@ -9,20 +9,23 @@ from vethuq_core.db import get_setting_value, upsert_setting
 GPU_ENABLED_KEY = "gpu_enabled"
 SEARCH_SNIPPET_CONTEXT_CHARS_KEY = "search_snippet_context_chars"
 DEFAULT_SEARCH_SNIPPET_CONTEXT_CHARS = 80
-REMOVED_SOURCE_RETENTION_MINUTES_KEY = "removed_source_retention_minutes"
+REMOVED_SOURCE_RETENTION_MINUTES_KEY = "index_removed_source_retention_minutes"
 DEFAULT_REMOVED_SOURCE_RETENTION_MINUTES = 7 * 24 * 60  # 7 days
-OCR_RETRY_ATTEMPTS_KEY = "ocr_retry_attempts"
+OCR_RETRY_ATTEMPTS_KEY = "index_ocr_retry_attempts"
 DEFAULT_OCR_RETRY_ATTEMPTS = 3
 SEARCH_EXPORT_FORMAT_KEY = "search_export_format"
 DEFAULT_SEARCH_EXPORT_FORMAT = "json"
 SEARCH_EXPORT_FORMATS = ("json", "html")
-THREAD_WORKERS_KEY = "thread_workers"
+THREAD_WORKERS_KEY = "index_thread_workers"
 DEFAULT_THREAD_WORKERS = "0"
 THREAD_WORKERS_AUTO = "auto"
 THREAD_WORKERS_MAX = 8
-STALE_LOCK_KEY = "stale_lock"
+STALE_LOCK_KEY = "index_stale_lock"
 DEFAULT_STALE_LOCK = "auto"
 STALE_LOCK_VALUES = ("enable", "disable", "auto")
+OCR_ENGINE_KEY = "index_engine"
+DEFAULT_OCR_ENGINE = "quick"
+OCR_ENGINE_MODES = ("quick", "moderate", "deep")
 
 
 class SettingsError(Exception):
@@ -121,6 +124,25 @@ def set_thread_workers(conn: sqlite3.Connection, value: str) -> None:
                 f"value must be 0-{THREAD_WORKERS_MAX} or '{THREAD_WORKERS_AUTO}'"
             )
     set_setting(conn, THREAD_WORKERS_KEY, value)
+
+
+def get_ocr_engine(conn: sqlite3.Connection) -> str:
+    """How thoroughly OCR looks for rotated text. 'quick' by default.
+
+    One of 'quick' (upright text only - the fastest), 'moderate' (also 90/180/
+    270 degrees), or 'deep' (also every 15 degrees in between). Each mode
+    includes the ones before it: everything is indexed 'quick' first so it's
+    searchable right away, then the deeper passes run in the background - see
+    `vethuq_core.ocr.OCR_PHASE_ANGLES`.
+    """
+    value = get_setting(conn, OCR_ENGINE_KEY)
+    return value if value is not None else DEFAULT_OCR_ENGINE
+
+
+def set_ocr_engine(conn: sqlite3.Connection, value: str) -> None:
+    if value not in OCR_ENGINE_MODES:
+        raise InvalidSettingValueError(f"value must be one of {OCR_ENGINE_MODES}")
+    set_setting(conn, OCR_ENGINE_KEY, value)
 
 
 def get_stale_lock(conn: sqlite3.Connection) -> str:

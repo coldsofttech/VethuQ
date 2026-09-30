@@ -7,6 +7,7 @@ from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
+    _refresh_document_paths,
     add_source,
     list_sources,
     purge_expired_removed_sources,
@@ -122,10 +123,12 @@ def _insert_document(conn: sqlite3.Connection, document_id: int | None = None, *
         ).lastrowid
     columns = ["document_id", *fields.keys()]
     placeholders = ", ".join("?" * len(columns))
-    return conn.execute(
+    row_id = conn.execute(
         f"INSERT INTO document_index ({', '.join(columns)}) VALUES ({placeholders})",
         (document_id, *fields.values()),
     ).lastrowid
+    assert row_id is not None
+    return row_id
 
 
 def test_purge_expired_removed_sources_deletes_stale_removed_rows(
@@ -165,9 +168,7 @@ def test_purge_expired_removed_sources_deletes_stale_removed_rows(
     )
     # The logical document is now unreferenced by any physical row - pruned too.
     assert (
-        conn.execute(
-            "SELECT * FROM documents WHERE id = ?", (logical_document_id,)
-        ).fetchone()
+        conn.execute("SELECT * FROM documents WHERE id = ?", (logical_document_id,)).fetchone()
         is None
     )
 
@@ -334,3 +335,83 @@ def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Conn
 
     assert purged == 0
     assert conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone() is not None
+
+
+def test_document_primary_path_moves_to_surviving_copy_on_purge(conn: sqlite3.Connection, tmp_path):
+    removed_folder = tmp_path / "removed"
+    removed_folder.mkdir()
+    removed_source = add_source(conn, removed_folder)
+    (tmp_path / "kept.pdf").write_bytes(b"pdf bytes")
+    kept_source = add_source(conn, tmp_path / "kept.pdf")
+
+    original_id = _insert_document(
+        conn,
+        source_id=removed_source.id,
+        file_path="/removed/original.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
+    logical_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
+    ).fetchone()["document_id"]
+    _insert_document(
+        conn,
+        document_id=logical_document_id,
+        source_id=kept_source.id,
+        file_path="/kept/copy.pdf",
+        file_type="pdf",
+        status="indexed",
+        checksum="abc",
+    )
+    _refresh_document_paths(conn, {logical_document_id})
+    assert _primary_path(conn, logical_document_id) == "/removed/original.pdf"
+
+    remove_source(conn, removed_source.id)
+    stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
+    conn.execute(
+        "UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, removed_source.id)
+    )
+    conn.commit()
+
+    purge_expired_removed_sources(conn, retention_minutes=30)
+
+    assert _primary_path(conn, logical_document_id) == "/kept/copy.pdf"
+
+
+def test_document_primary_path_skips_removed_copies_and_is_null_when_none_left(
+    conn: sqlite3.Connection, tmp_path
+):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    first_id = _insert_document(
+        conn, source_id=source.id, file_path="/docs/a.pdf", file_type="pdf", status="indexed"
+    )
+    logical_document_id = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (first_id,)
+    ).fetchone()["document_id"]
+    second_id = _insert_document(
+        conn,
+        document_id=logical_document_id,
+        source_id=source.id,
+        file_path="/docs/b.pdf",
+        file_type="pdf",
+        status="indexed",
+    )
+
+    _refresh_document_paths(conn, {logical_document_id})
+    assert _primary_path(conn, logical_document_id) == "/docs/a.pdf"
+
+    conn.execute("UPDATE document_index SET status = 'removed' WHERE id = ?", (first_id,))
+    _refresh_document_paths(conn, {logical_document_id})
+    assert _primary_path(conn, logical_document_id) == "/docs/b.pdf"
+
+    conn.execute("UPDATE document_index SET status = 'removed' WHERE id = ?", (second_id,))
+    _refresh_document_paths(conn, {logical_document_id})
+    assert _primary_path(conn, logical_document_id) is None
+
+
+def _primary_path(conn: sqlite3.Connection, document_id: int) -> str | None:
+    row = conn.execute("SELECT file_path FROM documents WHERE id = ?", (document_id,)).fetchone()
+    return row["file_path"]

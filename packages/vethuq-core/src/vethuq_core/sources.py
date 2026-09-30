@@ -36,6 +36,7 @@ from vethuq_core.db import (
     reactivate_source,
     reassign_image_pages_document,
     reassign_pdf_pages_document,
+    refresh_document_file_path,
     soft_delete_source,
 )
 
@@ -201,6 +202,18 @@ def _prune_orphaned_documents(conn: sqlite3.Connection, document_ids: set[int]) 
             delete_document(conn, document_id)
 
 
+def _refresh_document_paths(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    """Point each `documents` row's `file_path` at its earliest non-'removed' copy.
+
+    A logical document can live at several paths (one `document_index` row per
+    copy); `documents.file_path` is the primary one. It's NULL when no copy is
+    left on disk. Called wherever a document's set of copies, or one copy's
+    path or status, changes.
+    """
+    for document_id in document_ids:
+        refresh_document_file_path(conn, document_id)
+
+
 def purge_expired_removed_sources(
     conn: sqlite3.Connection, retention_minutes: int | None = None
 ) -> int:
@@ -236,6 +249,7 @@ def purge_expired_removed_sources(
     delete_document_index_for_sources(conn, source_ids)
     delete_sources_by_ids(conn, source_ids)
     _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     clear_index_run_targets(conn, stale_targets)
 
@@ -280,6 +294,7 @@ def purge_expired_removed_documents(
         delete_image_pages_for_document(conn, document_index_id)
     delete_document_index_by_ids(conn, list(doomed_ids))
     _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     conn.commit()
     return len(doomed_ids)

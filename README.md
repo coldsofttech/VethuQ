@@ -51,6 +51,8 @@ vethuq search "invoice total"
 
 Each result shows the file it was found in and a snippet of the matching text, with your search term highlighted. How much surrounding text is shown can be adjusted with `vethuq settings search snippet set <characters>`. While viewing results, press `e` to export them to a file (you'll be asked for a filename and format), or `q` to close without exporting.
 
+Text that's rotated or sideways (labels on a drawing, a photographed page, a stamp at an angle) is found in extra passes that run in the background. Every file is indexed quickly first, so it's searchable right away, and deeper passes then add more text while indexing carries on. Choose how thorough they are with `vethuq settings index engine set <quick|moderate|deep>` — `quick` (the default) reads upright text only, `moderate` also looks at 90°, 180° and 270° rotations, and `deep` also tries every 15°. New files always get their quick pass before any deeper work continues.
+
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 
 Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file type and text source. `vethuq stats reset` clears them if you want a fresh baseline.

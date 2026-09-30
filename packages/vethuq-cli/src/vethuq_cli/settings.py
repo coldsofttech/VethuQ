@@ -6,10 +6,12 @@ import typer
 from rich.text import Text
 from vethuq_core.db import connect
 from vethuq_core.settings import (
+    OCR_ENGINE_MODES,
     SEARCH_EXPORT_FORMATS,
     STALE_LOCK_VALUES,
     THREAD_WORKERS_AUTO,
     THREAD_WORKERS_MAX,
+    get_ocr_engine,
     get_ocr_retry_attempts,
     get_removed_source_retention_minutes,
     get_search_export_format,
@@ -18,6 +20,7 @@ from vethuq_core.settings import (
     get_thread_workers,
     is_gpu_enabled,
     set_gpu_enabled,
+    set_ocr_engine,
     set_ocr_retry_attempts,
     set_removed_source_retention_minutes,
     set_search_export_format,
@@ -45,6 +48,9 @@ stale_lock_app = typer.Typer(
     help="Configure whether a lock left behind by a run that didn't exit cleanly "
     "is auto-cleared on the next run."
 )
+engine_app = typer.Typer(
+    help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
+)
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
@@ -54,6 +60,7 @@ index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(ocr_retry_app, name="ocr-retry")
 index_app.add_typer(thread_workers_app, name="thread-workers")
 index_app.add_typer(stale_lock_app, name="stale-lock")
+index_app.add_typer(engine_app, name="engine")
 
 
 @gpu_app.command("enable")
@@ -302,5 +309,46 @@ def stale_lock_set(
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Stale lock set to ", (value, "bright_blue"), "."))
+    finally:
+        conn.close()
+
+
+@engine_app.command("show")
+def engine_show() -> None:
+    """Show how thoroughly OCR looks for rotated text."""
+    conn = connect()
+    try:
+        console.print(Text.assemble("OCR engine: ", (get_ocr_engine(conn), "bright_blue")))
+    finally:
+        conn.close()
+
+
+@engine_app.command("set")
+def engine_set(
+    value: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=(
+            f"One of: {', '.join(OCR_ENGINE_MODES)}. quick reads upright text only; moderate "
+            "also reads 90/180/270 degree rotations; deep also reads every 15 degrees. "
+            "Files are always indexed quick first, then deeper passes run in the background."
+        ),
+    ),
+) -> None:
+    """Set how thoroughly OCR looks for rotated text.
+
+    Every file is indexed quick first so it's searchable right away; moderate
+    and deep then add text found in rotated passes while indexing continues.
+    Files already indexed are brought up to the new level the next time
+    indexing runs.
+    """
+    conn = connect()
+    try:
+        try:
+            set_ocr_engine(conn, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style="bold red")
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("OCR engine set to ", (value, "bright_blue"), "."))
     finally:
         conn.close()

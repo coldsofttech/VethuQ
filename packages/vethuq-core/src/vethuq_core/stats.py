@@ -22,6 +22,7 @@ class ProcessingMetric:
     avg_peak_memory_mb: float
     avg_cpu_percent: float
     updated_at: str
+    phase: int = 1  # 1 = quick, 2 = moderate, 3 = deep
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class ConfidenceMetric:
 
 
 def get_processing_metrics(conn: sqlite3.Connection) -> list[ProcessingMetric]:
-    """Return `processing_metrics`' per-(file_type, size_bucket) running averages."""
+    """Return `processing_metrics`' per-(phase, file_type, size_bucket) running averages."""
     return [ProcessingMetric(**dict(row)) for row in list_processing_metrics(conn)]
 
 

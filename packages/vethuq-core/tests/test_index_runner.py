@@ -55,9 +55,9 @@ def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
     add_source(conn, folder)
 
 
-def _fake_run_ocr_batch(
+def _fake_run_ocr_phased(
     conn,
-    sources,
+    resolve_sources,
     *,
     only_failed=False,
     workers=1,
@@ -65,6 +65,7 @@ def _fake_run_ocr_batch(
     on_file_done=None,
     on_workers_changed=None,
     should_stop=None,
+    **_phase_callbacks,
 ):
     processed = []
     for file_path in ("a.pdf", "b.pdf", "c.pdf"):
@@ -84,7 +85,7 @@ def test_run_worker_completes(db_path, conn, tmp_path):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr_batch", side_effect=_fake_run_ocr_batch),
+        patch.object(index_runner, "run_ocr_phased", side_effect=_fake_run_ocr_phased),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -106,9 +107,9 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
     _register_source(conn, tmp_path)
     conn.close()
 
-    def fake_run_ocr_batch(
+    def fake_run_ocr_phased(
         conn,
-        sources,
+        resolve_sources,
         *,
         only_failed=False,
         workers=1,
@@ -116,6 +117,7 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
         on_file_done=None,
         on_workers_changed=None,
         should_stop=None,
+        **_phase_callbacks,
     ):
         processed = []
         for file_path in ("a.pdf", "b.pdf", "c.pdf"):
@@ -132,7 +134,7 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
+        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -154,9 +156,9 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
 
     monkeypatch.setattr(index_runner.time, "sleep", fake_sleep)
 
-    def fake_run_ocr_batch(
+    def fake_run_ocr_phased(
         conn,
-        sources,
+        resolve_sources,
         *,
         only_failed=False,
         workers=1,
@@ -164,6 +166,7 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
         on_file_done=None,
         on_workers_changed=None,
         should_stop=None,
+        **_phase_callbacks,
     ):
         assert should_stop() is False
         index_runner._set_control(db_path, "pause")
@@ -172,7 +175,7 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=0),
-        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
+        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
     ):
         index_runner._run_worker(db_path, None)
 
@@ -188,9 +191,9 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
 
     seen = {}
 
-    def fake_run_ocr_batch(
+    def fake_run_ocr_phased(
         conn,
-        sources,
+        resolve_sources,
         *,
         only_failed=False,
         workers=1,
@@ -198,13 +201,14 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
         on_file_done=None,
         on_workers_changed=None,
         should_stop=None,
+        **_phase_callbacks,
     ):
         seen["only_failed"] = only_failed
         return []
 
     with (
         patch.object(index_runner, "pending_file_count", return_value=0) as fake_count,
-        patch.object(index_runner, "run_ocr_batch", side_effect=fake_run_ocr_batch),
+        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
     ):
         index_runner._run_worker(db_path, None, restart=True)
 
