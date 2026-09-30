@@ -18,7 +18,9 @@ from typer.testing import CliRunner
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> vethuq.Vethuq:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    monkeypatch.setattr("vethuq._core.db.user_data_dir", lambda *args, **kwargs: str(data_dir))
+    monkeypatch.setattr(
+        "vethuq._core.db.connection.user_data_dir", lambda *args, **kwargs: str(data_dir)
+    )
     return vethuq.Vethuq()
 
 
