@@ -30,14 +30,21 @@ def _add_source(conn, path: str = "/docs") -> int:
     return cursor.lastrowid
 
 
+def _add_document(conn) -> int:
+    return conn.execute(
+        "INSERT INTO documents (created_at) VALUES (?)", (datetime.now(UTC).isoformat(),)
+    ).lastrowid
+
+
 def _seed_indexed_pdf(db_path, file_path: str, text: str, page_number: int = 1) -> int:
     conn = db_module.connect(db_path)
     try:
         source_id = _add_source(conn, path=file_path + ".source")
+        logical_document_id = _add_document(conn)
         document_id = conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'pdf', 'indexed')",
-            (source_id, file_path),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'pdf', 'indexed')",
+            (source_id, logical_document_id, file_path),
         ).lastrowid
         assert document_id is not None
         conn.execute(
@@ -55,10 +62,11 @@ def _seed_indexed_image(db_path, file_path: str, text: str) -> int:
     conn = db_module.connect(db_path)
     try:
         source_id = _add_source(conn, path=file_path + ".source")
+        logical_document_id = _add_document(conn)
         document_id = conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'image', 'indexed')",
-            (source_id, file_path),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'image', 'indexed')",
+            (source_id, logical_document_id, file_path),
         ).lastrowid
         assert document_id is not None
         conn.execute(
@@ -191,10 +199,11 @@ def test_search_multiple_pages_of_same_file_print_file_once(tmp_path, monkeypatc
     conn = db_module.connect(db_path)
     try:
         source_id = _add_source(conn)
+        logical_document_id = _add_document(conn)
         document_id = conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, '/docs/report.pdf', 'pdf', 'indexed')",
-            (source_id,),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, '/docs/report.pdf', 'pdf', 'indexed')",
+            (source_id, logical_document_id),
         ).lastrowid
         conn.execute(
             "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
@@ -318,10 +327,11 @@ def test_search_different_files_each_get_their_own_file_line(tmp_path, monkeypat
     conn = db_module.connect(db_path)
     try:
         source_id = _add_source(conn)
+        logical_document_id = _add_document(conn)
         document_id = conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, '/docs/a.pdf', 'pdf', 'indexed')",
-            (source_id,),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, '/docs/a.pdf', 'pdf', 'indexed')",
+            (source_id, logical_document_id),
         ).lastrowid
         conn.execute(
             "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "

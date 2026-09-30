@@ -246,10 +246,13 @@ def test_deepening_units_order_moderate_before_deep_and_skip_native(conn, tmp_pa
     folder.mkdir()
     source = add_source(conn, folder)
     for index, (phase, page_source) in enumerate([(2, "ocr"), (1, "ocr"), (1, "native")], start=1):
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
+        ).lastrowid
         conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'pdf', 'indexed')",
-            (source.id, str(folder / f"{index}.pdf")),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'pdf', 'indexed')",
+            (source.id, document_id, str(folder / f"{index}.pdf")),
         )
         conn.execute(
             "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence, source, "
@@ -312,10 +315,13 @@ def test_deepening_progress_counts_pages_done_per_phase(conn, tmp_path):
     for index, (phase, page_source) in enumerate(
         [(1, "ocr"), (2, "ocr"), (3, "ocr"), (1, "native")], start=1
     ):
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
+        ).lastrowid
         conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'pdf', 'indexed')",
-            (source.id, str(folder / f"{index}.pdf")),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'pdf', 'indexed')",
+            (source.id, document_id, str(folder / f"{index}.pdf")),
         )
         conn.execute(
             "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence, source, "
@@ -341,9 +347,10 @@ def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(tmp_path)
     folder = tmp_path / "src"
     folder.mkdir()
     source = add_source(setup, folder)
+    setup.execute("INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01')")
     setup.execute(
-        "INSERT INTO document_index (id, source_id, file_path, file_type, status) "
-        "VALUES (1, ?, 'x.pdf', 'pdf', 'indexed')",
+        "INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status) "
+        "VALUES (1, ?, 1, 'x.pdf', 'pdf', 'indexed')",
         (source.id,),
     )
     setup.execute(
@@ -425,7 +432,8 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
     run_ocr_phased(conn, lambda: [get_source(conn, source.id)], should_stop=should_stop)
 
     a_row = conn.execute(
-        "SELECT dp.* FROM document_phases dp JOIN document_index d ON d.id = dp.document_id "
+        "SELECT dp.* FROM document_phases dp "
+        "JOIN document_index d ON d.document_id = dp.document_id "
         "WHERE d.file_path LIKE '%a.png' AND dp.phase = 2"
     ).fetchone()
     assert a_row is not None and a_row["started_at"]

@@ -140,7 +140,8 @@ def test_connect_migrates_document_index_missing_checksum_columns(tmp_path):
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         assert "checksum" in columns
-        assert "duplicate_of_id" in columns
+        assert "document_id" in columns
+        assert "duplicate_of_id" not in columns
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
         assert version == SCHEMA_VERSION
@@ -330,8 +331,18 @@ def test_connect_migrates_processing_metrics_confidence_split(tmp_path):
             file_path TEXT NOT NULL UNIQUE,
             file_type TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            indexed_at TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            file_size_bytes INTEGER,
             checksum TEXT,
-            removed_at TEXT
+            duplicate_of_id INTEGER REFERENCES document_index(id),
+            mtime REAL,
+            removed_at TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            peak_memory_mb REAL,
+            cpu_percent REAL
         );
         CREATE TABLE pdf_pages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

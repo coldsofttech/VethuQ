@@ -156,42 +156,77 @@ def remove_source(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Sou
 
 
 def _promote_surviving_duplicate(
-    conn: sqlite3.Connection, document_id: int, doomed_ids: set[int]
+    conn: sqlite3.Connection, document_index_id: int, doomed_ids: set[int]
 ) -> None:
-    """Before deleting `document_id`, hand off its OCR content if it's an "original".
+    """Before `document_index_id`'s content moves on, hand off its OCR pages if it holds any.
 
-    If other documents link to `document_id` via `duplicate_of_id` (it's the
-    original they deduped against) and at least one of them isn't also about
-    to be deleted, the earliest-indexed survivor is promoted to original in
-    its place: it takes over the OCR pages (re-keyed to its own id) and every
-    other duplicate is repointed to it. If every duplicate is doomed too, the
-    whole content cluster is disappearing together and nothing needs promoting.
+    Every `document_index` row sharing `document_index_id`'s `document_id` is
+    content-identical to it (they're the same logical document). If it's the
+    one currently holding the OCR pages for that document and at least one
+    peer isn't also about to be deleted (`doomed_ids`), the earliest-id
+    survivor takes over those pages (re-keyed to its own id) so the logical
+    document keeps reflecting content that's still on disk. If every peer is
+    doomed too, or `document_index_id` never held any pages of its own (it
+    was already just a checksum link), there's nothing to hand off.
     """
-    duplicates = conn.execute(
-        "SELECT id FROM document_index WHERE duplicate_of_id = ? ORDER BY id ASC",
-        (document_id,),
+    row = conn.execute(
+        "SELECT document_id FROM document_index WHERE id = ?", (document_index_id,)
+    ).fetchone()
+    if row is None:
+        return
+
+    peers = conn.execute(
+        "SELECT id FROM document_index WHERE document_id = ? AND id != ? ORDER BY id ASC",
+        (row["document_id"], document_index_id),
     ).fetchall()
-    survivors = [row["id"] for row in duplicates if row["id"] not in doomed_ids]
+    survivors = [peer["id"] for peer in peers if peer["id"] not in doomed_ids]
     if not survivors:
         return
 
-    new_original_id = survivors[0]
+    new_carrier_id = survivors[0]
     conn.execute(
         "UPDATE pdf_pages SET document_id = ? WHERE document_id = ?",
-        (new_original_id, document_id),
+        (new_carrier_id, document_index_id),
     )
     conn.execute(
         "UPDATE image_pages SET document_id = ? WHERE document_id = ?",
-        (new_original_id, document_id),
+        (new_carrier_id, document_index_id),
     )
-    conn.execute(
-        "UPDATE document_index SET duplicate_of_id = ? WHERE duplicate_of_id = ? AND id != ?",
-        (new_original_id, document_id, new_original_id),
-    )
-    conn.execute(
-        "UPDATE document_index SET duplicate_of_id = NULL WHERE id = ?",
-        (new_original_id,),
-    )
+
+
+def _prune_orphaned_documents(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    """Delete any `documents` row in `document_ids` no `document_index` row references anymore.
+
+    Every `document_index` row is required to carry a `document_id` (its
+    logical document), so a `documents` row that's lost its last referencing
+    physical row is dead weight rather than data - this is called wherever a
+    document_index row's `document_id` changes away from a value or the row
+    itself is deleted.
+    """
+    for document_id in document_ids:
+        still_referenced = conn.execute(
+            "SELECT 1 FROM document_index WHERE document_id = ? LIMIT 1", (document_id,)
+        ).fetchone()
+        if still_referenced is None:
+            conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+
+
+def _refresh_document_paths(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    """Point each `documents` row's `file_path` at its earliest non-'removed' copy.
+
+    A logical document can live at several paths (one `document_index` row per
+    copy); `documents.file_path` is the primary one. It's NULL when no copy is
+    left on disk. Called wherever a document's set of copies, or one copy's
+    path or status, changes.
+    """
+    for document_id in document_ids:
+        conn.execute(
+            "UPDATE documents SET file_path = ("
+            "SELECT file_path FROM document_index "
+            "WHERE document_id = documents.id AND status != 'removed' "
+            "ORDER BY id ASC LIMIT 1) WHERE id = ?",
+            (document_id,),
+        )
 
 
 def purge_expired_removed_sources(
@@ -222,28 +257,22 @@ def purge_expired_removed_sources(
     # the caller typed into index_runs.target - once the source is gone,
     # either form is a dangling reference, so both are cleared.
     stale_targets = [str(row["id"]) for row in expired] + [row["path"] for row in expired]
-    doomed_ids = {
-        row["id"]
-        for row in conn.execute(
-            f"SELECT id FROM document_index WHERE source_id IN ({placeholders})",
-            source_ids,
-        ).fetchall()
-    }
-    for document_id in doomed_ids:
-        _promote_surviving_duplicate(conn, document_id, doomed_ids)
+    doomed_rows = conn.execute(
+        f"SELECT id, document_id FROM document_index WHERE source_id IN ({placeholders})",
+        source_ids,
+    ).fetchall()
+    doomed_ids = {row["id"] for row in doomed_rows}
+    doomed_document_ids = {row["document_id"] for row in doomed_rows}
+    for document_index_id in doomed_ids:
+        _promote_surviving_duplicate(conn, document_index_id, doomed_ids)
 
-    for document_id in doomed_ids:
-        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
-    # One statement across every doomed source, not one per source_id: a
-    # doomed document can be duplicate_of_id'd by another doomed document in
-    # a *different* expired source (_promote_surviving_duplicate leaves that
-    # reference alone when every duplicate is doomed too - see its
-    # docstring). Deleting source-by-source would try to delete the
-    # referenced row before the referencing one, in its own statement,
-    # tripping the self-referential FK even though both rows are about to go.
+    for document_index_id in doomed_ids:
+        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_index_id,))
+        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_index_id,))
     conn.execute(f"DELETE FROM document_index WHERE source_id IN ({placeholders})", source_ids)
     conn.execute(f"DELETE FROM sources WHERE id IN ({placeholders})", source_ids)
+    _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     target_placeholders = ",".join("?" * len(stale_targets))
     conn.execute(
@@ -285,14 +314,23 @@ def purge_expired_removed_documents(
         return 0
 
     doomed_ids = {row["id"] for row in expired}
-    for document_id in doomed_ids:
-        _promote_surviving_duplicate(conn, document_id, doomed_ids)
-
-    for document_id in doomed_ids:
-        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_id,))
-        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_id,))
     placeholders = ",".join("?" * len(doomed_ids))
+    doomed_document_ids = {
+        row["document_id"]
+        for row in conn.execute(
+            f"SELECT document_id FROM document_index WHERE id IN ({placeholders})",
+            list(doomed_ids),
+        ).fetchall()
+    }
+    for document_index_id in doomed_ids:
+        _promote_surviving_duplicate(conn, document_index_id, doomed_ids)
+
+    for document_index_id in doomed_ids:
+        conn.execute("DELETE FROM pdf_pages WHERE document_id = ?", (document_index_id,))
+        conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_index_id,))
     conn.execute(f"DELETE FROM document_index WHERE id IN ({placeholders})", list(doomed_ids))
+    _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     conn.commit()
     return len(doomed_ids)
