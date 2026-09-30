@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          uv run pytest --cov --cov-report=xml
+          uv run pytest -n auto --cov --cov-report=xml
           code=$?
           # pytest exits 5 when no tests were collected — not a failure this early in the project.
           if [ $code -eq 5 ]; then

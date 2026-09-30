@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,8 +15,6 @@ from vethuq_core.ocr import (
 )
 from vethuq_core.settings import set_gpu_enabled
 from vethuq_core.sources import add_source, purge_expired_removed_documents
-
-FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
 
 
 @pytest.fixture
@@ -623,77 +620,3 @@ def test_is_native_text_threshold():
     assert not _is_native_text("p.3")
     assert not _is_native_text("a-long-single-token-with-no-spaces-at-all")
     assert _is_native_text("This is a real paragraph of page content.")
-
-
-@patch("vethuq_core.ocr._get_engine")
-def test_run_ocr_digital_pdf_skips_engine_entirely(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    pdf_path = tmp_path / "digital.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
-    source = add_source(conn, pdf_path)
-
-    run_ocr(conn, source)
-
-    mock_get_engine.assert_not_called()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    assert doc["status"] == "indexed"
-
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "native"
-    assert page["confidence"] == pytest.approx(1.0)
-    assert len(page["ocr_text"]) > 0
-
-
-@patch("vethuq_core.ocr._get_engine")
-def test_run_ocr_scanned_pdf_runs_full_page_ocr(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    engine = MagicMock()
-    engine.predict.return_value = _fake_ocr_result("scanned page text")
-    mock_get_engine.return_value = engine
-
-    pdf_path = tmp_path / "scanned.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
-    source = add_source(conn, pdf_path)
-
-    run_ocr(conn, source)
-
-    engine.predict.assert_called_once()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "ocr"
-    assert page["ocr_text"] == "scanned page text"
-
-
-@patch("vethuq_core.ocr._get_engine")
-def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    engine = MagicMock()
-    engine.predict.return_value = _fake_ocr_result("banner region text")
-    mock_get_engine.return_value = engine
-
-    pdf_path = tmp_path / "mixed.pdf"
-    pdf_path.write_bytes(
-        (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
-    )
-    source = add_source(conn, pdf_path)
-
-    run_ocr(conn, source)
-
-    engine.predict.assert_called_once()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "mixed"
-    assert "Discover Andhra Pradesh" in page["ocr_text"]
-    assert "banner region text" in page["ocr_text"]

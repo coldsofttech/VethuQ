@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq stats show` displays accumulated OCR processing and confidence statistics, and `vethuq stats reset` (with confirmation, or `--force`) clears them for a fresh baseline.
 - If VethuQ is closed abruptly (e.g. a crash or power loss) mid-indexing, the next run now recovers on its own instead of needing `--force` — configurable with `vethuq settings index stale-lock set/show` (auto-recovers by default).
 - OCR now detects and corrects rotated pages and rotated text lines (e.g. scanned or photographed documents that aren't perfectly upright), instead of assuming every page is already correctly oriented.
+- The test suite now runs in parallel and covers real PDF, PNG and JPEG sample files and the `vethuq` Python package.
 
 ### Fixed
 
