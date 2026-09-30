@@ -270,12 +270,15 @@ def indexed_client(client: vethuq.Vethuq, tmp_path: Path) -> vethuq.Vethuq:
         "VALUES ('/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00')"
     )
     conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status) "
-        "VALUES (1, '/docs/invoice.pdf', 'pdf', 'indexed')"
+        "INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01'), (2, '2026-01-01')"
     )
     conn.execute(
-        "INSERT INTO document_index (source_id, file_path, file_type, status) "
-        "VALUES (1, '/docs/scan.png', 'image', 'indexed')"
+        "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+        "VALUES (1, 1, '/docs/invoice.pdf', 'pdf', 'indexed')"
+    )
+    conn.execute(
+        "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+        "VALUES (1, 2, '/docs/scan.png', 'image', 'indexed')"
     )
     conn.execute(
         "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "

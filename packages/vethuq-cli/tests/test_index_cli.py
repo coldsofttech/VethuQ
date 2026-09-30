@@ -362,10 +362,13 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     folder.mkdir()
     source = add_source(conn, folder)
     for index, phase in enumerate((1, 2, 3), start=1):
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
+        ).lastrowid
         conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'image', 'indexed')",
-            (source.id, str(folder / f"{index}.png")),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'image', 'indexed')",
+            (source.id, document_id, str(folder / f"{index}.png")),
         )
         conn.execute(
             "INSERT INTO image_pages (document_id, ocr_text, confidence, ocr_phase, ocr_angles) "
@@ -414,10 +417,13 @@ def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monke
     conn.execute("UPDATE sources SET status = 'indexed' WHERE id = ?", (source.id,))
     # Two indexed image documents, both still waiting on moderate and deep.
     for index in (1, 2):
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
+        ).lastrowid
         conn.execute(
-            "INSERT INTO document_index (source_id, file_path, file_type, status) "
-            "VALUES (?, ?, 'image', 'indexed')",
-            (source.id, str(folder / f"{index}.png")),
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'image', 'indexed')",
+            (source.id, document_id, str(folder / f"{index}.png")),
         )
         conn.execute(
             "INSERT INTO image_pages (document_id, ocr_text, confidence, ocr_phase, ocr_angles) "
