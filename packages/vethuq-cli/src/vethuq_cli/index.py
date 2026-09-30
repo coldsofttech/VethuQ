@@ -15,7 +15,11 @@ from rich.progress import TextColumn as ProgressTextColumn
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import (
+    connect,
+    get_processing_metrics_avg_duration_by_file_type,
+    list_index_runs,
+)
 from vethuq_core.index_runner import (
     AlreadyRunningError,
     IndexRunnerError,
@@ -69,13 +73,7 @@ def _average_durations(conn: sqlite3.Connection, phase: int) -> dict[str, float]
     """
     return {
         row["file_type"]: row["avg_duration_seconds"]
-        for row in conn.execute(
-            "SELECT file_type, "
-            "SUM(avg_duration_seconds * document_count) / SUM(document_count) "
-            "AS avg_duration_seconds "
-            "FROM processing_metrics WHERE phase = ? AND document_count > 0 GROUP BY file_type",
-            (phase,),
-        )
+        for row in get_processing_metrics_avg_duration_by_file_type(conn, phase)
     }
 
 
@@ -474,24 +472,16 @@ def history(
     """List past background index runs, optionally filtered to one source."""
     conn = connect()
     try:
-        if target is None:
-            rows = conn.execute(
-                "SELECT * FROM index_runs ORDER BY started_at DESC LIMIT ?", (limit,)
-            ).fetchall()
-        else:
+        if target is not None:
             try:
                 get_source(conn, _coerce_target(target))
             except SourceNotFoundError as exc:
                 error_console.print(str(exc), style="bold red")
                 raise typer.Exit(code=1) from exc
-            # A run over "all sources" (target IS NULL) would have covered
-            # this source too, so it's included alongside runs targeted at
-            # just this source.
-            rows = conn.execute(
-                "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
-                "ORDER BY started_at DESC LIMIT ?",
-                (target, limit),
-            ).fetchall()
+        # A run over "all sources" (target IS NULL) would have covered a
+        # specific `target` source too, so it's included alongside runs
+        # targeted at just that source.
+        rows = list_index_runs(conn, target, limit)
     finally:
         conn.close()
 

@@ -19,6 +19,7 @@ from vethuq_core.index_runner import (
     IndexState,
     StaleLockError,
     is_running,
+    list_index_runs,
     read_state,
     request_pause,
     request_resume,
@@ -520,11 +521,7 @@ class MainWindow(tk.Tk):
 
         # A run over "all sources" (target IS NULL) would have covered this
         # source too, so it's included alongside runs targeted at just it.
-        rows = self.conn.execute(
-            "SELECT * FROM index_runs WHERE target = ? OR target IS NULL "
-            "ORDER BY started_at DESC LIMIT 20",
-            (source_id,),
-        ).fetchall()
+        runs = list_index_runs(self.conn, source_id, limit=20)
 
         for child in self._sources_history_pane.winfo_children():
             child.destroy()
@@ -553,17 +550,17 @@ class MainWindow(tk.Tk):
         hscroll.pack(side=tk.BOTTOM, fill=tk.X, padx=8)
         tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
-        for row in rows:
+        for run in runs:
             tree.insert(
                 "",
                 tk.END,
                 values=(
-                    self._format_history_timestamp(row["started_at"]),
-                    row["mode"].capitalize(),
-                    row["target"] if row["target"] is not None else "All sources",
-                    row["status"].capitalize(),
-                    f"{row['processed_files']}/{row['total_files']}",
-                    row["failed_files"],
+                    self._format_history_timestamp(run.started_at),
+                    run.mode.capitalize(),
+                    run.target if run.target is not None else "All sources",
+                    run.status.capitalize(),
+                    f"{run.processed_files}/{run.total_files}",
+                    run.failed_files,
                 ),
             )
 

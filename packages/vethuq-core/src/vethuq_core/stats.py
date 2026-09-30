@@ -5,6 +5,13 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 
+from vethuq_core.db import (
+    clear_confidence_metrics,
+    clear_processing_metrics,
+    list_confidence_metrics,
+    list_processing_metrics,
+)
+
 
 @dataclass(frozen=True)
 class ProcessingMetric:
@@ -29,21 +36,12 @@ class ConfidenceMetric:
 
 def get_processing_metrics(conn: sqlite3.Connection) -> list[ProcessingMetric]:
     """Return `processing_metrics`' per-(phase, file_type, size_bucket) running averages."""
-    rows = conn.execute(
-        "SELECT phase, file_type, size_bucket, document_count, avg_duration_seconds, "
-        "avg_peak_memory_mb, avg_cpu_percent, updated_at FROM processing_metrics "
-        "ORDER BY phase, file_type, size_bucket"
-    ).fetchall()
-    return [ProcessingMetric(**dict(row)) for row in rows]
+    return [ProcessingMetric(**dict(row)) for row in list_processing_metrics(conn)]
 
 
 def get_confidence_metrics(conn: sqlite3.Connection) -> list[ConfidenceMetric]:
     """Return `confidence_metrics`' per-(file_type, process_type) running averages."""
-    rows = conn.execute(
-        "SELECT file_type, process_type, page_count, avg_confidence, updated_at "
-        "FROM confidence_metrics ORDER BY file_type, process_type"
-    ).fetchall()
-    return [ConfidenceMetric(**dict(row)) for row in rows]
+    return [ConfidenceMetric(**dict(row)) for row in list_confidence_metrics(conn)]
 
 
 def reset_metrics(conn: sqlite3.Connection) -> None:
@@ -54,6 +52,6 @@ def reset_metrics(conn: sqlite3.Connection) -> None:
     clearing them makes that estimate unavailable again until enough newly
     (re)indexed files have rebuilt the averages.
     """
-    conn.execute("DELETE FROM processing_metrics")
-    conn.execute("DELETE FROM confidence_metrics")
+    clear_processing_metrics(conn)
+    clear_confidence_metrics(conn)
     conn.commit()

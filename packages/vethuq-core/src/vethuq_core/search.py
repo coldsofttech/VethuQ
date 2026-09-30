@@ -6,6 +6,11 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from vethuq_core.db import (
+    get_pdf_page_counts_by_document,
+    list_indexed_image_pages,
+    list_indexed_pdf_pages,
+)
 from vethuq_core.settings import get_search_snippet_context_chars
 
 
@@ -40,28 +45,8 @@ def _indexed_pages(
     `document_id`/`file_path`), reusing the carrier's OCR text, so it still
     surfaces as its own search result.
     """
-    pdf_rows = conn.execute(
-        "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
-        "pp.page_number AS page_number, carrier.id AS canonical_id, "
-        "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-        "FROM document_index di "
-        "JOIN sources s ON s.id = di.source_id "
-        "JOIN document_index carrier ON carrier.document_id = di.document_id "
-        "JOIN pdf_pages pp ON pp.document_id = carrier.id "
-        "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
-        "ORDER BY di.file_path, pp.page_number"
-    ).fetchall()
-    image_rows = conn.execute(
-        "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
-        "NULL AS page_number, carrier.id AS canonical_id, "
-        "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-        "FROM document_index di "
-        "JOIN sources s ON s.id = di.source_id "
-        "JOIN document_index carrier ON carrier.document_id = di.document_id "
-        "JOIN image_pages ip ON ip.document_id = carrier.id "
-        "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
-        "ORDER BY di.file_path"
-    ).fetchall()
+    pdf_rows = list_indexed_pdf_pages(conn)
+    image_rows = list_indexed_image_pages(conn)
     return [
         (
             row["document_id"],
@@ -76,10 +61,7 @@ def _indexed_pages(
 
 
 def _pdf_page_counts(conn: sqlite3.Connection) -> dict[int, int]:
-    rows = conn.execute(
-        "SELECT document_id, COUNT(*) AS total FROM pdf_pages GROUP BY document_id"
-    ).fetchall()
-    return {row["document_id"]: row["total"] for row in rows}
+    return {row["document_id"]: row["total"] for row in get_pdf_page_counts_by_document(conn)}
 
 
 def search_indexed_content(
