@@ -211,6 +211,24 @@ def _prune_orphaned_documents(conn: sqlite3.Connection, document_ids: set[int]) 
             conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
 
 
+def _refresh_document_paths(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    """Point each `documents` row's `file_path` at its earliest non-'removed' copy.
+
+    A logical document can live at several paths (one `document_index` row per
+    copy); `documents.file_path` is the primary one. It's NULL when no copy is
+    left on disk. Called wherever a document's set of copies, or one copy's
+    path or status, changes.
+    """
+    for document_id in document_ids:
+        conn.execute(
+            "UPDATE documents SET file_path = ("
+            "SELECT file_path FROM document_index "
+            "WHERE document_id = documents.id AND status != 'removed' "
+            "ORDER BY id ASC LIMIT 1) WHERE id = ?",
+            (document_id,),
+        )
+
+
 def purge_expired_removed_sources(
     conn: sqlite3.Connection, retention_minutes: int | None = None
 ) -> int:
@@ -254,6 +272,7 @@ def purge_expired_removed_sources(
     conn.execute(f"DELETE FROM document_index WHERE source_id IN ({placeholders})", source_ids)
     conn.execute(f"DELETE FROM sources WHERE id IN ({placeholders})", source_ids)
     _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     target_placeholders = ",".join("?" * len(stale_targets))
     conn.execute(
@@ -311,6 +330,7 @@ def purge_expired_removed_documents(
         conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_index_id,))
     conn.execute(f"DELETE FROM document_index WHERE id IN ({placeholders})", list(doomed_ids))
     _prune_orphaned_documents(conn, doomed_document_ids)
+    _refresh_document_paths(conn, doomed_document_ids)
 
     conn.commit()
     return len(doomed_ids)

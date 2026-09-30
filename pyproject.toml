@@ -20,6 +20,7 @@ vethuq-ui = { workspace = true }
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    "pytest-xdist>=3.5",
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.8",
@@ -63,3 +64,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["packages"]
+markers = [
+    "integration: tests that run against real fixture files",
+]

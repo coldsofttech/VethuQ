@@ -6,11 +6,13 @@ on:
     branches: [main, "dev/v*"]
 
 jobs:
+  # Cheap, OS-agnostic sanity check (merge_sources.py + build the wheel/sdist)
+  # that runs on every PR - vethuq is a pure-Python package (see
+  # packages/vethuq/pyproject.toml), so one OS is enough signal that
+  # packaging itself isn't broken; Windows runtime behavior is already
+  # covered by test.yml's windows-latest matrix on every PR too.
   package:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,7 +30,12 @@ jobs:
       - name: Build vethuq package
         run: uv run python scripts/dev/release.py --package
 
+  # Full PyInstaller + Inno Setup build - the expensive part (~most of this
+  # workflow's runtime). Not worth paying on every PR; runs after a PR
+  # merges to main/dev/v*, giving a release-ready branch a real build check
+  # before anyone actually cuts a `desktop-v*` tag off it.
   desktop:
+    if: github.event_name == 'push'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

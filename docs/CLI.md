@@ -248,3 +248,19 @@ schedule.
 vethuq settings index removed-retention set 60
 vethuq settings index removed-retention show
 ```
+
+### `settings index engine`
+
+Configure how thoroughly OCR looks for rotated text. One of `quick` (the
+default — upright text only), `moderate` (also 90°, 180° and 270°), or `deep`
+(also every 15° in between). Each includes the ones before it. Files are
+always indexed `quick` first so they're searchable right away; the deeper
+passes then run in the background, moderate before deep, and any new or
+changed file gets its quick pass before deeper work continues. Raising the
+setting deepens already-indexed files the next time indexing runs; lowering
+it never removes text. `vethuq index status` shows the current phase.
+
+```bash
+vethuq settings index engine set moderate
+vethuq settings index engine show
+```

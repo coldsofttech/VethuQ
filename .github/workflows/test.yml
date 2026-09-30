@@ -24,11 +24,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages --group dev
 
+      - name: Merge vethuq-core/vethuq-cli into packages/vethuq
+        run: uv run python packages/vethuq/scripts/merge_sources.py
+
       - name: Run tests
         shell: bash
         run: |
           set +e
-          uv run pytest --cov --cov-report=xml
+          uv run pytest -n auto --cov --cov-report=xml
           code=$?
           # pytest exits 5 when no tests were collected — not a failure this early in the project.
           if [ $code -eq 5 ]; then

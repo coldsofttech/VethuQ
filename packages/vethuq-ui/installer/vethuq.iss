@@ -1,47 +1,95 @@
 ; Inno Setup script for VethuQ Desktop.
-; Wraps the PyInstaller-built build\desktop\VethuQ.exe (desktop UI) and
-; build\desktop\vethuq.exe (CLI) into VethuQ-Setup.exe.
+; Wraps the PyInstaller-built build\desktop\VethuQ\ folder into VethuQ-Setup.exe:
+; VethuQ-UI.exe (desktop UI), vethuq.exe (CLI) and vethuq-worker.exe (background
+; index worker the other two spawn), sharing one lib\ library folder (named
+; via PyInstaller's --contents-directory in release.py, instead of its
+; default "_internal").
+;
+; The desktop app and CLI are independently optional [Components] (the
+; wizard's "Select Components" page); "core" - vethuq-worker.exe and lib\ -
+; is required by both (indexing runs through it either way) and can't be
+; unchecked. Since lib\ is one shared folder built from all three exes'
+; PyInstaller analyses, choosing CLI-only still installs a few UI-only
+; library files (sv_ttk, tcl/tk) - a few MB, not worth re-splitting the
+; build to avoid.
 ; Built by scripts/dev/release.py --desktop and .github/workflows/release-desktop.yml.
 
 #define MyAppName "VethuQ"
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
 #endif
-#define MyAppExeName "VethuQ.exe"
+#define MyAppExeName "VethuQ-UI.exe"
 #define MyAppCliExeName "vethuq.exe"
 
 [Setup]
 AppId={{5186479B-5A90-4D47-8626-DD8FEB85FA84}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+; Inno's default display name is "<AppName> version <AppVersion>" (shown in
+; appwiz.cpl and the installer wizard); this makes it "VethuQ v<AppVersion>".
+AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
+LicenseFile=..\..\..\LICENSE
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\..\..\dist
 OutputBaseFilename=VethuQ-Setup
-Compression=lzma2
+; The shared folder holds plain (uncompressed) library files, so a strong
+; solid LZMA2 pass shrinks the installer far more than it could the
+; already-compressed --onefile exes this replaced.
+Compression=lzma2/ultra64
 SolidCompression=yes
+LZMAUseSeparateProcess=yes
 ArchitecturesInstallIn64BitMode=x64compatible
+; Setup's own "at least X MB of free disk space is required" estimate on the
+; Select Destination Location page (shown before Select Components, so before
+; any component choice is known) comes out far too low here - observed 4.3 MB
+; against a real ~407 MB "core" install (the OCR runtime is required either
+; way; see [Components] below). Root cause not pinned down (file packaging
+; itself is correct - every file in the shared lib\ folder is present and
+; sized correctly in the compiled installer); this floor makes the figure
+; shown to the user accurate instead of chasing Setup's own calculation
+; further. ~420 MB measured for a full app+cli+core install as of the numpy
+; 2.4.6/paddle build this was measured against - rerun `du`/`Get-ChildItem
+; -Recurse | Measure-Object Length -Sum` on build\desktop\VethuQ after a
+; dependency bump and bump this if it's grown meaningfully.
+ExtraDiskSpaceRequired=450000000
 DisableProgramGroupPage=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Components]
+Name: "app"; Description: "Desktop application"; Types: full desktop
+Name: "cli"; Description: "Command-line interface (vethuq)"; Types: full cli
+; The background index worker - both the desktop app and the CLI's "index
+; run" spawn it, so it (and the library folder it needs) is required either
+; way. Shown, not hidden, so it's clear why it can't be unchecked.
+Name: "core"; Description: "Core runtime (required)"; Types: full desktop cli; Flags: fixed
+
+[Types]
+Name: "full"; Description: "Desktop application and CLI (recommended)"
+Name: "desktop"; Description: "Desktop application only"
+Name: "cli"; Description: "Command-line interface only"
+Name: "custom"; Description: "Custom installation"; Flags: iscustom
+
 [Files]
-Source: "..\..\..\build\desktop\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\..\build\desktop\{#MyAppCliExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\..\build\desktop\VethuQ\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: app
+Source: "..\..\..\build\desktop\VethuQ\{#MyAppCliExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: cli
+Source: "..\..\..\build\desktop\VethuQ\vethuq-worker.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: core
+Source: "..\..\..\build\desktop\VethuQ\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: core
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Components: app
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: app
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"
-Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Additional shortcuts:"; Flags: checkedonce
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Components: app
+Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Additional shortcuts:"; Flags: checkedonce; Components: cli
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Components: app
 
 [Code]
 const
