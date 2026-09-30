@@ -186,8 +186,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_document_index_checksum ON document_index(checksum)"
     )
     conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_document_index_document_id "
-        "ON document_index(document_id)"
+        "CREATE INDEX IF NOT EXISTS idx_document_index_document_id ON document_index(document_id)"
     )
     conn.commit()
 
@@ -466,8 +465,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         if "document_id" not in columns:
             conn.execute(
-                "ALTER TABLE document_index ADD COLUMN document_id "
-                "INTEGER REFERENCES documents(id)"
+                "ALTER TABLE document_index ADD COLUMN document_id INTEGER REFERENCES documents(id)"
             )
 
         now = datetime.now(UTC).isoformat()
@@ -489,8 +487,7 @@ def _migrate_schema(conn: sqlite3.Connection, *, from_version: int) -> None:
             ).lastrowid
             if has_duplicate_of_id:
                 conn.execute(
-                    "UPDATE document_index SET document_id = ? "
-                    "WHERE id = ? OR duplicate_of_id = ?",
+                    "UPDATE document_index SET document_id = ? WHERE id = ? OR duplicate_of_id = ?",
                     (new_document_id, root["id"], root["id"]),
                 )
             else:
