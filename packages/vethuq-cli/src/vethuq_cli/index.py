@@ -30,8 +30,15 @@ from vethuq_core.index_runner import (
     resolve_targets,
     start_run,
 )
-from vethuq_core.ocr import get_document_results, new_file_type_counts, pending_file_type_counts
-from vethuq_core.settings import THREAD_WORKERS_AUTO
+from vethuq_core.ocr import (
+    OCR_ENGINE_PHASES,
+    deepening_pending_documents,
+    deepening_progress,
+    get_document_results,
+    new_file_type_counts,
+    pending_file_type_counts,
+)
+from vethuq_core.settings import THREAD_WORKERS_AUTO, get_ocr_engine
 from vethuq_core.sources import SourceNotFoundError, get_source, list_sources
 
 from vethuq_cli.console import console, error_console
@@ -39,6 +46,7 @@ from vethuq_cli.console import console, error_console
 app = typer.Typer(help="Run OCR indexing on registered sources.")
 
 _POLL_SECONDS = 1.0
+_PHASE_NAMES = {phase: name for name, phase in OCR_ENGINE_PHASES.items()}
 _RUN_STATUS_STYLES = {
     "running": "blue",
     "completed": "green",
@@ -52,20 +60,42 @@ def _coerce_target(path_or_id: str) -> str | int:
     return int(path_or_id) if path_or_id.isdigit() else path_or_id
 
 
-def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
-    """Estimate time remaining from historical averages in `processing_metrics`.
+def _average_durations(conn: sqlite3.Connection, phase: int) -> dict[str, float]:
+    """Average document duration per file_type for `phase`, across all past runs.
 
-    Splits the target sources' still-pending files by file_type (pdf/image -
-    OCR at very different speeds) and multiplies each type's count by that
-    type's average document duration across all past runs, rather than this
-    run's own pace, which is noisy - or unavailable - early in a run.
+    `processing_metrics` has one row per (phase, file_type, size_bucket) - each
+    bucket's average is weighted by its document_count so a file_type with an
+    uneven mix of small/large files still gets one sensible average back.
+    """
+    return {
+        row["file_type"]: row["avg_duration_seconds"]
+        for row in conn.execute(
+            "SELECT file_type, "
+            "SUM(avg_duration_seconds * document_count) / SUM(document_count) "
+            "AS avg_duration_seconds "
+            "FROM processing_metrics WHERE phase = ? AND document_count > 0 GROUP BY file_type",
+            (phase,),
+        )
+    }
+
+
+def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict[int, float]:
+    """Estimate the seconds left in each OCR phase, from that phase's own history.
+
+    Each phase is sized by the documents it still has to cover, split by
+    file_type (pdf/image - OCR at very different speeds), and multiplied by
+    that type's average duration *for that phase* across all past runs,
+    rather than this run's own pace, which is noisy - or unavailable - early
+    in a run. A quick pass's timings say nothing about a deep one, so a phase
+    with no history yet simply has no estimate. Only phases the `index_engine`
+    setting reaches, and that still have work, appear in the result.
     """
     try:
         sources = resolve_targets(conn, state.target)
     except SourceNotFoundError:
-        return None
+        return {}
 
-    remaining_by_type = new_file_type_counts()
+    quick_remaining = new_file_type_counts()
     for source in sources:
         counts = pending_file_type_counts(
             conn,
@@ -74,33 +104,36 @@ def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
             only_failed=state.mode == "restart",
         )
         for file_type, count in counts.items():
-            remaining_by_type[file_type] += count
+            quick_remaining[file_type] += count
 
-    if not any(remaining_by_type.values()):
-        return None
+    remaining_by_phase = {1: quick_remaining}
+    for phase in range(2, OCR_ENGINE_PHASES.get(get_ocr_engine(conn), 1) + 1):
+        remaining_by_phase[phase] = deepening_pending_documents(conn, sources, phase)
 
-    # processing_metrics has one row per (file_type, size_bucket) - weight each
-    # bucket's average by its document_count so a file_type with an uneven mix
-    # of small/large files still gets one sensible average duration back.
-    averages = {
-        row["file_type"]: row["avg_duration_seconds"]
-        for row in conn.execute(
-            "SELECT file_type, "
-            "SUM(avg_duration_seconds * document_count) / SUM(document_count) "
-            "AS avg_duration_seconds "
-            "FROM processing_metrics WHERE document_count > 0 GROUP BY file_type"
+    seconds_by_phase: dict[int, float] = {}
+    for phase, remaining in remaining_by_phase.items():
+        if not any(remaining.values()):
+            continue
+        averages = _average_durations(conn, phase)
+        seconds_left = sum(
+            count * averages[file_type]
+            for file_type, count in remaining.items()
+            if count > 0 and file_type in averages
         )
-    }
-    seconds_left = sum(
-        count * averages[file_type]
-        for file_type, count in remaining_by_type.items()
-        if count > 0 and file_type in averages
-    )
-    if seconds_left <= 0:
-        return None
+        if seconds_left > 0:
+            seconds_by_phase[phase] = seconds_left
+    return seconds_by_phase
 
-    minutes, seconds = divmod(int(seconds_left), 60)
-    return f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+
+def _format_duration(seconds: float) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    return f"{minutes}m {secs}s" if minutes else f"{secs}s"
+
+
+def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
+    """Total time left across every phase still to run, or None if it can't be estimated."""
+    total = sum(_estimate_phase_seconds(conn, state).values())
+    return _format_duration(total) if total > 0 else None
 
 
 def _progress_bar(processed: int, total: int) -> Progress:
@@ -119,6 +152,13 @@ def _progress_bar(processed: int, total: int) -> Progress:
     return bar
 
 
+def _progress_cell(done: int, total: int, animated: bool) -> Progress | str:
+    if animated:
+        return _progress_bar(done, total)
+    percent = (done / total * 100) if total else 100.0
+    return f"{done}/{total} ({percent:.0f}%)"
+
+
 def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated: bool) -> Panel:
     status_style = _RUN_STATUS_STYLES.get(state.status, "default")
 
@@ -130,11 +170,24 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
     table.add_row("Mode", state.mode)
     table.add_row("Target", state.target or "all sources")
 
-    if animated:
-        table.add_row("Progress", _progress_bar(state.processed_files, state.total_files))
+    phase_name = _PHASE_NAMES.get(state.phase, str(state.phase))
+    max_phase = OCR_ENGINE_PHASES.get(get_ocr_engine(conn), 1)
+    if max_phase > 1:
+        table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
+        # Quick counts files; the deeper phases count pages - each shows how much of
+        # what it applies to has been through it.
+        table.add_row("Quick", _progress_cell(state.processed_files, state.total_files, animated))
+        try:
+            progress = deepening_progress(conn, resolve_targets(conn, state.target), max_phase)
+        except SourceNotFoundError:
+            progress = {}
+        for phase, (done, total) in progress.items():
+            table.add_row(_PHASE_NAMES[phase].capitalize(), _progress_cell(done, total, animated))
     else:
-        percent = (state.processed_files / state.total_files * 100) if state.total_files else 100.0
-        table.add_row("Progress", f"{state.processed_files}/{state.total_files} ({percent:.0f}%)")
+        table.add_row("Phase", Text(phase_name))
+        table.add_row(
+            "Progress", _progress_cell(state.processed_files, state.total_files, animated)
+        )
     failed_style = "bold red" if state.failed_files else "default"
     table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
 
@@ -153,9 +206,16 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
         table.add_row(label, files_text)
 
     if state.status == "running":
-        eta = _estimate_eta(conn, state)
-        if eta is not None:
-            table.add_row("ETA", f"~{eta}")
+        by_phase = _estimate_phase_seconds(conn, state)
+        if by_phase:
+            eta = Text(f"~{_format_duration(sum(by_phase.values()))}")
+            if len(by_phase) > 1:
+                breakdown = " · ".join(
+                    f"{_PHASE_NAMES[phase]} ~{_format_duration(seconds)}"
+                    for phase, seconds in sorted(by_phase.items())
+                )
+                eta.append(f"\n{breakdown}", style="bright_black")
+            table.add_row("ETA", eta)
 
     border_style = status_style if status_style != "default" else "white"
     return Panel(table, title="Index Run", border_style=border_style, expand=False)

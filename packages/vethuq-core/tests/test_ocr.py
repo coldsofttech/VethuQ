@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import connect
-from vethuq_core.ocr import _has_content_changed, _is_native_text, _resolve_device, run_ocr
+from vethuq_core.ocr import (
+    _engine_local,
+    _get_engine,
+    _has_content_changed,
+    _is_native_text,
+    _resolve_device,
+    run_ocr,
+)
 from vethuq_core.settings import set_gpu_enabled
 from vethuq_core.sources import add_source, purge_expired_removed_documents
 
@@ -592,6 +599,23 @@ def test_resolve_device_falls_back_to_cpu_when_enabled_but_unsupported(
 
     with patch.dict(sys.modules, {"paddle": mock_paddle}):
         assert _resolve_device(conn) == "cpu"
+
+
+def test_get_engine_enables_angle_orientation_detection(conn: sqlite3.Connection):
+    mock_paddleocr_module = MagicMock()
+
+    if hasattr(_engine_local, "engine"):
+        del _engine_local.engine
+    try:
+        with patch.dict(sys.modules, {"paddleocr": mock_paddleocr_module}):
+            _get_engine(conn)
+    finally:
+        if hasattr(_engine_local, "engine"):
+            del _engine_local.engine
+
+    _, kwargs = mock_paddleocr_module.PaddleOCR.call_args
+    assert kwargs["use_doc_orientation_classify"] is True
+    assert kwargs["use_textline_orientation"] is True
 
 
 def test_is_native_text_threshold():

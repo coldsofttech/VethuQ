@@ -350,3 +350,108 @@ def test_history_lists_runs(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "completed" in result.stdout
+
+
+def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
+    from rich.console import Console
+    from vethuq_core.settings import set_ocr_engine
+
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    conn = db_module.connect(db_path)
+    folder = tmp_path / "src"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    for index, phase in enumerate((1, 2, 3), start=1):
+        conn.execute(
+            "INSERT INTO document_index (source_id, file_path, file_type, status) "
+            "VALUES (?, ?, 'image', 'indexed')",
+            (source.id, str(folder / f"{index}.png")),
+        )
+        conn.execute(
+            "INSERT INTO image_pages (document_id, ocr_text, confidence, ocr_phase, ocr_angles) "
+            "VALUES (?, 'x', 0.9, ?, '0')",
+            (index, phase),
+        )
+    conn.commit()
+    set_ocr_engine(conn, "deep")
+    now = datetime.now(UTC).isoformat()
+    state = index_runner_module.IndexState(
+        run_id=1,
+        pid=1,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=3,
+        processed_files=3,
+        failed_files=0,
+        thread_workers_setting="0",
+        workers=1,
+        current_files=[],
+        started_at=now,
+        updated_at=now,
+        phase=2,
+    )
+
+    console = Console(width=100, record=True)
+    console.print(index_cli_module._build_state_panel(conn, state, animated=False))
+    text = console.export_text()
+    conn.close()
+
+    assert "moderate (2/3)" in text
+    assert "Quick" in text and "3/3 (100%)" in text
+    assert "Moderate" in text and "2/3 (67%)" in text
+    assert "Deep" in text and "1/3 (33%)" in text
+
+
+def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monkeypatch):
+    from vethuq_core.settings import set_ocr_engine
+
+    db_path = _use_temp_db(monkeypatch, tmp_path)
+    conn = db_module.connect(db_path)
+    folder = tmp_path / "src"
+    folder.mkdir()
+    source = add_source(conn, folder)
+    conn.execute("UPDATE sources SET status = 'indexed' WHERE id = ?", (source.id,))
+    # Two indexed image documents, both still waiting on moderate and deep.
+    for index in (1, 2):
+        conn.execute(
+            "INSERT INTO document_index (source_id, file_path, file_type, status) "
+            "VALUES (?, ?, 'image', 'indexed')",
+            (source.id, str(folder / f"{index}.png")),
+        )
+        conn.execute(
+            "INSERT INTO image_pages (document_id, ocr_text, confidence, ocr_phase, ocr_angles) "
+            "VALUES (?, 'x', 0.9, 1, '0')",
+            (index,),
+        )
+    # Quick is fast, moderate takes 30s a document; deep has no history yet.
+    conn.execute(
+        "INSERT INTO processing_metrics VALUES (1, 'image', 'small', 5, 1.0, 10, 5, 'now')"
+    )
+    conn.execute(
+        "INSERT INTO processing_metrics VALUES (2, 'image', 'small', 5, 30.0, 10, 5, 'now')"
+    )
+    conn.commit()
+    set_ocr_engine(conn, "deep")
+    now = datetime.now(UTC).isoformat()
+    state = index_runner_module.IndexState(
+        run_id=1,
+        pid=1,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=2,
+        processed_files=2,
+        failed_files=0,
+        thread_workers_setting="0",
+        workers=1,
+        current_files=[],
+        started_at=now,
+        updated_at=now,
+    )
+
+    by_phase = index_cli_module._estimate_phase_seconds(conn, state)
+    conn.close()
+
+    # 2 documents x 30s for moderate; nothing for quick (no files pending) or deep (no history).
+    assert by_phase == {2: 60.0}

@@ -274,6 +274,7 @@ def test_connect_creates_processing_metrics_table(tmp_path):
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
         assert columns == {
+            "phase",
             "file_type",
             "size_bucket",
             "document_count",
