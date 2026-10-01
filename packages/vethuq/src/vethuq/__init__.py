@@ -11,20 +11,14 @@ import time
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
-from vethuq._core.index_runner import (
+from vethuq._core.index import (
     AlreadyRunningError,
     IndexRun,
     IndexRunnerError,
     IndexState,
     StaleLockError,
 )
-from vethuq._core.index_runner import is_running as _is_running
-from vethuq._core.index_runner import list_index_runs as _list_index_runs
-from vethuq._core.index_runner import read_state as _read_state
-from vethuq._core.index_runner import request_pause as _request_pause
-from vethuq._core.index_runner import request_resume as _request_resume
-from vethuq._core.index_runner import request_stop as _request_stop
-from vethuq._core.index_runner import start_run as _start_run
+from vethuq._core.index import IndexRunner as _IndexRunner
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.ocr import get_document_results as _get_document_results
 from vethuq._core.search import Export as _Export
@@ -151,14 +145,14 @@ class Index:
     def _wait_for_run(self, pid: int) -> IndexState | None:
         while True:
             time.sleep(_STATE_POLL_SECONDS)
-            state = _read_state()
+            state = _IndexRunner.read_state()
             if state is not None and state.pid == pid:
                 if state.status in ("completed", "stopped", "failed"):
                     return state
                 continue
-            running, current_pid = _is_running()
+            running, current_pid = _IndexRunner.is_running()
             if not running or current_pid != pid:
-                return _read_state()
+                return _IndexRunner.read_state()
 
     def run(
         self, target: str | int | None = None, *, force: bool = False, wait: bool = False
@@ -176,14 +170,18 @@ class Index:
         clears it). Raises `SourceNotFoundError` if `target` doesn't match a
         registered source.
         """
-        pid = _start_run(str(target) if target is not None else None, force=force, restart=False)
+        pid = _IndexRunner.start_run(
+            str(target) if target is not None else None, force=force, restart=False
+        )
         return self._wait_for_run(pid) if wait else pid
 
     def restart(
         self, target: str | int | None = None, *, force: bool = False, wait: bool = False
     ) -> int | IndexState | None:
         """Retry only previously-failed files, in the background. See `run`."""
-        pid = _start_run(str(target) if target is not None else None, force=force, restart=True)
+        pid = _IndexRunner.start_run(
+            str(target) if target is not None else None, force=force, restart=True
+        )
         return self._wait_for_run(pid) if wait else pid
 
     def status(self, target: str | int | None = None) -> IndexState | list[DocumentResult] | None:
@@ -196,7 +194,7 @@ class Index:
         source.
         """
         if target is None:
-            return _read_state()
+            return _IndexRunner.read_state()
 
         conn = _Db.connect()
         try:
@@ -210,21 +208,21 @@ class Index:
 
         Raises `IndexRunnerError` if no background index run is currently running.
         """
-        _request_stop()
+        _IndexRunner.request_stop()
 
     def pause(self) -> None:
         """Pause the currently running background index.
 
         Raises `IndexRunnerError` if no background index run is currently running.
         """
-        _request_pause()
+        _IndexRunner.request_pause()
 
     def resume(self) -> None:
         """Resume a paused background index run.
 
         Raises `IndexRunnerError` if no background index run is currently running.
         """
-        _request_resume()
+        _IndexRunner.request_resume()
 
     def history(self, target: str | int | None = None, limit: int = 10) -> list[IndexRun]:
         """List past background index runs, most recent first, optionally filtered to one source.
@@ -237,7 +235,7 @@ class Index:
         try:
             if target is not None:
                 _Sources.get(conn, _coerce_target(target))
-            return _list_index_runs(conn, str(target) if target is not None else None, limit)
+            return _IndexRunner.list_runs(conn, str(target) if target is not None else None, limit)
         finally:
             conn.close()
 

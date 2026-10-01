@@ -2,9 +2,10 @@ from datetime import UTC, datetime
 
 import vethuq_cli.index as index_cli_module
 import vethuq_core.db as db_module
-import vethuq_core.index_runner as index_runner_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
+from vethuq_core.index import IndexRunner
+from vethuq_core.index import runner as index_runner_module
 from vethuq_core.source import Sources
 
 runner = CliRunner()
@@ -33,6 +34,22 @@ def _add_pending_source(db_path, tmp_path):
         Sources.add(conn, tmp_path)
     finally:
         conn.close()
+
+
+def _patch_polling(monkeypatch, *, read_state, is_running):
+    """Fake what the CLI's no-argument polling sees, leaving calls that pass a db_path real."""
+    real_read_state = IndexRunner.read_state
+    real_is_running = IndexRunner.is_running
+    monkeypatch.setattr(
+        IndexRunner,
+        "read_state",
+        lambda db_path=None: real_read_state(db_path) if db_path is not None else read_state(),
+    )
+    monkeypatch.setattr(
+        IndexRunner,
+        "is_running",
+        lambda db_path=None: real_is_running(db_path) if db_path is not None else is_running(),
+    )
 
 
 def test_run_starts_background_process(tmp_path, monkeypatch):
@@ -70,12 +87,11 @@ def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
     )
     calls = {"n": 0}
 
-    def fake_read_state(db_path=None):
+    def fake_read_state():
         calls["n"] += 1
         return None if calls["n"] == 1 else completed_state
 
-    monkeypatch.setattr(index_cli_module, "read_state", fake_read_state)
-    monkeypatch.setattr(index_cli_module, "is_running", lambda: (True, 777))
+    _patch_polling(monkeypatch, read_state=fake_read_state, is_running=lambda: (True, 777))
 
     result = runner.invoke(app, ["index", "run", "--wait"])
 
@@ -89,8 +105,9 @@ def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
     _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(888))
     monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(index_cli_module, "read_state", lambda: None)
-    monkeypatch.setattr(index_cli_module, "is_running", lambda: (False, None))
+    _patch_polling(
+        monkeypatch, read_state=lambda db_path=None: None, is_running=lambda: (False, None)
+    )
 
     result = runner.invoke(app, ["index", "run", "--wait"])
 
@@ -101,8 +118,8 @@ def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
 def test_run_reports_already_running(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     _add_pending_source(db_path, tmp_path)
-    index_runner_module._atomic_write(index_runner_module._lock_path(db_path), "999")
-    monkeypatch.setattr(index_runner_module, "_is_pid_running", lambda pid: True)
+    IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+    monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
 
     result = runner.invoke(app, ["index", "run"])
 
@@ -171,7 +188,7 @@ def test_status_shows_progress(tmp_path, monkeypatch):
         started_at=now,
         updated_at=now,
     )
-    index_runner_module._write_state(db_path, state)
+    IndexRunner._write_state(db_path, state)
 
     result = runner.invoke(app, ["index", "status"])
 
@@ -212,17 +229,16 @@ def test_status_wait_live_refreshes_until_terminal_state(tmp_path, monkeypatch):
         started_at=now,
         updated_at=now,
     )
-    index_runner_module._write_state(db_path, running_state)
+    IndexRunner._write_state(db_path, running_state)
     monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
 
     calls = {"n": 0}
 
-    def fake_read_state(db_path=None):
+    def fake_read_state():
         calls["n"] += 1
         return running_state if calls["n"] == 1 else completed_state
 
-    monkeypatch.setattr(index_cli_module, "read_state", fake_read_state)
-    monkeypatch.setattr(index_cli_module, "is_running", lambda: (True, 777))
+    _patch_polling(monkeypatch, read_state=fake_read_state, is_running=lambda: (True, 777))
 
     result = runner.invoke(app, ["index", "status", "--wait"])
 
@@ -265,7 +281,7 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
         started_at=now,
         updated_at=now,
     )
-    index_runner_module._write_state(db_path, state)
+    IndexRunner._write_state(db_path, state)
 
     result = runner.invoke(app, ["index", "status"])
 

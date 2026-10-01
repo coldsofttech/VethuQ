@@ -17,19 +17,12 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.db.queries import Index, Stats
-from vethuq_core.index_runner import (
+from vethuq_core.index import (
     AlreadyRunningError,
+    IndexRunner,
     IndexRunnerError,
     IndexState,
     StaleLockError,
-    is_running,
-    log_path,
-    read_state,
-    request_pause,
-    request_resume,
-    request_stop,
-    resolve_targets,
-    start_run,
 )
 from vethuq_core.ocr import (
     OCR_ENGINE_PHASES,
@@ -86,7 +79,7 @@ def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict
     setting reaches, and that still have work, appear in the result.
     """
     try:
-        sources = resolve_targets(conn, state.target)
+        sources = IndexRunner.resolve_targets(conn, state.target)
     except SourceNotFoundError:
         return {}
 
@@ -173,7 +166,9 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
         # what it applies to has been through it.
         table.add_row("Quick", _progress_cell(state.processed_files, state.total_files, animated))
         try:
-            progress = deepening_progress(conn, resolve_targets(conn, state.target), max_phase)
+            progress = deepening_progress(
+                conn, IndexRunner.resolve_targets(conn, state.target), max_phase
+            )
         except SourceNotFoundError:
             progress = {}
         for phase, (done, total) in progress.items():
@@ -225,7 +220,7 @@ def _live_wait(conn: sqlite3.Connection, pid: int) -> None:
     with Live(console=console, refresh_per_second=4) as live:
         while True:
             time.sleep(_POLL_SECONDS)
-            state = read_state()
+            state = IndexRunner.read_state()
             if state is not None and state.pid == pid:
                 live.update(_build_state_panel(conn, state, animated=True))
                 if state.status in ("completed", "stopped", "failed"):
@@ -235,12 +230,12 @@ def _live_wait(conn: sqlite3.Connection, pid: int) -> None:
             # hasn't written its first state file yet) or it could genuinely be
             # gone (e.g. crashed before writing anything). Only stop waiting once
             # the process itself is confirmed no longer running.
-            running, current_pid = is_running()
+            running, current_pid = IndexRunner.is_running()
             if not running or current_pid != pid:
                 live.stop()
                 console.print(
                     "Background run ended before reporting any progress. "
-                    f"If this is unexpected, check {log_path()} for errors."
+                    f"If this is unexpected, check {IndexRunner.log_path()} for errors."
                 )
                 return
 
@@ -264,7 +259,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
             return
 
     try:
-        pid = start_run(target, force=force, restart=restart)
+        pid = IndexRunner.start_run(target, force=force, restart=restart)
     except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
         error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
@@ -341,7 +336,7 @@ def status(
 ) -> None:
     """Show background index run progress, or per-file detail for one source."""
     if target is None:
-        state = read_state()
+        state = IndexRunner.read_state()
         if as_json:
             console.print(state.to_json() if state is not None else "null")
             return
@@ -422,7 +417,7 @@ def stop(
         console.print("Aborted.", style="bright_black")
         raise typer.Exit(code=0)
     try:
-        request_stop()
+        IndexRunner.request_stop()
     except IndexRunnerError as exc:
         error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
@@ -440,7 +435,7 @@ def pause(
         console.print("Aborted.", style="bright_black")
         raise typer.Exit(code=0)
     try:
-        request_pause()
+        IndexRunner.request_pause()
     except IndexRunnerError as exc:
         error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
@@ -451,7 +446,7 @@ def pause(
 def resume() -> None:
     """Resume a paused background index run."""
     try:
-        request_resume()
+        IndexRunner.request_resume()
     except IndexRunnerError as exc:
         error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc

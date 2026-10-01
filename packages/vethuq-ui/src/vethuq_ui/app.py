@@ -13,18 +13,12 @@ from typing import Any
 
 import sv_ttk
 from vethuq_core.db import Db
-from vethuq_core.index_runner import (
+from vethuq_core.index import (
     AlreadyRunningError,
+    IndexRunner,
     IndexRunnerError,
     IndexState,
     StaleLockError,
-    is_running,
-    list_index_runs,
-    read_state,
-    request_pause,
-    request_resume,
-    signal_stop,
-    start_run,
 )
 from vethuq_core.ocr import get_document_results
 from vethuq_core.search import Search
@@ -99,10 +93,10 @@ class MainWindow(tk.Tk):
         either case we just attach to it via polling rather than starting a
         second one.
         """
-        if is_running(self._db_path)[0]:
+        if IndexRunner.is_running(self._db_path)[0]:
             return
         try:
-            start_run(db_path=self._db_path)
+            IndexRunner.start_run(db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
             # AlreadyRunningError: lost a race with something else starting a
             # run just now - fine, we'll just poll it. StaleLockError: only
@@ -115,7 +109,7 @@ class MainWindow(tk.Tk):
             pass
 
     def _poll_index_status(self) -> None:
-        state = read_state(self._db_path)
+        state = IndexRunner.read_state(self._db_path)
         if state is not None and state.status in ("running", "paused"):
             self._set_indexing_status(state)
             self.refresh_sources()
@@ -132,7 +126,7 @@ class MainWindow(tk.Tk):
         # happen.
         self._closing = True
         try:
-            signal_stop(db_path=self._db_path)
+            IndexRunner.signal_stop(db_path=self._db_path)
         except IndexRunnerError:
             pass
         super().destroy()
@@ -412,7 +406,7 @@ class MainWindow(tk.Tk):
         # A native tk.Menu can't be restyled by sv_ttk (it isn't a ttk
         # widget, and Windows draws it natively regardless of color options),
         # so this is a themed popup built from real ttk widgets instead.
-        running = is_running(self._db_path)[0]
+        running = IndexRunner.is_running(self._db_path)[0]
         menu = tk.Toplevel(self)
         menu.wm_overrideredirect(True)
         menu.wm_attributes("-topmost", True)
@@ -471,7 +465,7 @@ class MainWindow(tk.Tk):
         if not selection:
             return
         try:
-            start_run(selection[0], restart=restart, db_path=self._db_path)
+            IndexRunner.start_run(selection[0], restart=restart, db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
             show_error(self, "Could not start indexing", str(exc))
         else:
@@ -479,17 +473,17 @@ class MainWindow(tk.Tk):
 
     def _stop_index_run(self) -> None:
         try:
-            signal_stop(db_path=self._db_path)
+            IndexRunner.signal_stop(db_path=self._db_path)
         except IndexRunnerError as exc:
             show_error(self, "Could not stop indexing", str(exc))
 
     def _toggle_pause_resume(self) -> None:
-        state = read_state(self._db_path)
+        state = IndexRunner.read_state(self._db_path)
         try:
             if state is not None and state.status == "paused":
-                request_resume(db_path=self._db_path)
+                IndexRunner.request_resume(db_path=self._db_path)
             else:
-                request_pause(db_path=self._db_path)
+                IndexRunner.request_pause(db_path=self._db_path)
         except IndexRunnerError as exc:
             show_error(self, "Could not update index run", str(exc))
 
@@ -514,7 +508,7 @@ class MainWindow(tk.Tk):
 
         # A run over "all sources" (target IS NULL) would have covered this
         # source too, so it's included alongside runs targeted at just it.
-        runs = list_index_runs(self.conn, source_id, limit=20)
+        runs = IndexRunner.list_runs(self.conn, source_id, limit=20)
 
         for child in self._sources_history_pane.winfo_children():
             child.destroy()

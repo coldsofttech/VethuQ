@@ -122,7 +122,7 @@ any failed).
 
 ### Background indexing: worker threads
 
-`vethuq_core.index_runner._run_worker` (the detached process `vethuq
+`vethuq_core.index.runner.IndexRunner._run_worker` (the detached process `vethuq
 index run`/`restart` launches) no longer processes one source at a time:
 `vethuq_core.ocr.run_ocr_batch` flattens every targeted source's pending
 files into a single list ordered by filename (`Path.name`, not the full

@@ -59,7 +59,7 @@ cli_a = _analysis(
     hiddenimports=rich_hidden,
     excludes=OCR_MODULES,
 )
-worker_a = _analysis(CORE_SRC / "index_runner.py")
+worker_a = _analysis(CORE_SRC / "index" / "runner.py")
 
 
 def _exe(analysis, name, *, console):
@@ -80,7 +80,7 @@ def _exe(analysis, name, *, console):
 
 
 ui_exe = _exe(ui_a, "VethuQ-UI", console=False)
-# Console-subsystem so stderr reaches the worker log; index_runner.start_run
+# Console-subsystem so stderr reaches the worker log; IndexRunner.start_run
 # hides the console window when it spawns the worker.
 cli_exe = _exe(cli_a, "vethuq", console=True)
 worker_exe = _exe(worker_a, "vethuq-worker", console=True)
