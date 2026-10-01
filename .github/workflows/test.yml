@@ -29,9 +29,13 @@ jobs:
 
       - name: Run tests
         shell: bash
+        env:
+          # Coverage is measured on one leg only - it slows every job down and
+          # the report is the same regardless of OS/Python version.
+          COV_ARGS: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && '--cov --cov-report=xml' || '' }}
         run: |
           set +e
-          uv run pytest -n auto --cov --cov-report=xml
+          uv run pytest -n auto $COV_ARGS
           code=$?
           # pytest exits 5 when no tests were collected — not a failure this early in the project.
           if [ $code -eq 5 ]; then
