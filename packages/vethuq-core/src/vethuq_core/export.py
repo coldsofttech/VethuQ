@@ -12,7 +12,9 @@ from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.search import SearchMatch
 from vethuq_core.settings import SEARCH_EXPORT_FORMATS
 
-_HTML_TEMPLATE = """<!doctype html>
+
+class Export:
+    _HTML_TEMPLATE = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -90,7 +92,7 @@ _HTML_TEMPLATE = """<!doctype html>
 </html>
 """
 
-_ROW_TEMPLATE = """<details class="row">
+    _ROW_TEMPLATE = """<details class="row">
   <summary class="row-cells">
     <span class="chevron">&#9656;</span>
     <span class="file-name">{{FILE_NAME}}</span>
@@ -102,81 +104,81 @@ _ROW_TEMPLATE = """<details class="row">
 </details>
 """
 
+    @staticmethod
+    def _matched_text(match: SearchMatch) -> str:
+        prefix = "..." if match.truncated_before else ""
+        suffix = "..." if match.truncated_after else ""
+        return f"{prefix}{match.before}{match.matched}{match.after}{suffix}"
 
-def _matched_text(match: SearchMatch) -> str:
-    prefix = "..." if match.truncated_before else ""
-    suffix = "..." if match.truncated_after else ""
-    return f"{prefix}{match.before}{match.matched}{match.after}{suffix}"
+    @staticmethod
+    def _file_uri(file_path: str) -> str:
+        return Path(file_path).resolve().as_uri()
 
+    @staticmethod
+    def _generated_at() -> str:
+        """The current local time, formatted per the user's locale (no ISO 'T' separator)."""
+        try:
+            locale.setlocale(locale.LC_TIME, "")
+        except locale.Error:
+            pass
+        return datetime.now().astimezone().strftime("%c %Z").strip()
 
-def _file_uri(file_path: str) -> str:
-    return Path(file_path).resolve().as_uri()
+    @staticmethod
+    def search_results(matches: list[SearchMatch], query: str, output: Path, format_: str) -> None:
+        """Write `matches` for `query` to `output` as `format_` ('json' or 'html')."""
+        if format_ not in SEARCH_EXPORT_FORMATS:
+            raise ValueError(f"format_ must be one of {SEARCH_EXPORT_FORMATS}")
+        if format_ == "json":
+            Export._write_json(matches, query, output)
+        else:
+            Export._write_html(matches, query, output)
 
+    @staticmethod
+    def _write_json(matches: list[SearchMatch], query: str, output: Path) -> None:
+        payload = {
+            "query": query,
+            "generated_at": Export._generated_at(),
+            "result_count": len(matches),
+            "matches": [
+                {
+                    "file_name": match.file_name,
+                    "file_path": match.file_path,
+                    "page_number": match.page_number,
+                    "total_pages": match.total_pages,
+                    "matched_text": Export._matched_text(match),
+                }
+                for match in matches
+            ],
+        }
+        output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-def _generated_at() -> str:
-    """The current local time, formatted per the user's locale (no ISO 'T' separator)."""
-    try:
-        locale.setlocale(locale.LC_TIME, "")
-    except locale.Error:
-        pass
-    return datetime.now().astimezone().strftime("%c %Z").strip()
+    @staticmethod
+    def _write_html(matches: list[SearchMatch], query: str, output: Path) -> None:
+        rows = []
+        for match in matches:
+            page = str(match.page_number) if match.page_number is not None else "-"
+            total_pages = str(match.total_pages) if match.total_pages is not None else "-"
+            snippet = html.escape(Export._matched_text(match)).replace(
+                html.escape(match.matched), f"<mark>{html.escape(match.matched)}</mark>", 1
+            )
+            row = (
+                Export._ROW_TEMPLATE.replace(
+                    "{{FILE_URI}}", html.escape(Export._file_uri(match.file_path))
+                )
+                .replace("{{FILE_NAME}}", html.escape(match.file_name))
+                .replace("{{FILE_PATH}}", html.escape(match.file_path))
+                .replace("{{PAGE}}", page)
+                .replace("{{TOTAL_PAGES}}", total_pages)
+                .replace("{{SNIPPET}}", snippet)
+            )
+            rows.append(row)
 
-
-def export_search_results(
-    matches: list[SearchMatch], query: str, output: Path, format_: str
-) -> None:
-    """Write `matches` for `query` to `output` as `format_` ('json' or 'html')."""
-    if format_ not in SEARCH_EXPORT_FORMATS:
-        raise ValueError(f"format_ must be one of {SEARCH_EXPORT_FORMATS}")
-    if format_ == "json":
-        _write_json(matches, query, output)
-    else:
-        _write_html(matches, query, output)
-
-
-def _write_json(matches: list[SearchMatch], query: str, output: Path) -> None:
-    payload = {
-        "query": query,
-        "generated_at": _generated_at(),
-        "result_count": len(matches),
-        "matches": [
-            {
-                "file_name": match.file_name,
-                "file_path": match.file_path,
-                "page_number": match.page_number,
-                "total_pages": match.total_pages,
-                "matched_text": _matched_text(match),
-            }
-            for match in matches
-        ],
-    }
-    output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _write_html(matches: list[SearchMatch], query: str, output: Path) -> None:
-    rows = []
-    for match in matches:
-        page = str(match.page_number) if match.page_number is not None else "-"
-        total_pages = str(match.total_pages) if match.total_pages is not None else "-"
-        snippet = html.escape(_matched_text(match)).replace(
-            html.escape(match.matched), f"<mark>{html.escape(match.matched)}</mark>", 1
+        document = (
+            Export._HTML_TEMPLATE.replace("{{APP_NAME}}", html.escape(APP_NAME))
+            .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
+            .replace("{{QUERY}}", html.escape(query))
+            .replace("{{RESULT_COUNT}}", str(len(matches)))
+            .replace("{{GENERATED_AT}}", html.escape(Export._generated_at()))
+            .replace("{{ROWS}}", "\n".join(rows))
         )
-        row = (
-            _ROW_TEMPLATE.replace("{{FILE_URI}}", html.escape(_file_uri(match.file_path)))
-            .replace("{{FILE_NAME}}", html.escape(match.file_name))
-            .replace("{{FILE_PATH}}", html.escape(match.file_path))
-            .replace("{{PAGE}}", page)
-            .replace("{{TOTAL_PAGES}}", total_pages)
-            .replace("{{SNIPPET}}", snippet)
-        )
-        rows.append(row)
-
-    document = (
-        _HTML_TEMPLATE.replace("{{APP_NAME}}", html.escape(APP_NAME))
-        .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
-        .replace("{{QUERY}}", html.escape(query))
-        .replace("{{RESULT_COUNT}}", str(len(matches)))
-        .replace("{{GENERATED_AT}}", html.escape(_generated_at()))
-        .replace("{{ROWS}}", "\n".join(rows))
-    )
-    output.write_text(document, encoding="utf-8")
+        output.write_text(document, encoding="utf-8")

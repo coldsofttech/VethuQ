@@ -12,7 +12,7 @@ import typer
 from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.export import export_search_results
+from vethuq_core.export import Export
 from vethuq_core.search import SearchMatch, search_indexed_content
 from vethuq_core.settings import (
     SEARCH_EXPORT_FORMATS,
@@ -191,7 +191,7 @@ def search(
                 )
                 raise typer.Exit(code=1)
             output_path = Path(export)
-            export_search_results(matches, content, output_path, resolved_format)
+            Export.search_results(matches, content, output_path, resolved_format)
             console.print(
                 Text.assemble(
                     "Exported ",
@@ -213,7 +213,7 @@ def search(
                 choices=list(SEARCH_EXPORT_FORMATS),
             ).strip()
             output_path = Path(output)
-            export_search_results(matches, content, output_path, resolved_format)
+            Export.search_results(matches, content, output_path, resolved_format)
             console.print(
                 Text.assemble(
                     "Exported ",

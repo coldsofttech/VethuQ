@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
-from vethuq._core.export import export_search_results as _export_search_results
+from vethuq._core.export import Export as _Export
 from vethuq._core.index_runner import (
     AlreadyRunningError,
     IndexRun,
@@ -598,7 +598,7 @@ class Search:
         finally:
             conn.close()
         output_path = Path(output)
-        _export_search_results(matches, query, output_path, resolved_format)
+        _Export.search_results(matches, query, output_path, resolved_format)
         return output_path
 
 
