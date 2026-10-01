@@ -6,27 +6,11 @@ import typer
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.settings import (
-    OCR_ENGINE_MODES,
-    SEARCH_EXPORT_FORMATS,
-    STALE_LOCK_VALUES,
-    THREAD_WORKERS_AUTO,
-    THREAD_WORKERS_MAX,
-    get_ocr_engine,
-    get_ocr_retry_attempts,
-    get_removed_source_retention_minutes,
-    get_search_export_format,
-    get_search_snippet_context_chars,
-    get_stale_lock,
-    get_thread_workers,
-    is_gpu_enabled,
-    set_gpu_enabled,
-    set_ocr_engine,
-    set_ocr_retry_attempts,
-    set_removed_source_retention_minutes,
-    set_search_export_format,
-    set_search_snippet_context_chars,
-    set_stale_lock,
-    set_thread_workers,
+    GpuSettings,
+    IndexSettings,
+    OcrSettings,
+    SearchSettings,
+    SourceSettings,
 )
 
 from vethuq_cli.console import console, error_console
@@ -72,7 +56,7 @@ def gpu_enable() -> None:
     """
     conn = Db.connect()
     try:
-        set_gpu_enabled(conn, True)
+        GpuSettings.set_enabled(conn, True)
         console.print(
             "GPU enabled. It will be used next time OCR runs, if a CUDA-capable "
             "PaddleOCR build is installed; otherwise CPU is used.",
@@ -87,7 +71,7 @@ def gpu_disable() -> None:
     """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
     conn = Db.connect()
     try:
-        set_gpu_enabled(conn, False)
+        GpuSettings.set_enabled(conn, False)
         console.print("GPU disabled. OCR will run on CPU.", style="bright_black")
     finally:
         conn.close()
@@ -98,7 +82,7 @@ def gpu_status() -> None:
     """Show whether GPU use is currently enabled."""
     conn = Db.connect()
     try:
-        enabled = is_gpu_enabled(conn)
+        enabled = GpuSettings.is_enabled(conn)
         line = Text("GPU: ")
         line.append(
             "enabled" if enabled else "disabled", style="green" if enabled else "bright_black"
@@ -116,7 +100,7 @@ def snippet_show() -> None:
         console.print(
             Text.assemble(
                 "Search snippet context: ",
-                (str(get_search_snippet_context_chars(conn)), "bright_blue"),
+                (str(SearchSettings.get_snippet_context_chars(conn)), "bright_blue"),
                 " characters",
             )
         )
@@ -132,7 +116,7 @@ def snippet_set(
     conn = Db.connect()
     try:
         try:
-            set_search_snippet_context_chars(conn, chars)
+            SearchSettings.set_snippet_context_chars(conn, chars)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -151,7 +135,9 @@ def export_format_show() -> None:
     conn = Db.connect()
     try:
         console.print(
-            Text.assemble("Search export format: ", (get_search_export_format(conn), "bright_blue"))
+            Text.assemble(
+                "Search export format: ", (SearchSettings.get_export_format(conn), "bright_blue")
+            )
         )
     finally:
         conn.close()
@@ -160,14 +146,14 @@ def export_format_show() -> None:
 @export_format_app.command("set")
 def export_format_set(
     format_: str = typer.Argument(
-        ..., metavar="FORMAT", help=f"One of: {', '.join(SEARCH_EXPORT_FORMATS)}."
+        ..., metavar="FORMAT", help=f"One of: {', '.join(SearchSettings.EXPORT_FORMATS)}."
     ),
 ) -> None:
     """Set the default format `search --export` writes to when none is given."""
     conn = Db.connect()
     try:
         try:
-            set_search_export_format(conn, format_)
+            SearchSettings.set_export_format(conn, format_)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -184,7 +170,7 @@ def removed_retention_show() -> None:
         console.print(
             Text.assemble(
                 "Removed source retention: ",
-                (str(get_removed_source_retention_minutes(conn)), "bright_blue"),
+                (str(SourceSettings.get_removed_retention_minutes(conn)), "bright_blue"),
                 " minutes",
             )
         )
@@ -202,7 +188,7 @@ def removed_retention_set(
     conn = Db.connect()
     try:
         try:
-            set_removed_source_retention_minutes(conn, minutes)
+            SourceSettings.set_removed_retention_minutes(conn, minutes)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -222,7 +208,7 @@ def ocr_retry_show() -> None:
     try:
         console.print(
             Text.assemble(
-                "OCR retry attempts: ", (str(get_ocr_retry_attempts(conn)), "bright_blue")
+                "OCR retry attempts: ", (str(OcrSettings.get_retry_attempts(conn)), "bright_blue")
             )
         )
     finally:
@@ -239,7 +225,7 @@ def ocr_retry_set(
     conn = Db.connect()
     try:
         try:
-            set_ocr_retry_attempts(conn, attempts)
+            OcrSettings.set_retry_attempts(conn, attempts)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -255,7 +241,7 @@ def thread_workers_show() -> None:
     """Show how many worker threads background indexing uses."""
     conn = Db.connect()
     try:
-        value = get_thread_workers(conn)
+        value = IndexSettings.get_thread_workers(conn)
         label = "disabled (sequential)" if value == "0" else value
         console.print(Text.assemble("Thread workers: ", (label, "bright_blue")))
     finally:
@@ -267,14 +253,17 @@ def thread_workers_set(
     value: str = typer.Argument(
         ...,
         metavar="VALUE",
-        help=f"0 (disable), 1-{THREAD_WORKERS_MAX}, or '{THREAD_WORKERS_AUTO}'.",
+        help=(
+            f"0 (disable), 1-{IndexSettings.THREAD_WORKERS_MAX}, "
+            f"or '{IndexSettings.THREAD_WORKERS_AUTO}'."
+        ),
     ),
 ) -> None:
     """Set how many worker threads background indexing uses."""
     conn = Db.connect()
     try:
         try:
-            set_thread_workers(conn, value)
+            IndexSettings.set_thread_workers(conn, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -289,7 +278,9 @@ def stale_lock_show() -> None:
     """Show whether a stale lock is auto-cleared on the next run."""
     conn = Db.connect()
     try:
-        console.print(Text.assemble("Stale lock: ", (get_stale_lock(conn), "bright_blue")))
+        console.print(
+            Text.assemble("Stale lock: ", (IndexSettings.get_stale_lock(conn), "bright_blue"))
+        )
     finally:
         conn.close()
 
@@ -297,14 +288,14 @@ def stale_lock_show() -> None:
 @stale_lock_app.command("set")
 def stale_lock_set(
     value: str = typer.Argument(
-        ..., metavar="VALUE", help=f"One of: {', '.join(STALE_LOCK_VALUES)}."
+        ..., metavar="VALUE", help=f"One of: {', '.join(IndexSettings.STALE_LOCK_VALUES)}."
     ),
 ) -> None:
     """Set whether a stale lock is auto-cleared on the next run."""
     conn = Db.connect()
     try:
         try:
-            set_stale_lock(conn, value)
+            IndexSettings.set_stale_lock(conn, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc
@@ -318,7 +309,7 @@ def engine_show() -> None:
     """Show how thoroughly OCR looks for rotated text."""
     conn = Db.connect()
     try:
-        console.print(Text.assemble("OCR engine: ", (get_ocr_engine(conn), "bright_blue")))
+        console.print(Text.assemble("OCR engine: ", (OcrSettings.get_engine(conn), "bright_blue")))
     finally:
         conn.close()
 
@@ -329,7 +320,8 @@ def engine_set(
         ...,
         metavar="VALUE",
         help=(
-            f"One of: {', '.join(OCR_ENGINE_MODES)}. quick reads upright text only; moderate "
+            f"One of: {', '.join(OcrSettings.ENGINE_MODES)}. quick reads upright text only; "
+            "moderate "
             "also reads 90/180/270 degree rotations; deep also reads every 15 degrees. "
             "Files are always indexed quick first, then deeper passes run in the background."
         ),
@@ -345,7 +337,7 @@ def engine_set(
     conn = Db.connect()
     try:
         try:
-            set_ocr_engine(conn, value)
+            OcrSettings.set_engine(conn, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style="bold red")
             raise typer.Exit(code=1) from exc

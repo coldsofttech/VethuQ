@@ -15,11 +15,7 @@ from vethuq_core.ocr import (
     _rotate_array,
     run_ocr_phased,
 )
-from vethuq_core.settings import (
-    InvalidSettingValueError,
-    get_ocr_engine,
-    set_ocr_engine,
-)
+from vethuq_core.settings import InvalidSettingValueError, OcrSettings
 from vethuq_core.source import Sources
 
 
@@ -48,13 +44,13 @@ def _image_page(conn: sqlite3.Connection, name: str) -> sqlite3.Row:
 
 
 def test_ocr_engine_defaults_to_quick_and_validates(conn: sqlite3.Connection):
-    assert get_ocr_engine(conn) == "quick"
+    assert OcrSettings.get_engine(conn) == "quick"
 
-    set_ocr_engine(conn, "deep")
-    assert get_ocr_engine(conn) == "deep"
+    OcrSettings.set_engine(conn, "deep")
+    assert OcrSettings.get_engine(conn) == "deep"
 
     with pytest.raises(InvalidSettingValueError):
-        set_ocr_engine(conn, "thorough")
+        OcrSettings.set_engine(conn, "thorough")
 
 
 def test_phase_angles_cover_every_15_degrees_once():
@@ -138,7 +134,7 @@ def test_moderate_engine_adds_rotated_text_and_records_progress(mock_get_engine,
         _result("hello") if isinstance(image, str) else _result("DIRECTOR", "hello")
     )
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -157,7 +153,7 @@ def test_deep_engine_reads_every_angle_and_is_not_repeated(mock_get_engine, conn
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "deep")
+    OcrSettings.set_engine(conn, "deep")
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -184,7 +180,7 @@ def test_raising_engine_setting_deepens_already_indexed_files(mock_get_engine, c
     run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert engine.predict.call_count == 1
 
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert _image_page(conn, "a.png")["ocr_phase"] == 2
@@ -212,7 +208,7 @@ def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
     engine = MagicMock()
     engine.predict.side_effect = predict
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     source = Sources.add(conn, folder)
 
     run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
@@ -377,7 +373,7 @@ def test_deeper_phases_track_timestamps_and_their_own_metrics(mock_get_engine, c
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "deep")
+    OcrSettings.set_engine(conn, "deep")
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -420,7 +416,7 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
     engine = MagicMock()
     engine.predict.side_effect = predict
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     source = Sources.add(conn, folder)
     stop_after = {"pending": False}
 
@@ -450,7 +446,7 @@ def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -476,7 +472,7 @@ def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
         else _scored(("hello", 0.9), ("DIRECTOR", 0.5))
     )
     mock_get_engine.return_value = engine
-    set_ocr_engine(conn, "moderate")
+    OcrSettings.set_engine(conn, "moderate")
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")

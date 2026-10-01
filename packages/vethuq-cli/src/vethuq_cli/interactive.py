@@ -14,13 +14,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.settings import (
-    OCR_ENGINE_MODES,
-    SEARCH_EXPORT_FORMATS,
-    STALE_LOCK_VALUES,
-    THREAD_WORKERS_AUTO,
-    THREAD_WORKERS_MAX,
-)
+from vethuq_core.settings import IndexSettings, OcrSettings, SearchSettings
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index import history as index_history
@@ -214,7 +208,9 @@ def _settings_export_format_menu() -> None:
         if choice == "1":
             _run_safely(export_format_show)
         elif choice == "2":
-            format_ = Prompt.ask("Format", console=console, choices=list(SEARCH_EXPORT_FORMATS))
+            format_ = Prompt.ask(
+                "Format", console=console, choices=list(SearchSettings.EXPORT_FORMATS)
+            )
             _run_safely(export_format_set, format_=format_)
 
 
@@ -277,9 +273,12 @@ def _settings_thread_workers_menu() -> None:
         if choice == "1":
             _run_safely(thread_workers_show)
         elif choice == "2":
-            choices = [str(n) for n in range(THREAD_WORKERS_MAX + 1)] + [THREAD_WORKERS_AUTO]
+            choices = [str(n) for n in range(IndexSettings.THREAD_WORKERS_MAX + 1)] + [
+                IndexSettings.THREAD_WORKERS_AUTO
+            ]
             value = Prompt.ask(
-                f"0 (disable), 1-{THREAD_WORKERS_MAX}, or '{THREAD_WORKERS_AUTO}'",
+                f"0 (disable), 1-{IndexSettings.THREAD_WORKERS_MAX}, "
+                f"or '{IndexSettings.THREAD_WORKERS_AUTO}'",
                 console=console,
                 choices=choices,
             )
@@ -299,7 +298,7 @@ def _settings_stale_lock_menu() -> None:
             value = Prompt.ask(
                 "Auto-clear a lock left behind by a run that didn't exit cleanly",
                 console=console,
-                choices=list(STALE_LOCK_VALUES),
+                choices=list(IndexSettings.STALE_LOCK_VALUES),
             )
             _run_safely(stale_lock_set, value=value)
 
@@ -317,7 +316,7 @@ def _settings_engine_menu() -> None:
             value = Prompt.ask(
                 "How thoroughly OCR looks for rotated text",
                 console=console,
-                choices=list(OCR_ENGINE_MODES),
+                choices=list(OcrSettings.ENGINE_MODES),
             )
             _run_safely(engine_set, value=value)
 

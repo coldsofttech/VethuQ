@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from vethuq_core.db import Db
 from vethuq_core.search import Search
-from vethuq_core.settings import set_search_snippet_context_chars
+from vethuq_core.settings import SearchSettings
 
 
 @pytest.fixture
@@ -164,7 +164,7 @@ def test_search_snippet_context_is_configurable(conn: sqlite3.Connection):
     text = "x" * 100 + "TARGET" + "y" * 100
     _add_pdf_page(conn, document_id, 1, text)
 
-    set_search_snippet_context_chars(conn, 10)
+    SearchSettings.set_snippet_context_chars(conn, 10)
     matches = Search.indexed_content(conn, "target")
 
     assert len(matches) == 1

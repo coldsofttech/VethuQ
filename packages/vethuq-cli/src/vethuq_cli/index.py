@@ -39,7 +39,7 @@ from vethuq_core.ocr import (
     new_file_type_counts,
     pending_file_type_counts,
 )
-from vethuq_core.settings import THREAD_WORKERS_AUTO, get_ocr_engine
+from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import SourceNotFoundError, Sources
 
 from vethuq_cli.console import console, error_console
@@ -102,7 +102,7 @@ def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict
             quick_remaining[file_type] += count
 
     remaining_by_phase = {1: quick_remaining}
-    for phase in range(2, OCR_ENGINE_PHASES.get(get_ocr_engine(conn), 1) + 1):
+    for phase in range(2, OCR_ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1) + 1):
         remaining_by_phase[phase] = deepening_pending_documents(conn, sources, phase)
 
     seconds_by_phase: dict[int, float] = {}
@@ -166,7 +166,7 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
     table.add_row("Target", state.target or "all sources")
 
     phase_name = _PHASE_NAMES.get(state.phase, str(state.phase))
-    max_phase = OCR_ENGINE_PHASES.get(get_ocr_engine(conn), 1)
+    max_phase = OCR_ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
     if max_phase > 1:
         table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
         # Quick counts files; the deeper phases count pages - each shows how much of
@@ -188,7 +188,7 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
 
     if state.thread_workers_setting == "0":
         workers_label = "disabled (sequential)"
-    elif state.thread_workers_setting == THREAD_WORKERS_AUTO:
+    elif state.thread_workers_setting == IndexSettings.THREAD_WORKERS_AUTO:
         thread_word = "thread" if state.workers == 1 else "threads"
         workers_label = f"auto (currently {state.workers} {thread_word})"
     else:

@@ -14,7 +14,7 @@ from vethuq_core.ocr import (
     _resolve_device,
     run_ocr,
 )
-from vethuq_core.settings import set_gpu_enabled
+from vethuq_core.settings import GpuSettings
 from vethuq_core.source import Sources
 
 
@@ -675,7 +675,7 @@ def test_resolve_device_uses_gpu_when_enabled_and_available(conn: sqlite3.Connec
     mock_paddle = MagicMock()
     mock_paddle.device.is_compiled_with_cuda.return_value = True
     mock_paddle.device.cuda.device_count.return_value = 1
-    set_gpu_enabled(conn, True)
+    GpuSettings.set_enabled(conn, True)
 
     with patch.dict(sys.modules, {"paddle": mock_paddle}):
         assert _resolve_device(conn) == "gpu"
@@ -686,7 +686,7 @@ def test_resolve_device_falls_back_to_cpu_when_enabled_but_unsupported(
 ):
     mock_paddle = MagicMock()
     mock_paddle.device.is_compiled_with_cuda.return_value = False
-    set_gpu_enabled(conn, True)
+    GpuSettings.set_enabled(conn, True)
 
     with patch.dict(sys.modules, {"paddle": mock_paddle}):
         assert _resolve_device(conn) == "cpu"

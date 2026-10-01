@@ -13,11 +13,7 @@ from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.search import Export, Search, SearchMatch
-from vethuq_core.settings import (
-    SEARCH_EXPORT_FORMATS,
-    get_search_export_format,
-    get_search_snippet_context_chars,
-)
+from vethuq_core.settings import SearchSettings
 
 from vethuq_cli.console import console, error_console
 
@@ -181,11 +177,13 @@ def search(
             return
 
         if export is not None:
-            resolved_format = format_ if format_ is not None else get_search_export_format(conn)
-            if resolved_format not in SEARCH_EXPORT_FORMATS:
+            resolved_format = (
+                format_ if format_ is not None else SearchSettings.get_export_format(conn)
+            )
+            if resolved_format not in SearchSettings.EXPORT_FORMATS:
                 error_console.print(
                     f"Error: unsupported export format '{resolved_format}'. "
-                    f"Use one of: {', '.join(SEARCH_EXPORT_FORMATS)}.",
+                    f"Use one of: {', '.join(SearchSettings.EXPORT_FORMATS)}.",
                     style="bold red",
                 )
                 raise typer.Exit(code=1)
@@ -208,8 +206,8 @@ def search(
             resolved_format = Prompt.ask(
                 "Export format",
                 console=console,
-                default=get_search_export_format(conn),
-                choices=list(SEARCH_EXPORT_FORMATS),
+                default=SearchSettings.get_export_format(conn),
+                choices=list(SearchSettings.EXPORT_FORMATS),
             ).strip()
             output_path = Path(output)
             Export.search_results(matches, content, output_path, resolved_format)
@@ -221,7 +219,7 @@ def search(
                 )
             )
 
-        width = max(get_search_snippet_context_chars(conn), _MIN_BOX_WIDTH)
+        width = max(SearchSettings.get_snippet_context_chars(conn), _MIN_BOX_WIDTH)
         match_word = "match" if len(matches) == 1 else "matches"
 
         with console.capture() as capture:

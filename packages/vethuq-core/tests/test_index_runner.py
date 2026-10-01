@@ -269,9 +269,9 @@ def test_start_run_raises_when_already_running(db_path, monkeypatch):
 
 
 def test_start_run_raises_on_stale_lock_when_disabled(db_path, conn, monkeypatch):
-    from vethuq_core.settings import set_stale_lock
+    from vethuq_core.settings import IndexSettings
 
-    set_stale_lock(conn, "disable")
+    IndexSettings.set_stale_lock(conn, "disable")
     monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
     index_runner._atomic_write(index_runner._lock_path(db_path), "999")
 
@@ -280,9 +280,9 @@ def test_start_run_raises_on_stale_lock_when_disabled(db_path, conn, monkeypatch
 
 
 def test_start_run_force_clears_stale_lock(db_path, conn, monkeypatch):
-    from vethuq_core.settings import set_stale_lock
+    from vethuq_core.settings import IndexSettings
 
-    set_stale_lock(conn, "disable")
+    IndexSettings.set_stale_lock(conn, "disable")
     monkeypatch.setattr(index_runner, "_is_pid_running", lambda pid: False)
     index_runner._atomic_write(index_runner._lock_path(db_path), "999")
     monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))

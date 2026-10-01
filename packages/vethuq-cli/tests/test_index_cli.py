@@ -358,7 +358,7 @@ def test_history_lists_runs(tmp_path, monkeypatch):
 
 def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     from rich.console import Console
-    from vethuq_core.settings import set_ocr_engine
+    from vethuq_core.settings import OcrSettings
 
     db_path = _use_temp_db(monkeypatch, tmp_path)
     conn = db_module.Db.connect(db_path)
@@ -380,7 +380,7 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
             (index, phase),
         )
     conn.commit()
-    set_ocr_engine(conn, "deep")
+    OcrSettings.set_engine(conn, "deep")
     now = datetime.now(UTC).isoformat()
     state = index_runner_module.IndexState(
         run_id=1,
@@ -411,7 +411,7 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
 
 
 def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monkeypatch):
-    from vethuq_core.settings import set_ocr_engine
+    from vethuq_core.settings import OcrSettings
 
     db_path = _use_temp_db(monkeypatch, tmp_path)
     conn = db_module.Db.connect(db_path)
@@ -442,7 +442,7 @@ def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monke
         "INSERT INTO processing_metrics VALUES (2, 'image', 'small', 5, 30.0, 10, 5, 'now')"
     )
     conn.commit()
-    set_ocr_engine(conn, "deep")
+    OcrSettings.set_engine(conn, "deep")
     now = datetime.now(UTC).isoformat()
     state = index_runner_module.IndexState(
         run_id=1,

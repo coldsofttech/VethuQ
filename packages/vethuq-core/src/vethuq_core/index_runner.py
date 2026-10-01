@@ -39,7 +39,7 @@ from vethuq_core.ocr import (
     resolve_thread_workers,
     run_ocr_phased,
 )
-from vethuq_core.settings import get_ocr_engine, get_stale_lock, get_thread_workers
+from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source, Sources
 
 _STATE_FILENAME = "index_state.json"
@@ -244,7 +244,7 @@ def start_run(
         if not force:
             conn = Db.connect(db_path)
             try:
-                auto_clear = get_stale_lock(conn) != "disable"
+                auto_clear = IndexSettings.get_stale_lock(conn) != "disable"
             finally:
                 conn.close()
             if not auto_clear:
@@ -472,7 +472,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             )
             for file_type, count in counts.items():
                 type_counts[file_type] += count
-        thread_workers_setting = get_thread_workers(conn)
+        thread_workers_setting = IndexSettings.get_thread_workers(conn)
         workers = resolve_thread_workers(conn, type_counts)
 
         run_id = Index.insert_run(conn, target, mode, pid, total, workers, started_at)
@@ -492,7 +492,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             current_files=[],
             started_at=started_at,
             updated_at=started_at,
-            engine=get_ocr_engine(conn),
+            engine=OcrSettings.get_engine(conn),
         )
         _write_state(db_path, state)
 

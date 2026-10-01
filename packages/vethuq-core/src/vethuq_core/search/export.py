@@ -10,7 +10,7 @@ from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.search.search import SearchMatch
-from vethuq_core.settings import SEARCH_EXPORT_FORMATS
+from vethuq_core.settings import SearchSettings
 
 
 class Export:
@@ -126,8 +126,8 @@ class Export:
     @staticmethod
     def search_results(matches: list[SearchMatch], query: str, output: Path, format_: str) -> None:
         """Write `matches` for `query` to `output` as `format_` ('json' or 'html')."""
-        if format_ not in SEARCH_EXPORT_FORMATS:
-            raise ValueError(f"format_ must be one of {SEARCH_EXPORT_FORMATS}")
+        if format_ not in SearchSettings.EXPORT_FORMATS:
+            raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
         if format_ == "json":
             Export._write_json(matches, query, output)
         else:

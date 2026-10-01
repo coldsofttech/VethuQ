@@ -39,14 +39,7 @@ if TYPE_CHECKING:
 
 from vethuq_core.db.queries import Document, Ocr, Stats
 from vethuq_core.db.queries.sources import Source as SourceQuery
-from vethuq_core.settings import (
-    THREAD_WORKERS_AUTO,
-    THREAD_WORKERS_MAX,
-    get_ocr_engine,
-    get_ocr_retry_attempts,
-    get_thread_workers,
-    is_gpu_enabled,
-)
+from vethuq_core.settings import GpuSettings, IndexSettings, OcrSettings
 from vethuq_core.source import Source
 
 _logger = logging.getLogger(__name__)
@@ -104,7 +97,7 @@ def _resolve_device(conn: sqlite3.Connection) -> str:
     erroring out, since enabling the setting on a CPU-only install (the
     common case) shouldn't break OCR.
     """
-    if not is_gpu_enabled(conn):
+    if not GpuSettings.is_enabled(conn):
         return "cpu"
     import paddle
 
@@ -889,10 +882,10 @@ def resolve_thread_workers(conn: sqlite3.Connection, pending_type_counts: dict[s
     starting more workers than there is work to hand them doesn't help.
     """
     total_pending = sum(pending_type_counts.values())
-    setting = get_thread_workers(conn)
+    setting = IndexSettings.get_thread_workers(conn)
     workers = (
         _auto_worker_count(pending_type_counts, total_pending)
-        if setting == THREAD_WORKERS_AUTO
+        if setting == IndexSettings.THREAD_WORKERS_AUTO
         else int(setting)
     )
     return min(workers, total_pending) if total_pending and workers else workers
@@ -926,7 +919,7 @@ def _auto_worker_count(pending_type_counts: dict[str, int], total_pending: int) 
     weight = 1 + pdf_share * (_PDF_WEIGHT - 1)
     workers = max(1, round(min(cpu_headroom, memory_headroom) / weight))
 
-    return min(workers, THREAD_WORKERS_MAX, total_pending)
+    return min(workers, IndexSettings.THREAD_WORKERS_MAX, total_pending)
 
 
 def run_ocr(
@@ -1029,7 +1022,7 @@ def run_ocr(
         mem_before = process.memory_info().rss
 
         reader = _READERS[file_path.suffix.lower()]
-        max_attempts = 1 + get_ocr_retry_attempts(conn)
+        max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
         attempt = 0
         last_exc: Exception | None = None
         succeeded = False
@@ -1108,7 +1101,7 @@ def _process_file(
     mem_before = process.memory_info().rss
 
     reader = _READERS[file_path.suffix.lower()]
-    max_attempts = 1 + get_ocr_retry_attempts(conn)
+    max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
     attempt = 0
     last_exc: Exception | None = None
     succeeded = False
@@ -1202,7 +1195,7 @@ def _run_auto_elastic(
 ) -> None:
     """Process `pending` with a worker count re-resolved after every file.
 
-    Spawns up to `min(THREAD_WORKERS_MAX, len(pending))` worker threads up
+    Spawns up to `min(IndexSettings.THREAD_WORKERS_MAX, len(pending))` worker threads up
     front - an idle one just waits (cheap), never torn down or recreated -
     but only lets `active_workers` of them (by slot index) actually pull
     work at a time. `active_workers` is recomputed via
@@ -1211,7 +1204,7 @@ def _run_auto_elastic(
     CPU/memory headroom as the run progresses rather than being fixed for
     the whole run.
     """
-    max_slots = max(1, min(THREAD_WORKERS_MAX, len(pending)))
+    max_slots = max(1, min(IndexSettings.THREAD_WORKERS_MAX, len(pending)))
     remaining_counts = new_file_type_counts()
     for item in pending:
         remaining_counts[item.file_type] += 1
@@ -1386,7 +1379,7 @@ def run_ocr_batch(
         if on_file_done is not None:
             on_file_done(path_str, succeeded)
 
-    if get_thread_workers(conn) == THREAD_WORKERS_AUTO:
+    if IndexSettings.get_thread_workers(conn) == IndexSettings.THREAD_WORKERS_AUTO:
         _run_auto_elastic(
             conn, pending, workers, handle_one, should_stop, on_workers_changed, db_lock=db_lock
         )
@@ -1882,8 +1875,8 @@ def _batch_workers(conn: sqlite3.Connection, initial: int, *, first: bool) -> in
     """Worker count for a quick-pass batch: `initial` for the run's first, then the setting."""
     if first:
         return initial
-    setting = get_thread_workers(conn)
-    return 1 if setting == THREAD_WORKERS_AUTO else int(setting)
+    setting = IndexSettings.get_thread_workers(conn)
+    return 1 if setting == IndexSettings.THREAD_WORKERS_AUTO else int(setting)
 
 
 def run_ocr_phased(
@@ -1954,7 +1947,7 @@ def run_ocr_phased(
         passes = run_deepening_batch(
             conn,
             sources,
-            max_phase=OCR_ENGINE_PHASES[get_ocr_engine(conn)],
+            max_phase=OCR_ENGINE_PHASES[OcrSettings.get_engine(conn)],
             should_stop=should_stop,
             has_quick_work=quick_work_waiting,
             skip_units=skip_units,

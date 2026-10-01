@@ -28,7 +28,7 @@ from vethuq_core.index_runner import (
 )
 from vethuq_core.ocr import get_document_results
 from vethuq_core.search import Search
-from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
+from vethuq_core.settings import GpuSettings
 from vethuq_core.source import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
 
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
@@ -194,7 +194,7 @@ class MainWindow(tk.Tk):
         notebook.add(settings_tab, text="Settings")
 
         ocr_group = self._build_ribbon_group(settings_tab, "GPU")
-        self._gpu_enabled_var = tk.BooleanVar(value=is_gpu_enabled(self.conn))
+        self._gpu_enabled_var = tk.BooleanVar(value=GpuSettings.is_enabled(self.conn))
         self._gpu_button = ttk.Checkbutton(
             ocr_group,
             variable=self._gpu_enabled_var,
@@ -261,7 +261,7 @@ class MainWindow(tk.Tk):
         return "gpu" if self._gpu_enabled_var.get() else "gpu-disable"
 
     def _on_toggle_gpu(self) -> None:
-        set_gpu_enabled(self.conn, self._gpu_enabled_var.get())
+        GpuSettings.set_enabled(self.conn, self._gpu_enabled_var.get())
         icon = get_icon(self._gpu_icon_name())
         if icon is not None:
             self._gpu_button.configure(image=icon)

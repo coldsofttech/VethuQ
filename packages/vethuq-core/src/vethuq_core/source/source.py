@@ -198,10 +198,10 @@ class Sources:
 
         Returns the number of sources purged.
         """
-        from vethuq_core.settings import get_removed_source_retention_minutes
+        from vethuq_core.settings import SourceSettings
 
         if retention_minutes is None:
-            retention_minutes = get_removed_source_retention_minutes(conn)
+            retention_minutes = SourceSettings.get_removed_retention_minutes(conn)
 
         cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
         expired = SourceQuery.list_expired_removed(conn, cutoff)
@@ -248,10 +248,10 @@ class Sources:
 
         Returns the number of documents purged.
         """
-        from vethuq_core.settings import get_removed_source_retention_minutes
+        from vethuq_core.settings import SourceSettings
 
         if retention_minutes is None:
-            retention_minutes = get_removed_source_retention_minutes(conn)
+            retention_minutes = SourceSettings.get_removed_retention_minutes(conn)
 
         cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
         expired = Document.list_expired_removed_index_rows(conn, cutoff)

@@ -30,39 +30,15 @@ from vethuq._core.ocr import get_document_results as _get_document_results
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import Search as _Search
 from vethuq._core.search import SearchMatch
+from vethuq._core.settings import GpuSettings as _GpuSettings
+from vethuq._core.settings import IndexSettings as _IndexSettings
 from vethuq._core.settings import (
-    OCR_ENGINE_MODES,
-    SEARCH_EXPORT_FORMATS,
-    STALE_LOCK_VALUES,
     InvalidSettingValueError,
     SettingsError,
 )
-from vethuq._core.settings import THREAD_WORKERS_AUTO as _THREAD_WORKERS_AUTO
-from vethuq._core.settings import THREAD_WORKERS_MAX as _THREAD_WORKERS_MAX
-from vethuq._core.settings import get_ocr_engine as _get_ocr_engine
-from vethuq._core.settings import get_ocr_retry_attempts as _get_ocr_retry_attempts
-from vethuq._core.settings import (
-    get_removed_source_retention_minutes as _get_removed_source_retention_minutes,
-)
-from vethuq._core.settings import get_search_export_format as _get_search_export_format
-from vethuq._core.settings import (
-    get_search_snippet_context_chars as _get_search_snippet_context_chars,
-)
-from vethuq._core.settings import get_stale_lock as _get_stale_lock
-from vethuq._core.settings import get_thread_workers as _get_thread_workers
-from vethuq._core.settings import is_gpu_enabled as _is_gpu_enabled
-from vethuq._core.settings import set_gpu_enabled as _set_gpu_enabled
-from vethuq._core.settings import set_ocr_engine as _set_ocr_engine
-from vethuq._core.settings import set_ocr_retry_attempts as _set_ocr_retry_attempts
-from vethuq._core.settings import (
-    set_removed_source_retention_minutes as _set_removed_source_retention_minutes,
-)
-from vethuq._core.settings import set_search_export_format as _set_search_export_format
-from vethuq._core.settings import (
-    set_search_snippet_context_chars as _set_search_snippet_context_chars,
-)
-from vethuq._core.settings import set_stale_lock as _set_stale_lock
-from vethuq._core.settings import set_thread_workers as _set_thread_workers
+from vethuq._core.settings import OcrSettings as _OcrSettings
+from vethuq._core.settings import SearchSettings as _SearchSettings
+from vethuq._core.settings import SourceSettings as _SourceSettings
 from vethuq._core.source import (
     Source,
     SourceAlreadyExistsError,
@@ -80,6 +56,10 @@ _STATE_POLL_SECONDS = 1.0
 
 DB_PATH = _Db.default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
+
+OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
+SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
+STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 
 __all__ = [
     "OCR_ENGINE_MODES",
@@ -272,7 +252,7 @@ class GPUSettings:
         """Whether OCR should attempt to use the GPU. Disabled by default."""
         conn = _Db.connect()
         try:
-            return _is_gpu_enabled(conn)
+            return _GpuSettings.is_enabled(conn)
         finally:
             conn.close()
 
@@ -285,7 +265,7 @@ class GPUSettings:
         """
         conn = _Db.connect()
         try:
-            _set_gpu_enabled(conn, True)
+            _GpuSettings.set_enabled(conn, True)
         finally:
             conn.close()
 
@@ -293,7 +273,7 @@ class GPUSettings:
         """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
         conn = _Db.connect()
         try:
-            _set_gpu_enabled(conn, False)
+            _GpuSettings.set_enabled(conn, False)
         finally:
             conn.close()
 
@@ -308,7 +288,7 @@ class SnippetSettings:
         """How many characters of context `search` shows around a match. 80 by default."""
         conn = _Db.connect()
         try:
-            return _get_search_snippet_context_chars(conn)
+            return _SearchSettings.get_snippet_context_chars(conn)
         finally:
             conn.close()
 
@@ -319,7 +299,7 @@ class SnippetSettings:
         """
         conn = _Db.connect()
         try:
-            _set_search_snippet_context_chars(conn, chars)
+            _SearchSettings.set_snippet_context_chars(conn, chars)
         finally:
             conn.close()
 
@@ -334,7 +314,7 @@ class ExportFormatSettings:
         """Default format `search --export` writes to when none is given. 'json' by default."""
         conn = _Db.connect()
         try:
-            return _get_search_export_format(conn)
+            return _SearchSettings.get_export_format(conn)
         finally:
             conn.close()
 
@@ -346,7 +326,7 @@ class ExportFormatSettings:
         """
         conn = _Db.connect()
         try:
-            _set_search_export_format(conn, format_)
+            _SearchSettings.set_export_format(conn, format_)
         finally:
             conn.close()
 
@@ -367,7 +347,7 @@ class RemovedRetentionSettings:
         """Minutes a removed source is kept before it's purged from the DB. 7 days by default."""
         conn = _Db.connect()
         try:
-            return _get_removed_source_retention_minutes(conn)
+            return _SourceSettings.get_removed_retention_minutes(conn)
         finally:
             conn.close()
 
@@ -378,7 +358,7 @@ class RemovedRetentionSettings:
         """
         conn = _Db.connect()
         try:
-            _set_removed_source_retention_minutes(conn, minutes)
+            _SourceSettings.set_removed_retention_minutes(conn, minutes)
         finally:
             conn.close()
 
@@ -391,7 +371,7 @@ class OcrRetrySettings:
         """How many times to retry a file's OCR after a transient failure. 3 by default."""
         conn = _Db.connect()
         try:
-            return _get_ocr_retry_attempts(conn)
+            return _OcrSettings.get_retry_attempts(conn)
         finally:
             conn.close()
 
@@ -402,7 +382,7 @@ class OcrRetrySettings:
         """
         conn = _Db.connect()
         try:
-            _set_ocr_retry_attempts(conn, attempts)
+            _OcrSettings.set_retry_attempts(conn, attempts)
         finally:
             conn.close()
 
@@ -411,8 +391,8 @@ class ThreadWorkersSettings:
     """How many worker threads background indexing uses. Not instantiated directly — use
     `Vethuq().settings.index.thread_workers`."""
 
-    AUTO = _THREAD_WORKERS_AUTO
-    MAX = _THREAD_WORKERS_MAX
+    AUTO = _IndexSettings.THREAD_WORKERS_AUTO
+    MAX = _IndexSettings.THREAD_WORKERS_MAX
 
     def get(self) -> str:
         """How many worker threads background indexing uses. '0' (disabled) by default.
@@ -423,7 +403,7 @@ class ThreadWorkersSettings:
         """
         conn = _Db.connect()
         try:
-            return _get_thread_workers(conn)
+            return _IndexSettings.get_thread_workers(conn)
         finally:
             conn.close()
 
@@ -435,7 +415,7 @@ class ThreadWorkersSettings:
         """
         conn = _Db.connect()
         try:
-            _set_thread_workers(conn, value)
+            _IndexSettings.set_thread_workers(conn, value)
         finally:
             conn.close()
 
@@ -454,7 +434,7 @@ class StaleLockSettings:
         """
         conn = _Db.connect()
         try:
-            return _get_stale_lock(conn)
+            return _IndexSettings.get_stale_lock(conn)
         finally:
             conn.close()
 
@@ -466,7 +446,7 @@ class StaleLockSettings:
         """
         conn = _Db.connect()
         try:
-            _set_stale_lock(conn, value)
+            _IndexSettings.set_stale_lock(conn, value)
         finally:
             conn.close()
 
@@ -486,7 +466,7 @@ class OcrEngineSettings:
         """
         conn = _Db.connect()
         try:
-            return _get_ocr_engine(conn)
+            return _OcrSettings.get_engine(conn)
         finally:
             conn.close()
 
@@ -499,7 +479,7 @@ class OcrEngineSettings:
         """
         conn = _Db.connect()
         try:
-            _set_ocr_engine(conn, value)
+            _OcrSettings.set_engine(conn, value)
         finally:
             conn.close()
 
@@ -591,7 +571,9 @@ class Search:
         """
         conn = _Db.connect()
         try:
-            resolved_format = format_ if format_ is not None else _get_search_export_format(conn)
+            resolved_format = (
+                format_ if format_ is not None else _SearchSettings.get_export_format(conn)
+            )
         finally:
             conn.close()
         output_path = Path(output)

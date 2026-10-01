@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vethuq_core.db.queries import Document
-from vethuq_core.settings import get_search_snippet_context_chars
+from vethuq_core.settings import SearchSettings
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,9 @@ class Search:
             return []
 
         chars = (
-            context_chars if context_chars is not None else get_search_snippet_context_chars(conn)
+            context_chars
+            if context_chars is not None
+            else SearchSettings.get_snippet_context_chars(conn)
         )
         query_lower = query.lower()
         page_counts = Search._pdf_page_counts(conn)
