@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq_core.db import Db
+from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.db.queries import Index
 from vethuq_core.ocr import Ocr, Pending, Readers, Scheduler
 from vethuq_core.settings import IndexSettings, OcrSettings
@@ -137,6 +138,7 @@ class IndexRunner:
     _LOG_FILENAME = "index_worker.log"
     _STOP_TIMEOUT_SECONDS = 5.0
     _PAUSE_POLL_SECONDS = 1.0
+    _INTERRUPTED_MESSAGE = "Interrupted: a previous index run did not finish cleanly."
     # Bundled next to the desktop/CLI exes by the installer build. A frozen exe
     # can't be asked to run `-m vethuq_core.index.runner` (it would just start
     # the app again), so frozen builds spawn this dedicated worker exe instead.
@@ -335,23 +337,46 @@ class IndexRunner:
         return process.pid
 
     @staticmethod
+    def _reclaim_stuck_processing(db_path: Path) -> None:
+        """Reset every `document_index` row a run's claim left at status='processing'
+        back to 'error', so it's retried instead of permanently blocking any future
+        claim of that row (see `Document.upsert`).
+
+        Only safe to call once nothing is still actively working on those rows -
+        after a crash is reconciled at the next run's startup, or right after
+        force-killing a run that missed its stop timeout.
+        """
+        conn = Db.connect(db_path)
+        try:
+            DocumentQuery.fail_stuck_processing_index(
+                conn, IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
     def _reconcile_orphaned_run(db_path: Path) -> None:
         """Mark the bookkeeping left by a run that didn't exit cleanly as failed.
 
         Called right after clearing a stale lock, so `index status`/`index history`
         and the desktop app stop showing a run as still "running" once it's known
-        the process behind it is gone.
+        the process behind it is gone. Also resets any `document_index` row that
+        run left claimed ('processing') - reachable only here, since it's the
+        point where it's confirmed nothing is still working on it - so it's
+        retried on the next run instead of its claim blocking it forever.
         """
         state = IndexRunner.read_state(db_path)
         if state is not None and state.status == "running":
             IndexRunner._mark_run_ended(db_path, state, "failed")
-            return
-        conn = Db.connect(db_path)
-        try:
-            Index.fail_all_running(conn, datetime.now(UTC).isoformat())
-            conn.commit()
-        finally:
-            conn.close()
+        else:
+            conn = Db.connect(db_path)
+            try:
+                Index.fail_all_running(conn, datetime.now(UTC).isoformat())
+                conn.commit()
+            finally:
+                conn.close()
+        IndexRunner._reclaim_stuck_processing(db_path)
 
     @staticmethod
     def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
@@ -412,14 +437,22 @@ class IndexRunner:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline and IndexRunner._is_pid_running(pid):
             time.sleep(0.25)
+        force_killed = False
         if IndexRunner._is_pid_running(pid):
             IndexRunner._force_kill(pid)
+            force_killed = True
 
         state = IndexRunner.read_state(db_path)
         if state is not None:
             IndexRunner._mark_run_ended(db_path, state, "stopped")
         IndexRunner._lock_path(db_path).unlink(missing_ok=True)
         IndexRunner._control_path(db_path).unlink(missing_ok=True)
+        if force_killed:
+            # A cooperative stop always finishes whichever file it's on before
+            # exiting (nothing is left claimed) - only a force-kill can cut that
+            # file off mid-processing, leaving its row claimed with no run left
+            # to ever finish it.
+            IndexRunner._reclaim_stuck_processing(db_path)
 
     @staticmethod
     def wait(
@@ -554,13 +587,17 @@ class IndexRunner:
                     state.current_files.append(file_path)
                     IndexRunner._write_state(db_path, state)
 
-            def on_file_done(file_path: str, succeeded: bool) -> None:
+            def on_file_done(file_path: str, succeeded: bool | None) -> None:
                 with state_lock:
                     if file_path in state.current_files:
                         state.current_files.remove(file_path)
-                    state.processed_files += 1
-                    if not succeeded:
-                        state.failed_files += 1
+                    # None: another concurrently-running index run already
+                    # claimed this file (see `Document.upsert`) - it doesn't
+                    # count as processed/failed here, that run tracks it itself.
+                    if succeeded is not None:
+                        state.processed_files += 1
+                        if not succeeded:
+                            state.failed_files += 1
                     IndexRunner._write_state(db_path, state)
 
             def on_files_queued(count: int) -> None:
@@ -627,7 +664,13 @@ class IndexRunner:
         except Exception:  # noqa: BLE001 - record the crash, then re-raise for the process exit code
             if run_id is not None:
                 Index.fail_run(conn, run_id, datetime.now(UTC).isoformat())
-                conn.commit()
+            # Whatever file was in flight when this crashed is left claimed
+            # ('processing') with nothing left to ever finish it - reset it so a
+            # future run retries it instead of its claim blocking that forever.
+            DocumentQuery.fail_stuck_processing_index(
+                conn, IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
+            )
+            conn.commit()
             crashed_state = IndexRunner.read_state(db_path)
             if crashed_state is not None:
                 crashed_state.status = "failed"

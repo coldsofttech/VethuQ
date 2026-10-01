@@ -106,8 +106,9 @@ class Document:
     @staticmethod
     def upsert(
         conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
-    ) -> tuple[int, int | None]:
-        """Insert/reset a document's `document_index` row, linking it to its logical document.
+    ) -> tuple[int, int | None] | None:
+        """Claim and insert/reset a document's `document_index` row, linking it to its
+        logical document.
 
         Returns `(row_id, duplicate_source_id)` - `duplicate_source_id` is the id
         of another `document_index` row whose content (by checksum) this one now
@@ -115,6 +116,14 @@ class Document:
         should skip OCR. It's None when this row's content is unique among
         currently indexed documents, in which case it's linked to a brand-new
         `documents` row (or keeps its existing one, if content is unchanged).
+
+        Returns None instead - rather than a tuple - if `file_path`'s row is
+        already claimed ('processing') by another concurrently-running index run
+        (an overlapping `index run`, or one that hasn't been reconciled yet after
+        a crash - see `DocumentQuery.upsert_index` and `IndexRunner._run_worker`).
+        The caller must leave the file alone in that case: whichever run holds
+        the claim owns processing it, and touching it here would mean the same
+        file gets OCR'd twice at once.
 
         If this document's checksum is changing (its content was modified since
         it was last indexed) and other documents were linked to its old logical
@@ -126,6 +135,10 @@ class Document:
         """
         from vethuq_core.source import Sources
 
+        existing = DocumentQuery.get_index_by_path(conn, str(file_path))
+        if existing is not None and existing["status"] == "processing":
+            return None
+
         started_at = datetime.now(UTC).isoformat()
         stat = file_path.stat()
         file_size_bytes = stat.st_size
@@ -133,7 +146,6 @@ class Document:
         created_at, modified_at = Document.capture_timestamps(stat)
         sha256 = Document.compute_sha256(file_path)
 
-        existing = DocumentQuery.get_index_by_path(conn, str(file_path))
         if existing is not None and existing["sha256"] != sha256:
             Sources.promote_surviving_duplicate(conn, existing["id"], set())
 
@@ -141,17 +153,16 @@ class Document:
         duplicate_source = Document.find_duplicate(conn, sha256, existing_id)
 
         old_document_id = existing["document_id"] if existing is not None else None
+        is_new_document = False
         if duplicate_source is not None:
             document_id = duplicate_source["document_id"]
         elif existing is not None and existing["sha256"] == sha256:
             document_id = old_document_id
         else:
             document_id = DocumentQuery.insert(conn, started_at)
-        if duplicate_source is None:
-            # Re-indexing starts the document over from its quick pass.
-            DocumentQuery.delete_phases(conn, document_id)
+            is_new_document = True
 
-        DocumentQuery.upsert_index(
+        claimed = DocumentQuery.upsert_index(
             conn,
             source_id,
             document_id,
@@ -164,6 +175,19 @@ class Document:
             created_at,
             modified_at,
         )
+        if not claimed:
+            # Lost the claim race between the check above and this write (another
+            # run claimed it in between) - nothing else can reference a document
+            # row created just now for this attempt, so drop it rather than
+            # leaving it orphaned.
+            if is_new_document:
+                DocumentQuery.delete(conn, document_id)
+            return None
+
+        if duplicate_source is None:
+            # Re-indexing starts the document over from its quick pass. Only done
+            # once the claim is won, so a lost race never wipes the other run's phases.
+            DocumentQuery.delete_phases(conn, document_id)
         if old_document_id is not None and old_document_id != document_id:
             Sources.prune_orphaned_documents(conn, {old_document_id})
         Sources.refresh_document_paths(conn, {document_id, old_document_id} - {None})

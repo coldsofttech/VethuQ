@@ -61,6 +61,59 @@ def _fake_run_ocr_phased(
     return processed
 
 
+def _insert_processing_row(conn: sqlite3.Connection, file_path: str) -> None:
+    """Insert a `document_index` row left claimed ('processing') under the registered source."""
+    now = datetime.now(UTC).isoformat()
+    document_id = conn.execute("INSERT INTO documents (created_at) VALUES (?)", (now,)).lastrowid
+    source_id = conn.execute("SELECT id FROM sources LIMIT 1").fetchone()["id"]
+    conn.execute(
+        "INSERT INTO document_index "
+        "(source_id, document_id, file_path, file_type, status, started_at) "
+        "VALUES (?, ?, ?, 'pdf', 'processing', ?)",
+        (source_id, document_id, file_path, now),
+    )
+    conn.commit()
+
+
+def _write_running_state(db_path: Path, conn: sqlite3.Connection, pid: int) -> None:
+    """Record a run as running (in `index_runs`, the state file and the lock) for `pid`."""
+    started_at = datetime.now(UTC).isoformat()
+    run_id = conn.execute(
+        "INSERT INTO index_runs (target, status, pid, total_files, started_at) "
+        "VALUES (NULL, 'running', ?, 1, ?)",
+        (pid, started_at),
+    ).lastrowid
+    assert run_id is not None
+    conn.commit()
+    state = index_runner.IndexState(
+        run_id=run_id,
+        pid=pid,
+        target=None,
+        mode="run",
+        status="running",
+        total_files=1,
+        processed_files=0,
+        failed_files=0,
+        thread_workers_setting="1",
+        workers=1,
+        current_files=[],
+        started_at=started_at,
+        updated_at=started_at,
+    )
+    IndexRunner._write_state(db_path, state)
+    IndexRunner._atomic_write(IndexRunner._lock_path(db_path), str(pid))
+
+
+def _document_index_row(db_path: Path, file_path: str) -> sqlite3.Row:
+    result_conn = Db.connect(db_path)
+    try:
+        return result_conn.execute(
+            "SELECT status, error_message FROM document_index WHERE file_path = ?", (file_path,)
+        ).fetchone()
+    finally:
+        result_conn.close()
+
+
 class TestReadState:
     def test_read_state_ignores_old_incompatible_format(self, db_path):
         # Simulates a state file left behind by an older version of this code,
@@ -105,6 +158,26 @@ class TestRunWorker:
         result_conn.close()
         assert row["status"] == "completed"
         assert row["processed_files"] == 3
+
+    def test_run_worker_crash_resets_stuck_processing_document_index_row(
+        self, db_path, conn, tmp_path
+    ):
+        _register_source(conn, tmp_path)
+        _insert_processing_row(conn, "/docs/stuck.pdf")
+        conn.close()
+
+        with (
+            patch.object(Pending, "file_count", return_value=1),
+            patch.object(Ocr, "run_phased", side_effect=RuntimeError("boom")),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            IndexRunner._run_worker(db_path, None)
+
+        row = _document_index_row(db_path, "/docs/stuck.pdf")
+        # The file this crashed run had claimed is left retryable rather than
+        # permanently stuck - nothing will ever finish processing it otherwise.
+        assert row["status"] == "error"
+        assert row["error_message"] is not None
 
     def test_run_worker_stops_when_requested(self, db_path, conn, tmp_path):
         _register_source(conn, tmp_path)
@@ -331,6 +404,24 @@ class TestStartRun:
         assert row["status"] == "failed"
         assert IndexRunner.read_state(db_path).status == "failed"
 
+    def test_start_run_reconciles_stuck_processing_document_index_row(
+        self, db_path, conn, tmp_path, monkeypatch
+    ):
+        _register_source(conn, tmp_path)
+        _insert_processing_row(conn, "/docs/stuck.pdf")
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+
+        IndexRunner.start_run(None, db_path=db_path)
+
+        row = _document_index_row(db_path, "/docs/stuck.pdf")
+        # Nothing was still working on this row once its run's lock was found
+        # stale - its claim ('processing') would otherwise block it from ever
+        # being reclaimed, so it's reset to a retryable state instead.
+        assert row["status"] == "error"
+        assert row["error_message"] is not None
+
     def test_start_run_raises_for_unknown_target(self, db_path):
         with pytest.raises(SourceNotFoundError):
             IndexRunner.start_run("does-not-exist", db_path=db_path)
@@ -409,6 +500,64 @@ class TestControl:
         # with a 1s-per-call fake clock and a 3s timeout, it should give up
         # (and force-kill) well before it would have for the ~5s default.
         assert clock["now"] < IndexRunner._STOP_TIMEOUT_SECONDS
+
+    def test_request_stop_force_kill_resets_stuck_processing_document_index_row(
+        self, db_path, conn, tmp_path, monkeypatch
+    ):
+        _register_source(conn, tmp_path)
+        _insert_processing_row(conn, "/docs/stuck.pdf")
+        _write_running_state(db_path, conn, 7777)
+        conn.close()
+
+        # Never reports as stopped on its own - forces the force-kill branch.
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
+        monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
+        force_kill_calls = []
+        monkeypatch.setattr(IndexRunner, "_force_kill", force_kill_calls.append)
+
+        clock = {"now": 0.0}
+
+        def fake_monotonic() -> float:
+            clock["now"] += 1.0
+            return clock["now"]
+
+        monkeypatch.setattr(index_runner.time, "monotonic", fake_monotonic)
+
+        IndexRunner.request_stop(db_path=db_path, timeout=3.0)
+
+        assert force_kill_calls == [7777]
+        row = _document_index_row(db_path, "/docs/stuck.pdf")
+        # A cooperative stop always finishes its current file first; only a
+        # force-kill can cut it off mid-processing with its claim never released.
+        assert row["status"] == "error"
+        assert row["error_message"] is not None
+
+    def test_request_stop_graceful_leaves_processing_rows_untouched(
+        self, db_path, conn, tmp_path, monkeypatch
+    ):
+        _register_source(conn, tmp_path)
+        _insert_processing_row(conn, "/docs/still-processing.pdf")
+        _write_running_state(db_path, conn, 8888)
+        conn.close()
+
+        calls = {"n": 0}
+
+        def fake_alive(pid: int) -> bool:
+            calls["n"] += 1
+            return calls["n"] == 1  # alive on the first check, exited by the next
+
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", fake_alive)
+        monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
+        force_kill_calls = []
+        monkeypatch.setattr(IndexRunner, "_force_kill", force_kill_calls.append)
+
+        IndexRunner.request_stop(db_path=db_path)
+
+        assert force_kill_calls == []
+        # This row isn't necessarily stuck - a worker that stopped on its own can
+        # still be mid-write on its last file, so a graceful stop must not touch
+        # 'processing' rows the way a force-kill's reclaim does.
+        assert _document_index_row(db_path, "/docs/still-processing.pdf")["status"] == "processing"
 
     def test_request_pause_raises_when_not_running(self, db_path):
         with pytest.raises(index_runner.IndexRunnerError):

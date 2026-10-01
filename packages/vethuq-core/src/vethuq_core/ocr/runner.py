@@ -41,7 +41,7 @@ class Ocr:
         only_failed: bool = False,
         workers: int = 1,
         on_file_start: Callable[[str], None] | None = None,
-        on_file_done: Callable[[str, bool], None] | None = None,
+        on_file_done: Callable[[str, bool | None], None] | None = None,
         on_workers_changed: Callable[[int], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
         on_files_queued: Callable[[int], None] | None = None,
