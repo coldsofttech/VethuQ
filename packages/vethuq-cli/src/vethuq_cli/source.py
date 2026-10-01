@@ -6,14 +6,11 @@ import typer
 from rich.prompt import Confirm
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.sources import (
+from vethuq_core.source import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
-    add_source,
-    get_source,
-    list_sources,
-    remove_source,
+    Sources,
 )
 
 from vethuq_cli.console import console, error_console
@@ -32,7 +29,7 @@ def add(
     """Register a file or folder as a VethuQ source."""
     conn = Db.connect()
     try:
-        source = add_source(conn, path)
+        source = Sources.add(conn, path)
     except (SourcePathError, SourceAlreadyExistsError) as exc:
         error_console.print(str(exc), style="bold red")
         raise typer.Exit(code=1) from exc
@@ -53,7 +50,7 @@ def list_() -> None:
     """List registered sources."""
     conn = Db.connect()
     try:
-        sources = list_sources(conn)
+        sources = Sources.list_all(conn)
     finally:
         conn.close()
 
@@ -84,7 +81,7 @@ def remove(
     try:
         target: str | int = int(path_or_id) if path_or_id.isdigit() else path_or_id
         try:
-            source = get_source(conn, target)
+            source = Sources.get(conn, target)
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style="bold red")
             raise typer.Exit(code=1) from exc
@@ -97,7 +94,7 @@ def remove(
                 console.print("Aborted.", style="bright_black")
                 raise typer.Exit(code=0)
 
-        source = remove_source(conn, target)
+        source = Sources.remove(conn, target)
     finally:
         conn.close()
 

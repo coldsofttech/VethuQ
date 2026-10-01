@@ -29,14 +29,7 @@ from vethuq_core.index_runner import (
 from vethuq_core.ocr import get_document_results
 from vethuq_core.search import Search
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
-from vethuq_core.sources import (
-    SourceAlreadyExistsError,
-    SourceError,
-    SourceNotFoundError,
-    add_source,
-    list_sources,
-    remove_source,
-)
+from vethuq_core.source import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
 
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.icons import get_file_icon, get_icon
@@ -597,7 +590,7 @@ class MainWindow(tk.Tk):
         if not ask_yes_no(self, "Remove source", f"Remove {path} from VethuQ?"):
             return
         try:
-            remove_source(self.conn, source_id)
+            Sources.remove(self.conn, source_id)
         except SourceNotFoundError as exc:
             show_error(self, "Could not remove source", str(exc))
         else:
@@ -643,7 +636,7 @@ class MainWindow(tk.Tk):
 
     def _add_source(self, path: str) -> None:
         try:
-            add_source(self.conn, path)
+            Sources.add(self.conn, path)
         except SourceAlreadyExistsError:
             show_warning(self, "Already added", f"{path} is already registered.")
         except SourceError as exc:
@@ -654,7 +647,7 @@ class MainWindow(tk.Tk):
 
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
-        for source in list_sources(self.conn):
+        for source in Sources.list_all(self.conn):
             results = get_document_results(self.conn, source.id)
             done = sum(1 for result in results if result.status == "indexed")
             noun = "file" if len(results) == 1 else "files"

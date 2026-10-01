@@ -15,11 +15,8 @@ from rich.progress import TextColumn as ProgressTextColumn
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
-from vethuq_core.db import (
-    Db,
-    list_index_runs,
-)
-from vethuq_core.db.queries import Stats
+from vethuq_core.db import Db
+from vethuq_core.db.queries import Index, Stats
 from vethuq_core.index_runner import (
     AlreadyRunningError,
     IndexRunnerError,
@@ -43,7 +40,7 @@ from vethuq_core.ocr import (
     pending_file_type_counts,
 )
 from vethuq_core.settings import THREAD_WORKERS_AUTO, get_ocr_engine
-from vethuq_core.sources import SourceNotFoundError, get_source, list_sources
+from vethuq_core.source import SourceNotFoundError, Sources
 
 from vethuq_cli.console import console, error_console
 
@@ -252,7 +249,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
     if target is None:
         conn = Db.connect()
         try:
-            has_sources = bool(list_sources(conn))
+            has_sources = bool(Sources.list_all(conn))
         finally:
             conn.close()
         if not has_sources:
@@ -364,7 +361,7 @@ def status(
     conn = Db.connect()
     try:
         try:
-            source = get_source(conn, _coerce_target(target))
+            source = Sources.get(conn, _coerce_target(target))
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style="bold red")
             raise typer.Exit(code=1) from exc
@@ -474,14 +471,14 @@ def history(
     try:
         if target is not None:
             try:
-                get_source(conn, _coerce_target(target))
+                Sources.get(conn, _coerce_target(target))
             except SourceNotFoundError as exc:
                 error_console.print(str(exc), style="bold red")
                 raise typer.Exit(code=1) from exc
         # A run over "all sources" (target IS NULL) would have covered a
         # specific `target` source too, so it's included alongside runs
         # targeted at just that source.
-        rows = list_index_runs(conn, target, limit)
+        rows = Index.list_runs(conn, target, limit)
     finally:
         conn.close()
 

@@ -20,7 +20,7 @@ from vethuq_core.settings import (
     get_ocr_engine,
     set_ocr_engine,
 )
-from vethuq_core.sources import add_source, get_source
+from vethuq_core.source import Sources
 
 
 @pytest.fixture
@@ -121,9 +121,9 @@ def test_quick_engine_reads_each_file_once(mock_get_engine, conn, tmp_path):
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert engine.predict.call_count == 1
     page = _image_page(conn, "a.png")
@@ -142,9 +142,9 @@ def test_moderate_engine_adds_rotated_text_and_records_progress(mock_get_engine,
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     page = _image_page(conn, "a.png")
     assert page["ocr_text"].split("\n") == ["hello", "DIRECTOR"]
@@ -161,14 +161,14 @@ def test_deep_engine_reads_every_angle_and_is_not_repeated(mock_get_engine, conn
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert _image_page(conn, "a.png")["ocr_phase"] == 3
     assert engine.predict.call_count == 360 // 15
 
     # Already at the deepest phase: a second run has nothing left to read.
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert engine.predict.call_count == 360 // 15
 
 
@@ -180,12 +180,12 @@ def test_raising_engine_setting_deepens_already_indexed_files(mock_get_engine, c
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    source = Sources.add(conn, folder)
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert engine.predict.call_count == 1
 
     set_ocr_engine(conn, "moderate")
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert _image_page(conn, "a.png")["ocr_phase"] == 2
     # Only the new angles were read - the quick pass wasn't redone.
@@ -213,9 +213,9 @@ def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
     engine.predict.side_effect = predict
     mock_get_engine.return_value = engine
     set_ocr_engine(conn, "moderate")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     # a.png quick, one angle of a.png, then b.png's quick pass jumps the queue.
     assert calls[:3] == ["a.png", "angle", "b.png"], calls
@@ -232,10 +232,10 @@ def test_failed_file_is_not_retried_by_later_rounds(mock_get_engine, conn, tmp_p
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "bad.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     attempts = 1 + 3  # first try plus the default retries
 
-    processed = run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    processed = run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert len(processed) == 1
     assert engine.predict.call_count == attempts
@@ -244,7 +244,7 @@ def test_failed_file_is_not_retried_by_later_rounds(mock_get_engine, conn, tmp_p
 def test_deepening_units_order_moderate_before_deep_and_skip_native(conn, tmp_path):
     folder = tmp_path / "src"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     for index, (phase, page_source) in enumerate([(2, "ocr"), (1, "ocr"), (1, "native")], start=1):
         document_id = conn.execute(
             "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
@@ -311,7 +311,7 @@ def test_deepening_progress_counts_pages_done_per_phase(conn, tmp_path):
 
     folder = tmp_path / "src"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     for index, (phase, page_source) in enumerate(
         [(1, "ocr"), (2, "ocr"), (3, "ocr"), (1, "native")], start=1
     ):
@@ -346,7 +346,7 @@ def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(tmp_path)
     setup = Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
-    source = add_source(setup, folder)
+    source = Sources.add(setup, folder)
     setup.execute("INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01')")
     setup.execute(
         "INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status) "
@@ -381,9 +381,9 @@ def test_deeper_phases_track_timestamps_and_their_own_metrics(mock_get_engine, c
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     phases = {
         row["phase"]: row for row in conn.execute("SELECT * FROM document_phases ORDER BY phase")
@@ -421,7 +421,7 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
     engine.predict.side_effect = predict
     mock_get_engine.return_value = engine
     set_ocr_engine(conn, "moderate")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     stop_after = {"pending": False}
 
     # Stop the run as soon as the new file has had its quick pass.
@@ -429,7 +429,7 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
         return stop_after["pending"] and _image_page(conn, "b.png") is not None
 
     stop_after["pending"] = True
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)], should_stop=should_stop)
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)], should_stop=should_stop)
 
     a_row = conn.execute(
         "SELECT dp.* FROM document_phases dp "
@@ -454,8 +454,8 @@ def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    source = Sources.add(conn, folder)
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 1
 
     _write_png(folder / "a.png", width=60)  # content changes
@@ -480,9 +480,9 @@ def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [get_source(conn, source.id)])
+    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     # DIRECTOR is added once (later angles find it already there): (0.9 * 1 + 0.5) / 2.
     assert _image_page(conn, "a.png")["confidence"] == pytest.approx(0.7)

@@ -5,7 +5,7 @@ import vethuq_core.db as db_module
 import vethuq_core.index_runner as index_runner_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
-from vethuq_core.sources import add_source
+from vethuq_core.source import Sources
 
 runner = CliRunner()
 
@@ -30,7 +30,7 @@ def _use_temp_db(monkeypatch, tmp_path):
 def _add_pending_source(db_path, tmp_path):
     conn = db_module.Db.connect(db_path)
     try:
-        add_source(conn, tmp_path)
+        Sources.add(conn, tmp_path)
     finally:
         conn.close()
 
@@ -239,7 +239,7 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
     (folder / "b.png").write_bytes(b"fake png bytes")
 
     conn = db_module.Db.connect(db_path)
-    add_source(conn, folder)
+    Sources.add(conn, folder)
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT INTO processing_metrics "
@@ -280,7 +280,7 @@ def test_status_detail_for_target(tmp_path, monkeypatch):
     folder = tmp_path / "docs"
     folder.mkdir()
     conn = db_module.Db.connect(db_path)
-    add_source(conn, folder)
+    Sources.add(conn, folder)
     conn.close()
 
     result = runner.invoke(app, ["index", "status", str(folder)])
@@ -364,7 +364,7 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     conn = db_module.Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     for index, phase in enumerate((1, 2, 3), start=1):
         document_id = conn.execute(
             "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
@@ -417,7 +417,7 @@ def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monke
     conn = db_module.Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     conn.execute("UPDATE sources SET status = 'indexed' WHERE id = ?", (source.id,))
     # Two indexed image documents, both still waiting on moderate and deep.
     for index in (1, 2):

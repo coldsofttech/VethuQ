@@ -47,7 +47,7 @@ from vethuq_core.settings import (
     get_thread_workers,
     is_gpu_enabled,
 )
-from vethuq_core.sources import Source
+from vethuq_core.source import Source
 
 _logger = logging.getLogger(__name__)
 
@@ -423,16 +423,12 @@ def _upsert_document(
     If this document's checksum is changing (its content was modified since
     it was last indexed) and other documents were linked to its old logical
     document, the earliest of them is promoted to take over its OCR pages
-    first - see `_promote_surviving_duplicate` - so they keep reusing text
+    first - see `Sources.promote_surviving_duplicate` - so they keep reusing text
     that actually matches their (unchanged) bytes instead of losing it when
     this row moves on to different content. If that leaves the old logical
     document with no other physical row referencing it, it's pruned.
     """
-    from vethuq_core.sources import (
-        _promote_surviving_duplicate,
-        _prune_orphaned_documents,
-        _refresh_document_paths,
-    )
+    from vethuq_core.source import Sources
 
     started_at = datetime.now(UTC).isoformat()
     stat = file_path.stat()
@@ -443,7 +439,7 @@ def _upsert_document(
 
     existing = Document.get_index_by_path(conn, str(file_path))
     if existing is not None and existing["sha256"] != sha256:
-        _promote_surviving_duplicate(conn, existing["id"], set())
+        Sources.promote_surviving_duplicate(conn, existing["id"], set())
 
     existing_id = existing["id"] if existing is not None else -1
     duplicate_source = _find_duplicate_source(conn, sha256, existing_id)
@@ -473,8 +469,8 @@ def _upsert_document(
         modified_at,
     )
     if old_document_id is not None and old_document_id != document_id:
-        _prune_orphaned_documents(conn, {old_document_id})
-    _refresh_document_paths(conn, {document_id, old_document_id} - {None})
+        Sources.prune_orphaned_documents(conn, {old_document_id})
+    Sources.refresh_document_paths(conn, {document_id, old_document_id} - {None})
 
     row = Document.get_index_id_by_path(conn, str(file_path))
     assert row is not None
@@ -501,11 +497,11 @@ def _reconcile_renamed_and_removed_files(
     paths alphabetically) rather than left unmatched. This is safe even
     when "wrong": whichever row ends up representing that content, a
     document that owned OCR pages other rows were deduped against still
-    hands them off correctly via `_promote_surviving_duplicate` once it's
+    hands them off correctly via `Sources.promote_surviving_duplicate` once it's
     actually purged, so no OCR text is ever lost or misattributed.
 
     A tracked path that's gone missing and isn't claimed by a rename is
-    marked 'removed' (with `removed_at` set) so `purge_expired_removed_documents`
+    marked 'removed' (with `removed_at` set) so `Sources.purge_expired_documents`
     can clean it up after the retention window, promoting a surviving
     duplicate first if other documents had been deduped against it.
 
@@ -550,9 +546,9 @@ def _reconcile_renamed_and_removed_files(
             continue
         Document.mark_index_removed(conn, row["id"], removed_at)
 
-    from vethuq_core.sources import _refresh_document_paths
+    from vethuq_core.source import Sources
 
-    _refresh_document_paths(conn, {row["document_id"] for row in missing_rows})
+    Sources.refresh_document_paths(conn, {row["document_id"] for row in missing_rows})
     return claimed_paths
 
 
@@ -971,7 +967,7 @@ def run_ocr(
     and has its `document_index` row updated in place rather than being
     reprocessed as new; a tracked file that's gone missing (and wasn't
     claimed by a rename) is marked 'removed' for later cleanup by
-    `purge_expired_removed_documents`.
+    `Sources.purge_expired_documents`.
 
     `on_file_done`, when given, is called with a file's path immediately after
     it's (re)processed - used to report progress. `should_stop`, when given,

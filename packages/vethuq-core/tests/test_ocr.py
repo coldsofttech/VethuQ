@@ -15,7 +15,7 @@ from vethuq_core.ocr import (
     run_ocr,
 )
 from vethuq_core.settings import set_gpu_enabled
-from vethuq_core.sources import add_source, purge_expired_removed_documents
+from vethuq_core.source import Sources
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
 
     run_ocr(conn, source)
 
@@ -82,7 +82,7 @@ def test_run_ocr_marks_document_processing_while_in_flight(
     engine.predict.side_effect = _predict
     mock_get_engine.return_value = engine
 
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
 
     run_ocr(conn, source)
 
@@ -107,7 +107,7 @@ def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     folder.mkdir()
     (folder / "a.png").write_bytes(b"identical bytes")
     (folder / "b.png").write_bytes(b"identical bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
 
@@ -153,7 +153,7 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     file2 = folder / "b.png"
     file1.write_bytes(b"identical bytes")
     file2.write_bytes(b"identical bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
 
@@ -213,7 +213,7 @@ def test_run_ocr_updates_processing_metrics_on_success(
 
     first = tmp_path / "first.png"
     first.write_bytes(b"fake png bytes")
-    run_ocr(conn, add_source(conn, first))
+    run_ocr(conn, Sources.add(conn, first))
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 1
@@ -227,7 +227,7 @@ def test_run_ocr_updates_processing_metrics_on_success(
     engine.predict.return_value = _fake_ocr_result(score=0.6)
     second = tmp_path / "second.png"
     second.write_bytes(b"more fake png bytes")
-    run_ocr(conn, add_source(conn, second))
+    run_ocr(conn, Sources.add(conn, second))
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 2
@@ -249,7 +249,7 @@ def test_run_ocr_does_not_update_processing_metrics_on_error(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    run_ocr(conn, add_source(conn, image_path))
+    run_ocr(conn, Sources.add(conn, image_path))
 
     assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
     assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
@@ -265,7 +265,7 @@ def test_run_ocr_skips_unsupported_files(mock_get_engine, conn: sqlite3.Connecti
     folder.mkdir()
     (folder / "notes.txt").write_text("not ocr-able")
     (folder / "scan.jpg").write_bytes(b"fake jpg bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
 
@@ -284,7 +284,7 @@ def test_run_ocr_records_error_without_aborting(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
 
     run_ocr(conn, source)
 
@@ -310,7 +310,7 @@ def test_run_ocr_rerun_replaces_stale_page_rows(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
     run_ocr(conn, source)
 
     engine.predict.return_value = _fake_ocr_result("second pass")
@@ -335,7 +335,7 @@ def test_run_ocr_only_new_files_skips_already_indexed(
     folder = tmp_path / "docs"
     folder.mkdir()
     (folder / "first.png").write_bytes(b"fake png bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     first_run = run_ocr(conn, source)
     assert first_run == [str((folder / "first.png").resolve())]
@@ -366,7 +366,7 @@ def test_run_ocr_only_new_files_reindexes_modified_file(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"original bytes")
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
 
     run_ocr(conn, source)
     doc = conn.execute(
@@ -398,7 +398,7 @@ def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"original bytes")
-    source = add_source(conn, image_path)
+    source = Sources.add(conn, image_path)
 
     run_ocr(conn, source)
 
@@ -421,7 +421,7 @@ def test_run_ocr_only_new_files_detects_plain_rename(
     folder.mkdir()
     old_path = folder / "scan.png"
     old_path.write_bytes(b"fake png bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
     doc = conn.execute(
@@ -460,7 +460,7 @@ def test_run_ocr_only_new_files_marks_missing_file_removed(
     folder.mkdir()
     image_path = folder / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
     doc = conn.execute(
@@ -493,7 +493,7 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     file_b = folder / "b.png"
     file_a.write_bytes(b"identical bytes")
     file_b.write_bytes(b"identical bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
 
@@ -556,7 +556,7 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
     file_b = folder / "b.png"
     file_a.write_bytes(b"identical bytes")
     file_b.write_bytes(b"identical bytes")
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     run_ocr(conn, source)
 
@@ -578,7 +578,7 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
     assert removed["status"] == "removed"
     assert removed["removed_at"] is not None
 
-    purge_expired_removed_documents(conn, retention_minutes=-1)
+    Sources.purge_expired_documents(conn, retention_minutes=-1)
 
     survivor = conn.execute("SELECT * FROM document_index WHERE id = ?", (doc_b["id"],)).fetchone()
     assert survivor["document_id"] == doc_a["document_id"]

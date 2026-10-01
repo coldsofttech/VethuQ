@@ -63,17 +63,14 @@ from vethuq._core.settings import (
 )
 from vethuq._core.settings import set_stale_lock as _set_stale_lock
 from vethuq._core.settings import set_thread_workers as _set_thread_workers
-from vethuq._core.sources import (
+from vethuq._core.source import (
     Source,
     SourceAlreadyExistsError,
     SourceError,
     SourceNotFoundError,
     SourcePathError,
 )
-from vethuq._core.sources import add_source as _add_source
-from vethuq._core.sources import get_source as _get_source
-from vethuq._core.sources import list_sources as _list_sources
-from vethuq._core.sources import remove_source as _remove_source
+from vethuq._core.source import Sources as _Sources
 from vethuq._core.stats import ConfidenceMetric, ProcessingMetric
 from vethuq._core.stats import get_confidence_metrics as _get_confidence_metrics
 from vethuq._core.stats import get_processing_metrics as _get_processing_metrics
@@ -144,7 +141,7 @@ class Sources:
         """
         conn = _Db.connect()
         try:
-            return _add_source(conn, path)
+            return _Sources.add(conn, path)
         finally:
             conn.close()
 
@@ -152,7 +149,7 @@ class Sources:
         """Return registered sources, most recently added first."""
         conn = _Db.connect()
         try:
-            return _list_sources(conn, include_inactive)
+            return _Sources.list_all(conn, include_inactive)
         finally:
             conn.close()
 
@@ -160,7 +157,7 @@ class Sources:
         """Unregister a source by id or path. Raises `SourceNotFoundError` if it doesn't exist."""
         conn = _Db.connect()
         try:
-            return _remove_source(conn, path_or_id)
+            return _Sources.remove(conn, path_or_id)
         finally:
             conn.close()
 
@@ -223,7 +220,7 @@ class Index:
 
         conn = _Db.connect()
         try:
-            source = _get_source(conn, _coerce_target(target))
+            source = _Sources.get(conn, _coerce_target(target))
             return _get_document_results(conn, source.id)
         finally:
             conn.close()
@@ -259,7 +256,7 @@ class Index:
         conn = _Db.connect()
         try:
             if target is not None:
-                _get_source(conn, _coerce_target(target))
+                _Sources.get(conn, _coerce_target(target))
             return _list_index_runs(conn, str(target) if target is not None else None, limit)
         finally:
             conn.close()

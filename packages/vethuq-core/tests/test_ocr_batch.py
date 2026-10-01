@@ -7,7 +7,7 @@ import vethuq_core.ocr as ocr_module
 from vethuq_core.db import Db
 from vethuq_core.ocr import _auto_worker_count, resolve_thread_workers, run_ocr_batch
 from vethuq_core.settings import set_thread_workers
-from vethuq_core.sources import add_source
+from vethuq_core.source import Sources
 
 
 @pytest.fixture
@@ -97,8 +97,8 @@ def test_run_ocr_batch_orders_files_by_basename_across_sources(
     second.mkdir()
     (second / "a_report.png").write_bytes(b"second bytes")
 
-    source_a = add_source(conn, first)
-    source_b = add_source(conn, second)
+    source_a = Sources.add(conn, first)
+    source_b = Sources.add(conn, second)
 
     seen_order: list[str] = []
     run_ocr_batch(
@@ -123,7 +123,7 @@ def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
     folder.mkdir()
     for name in ("a.png", "b.png", "c.png", "d.png"):
         (folder / name).write_bytes(f"bytes for {name}".encode())
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     processed = run_ocr_batch(conn, [source], workers=4)
 
@@ -148,7 +148,7 @@ def test_run_ocr_batch_stops_early_leaves_rest_untouched(
     folder.mkdir()
     for name in ("a.png", "b.png", "c.png"):
         (folder / name).write_bytes(f"bytes for {name}".encode())
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     calls = {"n": 0}
 
@@ -185,7 +185,7 @@ def test_run_ocr_batch_auto_re_resolves_workers_after_each_file(
     file_names = ("a.png", "b.png", "c.png", "d.png", "e.png")
     for name in file_names:
         (folder / name).write_bytes(f"bytes for {name}".encode())
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     set_thread_workers(conn, "auto")
 
     with patch.object(

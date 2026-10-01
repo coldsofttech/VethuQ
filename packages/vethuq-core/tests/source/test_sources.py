@@ -3,15 +3,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.sources import (
+from vethuq_core.source import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
-    _refresh_document_paths,
-    add_source,
-    list_sources,
-    purge_expired_removed_sources,
-    remove_source,
+    Sources,
 )
 
 
@@ -27,7 +23,7 @@ def test_add_source_folder(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
 
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
 
     assert source.source_type == "folder"
     assert source.path == str(folder.resolve())
@@ -39,7 +35,7 @@ def test_add_source_file(conn: sqlite3.Connection, tmp_path):
     file_path = tmp_path / "report.pdf"
     file_path.write_text("fake pdf content")
 
-    source = add_source(conn, file_path)
+    source = Sources.add(conn, file_path)
 
     assert source.source_type == "file"
     assert source.path == str(file_path.resolve())
@@ -49,16 +45,16 @@ def test_add_source_missing_path_raises(conn: sqlite3.Connection, tmp_path):
     missing = tmp_path / "does-not-exist"
 
     with pytest.raises(SourcePathError):
-        add_source(conn, missing)
+        Sources.add(conn, missing)
 
 
 def test_add_source_duplicate_raises(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
-    add_source(conn, folder)
+    Sources.add(conn, folder)
 
     with pytest.raises(SourceAlreadyExistsError):
-        add_source(conn, folder)
+        Sources.add(conn, folder)
 
 
 def test_add_source_dedupes_relative_and_absolute(conn: sqlite3.Connection, tmp_path, monkeypatch):
@@ -66,28 +62,28 @@ def test_add_source_dedupes_relative_and_absolute(conn: sqlite3.Connection, tmp_
     folder.mkdir()
     monkeypatch.chdir(tmp_path)
 
-    add_source(conn, folder)
+    Sources.add(conn, folder)
 
     with pytest.raises(SourceAlreadyExistsError):
-        add_source(conn, "docs")
+        Sources.add(conn, "docs")
 
 
 def test_list_sources_excludes_inactive_by_default(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
-    added = add_source(conn, folder)
-    remove_source(conn, added.id)
+    added = Sources.add(conn, folder)
+    Sources.remove(conn, added.id)
 
-    assert list_sources(conn) == []
-    assert len(list_sources(conn, include_inactive=True)) == 1
+    assert Sources.list_all(conn) == []
+    assert len(Sources.list_all(conn, include_inactive=True)) == 1
 
 
 def test_remove_source_by_path(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
-    add_source(conn, folder)
+    Sources.add(conn, folder)
 
-    removed = remove_source(conn, folder)
+    removed = Sources.remove(conn, folder)
 
     assert removed.is_active is False
     assert removed.status == "removed"
@@ -96,23 +92,23 @@ def test_remove_source_by_path(conn: sqlite3.Connection, tmp_path):
 
 def test_remove_source_not_found_raises(conn: sqlite3.Connection):
     with pytest.raises(SourceNotFoundError):
-        remove_source(conn, 999)
+        Sources.remove(conn, 999)
 
 
 def test_add_source_reactivates_removed_source(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
-    original = add_source(conn, folder)
-    remove_source(conn, original.id)
+    original = Sources.add(conn, folder)
+    Sources.remove(conn, original.id)
 
-    readded = add_source(conn, folder)
+    readded = Sources.add(conn, folder)
 
     assert readded.id == original.id
     assert readded.is_active is True
     assert readded.status == "pending"
     assert readded.last_scanned_at is None
     assert readded.removed_at is None
-    assert len(list_sources(conn)) == 1
+    assert len(Sources.list_all(conn)) == 1
 
 
 def _insert_document(conn: sqlite3.Connection, document_id: int | None = None, **fields) -> int:
@@ -136,7 +132,7 @@ def test_purge_expired_removed_sources_deletes_stale_removed_rows(
 ):
     folder = tmp_path / "docs"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     document_id = _insert_document(
         conn, source_id=source.id, file_path="/docs/a.pdf", file_type="pdf", status="indexed"
     )
@@ -149,12 +145,12 @@ def test_purge_expired_removed_sources_deletes_stale_removed_rows(
         (document_id,),
     )
     conn.commit()
-    remove_source(conn, source.id)
+    Sources.remove(conn, source.id)
     stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
     conn.execute("UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, source.id))
     conn.commit()
 
-    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+    purged = Sources.purge_expired_sources(conn, retention_minutes=30)
 
     assert purged == 1
     assert conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone() is None
@@ -178,9 +174,9 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
 ):
     removed_folder = tmp_path / "removed"
     removed_folder.mkdir()
-    removed_source = add_source(conn, removed_folder)
+    removed_source = Sources.add(conn, removed_folder)
     (tmp_path / "kept.pdf").write_bytes(b"pdf bytes")
-    kept_source = add_source(conn, tmp_path / "kept.pdf")
+    kept_source = Sources.add(conn, tmp_path / "kept.pdf")
 
     original_id = _insert_document(
         conn,
@@ -209,14 +205,14 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
     )
     conn.commit()
 
-    remove_source(conn, removed_source.id)
+    Sources.remove(conn, removed_source.id)
     stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
     conn.execute(
         "UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, removed_source.id)
     )
     conn.commit()
 
-    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+    purged = Sources.purge_expired_sources(conn, retention_minutes=30)
 
     assert purged == 1
     promoted = conn.execute("SELECT * FROM document_index WHERE id = ?", (duplicate_id,)).fetchone()
@@ -245,10 +241,10 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
     """
     original_folder = tmp_path / "original_source"
     original_folder.mkdir()
-    original_source = add_source(conn, original_folder)
+    original_source = Sources.add(conn, original_folder)
     duplicate_folder = tmp_path / "duplicate_source"
     duplicate_folder.mkdir()
-    duplicate_source = add_source(conn, duplicate_folder)
+    duplicate_source = Sources.add(conn, duplicate_folder)
 
     original_id = _insert_document(
         conn,
@@ -272,8 +268,8 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
     )
     conn.commit()
 
-    remove_source(conn, original_source.id)
-    remove_source(conn, duplicate_source.id)
+    Sources.remove(conn, original_source.id)
+    Sources.remove(conn, duplicate_source.id)
     stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
     conn.execute(
         "UPDATE sources SET removed_at = ? WHERE id IN (?, ?)",
@@ -281,7 +277,7 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
     )
     conn.commit()
 
-    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+    purged = Sources.purge_expired_sources(conn, retention_minutes=30)
 
     assert purged == 2
     assert (
@@ -302,7 +298,7 @@ def test_purge_expired_removed_sources_clears_stale_index_runs_target(
 ):
     folder = tmp_path / "docs"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     run_by_id = conn.execute(
         "INSERT INTO index_runs (target, started_at) VALUES (?, ?)",
         (str(source.id), datetime.now(UTC).isoformat()),
@@ -313,12 +309,12 @@ def test_purge_expired_removed_sources_clears_stale_index_runs_target(
     ).lastrowid
     conn.commit()
 
-    remove_source(conn, source.id)
+    Sources.remove(conn, source.id)
     stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
     conn.execute("UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, source.id))
     conn.commit()
 
-    purge_expired_removed_sources(conn, retention_minutes=30)
+    Sources.purge_expired_sources(conn, retention_minutes=30)
 
     for run_id in (run_by_id, run_by_path):
         row = conn.execute("SELECT target FROM index_runs WHERE id = ?", (run_id,)).fetchone()
@@ -328,10 +324,10 @@ def test_purge_expired_removed_sources_clears_stale_index_runs_target(
 def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Connection, tmp_path):
     folder = tmp_path / "docs"
     folder.mkdir()
-    source = add_source(conn, folder)
-    remove_source(conn, source.id)
+    source = Sources.add(conn, folder)
+    Sources.remove(conn, source.id)
 
-    purged = purge_expired_removed_sources(conn, retention_minutes=30)
+    purged = Sources.purge_expired_sources(conn, retention_minutes=30)
 
     assert purged == 0
     assert conn.execute("SELECT * FROM sources WHERE id = ?", (source.id,)).fetchone() is not None
@@ -340,9 +336,9 @@ def test_purge_expired_removed_sources_keeps_recently_removed(conn: sqlite3.Conn
 def test_document_primary_path_moves_to_surviving_copy_on_purge(conn: sqlite3.Connection, tmp_path):
     removed_folder = tmp_path / "removed"
     removed_folder.mkdir()
-    removed_source = add_source(conn, removed_folder)
+    removed_source = Sources.add(conn, removed_folder)
     (tmp_path / "kept.pdf").write_bytes(b"pdf bytes")
-    kept_source = add_source(conn, tmp_path / "kept.pdf")
+    kept_source = Sources.add(conn, tmp_path / "kept.pdf")
 
     original_id = _insert_document(
         conn,
@@ -364,17 +360,17 @@ def test_document_primary_path_moves_to_surviving_copy_on_purge(conn: sqlite3.Co
         status="indexed",
         sha256="abc",
     )
-    _refresh_document_paths(conn, {logical_document_id})
+    Sources.refresh_document_paths(conn, {logical_document_id})
     assert _primary_path(conn, logical_document_id) == "/removed/original.pdf"
 
-    remove_source(conn, removed_source.id)
+    Sources.remove(conn, removed_source.id)
     stale_removed_at = (datetime.now(UTC) - timedelta(minutes=31)).isoformat()
     conn.execute(
         "UPDATE sources SET removed_at = ? WHERE id = ?", (stale_removed_at, removed_source.id)
     )
     conn.commit()
 
-    purge_expired_removed_sources(conn, retention_minutes=30)
+    Sources.purge_expired_sources(conn, retention_minutes=30)
 
     assert _primary_path(conn, logical_document_id) == "/kept/copy.pdf"
 
@@ -384,7 +380,7 @@ def test_document_primary_path_skips_removed_copies_and_is_null_when_none_left(
 ):
     folder = tmp_path / "docs"
     folder.mkdir()
-    source = add_source(conn, folder)
+    source = Sources.add(conn, folder)
     first_id = _insert_document(
         conn, source_id=source.id, file_path="/docs/a.pdf", file_type="pdf", status="indexed"
     )
@@ -400,15 +396,15 @@ def test_document_primary_path_skips_removed_copies_and_is_null_when_none_left(
         status="indexed",
     )
 
-    _refresh_document_paths(conn, {logical_document_id})
+    Sources.refresh_document_paths(conn, {logical_document_id})
     assert _primary_path(conn, logical_document_id) == "/docs/a.pdf"
 
     conn.execute("UPDATE document_index SET status = 'removed' WHERE id = ?", (first_id,))
-    _refresh_document_paths(conn, {logical_document_id})
+    Sources.refresh_document_paths(conn, {logical_document_id})
     assert _primary_path(conn, logical_document_id) == "/docs/b.pdf"
 
     conn.execute("UPDATE document_index SET status = 'removed' WHERE id = ?", (second_id,))
-    _refresh_document_paths(conn, {logical_document_id})
+    Sources.refresh_document_paths(conn, {logical_document_id})
     assert _primary_path(conn, logical_document_id) is None
 
 

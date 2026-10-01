@@ -40,7 +40,7 @@ from vethuq_core.ocr import (
     run_ocr_phased,
 )
 from vethuq_core.settings import get_ocr_engine, get_stale_lock, get_thread_workers
-from vethuq_core.sources import Source, get_source, list_sources
+from vethuq_core.source import Source, Sources
 
 _STATE_FILENAME = "index_state.json"
 _CONTROL_FILENAME = "index.control"
@@ -260,7 +260,7 @@ def start_run(
     conn = Db.connect(db_path)
     try:
         if target is not None:
-            get_source(conn, _coerce_target(target))  # raises SourceNotFoundError if invalid
+            Sources.get(conn, _coerce_target(target))  # raises SourceNotFoundError if invalid
     finally:
         conn.close()
 
@@ -445,8 +445,8 @@ def resolve_targets(conn: sqlite3.Connection, target: str | None) -> list[Source
     know which files are still pending.
     """
     if target is None:
-        return [s for s in list_sources(conn) if s.status in ("pending", "indexed", "error")]
-    return [get_source(conn, _coerce_target(target))]
+        return [s for s in Sources.list_all(conn) if s.status in ("pending", "indexed", "error")]
+    return [Sources.get(conn, _coerce_target(target))]
 
 
 def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:

@@ -171,13 +171,10 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
         conn.execute("PRAGMA foreign_keys = ON")
         Db._ensure_schema(conn)
 
-        from vethuq_core.sources import (
-            purge_expired_removed_documents,
-            purge_expired_removed_sources,
-        )
+        from vethuq_core.source import Sources
 
-        purge_expired_removed_sources(conn)
-        purge_expired_removed_documents(conn)
+        Sources.purge_expired_sources(conn)
+        Sources.purge_expired_documents(conn)
         return conn
 
     @staticmethod

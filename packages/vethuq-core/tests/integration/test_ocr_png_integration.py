@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from vethuq_core.db import Db
 from vethuq_core.ocr import run_ocr
-from vethuq_core.sources import add_source
+from vethuq_core.source import Sources
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "png"
 
@@ -36,7 +36,7 @@ def test_run_ocr_fixture_png_indexes_as_single_image_page(
 
     png_path = tmp_path / "scan.png"
     png_path.write_bytes(fixture_path.read_bytes())
-    source = add_source(conn, png_path)
+    source = Sources.add(conn, png_path)
 
     run_ocr(conn, source)
 

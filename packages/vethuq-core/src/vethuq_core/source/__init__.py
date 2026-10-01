@@ -1,4 +1,8 @@
-from vethuq_core.source import (
+"""Registration of files and folders as VethuQ sources."""
+
+from __future__ import annotations
+
+from vethuq_core.source.source import (
     Source,
     SourceAlreadyExistsError,
     SourceError,

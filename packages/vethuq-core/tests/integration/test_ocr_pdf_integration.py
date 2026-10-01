@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from vethuq_core.db import Db
 from vethuq_core.ocr import run_ocr
-from vethuq_core.sources import add_source
+from vethuq_core.source import Sources
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
 
@@ -29,7 +29,7 @@ def test_run_ocr_digital_pdf_skips_engine_entirely(
 ):
     pdf_path = tmp_path / "digital.pdf"
     pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
-    source = add_source(conn, pdf_path)
+    source = Sources.add(conn, pdf_path)
 
     run_ocr(conn, source)
 
@@ -57,7 +57,7 @@ def test_run_ocr_scanned_pdf_runs_full_page_ocr(
 
     pdf_path = tmp_path / "scanned.pdf"
     pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
-    source = add_source(conn, pdf_path)
+    source = Sources.add(conn, pdf_path)
 
     run_ocr(conn, source)
 
@@ -84,7 +84,7 @@ def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
     pdf_path.write_bytes(
         (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
     )
-    source = add_source(conn, pdf_path)
+    source = Sources.add(conn, pdf_path)
 
     run_ocr(conn, source)
 
@@ -220,7 +220,7 @@ def test_run_ocr_fixture_pdf_indexes_expected_pages(
 
     pdf_path = tmp_path / "doc.pdf"
     pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-    source = add_source(conn, pdf_path)
+    source = Sources.add(conn, pdf_path)
 
     run_ocr(conn, source)
 
@@ -254,7 +254,7 @@ def test_run_ocr_unreadable_pdf_records_error_without_aborting(
 ):
     pdf_path = tmp_path / "doc.pdf"
     pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-    source = add_source(conn, pdf_path)
+    source = Sources.add(conn, pdf_path)
 
     run_ocr(conn, source)
 

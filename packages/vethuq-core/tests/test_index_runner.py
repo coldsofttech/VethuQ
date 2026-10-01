@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from vethuq_core import index_runner
 from vethuq_core.db import Db
-from vethuq_core.sources import SourceNotFoundError, add_source
+from vethuq_core.source import SourceNotFoundError, Sources
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def test_read_state_ignores_old_incompatible_format(db_path):
 def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
     folder = tmp_path / "docs"
     folder.mkdir()
-    add_source(conn, folder)
+    Sources.add(conn, folder)
 
 
 def _fake_run_ocr_phased(
