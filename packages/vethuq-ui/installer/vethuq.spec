@@ -54,7 +54,11 @@ ui_a = _analysis(
 )
 cli_a = _analysis(
     CLI_SRC / "main.py",
-    datas=rich_datas,
+    # The HTML export reads its templates from the package, so they must ship with the exe.
+    datas=[
+        (str(CORE_SRC / "search" / "templates"), "vethuq_core/search/templates"),
+        *rich_datas,
+    ],
     binaries=rich_binaries,
     hiddenimports=rich_hidden,
     excludes=OCR_MODULES,

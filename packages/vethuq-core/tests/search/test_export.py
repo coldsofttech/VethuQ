@@ -104,3 +104,18 @@ class TestExport:
         html = output.read_text()
         assert "generated " in html
         assert not re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", html)
+
+
+class TestExportTemplates:
+    @pytest.mark.parametrize("name", ["export.html", "export_row.html", "export.css"])
+    def test_template_files_ship_with_the_package(self, name: str):
+        assert Export.template(name).strip()
+
+    def test_html_export_leaves_no_placeholder_unfilled(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match(), _match(page_number=None)], "amount due", output, "html")
+
+        text = output.read_text(encoding="utf-8")
+        assert "{{" not in text
+        assert "<style>" in text and "font-family" in text  # the CSS was inlined
