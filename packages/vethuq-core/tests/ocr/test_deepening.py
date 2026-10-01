@@ -32,6 +32,14 @@ def _scored(*lines: tuple[str, float]):
 
 
 class TestDeepening:
+    def test_max_phase_follows_the_engine_setting(self, conn):
+        assert Deepening.max_phase(conn) == 1
+        OcrSettings.set_engine(conn, "moderate")
+        assert Deepening.max_phase(conn) == 2
+        OcrSettings.set_engine(conn, "deep")
+        assert Deepening.max_phase(conn) == 3
+        assert Deepening.PHASE_NAMES == {1: "quick", 2: "moderate", 3: "deep"}
+
     def test_phase_angles_cover_every_15_degrees_once(self):
         all_angles = [
             angle

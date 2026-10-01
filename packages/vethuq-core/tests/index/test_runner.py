@@ -470,3 +470,78 @@ class TestControl:
         ).fetchone()
         result_conn.close()
         assert row["status"] == "stopped"
+
+
+def _state(pid: int, status: str) -> index_runner.IndexState:
+    now = datetime.now(UTC).isoformat()
+    return index_runner.IndexState(
+        run_id=1,
+        pid=pid,
+        target=None,
+        mode="run",
+        status=status,
+        total_files=1,
+        processed_files=0,
+        failed_files=0,
+        thread_workers_setting="0",
+        workers=1,
+        current_files=[],
+        started_at=now,
+        updated_at=now,
+    )
+
+
+class TestWait:
+    def test_returns_the_final_state_and_reports_every_state_seen(self, db_path, monkeypatch):
+        monkeypatch.setattr(Db, "default_db_path", staticmethod(lambda: db_path))
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
+        IndexRunner._write_state(db_path, _state(77, "running"))
+        seen: list[str] = []
+
+        def fake_sleep(_seconds: float) -> None:
+            if len(seen) == 1:  # the next poll finds the run finished
+                IndexRunner._write_state(db_path, _state(77, "completed"))
+
+        monkeypatch.setattr(index_runner.time, "sleep", fake_sleep)
+
+        final = IndexRunner.wait(77, lambda state: seen.append(state.status))
+
+        assert final is not None and final.status == "completed"
+        assert seen == ["running", "completed"]
+
+    def test_returns_without_a_state_when_the_process_is_gone(self, db_path, monkeypatch):
+        monkeypatch.setattr(Db, "default_db_path", staticmethod(lambda: db_path))
+        monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
+
+        assert IndexRunner.wait(77) is None
+
+
+class TestIndexRun:
+    def test_to_dict_has_every_field(self):
+        run = index_runner.IndexRun(
+            id=3,
+            target=None,
+            mode="run",
+            status="completed",
+            pid=9,
+            total_files=2,
+            processed_files=2,
+            failed_files=0,
+            workers=1,
+            started_at="2026-01-01T00:00:00+00:00",
+            completed_at="2026-01-01T00:01:00+00:00",
+        )
+
+        assert run.to_dict() == {
+            "id": 3,
+            "target": None,
+            "mode": "run",
+            "status": "completed",
+            "pid": 9,
+            "total_files": 2,
+            "processed_files": 2,
+            "failed_files": 0,
+            "workers": 1,
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "completed_at": "2026-01-01T00:01:00+00:00",
+        }

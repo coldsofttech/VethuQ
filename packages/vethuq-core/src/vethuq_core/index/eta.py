@@ -7,7 +7,6 @@ import sqlite3
 from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.index.runner import IndexRunner, IndexState
 from vethuq_core.ocr import Deepening, Pending, Readers
-from vethuq_core.settings import OcrSettings
 from vethuq_core.source import SourceNotFoundError
 
 
@@ -54,7 +53,7 @@ class Eta:
                 quick_remaining[file_type] += count
 
         remaining_by_phase = {1: quick_remaining}
-        for phase in range(2, Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1) + 1):
+        for phase in range(2, Deepening.max_phase(conn) + 1):
             remaining_by_phase[phase] = Deepening.pending_documents(conn, sources, phase)
 
         seconds_by_phase: dict[int, float] = {}

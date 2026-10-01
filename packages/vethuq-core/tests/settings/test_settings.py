@@ -1,7 +1,13 @@
 import sqlite3
 
 import pytest
-from vethuq_core.settings import GpuSettings, IndexSettings, SearchSettings, Settings
+from vethuq_core.settings import (
+    GpuSettings,
+    IndexSettings,
+    InvalidSettingValueError,
+    SearchSettings,
+    Settings,
+)
 
 
 class TestSettings:
@@ -28,6 +34,16 @@ class TestGpuSettings:
 
 
 class TestSearchSettings:
+    def test_resolve_export_format_uses_given_value_else_the_default(self, conn):
+        assert SearchSettings.resolve_export_format(conn, "html") == "html"
+        assert SearchSettings.resolve_export_format(conn) == "json"
+        SearchSettings.set_export_format(conn, "html")
+        assert SearchSettings.resolve_export_format(conn) == "html"
+
+    def test_resolve_export_format_rejects_unsupported_format(self, conn):
+        with pytest.raises(InvalidSettingValueError, match="unsupported export format 'xml'"):
+            SearchSettings.resolve_export_format(conn, "xml")
+
     def test_search_export_format_defaults_to_json(self, conn: sqlite3.Connection):
         assert SearchSettings.get_export_format(conn) == "json"
 

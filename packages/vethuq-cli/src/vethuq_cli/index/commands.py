@@ -9,7 +9,6 @@ import typer
 from rich.prompt import Confirm
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.db.queries import Index
 from vethuq_core.index import (
     AlreadyRunningError,
     IndexRunner,
@@ -23,10 +22,6 @@ from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import StatePanel
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
-
-
-def _coerce_target(path_or_id: str) -> str | int:
-    return int(path_or_id) if path_or_id.isdigit() else path_or_id
 
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
@@ -145,7 +140,7 @@ def status(
     conn = Db.connect()
     try:
         try:
-            source = Sources.get(conn, _coerce_target(target))
+            source = Sources.get(conn, Sources.coerce(target))
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style="bold red")
             raise typer.Exit(code=1) from exc
@@ -255,39 +250,37 @@ def history(
     try:
         if target is not None:
             try:
-                Sources.get(conn, _coerce_target(target))
+                Sources.get(conn, Sources.coerce(target))
             except SourceNotFoundError as exc:
                 error_console.print(str(exc), style="bold red")
                 raise typer.Exit(code=1) from exc
         # A run over "all sources" (target IS NULL) would have covered a
         # specific `target` source too, so it's included alongside runs
         # targeted at just that source.
-        rows = Index.list_runs(conn, target, limit)
+        runs = IndexRunner.list_runs(conn, target, limit)
     finally:
         conn.close()
 
     if as_json:
-        console.print(json.dumps([dict(row) for row in rows]))
+        console.print(json.dumps([run.to_dict() for run in runs]))
         return
 
-    if not rows:
+    if not runs:
         console.print("No index runs recorded yet.", style="bright_black")
         return
 
-    for row in rows:
-        target = row["target"] or "all sources"
-        workers = row["workers"]
+    for run in runs:
+        target_label = run.target or "all sources"
         line = Text.assemble(
             "[",
-            (str(row["id"]), "bright_black"),
-            f"] {row['started_at']}  ",
-            (f"mode={row['mode']}", "bright_yellow"),
+            (str(run.id), "bright_black"),
+            f"] {run.started_at}  ",
+            (f"mode={run.mode}", "bright_yellow"),
             "  ",
-            (f"target={target}", "bright_yellow"),
+            (f"target={target_label}", "bright_yellow"),
             "  status=",
-            (row["status"], StatePanel.RUN_STATUS_STYLES.get(row["status"], "default")),
-            f"  {row['processed_files']}/{row['total_files']} processed, "
-            f"{row['failed_files']} failed",
-            f"  workers={workers if workers is not None else 'n/a'}",
+            (run.status, StatePanel.RUN_STATUS_STYLES.get(run.status, "default")),
+            f"  {run.processed_files}/{run.total_files} processed, {run.failed_files} failed",
+            f"  workers={run.workers if run.workers is not None else 'n/a'}",
         )
         console.print(line)

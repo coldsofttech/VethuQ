@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -94,6 +95,9 @@ class IndexRun:
     workers: int | None
     started_at: str
     completed_at: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
 
     @classmethod
     def _from_row(cls, row: sqlite3.Row) -> IndexRun:
@@ -236,10 +240,6 @@ class IndexRunner:
         return IndexRunner._is_pid_running(pid), pid
 
     @staticmethod
-    def _coerce_target(target: str) -> str | int:
-        return int(target) if target.isdigit() else target
-
-    @staticmethod
     def _worker_command(db_path: Path, target: str | None, restart: bool) -> list[str]:
         args = [str(db_path), target or "", "restart" if restart else "run"]
         if getattr(sys, "frozen", False):
@@ -289,9 +289,7 @@ class IndexRunner:
         conn = Db.connect(db_path)
         try:
             if target is not None:
-                Sources.get(
-                    conn, IndexRunner._coerce_target(target)
-                )  # raises SourceNotFoundError if invalid
+                Sources.get(conn, Sources.coerce(target))  # raises SourceNotFoundError if invalid
         finally:
             conn.close()
 
@@ -410,6 +408,38 @@ class IndexRunner:
         IndexRunner._control_path(db_path).unlink(missing_ok=True)
 
     @staticmethod
+    def wait(
+        pid: int,
+        on_state: Callable[[IndexState], None] | None = None,
+        *,
+        poll_seconds: float = 1.0,
+    ) -> IndexState | None:
+        """Block until the run owned by `pid` reaches a terminal state, and return it.
+
+        `on_state`, when given, is called with the run's state on every poll
+        that finds it (including the final one) - for a caller that reports
+        progress as it goes. If the process ends without ever reporting a state
+        for `pid`, returns whatever state is on file instead (None, or an older
+        run's) - a caller can tell by `state.pid != pid`.
+        """
+        while True:
+            time.sleep(poll_seconds)
+            state = IndexRunner.read_state()
+            if state is not None and state.pid == pid:
+                if on_state is not None:
+                    on_state(state)
+                if state.status in ("completed", "stopped", "failed"):
+                    return state
+                continue
+            # No state yet for this pid - it may just be starting up (the worker
+            # hasn't written its first state file yet), or it may genuinely be
+            # gone (e.g. crashed before writing anything). Only stop waiting once
+            # the process itself is confirmed no longer running.
+            running, current_pid = IndexRunner.is_running()
+            if not running or current_pid != pid:
+                return IndexRunner.read_state()
+
+    @staticmethod
     def request_pause(db_path: Path | None = None) -> None:
         db_path = db_path or Db.default_db_path()
         running, _pid = IndexRunner.is_running(db_path)
@@ -450,7 +480,7 @@ class IndexRunner:
             return [
                 s for s in Sources.list_all(conn) if s.status in ("pending", "indexed", "error")
             ]
-        return [Sources.get(conn, IndexRunner._coerce_target(target))]
+        return [Sources.get(conn, Sources.coerce(target))]
 
     @staticmethod
     def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:

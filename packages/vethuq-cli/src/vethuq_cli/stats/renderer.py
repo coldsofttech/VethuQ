@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -14,8 +12,6 @@ from vethuq_core.stats import ConfidenceMetric, ProcessingMetric
 
 
 class StatsRenderer:
-    PHASE_NAMES = {phase: name for name, phase in Deepening.ENGINE_PHASES.items()}
-
     @staticmethod
     def processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         if not metrics:
@@ -23,11 +19,6 @@ class StatsRenderer:
                 "No processing statistics recorded yet.", style="bright_black"
             )
         else:
-            # `avg_cpu_percent` comes from psutil's per-process cpu_percent(), which
-            # is normalized against a single core - dividing by the logical core
-            # count turns it into the usual 0-100% "share of the whole machine"
-            # reading, instead of e.g. 200%+ on a busy multi-core run.
-            cpu_count = os.cpu_count() or 1
             body = Table(box=box.SIMPLE, header_style="bold cyan", border_style="cyan")
             body.add_column("Phase")
             body.add_column("File type")
@@ -38,13 +29,13 @@ class StatsRenderer:
             body.add_column("Avg CPU", justify="right")
             for m in metrics:
                 body.add_row(
-                    StatsRenderer.PHASE_NAMES.get(m.phase, str(m.phase)),
+                    Deepening.PHASE_NAMES.get(m.phase, str(m.phase)),
                     m.file_type,
                     m.size_bucket,
                     str(m.document_count),
                     f"{m.avg_duration_seconds:.1f}s",
                     f"{m.avg_peak_memory_mb:.0f} MB",
-                    f"{m.avg_cpu_percent / cpu_count:.0f}%",
+                    f"{m.avg_machine_cpu_percent:.0f}%",
                 )
         return Panel(body, title="Processing", border_style="cyan")
 

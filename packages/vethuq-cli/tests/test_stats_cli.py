@@ -1,4 +1,5 @@
 import io
+import os
 
 import vethuq_core.db as db_module
 from rich.console import Console
@@ -6,7 +7,6 @@ from rich.panel import Panel
 from rich.text import Text
 from typer.testing import CliRunner
 from vethuq_cli.main import app
-from vethuq_cli.stats import renderer as renderer_module
 from vethuq_cli.stats.renderer import StatsRenderer
 from vethuq_core.stats import ProcessingMetric
 
@@ -66,7 +66,7 @@ def test_show_displays_seeded_statistics(tmp_path, monkeypatch):
 
 
 def test_processing_panel_normalizes_cpu_percent_by_core_count(monkeypatch):
-    monkeypatch.setattr(renderer_module.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(os, "cpu_count", lambda: 4)
     metric = ProcessingMetric(
         file_type="pdf",
         size_bucket="medium",

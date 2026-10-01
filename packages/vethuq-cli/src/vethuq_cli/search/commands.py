@@ -9,7 +9,7 @@ from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.search import Export, Search
-from vethuq_core.settings import SearchSettings
+from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.search.pager import Pager
@@ -54,16 +54,11 @@ def search(
             return
 
         if export is not None:
-            resolved_format = (
-                format_ if format_ is not None else SearchSettings.get_export_format(conn)
-            )
-            if resolved_format not in SearchSettings.EXPORT_FORMATS:
-                error_console.print(
-                    f"Error: unsupported export format '{resolved_format}'. "
-                    f"Use one of: {', '.join(SearchSettings.EXPORT_FORMATS)}.",
-                    style="bold red",
-                )
-                raise typer.Exit(code=1)
+            try:
+                resolved_format = SearchSettings.resolve_export_format(conn, format_)
+            except InvalidSettingValueError as exc:
+                error_console.print(f"Error: {exc}", style="bold red")
+                raise typer.Exit(code=1) from exc
             output_path = Path(export)
             Export.search_results(matches, content, output_path, resolved_format)
             console.print(

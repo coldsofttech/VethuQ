@@ -33,6 +33,20 @@ class SearchSettings:
         return value if value is not None else SearchSettings.DEFAULT_EXPORT_FORMAT
 
     @staticmethod
+    def resolve_export_format(conn: sqlite3.Connection, format_: str | None = None) -> str:
+        """`format_` if given (validated), else the configured default export format.
+
+        Raises `InvalidSettingValueError` for a format that isn't supported.
+        """
+        resolved = format_ if format_ is not None else SearchSettings.get_export_format(conn)
+        if resolved not in SearchSettings.EXPORT_FORMATS:
+            raise InvalidSettingValueError(
+                f"unsupported export format '{resolved}'. "
+                f"Use one of: {', '.join(SearchSettings.EXPORT_FORMATS)}."
+            )
+        return resolved
+
+    @staticmethod
     def set_export_format(conn: sqlite3.Connection, format_: str) -> None:
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise InvalidSettingValueError(f"format must be one of {SearchSettings.EXPORT_FORMATS}")

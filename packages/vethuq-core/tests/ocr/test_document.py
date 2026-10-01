@@ -1,7 +1,7 @@
 import sys
 from unittest.mock import patch
 
-from vethuq_core.ocr import Document
+from vethuq_core.ocr import Document, DocumentResult
 
 
 class _FakeStat:
@@ -65,3 +65,26 @@ class TestDocument:
             created_at, modified_at = Document.capture_timestamps(fake_stat)
 
         assert created_at != modified_at
+
+
+class TestDocumentResult:
+    def test_to_dict_is_the_json_shape_of_status(self):
+        result = DocumentResult(
+            file_path="/docs/a.pdf",
+            status="indexed",
+            error_message=None,
+            confidence=0.9,
+            started_at="2026-01-01T00:00:00+00:00",
+            completed_at="2026-01-01T00:00:02+00:00",
+            duration=2.0,
+            duplicate_of_path="/docs/b.pdf",
+        )
+
+        assert result.to_dict() == {
+            "file": "/docs/a.pdf",
+            "status": "indexed",
+            "confidence": 0.9,
+            "duration": 2.0,
+            "error": None,
+            "duplicate_of": "/docs/b.pdf",
+        }

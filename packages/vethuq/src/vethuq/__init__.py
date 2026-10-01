@@ -7,7 +7,6 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 `packages/vethuq/scripts/merge_sources.py` — not committed, not a public API.
 """
 
-import time
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
@@ -45,8 +44,6 @@ from vethuq._core.stats import Confidence as _Confidence
 from vethuq._core.stats import ConfidenceMetric, ProcessingMetric
 from vethuq._core.stats import Processing as _Processing
 from vethuq._core.stats import Stats as _Stats
-
-_STATE_POLL_SECONDS = 1.0
 
 DB_PATH = _Db.default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
@@ -95,11 +92,6 @@ __all__ = [
 ]
 
 
-def _coerce_target(target: str | int) -> str | int:
-    """Digit strings mean a source id, same as the CLI accepts on the command line."""
-    return int(target) if isinstance(target, str) and target.isdigit() else target
-
-
 class Sources:
     """Register and manage files/folders as OCR/indexing sources.
 
@@ -142,18 +134,6 @@ class Index:
     Not instantiated directly — use `Vethuq().index`.
     """
 
-    def _wait_for_run(self, pid: int) -> IndexState | None:
-        while True:
-            time.sleep(_STATE_POLL_SECONDS)
-            state = _IndexRunner.read_state()
-            if state is not None and state.pid == pid:
-                if state.status in ("completed", "stopped", "failed"):
-                    return state
-                continue
-            running, current_pid = _IndexRunner.is_running()
-            if not running or current_pid != pid:
-                return _IndexRunner.read_state()
-
     def run(
         self, target: str | int | None = None, *, force: bool = False, wait: bool = False
     ) -> int | IndexState | None:
@@ -173,7 +153,7 @@ class Index:
         pid = _IndexRunner.start_run(
             str(target) if target is not None else None, force=force, restart=False
         )
-        return self._wait_for_run(pid) if wait else pid
+        return _IndexRunner.wait(pid) if wait else pid
 
     def restart(
         self, target: str | int | None = None, *, force: bool = False, wait: bool = False
@@ -182,7 +162,7 @@ class Index:
         pid = _IndexRunner.start_run(
             str(target) if target is not None else None, force=force, restart=True
         )
-        return self._wait_for_run(pid) if wait else pid
+        return _IndexRunner.wait(pid) if wait else pid
 
     def status(self, target: str | int | None = None) -> IndexState | list[DocumentResult] | None:
         """Show background index run progress, or per-file detail for one source.
@@ -198,7 +178,7 @@ class Index:
 
         conn = _Db.connect()
         try:
-            source = _Sources.get(conn, _coerce_target(target))
+            source = _Sources.get(conn, _Sources.coerce(target))
             return _Document.get_results(conn, source.id)
         finally:
             conn.close()
@@ -234,7 +214,7 @@ class Index:
         conn = _Db.connect()
         try:
             if target is not None:
-                _Sources.get(conn, _coerce_target(target))
+                _Sources.get(conn, _Sources.coerce(target))
             return _IndexRunner.list_runs(conn, str(target) if target is not None else None, limit)
         finally:
             conn.close()
@@ -569,9 +549,7 @@ class Search:
         """
         conn = _Db.connect()
         try:
-            resolved_format = (
-                format_ if format_ is not None else _SearchSettings.get_export_format(conn)
-            )
+            resolved_format = _SearchSettings.resolve_export_format(conn, format_)
         finally:
             conn.close()
         output_path = Path(output)

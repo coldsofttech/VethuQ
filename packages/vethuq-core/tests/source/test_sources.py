@@ -32,6 +32,11 @@ def _primary_path(conn: sqlite3.Connection, document_id: int) -> str | None:
 
 
 class TestSources:
+    def test_coerce_turns_digit_strings_into_ids_and_leaves_paths_alone(self):
+        assert Sources.coerce("12") == 12
+        assert Sources.coerce("./docs") == "./docs"
+        assert Sources.coerce(7) == 7
+
     def test_add_source_folder(self, conn: sqlite3.Connection, tmp_path):
         folder = tmp_path / "docs"
         folder.mkdir()

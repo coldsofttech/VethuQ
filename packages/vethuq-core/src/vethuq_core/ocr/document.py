@@ -33,6 +33,17 @@ class DocumentResult:
     duration: float | None
     duplicate_of_path: str | None
 
+    def to_dict(self) -> dict[str, object]:
+        """The machine-readable shape `vethuq index status <source> --json` prints."""
+        return {
+            "file": self.file_path,
+            "status": self.status,
+            "confidence": self.confidence,
+            "duration": self.duration,
+            "error": self.error_message,
+            "duplicate_of": self.duplicate_of_path,
+        }
+
 
 class Document:
     CHECKSUM_CHUNK_BYTES = 1024 * 1024

@@ -59,6 +59,16 @@ class Source:
 
 class Sources:
     @staticmethod
+    def coerce(path_or_id: str | Path | int) -> str | Path | int:
+        """Treat a string of digits as a source id; anything else is left as given.
+
+        This is how the CLI and Python API both read "a source id or a path".
+        """
+        if isinstance(path_or_id, str) and path_or_id.isdigit():
+            return int(path_or_id)
+        return path_or_id
+
+    @staticmethod
     def add(conn: sqlite3.Connection, path: str | Path) -> Source:
         """Register a file or folder as a source. Folders are indexed recursively.
 

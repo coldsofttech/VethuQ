@@ -14,7 +14,6 @@ from vethuq_core.ocr.deepening import Deepening
 from vethuq_core.ocr.pending import Pending
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.scheduler import Scheduler
-from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Source
 
 _logger = logging.getLogger(__name__)
@@ -103,7 +102,7 @@ class Ocr:
             passes = Deepening.run_batch(
                 conn,
                 sources,
-                max_phase=Deepening.ENGINE_PHASES[OcrSettings.get_engine(conn)],
+                max_phase=Deepening.max_phase(conn),
                 should_stop=should_stop,
                 has_quick_work=quick_work_waiting,
                 skip_units=skip_units,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 from pathlib import Path
 
 from rich.live import Live
@@ -18,15 +17,13 @@ from vethuq_core.index import (
     IndexState,
 )
 from vethuq_core.ocr import Deepening
-from vethuq_core.settings import IndexSettings, OcrSettings
+from vethuq_core.settings import IndexSettings
 from vethuq_core.source import SourceNotFoundError
 
 from vethuq_cli.console import console
 
 
 class StatePanel:
-    POLL_SECONDS = 1.0
-    PHASE_NAMES = {phase: name for name, phase in Deepening.ENGINE_PHASES.items()}
     RUN_STATUS_STYLES = {
         "running": "blue",
         "completed": "green",
@@ -75,8 +72,8 @@ class StatePanel:
         table.add_row("Mode", state.mode)
         table.add_row("Target", state.target or "all sources")
 
-        phase_name = StatePanel.PHASE_NAMES.get(state.phase, str(state.phase))
-        max_phase = Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
+        phase_name = Deepening.PHASE_NAMES.get(state.phase, str(state.phase))
+        max_phase = Deepening.max_phase(conn)
         if max_phase > 1:
             table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
             # Quick counts files; the deeper phases count pages - each shows how much of
@@ -93,7 +90,7 @@ class StatePanel:
                 progress = {}
             for phase, (done, total) in progress.items():
                 table.add_row(
-                    StatePanel.PHASE_NAMES[phase].capitalize(),
+                    Deepening.PHASE_NAMES[phase].capitalize(),
                     StatePanel.progress_cell(done, total, animated),
                 )
         else:
@@ -125,7 +122,7 @@ class StatePanel:
                 eta = Text(f"~{StatePanel.format_duration(sum(by_phase.values()))}")
                 if len(by_phase) > 1:
                     breakdown = " · ".join(
-                        f"{StatePanel.PHASE_NAMES[phase]} ~{StatePanel.format_duration(seconds)}"
+                        f"{Deepening.PHASE_NAMES[phase]} ~{StatePanel.format_duration(seconds)}"
                         for phase, seconds in sorted(by_phase.items())
                     )
                     eta.append(f"\n{breakdown}", style="bright_black")
@@ -142,23 +139,11 @@ class StatePanel:
     def live_wait(conn: sqlite3.Connection, pid: int) -> None:
         """Live-refresh the state panel until the run owned by `pid` reaches a terminal state."""
         with Live(console=console, refresh_per_second=4) as live:
-            while True:
-                time.sleep(StatePanel.POLL_SECONDS)
-                state = IndexRunner.read_state()
-                if state is not None and state.pid == pid:
-                    live.update(StatePanel.build(conn, state, animated=True))
-                    if state.status in ("completed", "stopped", "failed"):
-                        return
-                    continue
-                # No state yet for this pid - could just be starting up (the worker
-                # hasn't written its first state file yet) or it could genuinely be
-                # gone (e.g. crashed before writing anything). Only stop waiting once
-                # the process itself is confirmed no longer running.
-                running, current_pid = IndexRunner.is_running()
-                if not running or current_pid != pid:
-                    live.stop()
-                    console.print(
-                        "Background run ended before reporting any progress. "
-                        f"If this is unexpected, check {IndexRunner.log_path()} for errors."
-                    )
-                    return
+            final = IndexRunner.wait(
+                pid, lambda state: live.update(StatePanel.build(conn, state, animated=True))
+            )
+        if final is None or final.pid != pid:
+            console.print(
+                "Background run ended before reporting any progress. "
+                f"If this is unexpected, check {IndexRunner.log_path()} for errors."
+            )

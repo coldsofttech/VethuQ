@@ -79,7 +79,7 @@ def remove(
     """Remove a registered source."""
     conn = Db.connect()
     try:
-        target: str | int = int(path_or_id) if path_or_id.isdigit() else path_or_id
+        target = Sources.coerce(path_or_id)
         try:
             source = Sources.get(conn, target)
         except SourceNotFoundError as exc:

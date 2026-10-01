@@ -22,6 +22,7 @@ from vethuq_core.ocr.engine import Engine
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.reader import PdfReader, Readers
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Source
 
 _logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class Deepening:
         3: tuple(angle for angle in range(15, 360, 15) if angle % 90),
     }
     ENGINE_PHASES = {"quick": 1, "moderate": 2, "deep": 3}
+    PHASE_NAMES = {phase: name for name, phase in ENGINE_PHASES.items()}
 
     # A line found on a rotated pass must be at least this confident to be kept -
     # odd angles read drawing strokes and noise as text far more often than upright
@@ -67,6 +69,11 @@ class Deepening:
 
     # How often (seconds) deeper phases re-check for new files that should jump the queue.
     QUICK_WORK_CHECK_SECONDS = 5.0
+
+    @staticmethod
+    def max_phase(conn: sqlite3.Connection) -> int:
+        """The highest phase the `index_engine` setting asks for (1 = quick only)."""
+        return Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
 
     @staticmethod
     def parse_angles(value: str) -> set[int]:

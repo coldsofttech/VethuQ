@@ -1,8 +1,9 @@
+import os
 import sqlite3
 from datetime import UTC, datetime
 
 import pytest
-from vethuq_core.stats import Confidence, Processing, Stats
+from vethuq_core.stats import Confidence, Processing, ProcessingMetric, Stats
 
 
 def _seed_metrics(conn: sqlite3.Connection) -> None:
@@ -23,6 +24,12 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
 
 
 class TestProcessing:
+    def test_avg_machine_cpu_percent_divides_by_core_count(self, monkeypatch):
+        monkeypatch.setattr(os, "cpu_count", lambda: 4)
+        metric = ProcessingMetric("pdf", "medium", 2, 5.0, 100.0, 200.0, "now")
+
+        assert metric.avg_machine_cpu_percent == pytest.approx(50.0)
+
     def test_get_processing_metrics_returns_rows(self, conn: sqlite3.Connection):
         _seed_metrics(conn)
 
