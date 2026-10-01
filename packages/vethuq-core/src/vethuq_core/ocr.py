@@ -37,22 +37,7 @@ if TYPE_CHECKING:
     import pymupdf
     from paddleocr import PaddleOCR
 
-from vethuq_core.db import (
-    complete_document_phase,
-    count_documents_short_of_phase,
-    count_pages_short_of_phase,
-    get_document_index_file_size,
-    get_document_phase_completion,
-    get_document_phase_work,
-    get_page_text_row,
-    list_pages_short_of_phase,
-    list_phase_progress_rows,
-    mark_page_phase_done,
-    start_document_phase,
-    update_document_phase_work,
-    update_page_text,
-)
-from vethuq_core.db.queries import Document, Stats
+from vethuq_core.db.queries import Document, Ocr, Stats
 from vethuq_core.db.queries.sources import Source as SourceQuery
 from vethuq_core.settings import (
     THREAD_WORKERS_AUTO,
@@ -1586,7 +1571,7 @@ def _find_deepening_units(
     source_ids = [source.id for source in sources]
     units: list[_DeepenUnit] = []
     for table, file_type in (("pdf_pages", "pdf"), ("image_pages", "image")):
-        for row in list_pages_short_of_phase(conn, table, max_phase, source_ids):
+        for row in Ocr.Page.list_short_of_phase(conn, table, max_phase, source_ids):
             unit = _DeepenUnit(
                 table=table,
                 page_id=row["id"],
@@ -1621,7 +1606,9 @@ def _render_unit_arrays(unit: _DeepenUnit) -> list[np.ndarray]:
 
 def _start_document_phase(conn: sqlite3.Connection, unit: _DeepenUnit) -> None:
     """Record that real work on `unit`'s document for `unit.phase` has begun (once)."""
-    start_document_phase(conn, unit.logical_document_id, unit.phase, datetime.now(UTC).isoformat())
+    Ocr.Phase.start_document(
+        conn, unit.logical_document_id, unit.phase, datetime.now(UTC).isoformat()
+    )
 
 
 def _add_document_phase_work(
@@ -1637,14 +1624,14 @@ def _add_document_phase_work(
     worked on the document), never wall-clock - a pause, or giving way to a
     new file, would otherwise make a phase look far slower than it is.
     """
-    row = get_document_phase_work(conn, unit.logical_document_id, unit.phase)
+    row = Ocr.Phase.get_document_work(conn, unit.logical_document_id, unit.phase)
     if row is None:
         return
     total = row["duration_seconds"] + seconds
     cpu = cpu_percent
     if row["cpu_percent"] is not None and total > 0:
         cpu = (row["cpu_percent"] * row["duration_seconds"] + cpu_percent * seconds) / total
-    update_document_phase_work(
+    Ocr.Phase.update_document_work(
         conn,
         unit.logical_document_id,
         unit.phase,
@@ -1661,16 +1648,16 @@ def _complete_document_phase_if_done(conn: sqlite3.Connection, unit: _DeepenUnit
     phase became searchable) and folds the document's accumulated work into
     that phase's `processing_metrics`. A document is only ever folded once.
     """
-    if count_pages_short_of_phase(conn, unit.table, unit.document_id, unit.phase):
+    if Ocr.Page.count_short_of_phase(conn, unit.table, unit.document_id, unit.phase):
         return
-    row = get_document_phase_completion(conn, unit.logical_document_id, unit.phase)
+    row = Ocr.Phase.get_document_completion(conn, unit.logical_document_id, unit.phase)
     if row is None or row["completed_at"] is not None:
         return
     now = datetime.now(UTC).isoformat()
-    complete_document_phase(conn, unit.logical_document_id, unit.phase, now)
+    Ocr.Phase.complete_document(conn, unit.logical_document_id, unit.phase, now)
     if row["duration_seconds"] <= 0:
         return
-    doc = get_document_index_file_size(conn, unit.document_id)
+    doc = Ocr.get_document_file_size(conn, unit.document_id)
     _fold_processing_metrics(
         conn,
         phase=unit.phase,
@@ -1704,7 +1691,7 @@ def _deepen_unit(
         # Angles already all read (e.g. an earlier run was interrupted right at the end)
         # - just record the phase as done so it isn't picked up again.
         with db_lock:
-            mark_page_phase_done(conn, unit.table, unit.phase, unit.page_id)
+            Ocr.Page.mark_phase_done(conn, unit.table, unit.phase, unit.page_id)
             _complete_document_phase_if_done(conn, unit)
             conn.commit()
         return 1
@@ -1732,7 +1719,7 @@ def _deepen_unit(
             texts, scores = _read_at_angle(conn, arrays, angle)
             peak_rss = max(peak_rss, process.memory_info().rss)
             with db_lock:
-                row = get_page_text_row(conn, unit.table, unit.page_id)
+                row = Ocr.Page.get_text_row(conn, unit.table, unit.page_id)
                 if row is None:  # the document was replaced/removed while this was running
                     return passes
                 existing_lines = sum(1 for line in row["ocr_text"].split("\n") if line.strip())
@@ -1746,7 +1733,7 @@ def _deepen_unit(
                     confidence = (confidence * existing_lines + sum(added_scores)) / (
                         existing_lines + len(added_scores)
                     )
-                update_page_text(
+                Ocr.Page.update_text(
                     conn,
                     unit.table,
                     unit.page_id,
@@ -1998,7 +1985,7 @@ def deepening_progress(
     source_ids = [source.id for source in sources]
     pages_by_phase: dict[int, int] = {}
     for table in ("pdf_pages", "image_pages"):
-        for row in list_phase_progress_rows(conn, table, source_ids):
+        for row in Ocr.Phase.list_progress_rows(conn, table, source_ids):
             pages_by_phase[row["phase"]] = pages_by_phase.get(row["phase"], 0) + row["pages"]
     total = sum(pages_by_phase.values())
     return {
@@ -2022,5 +2009,5 @@ def deepening_pending_documents(
         return counts
     source_ids = [source.id for source in sources]
     for file_type in ("pdf", "image"):
-        counts[file_type] = count_documents_short_of_phase(conn, file_type, phase, source_ids)
+        counts[file_type] = Ocr.Phase.count_documents_short_of(conn, file_type, phase, source_ids)
     return counts
