@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.search import search_indexed_content
+from vethuq_core.search import Search
 from vethuq_core.settings import set_search_snippet_context_chars
 
 
@@ -72,7 +72,7 @@ def test_search_matches_pdf_page(conn: sqlite3.Connection):
     document_id = _add_document(conn, source_id, "/docs/invoice.pdf")
     _add_pdf_page(conn, document_id, 1, "Total amount due: $1,200.00 by Friday.")
 
-    matches = search_indexed_content(conn, "amount due")
+    matches = Search.indexed_content(conn, "amount due")
 
     assert len(matches) == 1
     match = matches[0]
@@ -90,7 +90,7 @@ def test_search_matches_image_page(conn: sqlite3.Connection):
     document_id = _add_document(conn, source_id, "/docs/scan.png", file_type="image")
     _add_image_page(conn, document_id, "Signed by John Doe on 2026-01-01")
 
-    matches = search_indexed_content(conn, "john doe")
+    matches = Search.indexed_content(conn, "john doe")
 
     assert len(matches) == 1
     assert matches[0].file_name == "scan.png"
@@ -106,7 +106,7 @@ def test_search_excludes_removed_source(conn: sqlite3.Connection):
     conn.execute("UPDATE sources SET is_active = 0, status = 'removed' WHERE id = ?", (source_id,))
     conn.commit()
 
-    matches = search_indexed_content(conn, "amount due")
+    matches = Search.indexed_content(conn, "amount due")
 
     assert matches == []
 
@@ -116,7 +116,7 @@ def test_search_is_case_insensitive(conn: sqlite3.Connection):
     document_id = _add_document(conn, source_id, "/docs/letter.pdf")
     _add_pdf_page(conn, document_id, 1, "URGENT NOTICE")
 
-    matches = search_indexed_content(conn, "urgent")
+    matches = Search.indexed_content(conn, "urgent")
 
     assert len(matches) == 1
 
@@ -128,7 +128,7 @@ def test_search_returns_one_row_per_matching_page(conn: sqlite3.Connection):
     _add_pdf_page(conn, document_id, 2, "no match here")
     _add_pdf_page(conn, document_id, 3, "final budget numbers")
 
-    matches = search_indexed_content(conn, "budget")
+    matches = Search.indexed_content(conn, "budget")
 
     assert len(matches) == 2
     assert [m.file_id for m in matches] == [document_id, document_id]
@@ -141,7 +141,7 @@ def test_search_ignores_non_indexed_documents(conn: sqlite3.Connection):
     document_id = _add_document(conn, source_id, "/docs/pending.pdf", status="pending")
     _add_pdf_page(conn, document_id, 1, "confidential findings")
 
-    matches = search_indexed_content(conn, "confidential")
+    matches = Search.indexed_content(conn, "confidential")
 
     assert matches == []
 
@@ -151,11 +151,11 @@ def test_search_no_matches_returns_empty_list(conn: sqlite3.Connection):
     document_id = _add_document(conn, source_id, "/docs/notes.pdf")
     _add_pdf_page(conn, document_id, 1, "nothing relevant")
 
-    assert search_indexed_content(conn, "unrelated term") == []
+    assert Search.indexed_content(conn, "unrelated term") == []
 
 
 def test_search_empty_query_returns_empty_list(conn: sqlite3.Connection):
-    assert search_indexed_content(conn, "") == []
+    assert Search.indexed_content(conn, "") == []
 
 
 def test_search_snippet_context_is_configurable(conn: sqlite3.Connection):
@@ -165,7 +165,7 @@ def test_search_snippet_context_is_configurable(conn: sqlite3.Connection):
     _add_pdf_page(conn, document_id, 1, text)
 
     set_search_snippet_context_chars(conn, 10)
-    matches = search_indexed_content(conn, "target")
+    matches = Search.indexed_content(conn, "target")
 
     assert len(matches) == 1
     assert matches[0].before == "x" * 10
@@ -185,7 +185,7 @@ def test_search_returns_duplicate_as_its_own_flagged_result(conn: sqlite3.Connec
         conn, source_id, "/docs/copy.pdf", document_id=original_document_id
     )
 
-    matches = search_indexed_content(conn, "amount due")
+    matches = Search.indexed_content(conn, "amount due")
 
     assert len(matches) == 2
     by_file_id = {m.file_id: m for m in matches}
@@ -202,7 +202,7 @@ def test_search_context_chars_argument_overrides_setting(conn: sqlite3.Connectio
     text = "x" * 100 + "TARGET" + "y" * 100
     _add_pdf_page(conn, document_id, 1, text)
 
-    matches = search_indexed_content(conn, "target", context_chars=5)
+    matches = Search.indexed_content(conn, "target", context_chars=5)
 
     assert matches[0].before == "x" * 5
     assert matches[0].after == "y" * 5

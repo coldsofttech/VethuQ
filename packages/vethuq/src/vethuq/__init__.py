@@ -28,8 +28,8 @@ from vethuq._core.index_runner import start_run as _start_run
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.ocr import get_document_results as _get_document_results
 from vethuq._core.search import Export as _Export
+from vethuq._core.search import Search as _Search
 from vethuq._core.search import SearchMatch
-from vethuq._core.search import search_indexed_content as _search_indexed_content
 from vethuq._core.settings import (
     OCR_ENGINE_MODES,
     SEARCH_EXPORT_FORMATS,
@@ -580,7 +580,7 @@ class Search:
         """
         conn = _Db.connect()
         try:
-            return _search_indexed_content(conn, content, context_chars=context_chars)
+            return _Search.indexed_content(conn, content, context_chars=context_chars)
         finally:
             conn.close()
 

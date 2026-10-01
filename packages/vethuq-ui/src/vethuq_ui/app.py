@@ -27,7 +27,7 @@ from vethuq_core.index_runner import (
     start_run,
 )
 from vethuq_core.ocr import get_document_results
-from vethuq_core.search import search_indexed_content
+from vethuq_core.search import Search
 from vethuq_core.settings import is_gpu_enabled, set_gpu_enabled
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
@@ -354,7 +354,7 @@ class MainWindow(tk.Tk):
             return
 
         seen_files: dict[int, tuple[str, str, bool]] = {}
-        for match in search_indexed_content(self.conn, query):
+        for match in Search.indexed_content(self.conn, query):
             is_duplicate = match.duplicate_of_path is not None
             seen_files.setdefault(match.file_id, (match.file_name, match.file_path, is_duplicate))
 

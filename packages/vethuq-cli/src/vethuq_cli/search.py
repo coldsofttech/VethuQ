@@ -12,7 +12,7 @@ import typer
 from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.search import Export, SearchMatch, search_indexed_content
+from vethuq_core.search import Export, Search, SearchMatch
 from vethuq_core.settings import (
     SEARCH_EXPORT_FORMATS,
     get_search_export_format,
@@ -175,7 +175,7 @@ def search(
     """
     conn = Db.connect()
     try:
-        matches = search_indexed_content(conn, content)
+        matches = Search.indexed_content(conn, content)
         if not matches:
             console.print("No matches found.", style="yellow")
             return
