@@ -32,9 +32,10 @@ edit that breaks readability fails CI.
   literal color.
 - **CLI:** `vethuq_cli.theme.Theme` builds Rich styles from the dark scheme (terminals are mostly
   dark). Use `Theme.ERROR`, `Theme.OK`, `Theme.VALUE` and friends rather than named ANSI colors.
-- **Icons:** drawn from the same tokens. Role: actions `primary`, destructive `danger`, PDF
-  `danger`, images `accent`, folders/files `warning-fill` with a `warning` outline, GPU `accent`
-  (on) or a neutral grey (off).
+- **Icons:** generated separately (see [icons.md](icons.md) and `scripts/dev/generate_icons.py`),
+  currently from Fluent accent colors. If they are later aligned to the palette, the suggested roles are:
+  actions `primary`, destructive and PDF `danger`, images and GPU-on `accent`, folders and files
+  `warning-fill` with a `warning` outline.
 - **Web (later):** reuse `Palette.css_variables()` unchanged.
 
 ## Changing it
