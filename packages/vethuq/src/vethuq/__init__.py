@@ -41,10 +41,10 @@ from vethuq._core.source import (
     SourcePathError,
 )
 from vethuq._core.source import Sources as _Sources
+from vethuq._core.stats import Confidence as _Confidence
 from vethuq._core.stats import ConfidenceMetric, ProcessingMetric
-from vethuq._core.stats import get_confidence_metrics as _get_confidence_metrics
-from vethuq._core.stats import get_processing_metrics as _get_processing_metrics
-from vethuq._core.stats import reset_metrics as _reset_metrics
+from vethuq._core.stats import Processing as _Processing
+from vethuq._core.stats import Stats as _Stats
 
 _STATE_POLL_SECONDS = 1.0
 
@@ -512,7 +512,7 @@ class Stats:
         """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
         conn = _Db.connect()
         try:
-            return _get_processing_metrics(conn)
+            return _Processing.get_metrics(conn)
         finally:
             conn.close()
 
@@ -520,7 +520,7 @@ class Stats:
         """Return per-(file_type, process_type) running averages of OCR confidence."""
         conn = _Db.connect()
         try:
-            return _get_confidence_metrics(conn)
+            return _Confidence.get_metrics(conn)
         finally:
             conn.close()
 
@@ -534,7 +534,7 @@ class Stats:
         """
         conn = _Db.connect()
         try:
-            _reset_metrics(conn)
+            _Stats.reset(conn)
         finally:
             conn.close()
 

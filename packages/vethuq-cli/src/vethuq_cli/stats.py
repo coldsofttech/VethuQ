@@ -13,13 +13,7 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.ocr import OCR_ENGINE_PHASES
-from vethuq_core.stats import (
-    ConfidenceMetric,
-    ProcessingMetric,
-    get_confidence_metrics,
-    get_processing_metrics,
-    reset_metrics,
-)
+from vethuq_core.stats import Confidence, ConfidenceMetric, Processing, ProcessingMetric, Stats
 
 from vethuq_cli.console import console
 
@@ -87,8 +81,8 @@ def show() -> None:
     """Show accumulated OCR processing and confidence statistics."""
     conn = Db.connect()
     try:
-        processing = get_processing_metrics(conn)
-        confidence = get_confidence_metrics(conn)
+        processing = Processing.get_metrics(conn)
+        confidence = Confidence.get_metrics(conn)
     finally:
         conn.close()
     processing_panel = _processing_panel(processing)
@@ -121,7 +115,7 @@ def reset(
 
     conn = Db.connect()
     try:
-        reset_metrics(conn)
+        Stats.reset(conn)
     finally:
         conn.close()
     console.print("Statistics reset.", style="bold green")

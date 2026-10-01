@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.stats import get_confidence_metrics, get_processing_metrics, reset_metrics
+from vethuq_core.stats import Confidence, Processing, Stats
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
 def test_get_processing_metrics_returns_rows(conn: sqlite3.Connection):
     _seed_metrics(conn)
 
-    metrics = get_processing_metrics(conn)
+    metrics = Processing.get_metrics(conn)
 
     assert len(metrics) == 1
     assert metrics[0].file_type == "pdf"
@@ -45,7 +45,7 @@ def test_get_processing_metrics_returns_rows(conn: sqlite3.Connection):
 def test_get_confidence_metrics_returns_rows(conn: sqlite3.Connection):
     _seed_metrics(conn)
 
-    metrics = get_confidence_metrics(conn)
+    metrics = Confidence.get_metrics(conn)
 
     assert len(metrics) == 1
     assert metrics[0].file_type == "pdf"
@@ -55,14 +55,14 @@ def test_get_confidence_metrics_returns_rows(conn: sqlite3.Connection):
 
 
 def test_get_metrics_empty_when_no_data(conn: sqlite3.Connection):
-    assert get_processing_metrics(conn) == []
-    assert get_confidence_metrics(conn) == []
+    assert Processing.get_metrics(conn) == []
+    assert Confidence.get_metrics(conn) == []
 
 
 def test_reset_metrics_clears_both_tables(conn: sqlite3.Connection):
     _seed_metrics(conn)
 
-    reset_metrics(conn)
+    Stats.reset(conn)
 
-    assert get_processing_metrics(conn) == []
-    assert get_confidence_metrics(conn) == []
+    assert Processing.get_metrics(conn) == []
+    assert Confidence.get_metrics(conn) == []
