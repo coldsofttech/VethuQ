@@ -71,7 +71,7 @@ def _seed_indexed_image(db_path, file_path: str, text: str) -> int:
 
 
 class TestSearch:
-    def test_search_reports_no_matches(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_reports_no_matches(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["search", "nothing"])
@@ -98,7 +98,7 @@ class TestSearch:
         assert any(line.startswith("|") and line.endswith("|") for line in lines)
         assert "amount due" in result.stdout
 
-    def test_search_image_match_has_no_page_line(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_image_match_has_no_page_line(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_image(db_path, "/docs/scan.png", "Signed by John Doe")
 
@@ -109,7 +109,7 @@ class TestSearch:
         assert "File: /docs/scan.png" in lines
         assert not any(line.startswith("Page:") for line in lines)
 
-    def test_search_shows_all_matches_without_prompting(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_shows_all_matches_without_prompting(self, use_temp_db):
         db_path = use_temp_db()
         for i in range(15):
             _seed_indexed_pdf(db_path, f"/docs/report-{i:02d}.pdf", "budget overview")
@@ -160,7 +160,7 @@ class TestSearch:
         assert "Page: 1 of 3" in lines
         assert "Page: 3 of 3" in lines
 
-    def test_search_export_requires_a_value(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_export_requires_a_value(self, use_temp_db, tmp_path):
         use_temp_db()
         _seed_indexed_pdf(
             tmp_path / "vethuq.db", "/docs/invoice.pdf", "Total amount due: $1,200.00"
@@ -170,7 +170,7 @@ class TestSearch:
 
         assert result.exit_code == 2
 
-    def test_search_export_defaults_to_json(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_export_defaults_to_json(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
         output = tmp_path / "out.json"
@@ -187,7 +187,7 @@ class TestSearch:
         assert "Results:" not in result.stdout
         assert "File:" not in result.stdout
 
-    def test_search_export_html_links_the_file_path(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_export_html_links_the_file_path(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
         output = tmp_path / "out.html"
@@ -201,7 +201,7 @@ class TestSearch:
         assert Path("/docs/invoice.pdf").resolve().as_uri() in html
         assert "<mark>amount due</mark>" in html
 
-    def test_search_export_rejects_unsupported_format(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_export_rejects_unsupported_format(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
         output = tmp_path / "out.xml"
@@ -213,7 +213,7 @@ class TestSearch:
         assert result.exit_code == 1
         assert not output.exists()
 
-    def test_search_without_export_does_not_touch_output(self, use_temp_db, tmp_path, monkeypatch):
+    def test_search_without_export_does_not_touch_output(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
 

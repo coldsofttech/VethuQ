@@ -117,7 +117,7 @@ class TestRun:
         assert result.exit_code == 1
         assert "already in progress" in result.output
 
-    def test_run_unknown_target_fails(self, use_temp_db, tmp_path, monkeypatch):
+    def test_run_unknown_target_fails(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "run", "999"])
@@ -156,7 +156,7 @@ class TestRestart:
 
 
 class TestStatus:
-    def test_status_with_no_run(self, use_temp_db, tmp_path, monkeypatch):
+    def test_status_with_no_run(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "status"])
@@ -164,7 +164,7 @@ class TestStatus:
         assert result.exit_code == 0
         assert "No index run has been started yet." in result.stdout
 
-    def test_status_shows_progress(self, use_temp_db, tmp_path, monkeypatch):
+    def test_status_shows_progress(self, use_temp_db):
         db_path = use_temp_db()
         now = datetime.now(UTC).isoformat()
         state = index_runner_module.IndexState(
@@ -241,7 +241,7 @@ class TestStatus:
         assert "Status" in result.stdout
         assert "completed" in result.stdout
 
-    def test_status_shows_eta_from_processing_metrics(self, use_temp_db, tmp_path, monkeypatch):
+    def test_status_shows_eta_from_processing_metrics(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()
@@ -284,7 +284,7 @@ class TestStatus:
         assert "ETA" in result.stdout
         assert "~20s" in result.stdout
 
-    def test_status_detail_for_target(self, use_temp_db, tmp_path, monkeypatch):
+    def test_status_detail_for_target(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()
@@ -297,7 +297,7 @@ class TestStatus:
         assert result.exit_code == 0
         assert "No files indexed yet for this source." in result.stdout
 
-    def test_status_unknown_target_fails(self, use_temp_db, tmp_path, monkeypatch):
+    def test_status_unknown_target_fails(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "status", "999"])
@@ -306,14 +306,14 @@ class TestStatus:
 
 
 class TestStopAndPause:
-    def test_stop_without_running_fails(self, use_temp_db, tmp_path, monkeypatch):
+    def test_stop_without_running_fails(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "stop", "--force"])
 
         assert result.exit_code == 1
 
-    def test_stop_declined_does_not_call_request_stop(self, use_temp_db, tmp_path, monkeypatch):
+    def test_stop_declined_does_not_call_request_stop(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "stop"], input="n\n")
@@ -321,13 +321,13 @@ class TestStopAndPause:
         assert result.exit_code == 0
         assert "Index run stopped." not in result.stdout
 
-    def test_pause_and_resume_without_running_fail(self, use_temp_db, tmp_path, monkeypatch):
+    def test_pause_and_resume_without_running_fail(self, use_temp_db):
         use_temp_db()
 
         assert runner.invoke(app, ["index", "pause", "--force"]).exit_code == 1
         assert runner.invoke(app, ["index", "resume"]).exit_code == 1
 
-    def test_pause_declined_does_not_call_request_pause(self, use_temp_db, tmp_path, monkeypatch):
+    def test_pause_declined_does_not_call_request_pause(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "pause"], input="n\n")
@@ -337,7 +337,7 @@ class TestStopAndPause:
 
 
 class TestHistory:
-    def test_history_empty(self, use_temp_db, tmp_path, monkeypatch):
+    def test_history_empty(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["index", "history"])
@@ -345,7 +345,7 @@ class TestHistory:
         assert result.exit_code == 0
         assert "No index runs recorded yet." in result.stdout
 
-    def test_history_lists_runs(self, use_temp_db, tmp_path, monkeypatch):
+    def test_history_lists_runs(self, use_temp_db):
         db_path = use_temp_db()
         conn = db_module.Db.connect(db_path)
         conn.execute(

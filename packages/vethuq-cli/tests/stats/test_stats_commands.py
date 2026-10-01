@@ -25,7 +25,7 @@ def _seed_metrics(db_path):
 
 
 class TestShow:
-    def test_show_with_no_statistics(self, use_temp_db, tmp_path, monkeypatch):
+    def test_show_with_no_statistics(self, use_temp_db):
         use_temp_db()
 
         result = runner.invoke(app, ["stats", "show"])
@@ -34,7 +34,7 @@ class TestShow:
         assert "No processing statistics recorded yet." in result.stdout
         assert "No confidence statistics recorded yet." in result.stdout
 
-    def test_show_displays_seeded_statistics(self, use_temp_db, tmp_path, monkeypatch):
+    def test_show_displays_seeded_statistics(self, use_temp_db):
         db_path = use_temp_db()
         _seed_metrics(db_path)
 
@@ -47,7 +47,7 @@ class TestShow:
 
 
 class TestReset:
-    def test_reset_declined_leaves_statistics_intact(self, use_temp_db, tmp_path, monkeypatch):
+    def test_reset_declined_leaves_statistics_intact(self, use_temp_db):
         db_path = use_temp_db()
         _seed_metrics(db_path)
 
@@ -62,7 +62,7 @@ class TestReset:
         finally:
             conn.close()
 
-    def test_reset_confirmed_clears_statistics(self, use_temp_db, tmp_path, monkeypatch):
+    def test_reset_confirmed_clears_statistics(self, use_temp_db):
         db_path = use_temp_db()
         _seed_metrics(db_path)
 
@@ -78,7 +78,7 @@ class TestReset:
         finally:
             conn.close()
 
-    def test_reset_force_skips_confirmation(self, use_temp_db, tmp_path, monkeypatch):
+    def test_reset_force_skips_confirmation(self, use_temp_db):
         db_path = use_temp_db()
         _seed_metrics(db_path)
 

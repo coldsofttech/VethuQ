@@ -5,7 +5,7 @@ runner = CliRunner()
 
 
 class TestSource:
-    def test_add_and_list_source(self, use_temp_db, tmp_path, monkeypatch):
+    def test_add_and_list_source(self, use_temp_db, tmp_path):
         use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()
@@ -18,14 +18,14 @@ class TestSource:
         assert list_result.exit_code == 0
         assert str(folder.resolve()) in list_result.stdout
 
-    def test_add_missing_path_fails(self, use_temp_db, tmp_path, monkeypatch):
+    def test_add_missing_path_fails(self, use_temp_db, tmp_path):
         use_temp_db()
 
         result = runner.invoke(app, ["source", "add", str(tmp_path / "missing")])
 
         assert result.exit_code == 1
 
-    def test_remove_source_with_force_skips_confirmation(self, use_temp_db, tmp_path, monkeypatch):
+    def test_remove_source_with_force_skips_confirmation(self, use_temp_db, tmp_path):
         use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()
@@ -38,7 +38,7 @@ class TestSource:
         list_result = runner.invoke(app, ["source", "list"])
         assert "No sources registered yet." in list_result.stdout
 
-    def test_remove_source_confirms_before_removing(self, use_temp_db, tmp_path, monkeypatch):
+    def test_remove_source_confirms_before_removing(self, use_temp_db, tmp_path):
         use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()

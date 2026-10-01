@@ -7,7 +7,7 @@ from vethuq_core.source import Sources
 
 
 class TestStatePanel:
-    def test_state_panel_shows_phase_and_a_bar_per_phase(self, use_temp_db, tmp_path, monkeypatch):
+    def test_state_panel_shows_phase_and_a_bar_per_phase(self, use_temp_db, tmp_path):
         from rich.console import Console
         from vethuq_core.settings import OcrSettings
 
