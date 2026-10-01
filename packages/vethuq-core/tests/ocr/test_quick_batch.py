@@ -65,6 +65,58 @@ class TestQuickBatch:
         assert updated_source["status"] == "indexed"
 
     @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_batch_skips_file_already_claimed_by_another_run(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result()
+        mock_get_engine.return_value = engine
+
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        claimed_path = folder / "a.png"
+        free_path = folder / "b.png"
+        claimed_path.write_bytes(b"bytes for a")
+        free_path.write_bytes(b"bytes for b")
+        source = Sources.add(conn, folder)
+
+        now = "2026-01-01T00:00:00+00:00"
+        other_run_document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES (?)", (now,)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO document_index "
+            "(source_id, document_id, file_path, file_type, status, started_at) "
+            "VALUES (?, ?, ?, 'image', 'processing', ?)",
+            (source.id, other_run_document_id, str(claimed_path.resolve()), now),
+        )
+        conn.commit()
+
+        done_results: dict[str, bool | None] = {}
+        processed = Quick.run_batch(
+            conn,
+            [source],
+            workers=1,
+            on_file_done=lambda path, succeeded: done_results.__setitem__(
+                Path(path).name, succeeded
+            ),
+        )
+
+        # Only the unclaimed file is actually (re)processed by this run.
+        assert [Path(p).name for p in processed] == ["b.png"]
+        # `on_file_done` still fires for the claimed file (e.g. so a caller
+        # tracking in-flight files clears it), but with None rather than a bool.
+        assert done_results == {"a.png": None, "b.png": True}
+
+        claimed = conn.execute(
+            "SELECT status, document_id FROM document_index WHERE file_path = ?",
+            (str(claimed_path.resolve()),),
+        ).fetchone()
+        assert claimed["status"] == "processing"
+        assert claimed["document_id"] == other_run_document_id
+        engine.predict.assert_called_once()
+
+    @patch("vethuq_core.ocr.Engine.get")
     def test_run_ocr_batch_stops_early_leaves_rest_untouched(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):

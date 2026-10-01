@@ -78,6 +78,43 @@ class TestQuick:
         assert doc["status"] == "indexed"
 
     @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_skips_file_already_claimed_by_another_run(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result()
+        mock_get_engine.return_value = engine
+
+        image_path = tmp_path / "scan.png"
+        image_path.write_bytes(b"fake png bytes")
+        source = Sources.add(conn, image_path)
+
+        # Simulate another concurrently-running index run having already claimed
+        # this file - its document_index row is mid-processing.
+        now = "2026-01-01T00:00:00+00:00"
+        other_run_document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES (?)", (now,)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO document_index "
+            "(source_id, document_id, file_path, file_type, status, started_at) "
+            "VALUES (?, ?, ?, 'image', 'processing', ?)",
+            (source.id, other_run_document_id, str(image_path.resolve()), now),
+        )
+        conn.commit()
+
+        processed = Quick.run(conn, source)
+
+        assert processed == []
+        engine.predict.assert_not_called()
+        doc = conn.execute(
+            "SELECT status, document_id FROM document_index WHERE file_path = ?",
+            (str(image_path.resolve()),),
+        ).fetchone()
+        assert doc["status"] == "processing"
+        assert doc["document_id"] == other_run_document_id
+
+    @patch("vethuq_core.ocr.Engine.get")
     def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):

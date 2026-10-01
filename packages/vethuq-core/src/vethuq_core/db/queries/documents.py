@@ -119,7 +119,7 @@ class Document:
     @staticmethod
     def get_index_by_path(conn: sqlite3.Connection, file_path: str) -> sqlite3.Row | None:
         return conn.execute(
-            "SELECT id, document_id, sha256 FROM document_index WHERE file_path = ?",
+            "SELECT id, document_id, sha256, status FROM document_index WHERE file_path = ?",
             (file_path,),
         ).fetchone()
 
@@ -142,8 +142,19 @@ class Document:
         mtime: float,
         created_at: str,
         modified_at: str,
-    ) -> None:
-        conn.execute(
+    ) -> bool:
+        """Atomically claim `file_path`'s row for processing, setting status='processing'.
+
+        The `WHERE document_index.status != 'processing'` guard makes this a real
+        claim rather than a plain upsert: if the row already has status=
+        'processing' (another concurrently-running index run already claimed it),
+        SQLite's UPSERT treats the conflict as a no-op instead of applying
+        `DO UPDATE`, and this returns False. The caller must then leave the row
+        untouched - whichever run holds the claim owns finishing it. Returns True
+        when the claim is won, whether that's a fresh row (plain insert, no
+        conflict) or resetting an existing non-'processing' one.
+        """
+        cursor = conn.execute(
             """
             INSERT INTO document_index
                 (source_id, document_id, file_path, file_type, status, started_at,
@@ -156,6 +167,7 @@ class Document:
                 file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,
                 mtime = excluded.mtime, created_at = excluded.created_at,
                 modified_at = excluded.modified_at
+            WHERE document_index.status != 'processing'
             """,
             (
                 source_id,
@@ -169,6 +181,23 @@ class Document:
                 created_at,
                 modified_at,
             ),
+        )
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def fail_stuck_processing_index(conn: sqlite3.Connection, message: str, now: str) -> None:
+        """Reset every row still claimed ('processing') back to 'error', so it's retried.
+
+        Called only once the caller is certain nothing is still actively working
+        on these rows (a crashed/force-killed run being reconciled at the next
+        start, or right after force-killing one that missed its stop timeout) -
+        otherwise a claim (see `upsert_index`) would hold a row in 'processing'
+        forever, since nothing else ever moves it to 'indexed' or 'error'.
+        """
+        conn.execute(
+            "UPDATE document_index SET status = 'error', error_message = ?, completed_at = ? "
+            "WHERE status = 'processing'",
+            (message, now),
         )
 
     @staticmethod

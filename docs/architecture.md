@@ -150,6 +150,36 @@ Since worker threads share one sqlite connection (opened with
 through a single `threading.Lock` (`db_lock`); only the OCR inference
 itself runs unlocked, which is the actual point of the parallelism.
 
+### Claiming a file for processing
+
+The PID lock file (`index.lock`) that `IndexRunner.start_run` uses to stop
+a second `vethuq index run`/the desktop app's background poll from starting
+concurrently has a check-then-write race of its own (checking the lock is
+free and creating it aren't atomic), so two index runs *can* end up live at
+once and pick the same file. `Document.upsert_index` (in
+`db/queries/documents.py`) guards against that at the row level instead:
+claiming a file is a single atomic
+`INSERT ... ON CONFLICT DO UPDATE ... WHERE status != 'processing'`, so a
+run only wins the claim (and gets to OCR the file) if no other run already
+has it `processing`; a losing run's `Document.upsert` (in
+`ocr/document.py`) returns `None` and leaves the file alone entirely, on
+the assumption whichever run holds the claim will finish it. The same claim
+also protects a single run's own worker threads from ever double-processing
+one `document_index` row.
+
+A row can be left claimed forever by a run that never got to mark it
+`indexed`/`error` - a hard crash (killed before its `except`/`finally` can
+run), or a `vethuq index stop` that had to force-kill a worker past its
+timeout. `IndexRunner` resets any such row back to `error` (retryable by a
+normal run or `vethuq index restart`) at each point it can tell for certain
+nothing is still working on it: `_run_worker`'s own crash handler (the
+common case - most unhandled exceptions still let Python's `except` run),
+`_reconcile_orphaned_run` (a hard crash that skipped even that, detected via
+the stale lock left behind, next time a run starts), and `request_stop`
+right after a force-kill. A run that stops cooperatively never needs this:
+it only checks the stop signal between files, so nothing is left mid-claim
+when it exits on its own.
+
 ### Logical documents
 
 `documents` represents a document's identity independent of any one

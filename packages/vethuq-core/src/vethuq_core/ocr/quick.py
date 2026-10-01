@@ -123,10 +123,13 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            document_id, duplicate_source_id = Document.upsert(
-                conn, source.id, file_path, file_type
-            )
+            claim = Document.upsert(conn, source.id, file_path, file_type)
             conn.commit()
+            if claim is None:
+                # Already claimed by another concurrently-running index run -
+                # leave it alone, that run owns finishing it.
+                continue
+            document_id, duplicate_source_id = claim
             processed_paths.append(str(file_path))
 
             if duplicate_source_id is not None:
@@ -189,22 +192,26 @@ class Quick:
         file_type: str,
         *,
         db_lock: threading.Lock,
-    ) -> bool:
+    ) -> bool | None:
         """Index one file: upsert its row, dedupe by checksum, and OCR it if new content.
 
         Returns whether it succeeded (False on an OCR failure recorded as an
-        error). This is `Quick.run`'s per-file body, pulled out separately so
-        `Quick.run_batch` can process files interleaved across sources rather than
-        one whole source at a time, and so OCR inference - the actual work
-        worth parallelizing - runs without `db_lock` held; every sqlite read/
-        write around it is serialized through `db_lock` since a single
-        connection isn't safe for unsynchronized concurrent use.
+        error), or None if `file_path` is already claimed by another
+        concurrently-running index run and was left untouched - see
+        `Document.upsert`. This is `Quick.run`'s per-file body, pulled out
+        separately so `Quick.run_batch` can process files interleaved across
+        sources rather than one whole source at a time, and so OCR inference -
+        the actual work worth parallelizing - runs without `db_lock` held; every
+        sqlite read/write around it is serialized through `db_lock` since a
+        single connection isn't safe for unsynchronized concurrent use.
         """
         with db_lock:
-            document_id, duplicate_source_id = Document.upsert(
-                conn, source.id, file_path, file_type
-            )
+            claim = Document.upsert(conn, source.id, file_path, file_type)
             conn.commit()
+
+        if claim is None:
+            return None
+        document_id, duplicate_source_id = claim
 
         if duplicate_source_id is not None:
             with db_lock:
@@ -358,7 +365,7 @@ class Quick:
         only_failed: bool = False,
         workers: int = 1,
         on_file_start: Callable[[str], None] | None = None,
-        on_file_done: Callable[[str, bool], None] | None = None,
+        on_file_done: Callable[[str, bool | None], None] | None = None,
         on_workers_changed: Callable[[int], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
         exclude_paths: Collection[str] = (),
@@ -386,7 +393,12 @@ class Quick:
         the rest of the list is left untouched. `on_file_start`, when given, is
         called with a file's path right before it's (re)processed; `on_file_done`
         is called with its path and whether it succeeded immediately after -
-        both from whichever thread actually processed that file.
+        both from whichever thread actually processed that file. `on_file_done`'s
+        second argument is None instead of a bool if the file turned out to
+        already be claimed by another concurrently-running index run (see
+        `Document.upsert`) - that file was left untouched here and doesn't count
+        as attempted/processed/failed for this run, though `on_file_done` still
+        fires so a caller tracking in-flight files clears it from that list.
 
         When the `thread_workers` setting is 'auto', the worker count is instead
         re-resolved after every file (see `Quick.run_auto_elastic`) rather than fixed
@@ -443,12 +455,17 @@ class Quick:
             succeeded = Quick.process_file(
                 conn, item.source, item.path, item.file_type, db_lock=db_lock
             )
-            with state_lock:
-                processed_paths.append(path_str)
-                attempted_source_ids.add(item.source.id)
-                had_error_by_source[item.source.id] = (
-                    had_error_by_source.get(item.source.id, False) or not succeeded
-                )
+            if succeeded is not None:
+                # None means the file was already claimed by another
+                # concurrently-running index run and left untouched here - that
+                # run's own bookkeeping covers it, so it doesn't count as
+                # attempted/processed/failed for this one.
+                with state_lock:
+                    processed_paths.append(path_str)
+                    attempted_source_ids.add(item.source.id)
+                    had_error_by_source[item.source.id] = (
+                        had_error_by_source.get(item.source.id, False) or not succeeded
+                    )
             if on_file_done is not None:
                 on_file_done(path_str, succeeded)
 
