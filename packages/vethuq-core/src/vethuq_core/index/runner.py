@@ -261,7 +261,7 @@ class IndexRunner:
             if not worker.exists():
                 raise IndexRunnerError(f"index worker not found at {worker}")
             return [str(worker), *args]
-        return [sys.executable, "-m", "vethuq_core.index_runner", *args]
+        return [sys.executable, "-m", "vethuq_core.index.runner", *args]
 
     @staticmethod
     def start_run(
