@@ -6,21 +6,19 @@ import typer
 from rich.prompt import Confirm
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.sources import (
+from vethuq_core.source import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
     SourcePathError,
-    add_source,
-    get_source,
-    list_sources,
-    remove_source,
+    Sources,
 )
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Manage files and folders registered as VethuQ sources.")
 
-_STATUS_STYLES = {"indexed": "green", "pending": "blue", "error": "red"}
+_STATUS_STYLES = {"indexed": Theme.SUCCESS, "pending": Theme.PRIMARY, "error": Theme.DANGER}
 
 
 @app.command("add")
@@ -32,16 +30,16 @@ def add(
     """Register a file or folder as a VethuQ source."""
     conn = Db.connect()
     try:
-        source = add_source(conn, path)
+        source = Sources.add(conn, path)
     except (SourcePathError, SourceAlreadyExistsError) as exc:
-        error_console.print(str(exc), style="bold red")
+        error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
     else:
-        console.print(Text.assemble((f"Added {source.source_type}: ", "bold green"), source.path))
+        console.print(Text.assemble((f"Added {source.source_type}: ", Theme.OK), source.path))
         console.print()
         console.print(
             Text.assemble(
-                "Run '", ("vethuq index run", "bold cyan"), "' to process pending sources."
+                "Run '", ("vethuq index run", Theme.COMMAND), "' to process pending sources."
             )
         )
     finally:
@@ -53,7 +51,7 @@ def list_() -> None:
     """List registered sources."""
     conn = Db.connect()
     try:
-        sources = list_sources(conn)
+        sources = Sources.list_all(conn)
     finally:
         conn.close()
 
@@ -66,7 +64,7 @@ def list_() -> None:
             "[",
             (str(source.id), "bright_black"),
             "] ",
-            (f"{source.source_type:<6}", "bright_yellow"),
+            (f"{source.source_type:<6}", Theme.LABEL),
             " ",
             (f"{source.status:<8}", _STATUS_STYLES.get(source.status, "default")),
             f" {source.path}",
@@ -82,23 +80,23 @@ def remove(
     """Remove a registered source."""
     conn = Db.connect()
     try:
-        target: str | int = int(path_or_id) if path_or_id.isdigit() else path_or_id
+        target = Sources.coerce(path_or_id)
         try:
-            source = get_source(conn, target)
+            source = Sources.get(conn, target)
         except SourceNotFoundError as exc:
-            error_console.print(str(exc), style="bold red")
+            error_console.print(str(exc), style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
 
         if not force:
             prompt = Text.assemble(
-                "Remove ", (source.source_type, "bright_yellow"), f" '{source.path}'?"
+                "Remove ", (source.source_type, Theme.LABEL), f" '{source.path}'?"
             )
             if not Confirm.ask(prompt, console=console, default=False):
                 console.print("Aborted.", style="bright_black")
                 raise typer.Exit(code=0)
 
-        source = remove_source(conn, target)
+        source = Sources.remove(conn, target)
     finally:
         conn.close()
 
-    console.print(Text.assemble((f"Removed {source.source_type}: ", "bold green"), source.path))
+    console.print(Text.assemble((f"Removed {source.source_type}: ", Theme.OK), source.path))

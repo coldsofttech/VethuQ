@@ -7,7 +7,7 @@ the slower ones continue in the background.
 
 ## Phases and the `index_engine` setting
 
-Angles are degrees counter-clockwise (`vethuq_core.ocr.OCR_PHASE_ANGLES`):
+Angles are degrees counter-clockwise (`vethuq_core.ocr.Deepening.PHASE_ANGLES`):
 
 | Phase | Angles | Reached with engine |
 | --- | --- | --- |

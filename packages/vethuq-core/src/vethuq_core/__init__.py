@@ -1,12 +1,10 @@
-from vethuq_core.sources import (
+from vethuq_core.source import (
     Source,
     SourceAlreadyExistsError,
     SourceError,
     SourceNotFoundError,
     SourcePathError,
-    add_source,
-    list_sources,
-    remove_source,
+    Sources,
 )
 
 __all__ = [
@@ -15,7 +13,5 @@ __all__ = [
     "SourceError",
     "SourceNotFoundError",
     "SourcePathError",
-    "add_source",
-    "list_sources",
-    "remove_source",
+    "Sources",
 ]

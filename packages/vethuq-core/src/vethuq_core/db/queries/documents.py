@@ -148,10 +148,10 @@ class Document:
             INSERT INTO document_index
                 (source_id, document_id, file_path, file_type, status, started_at,
                  file_size_bytes, sha256, mtime, created_at, modified_at)
-            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?)
             ON CONFLICT(file_path) DO UPDATE SET
                 document_id = excluded.document_id,
-                status = 'pending', error_message = NULL, indexed_at = NULL,
+                status = 'processing', error_message = NULL, indexed_at = NULL,
                 started_at = excluded.started_at, completed_at = NULL,
                 file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,
                 mtime = excluded.mtime, created_at = excluded.created_at,
@@ -303,6 +303,15 @@ class Document:
                 ocr_angles,
             ),
         )
+
+    @staticmethod
+    def count_index_by_status(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
+        """`(status, count)` of `source_id`'s `document_index` rows, one row per status."""
+        return conn.execute(
+            "SELECT status, COUNT(*) AS count FROM document_index WHERE source_id = ? "
+            "GROUP BY status",
+            (source_id,),
+        ).fetchall()
 
     @staticmethod
     def get_result_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:

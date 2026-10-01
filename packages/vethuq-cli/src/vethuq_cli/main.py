@@ -6,7 +6,7 @@ import typer
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 
 from vethuq_cli.index import app as index_app
-from vethuq_cli.interactive import run_interactive
+from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.search import search as search_command
 from vethuq_cli.settings import app as settings_app
 from vethuq_cli.source import app as source_app
@@ -24,7 +24,7 @@ app.command("search")(search_command)
 def main(ctx: typer.Context) -> None:
     """Run a subcommand, or launch the interactive console when none is given."""
     if ctx.invoked_subcommand is None:
-        run_interactive()
+        InteractiveMenu.run()
 
 
 if __name__ == "__main__":

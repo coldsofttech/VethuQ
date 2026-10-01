@@ -424,3 +424,51 @@ class Migration:
                 conn.execute("ALTER TABLE document_index ADD COLUMN created_at TEXT")
             if "modified_at" not in columns:
                 conn.execute("ALTER TABLE document_index ADD COLUMN modified_at TEXT")
+        if from_version < 24:
+            # Adds 'processing' to the status CHECK constraint, for a file that's
+            # actively being worked on - previously `started_at` was set while
+            # status stayed 'pending' for the whole run, with no way to tell "not
+            # started yet" apart from "in flight" from the status column alone.
+            # SQLite can't widen a CHECK constraint in place, so this follows the
+            # same rebuild-the-table pattern as the earlier migrations.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute(
+                """
+                CREATE TABLE document_index_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id INTEGER NOT NULL REFERENCES sources(id),
+                    document_id INTEGER NOT NULL REFERENCES documents(id),
+                    file_path TEXT NOT NULL UNIQUE,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                    error_message TEXT,
+                    indexed_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    file_size_bytes INTEGER,
+                    sha256 TEXT,
+                    mtime REAL,
+                    created_at TEXT,
+                    modified_at TEXT,
+                    removed_at TEXT,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    peak_memory_mb REAL,
+                    cpu_percent REAL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO document_index_new "
+                "(id, source_id, document_id, file_path, file_type, status, error_message, "
+                "indexed_at, started_at, completed_at, file_size_bytes, sha256, mtime, "
+                "created_at, modified_at, removed_at, retry_count, peak_memory_mb, cpu_percent) "
+                "SELECT id, source_id, document_id, file_path, file_type, status, error_message, "
+                "indexed_at, started_at, completed_at, file_size_bytes, sha256, mtime, "
+                "created_at, modified_at, removed_at, retry_count, peak_memory_mb, cpu_percent "
+                "FROM document_index"
+            )
+            conn.execute("DROP TABLE document_index")
+            conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
+            conn.execute("PRAGMA foreign_keys = ON")

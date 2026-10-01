@@ -14,7 +14,7 @@ class Db:
     APP_NAME = "VethuQ"
     DB_FILENAME = "vethuq.db"
 
-    SCHEMA_VERSION = 23
+    SCHEMA_VERSION = 24
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS document_index (
     file_path TEXT NOT NULL UNIQUE,
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
     status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'indexed', 'error', 'removed')),
+        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
     error_message TEXT,
     indexed_at TEXT,
     started_at TEXT,
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
 
         `check_same_thread=False` is only for a connection that's deliberately
         shared across threads (background indexing with worker threads - see
-        `vethuq_core.ocr.run_ocr_batch`'s `db_lock`, which serializes every use
+        `vethuq_core.ocr.Quick.run_batch`'s `db_lock`, which serializes every use
         of such a connection since SQLite connections aren't safe for
         unsynchronized concurrent access on their own).
         """
@@ -171,13 +171,10 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
         conn.execute("PRAGMA foreign_keys = ON")
         Db._ensure_schema(conn)
 
-        from vethuq_core.sources import (
-            purge_expired_removed_documents,
-            purge_expired_removed_sources,
-        )
+        from vethuq_core.source import Sources
 
-        purge_expired_removed_sources(conn)
-        purge_expired_removed_documents(conn)
+        Sources.purge_expired_sources(conn)
+        Sources.purge_expired_documents(conn)
         return conn
 
     @staticmethod

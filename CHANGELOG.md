@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - If VethuQ is closed abruptly (e.g. a crash or power loss) mid-indexing, the next run now recovers on its own instead of needing `--force` — configurable with `vethuq settings index stale-lock set/show` (auto-recovers by default).
 - Each indexed document now has a stable logical identity, independent of its file path, so duplicate copies of the same content can be tracked as one document behind the scenes rather than only ever chaining to a specific file row.
 - Indexed documents now also record OS-level file creation/modification timestamps captured at scan time, alongside their content hash; the hash column is now named `sha256` for what it's always held.
+- A document actively being OCR'd now shows a distinct `processing` status instead of staying `pending` for the whole run.
 - OCR now detects and corrects rotated pages and rotated text lines (e.g. scanned or photographed documents that aren't perfectly upright), instead of assuming every page is already correctly oriented.
 - The test suite now runs in parallel and covers real PDF, PNG and JPEG sample files and the `vethuq` Python package.
 - Identical copies of a file are now recognised as one document, and OCR progress is tracked per document rather than per file copy.
