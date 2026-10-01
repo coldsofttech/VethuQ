@@ -57,6 +57,8 @@ cli_a = _analysis(
     # The HTML export reads its templates from the package, so they must ship with the exe.
     datas=[
         (str(CORE_SRC / "search" / "templates"), "vethuq_core/search/templates"),
+        # The CLI's styles are built from the palette at import time.
+        (str(CORE_SRC / "branding" / "palette.json"), "vethuq_core/branding"),
         *rich_datas,
     ],
     binaries=rich_binaries,

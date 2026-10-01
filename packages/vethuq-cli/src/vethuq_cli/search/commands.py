@@ -14,6 +14,7 @@ from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_cli.console import console, error_console
 from vethuq_cli.search.pager import Pager
 from vethuq_cli.search.renderer import ResultRenderer
+from vethuq_cli.theme import Theme
 
 
 def search(
@@ -50,21 +51,21 @@ def search(
     try:
         matches = Search.indexed_content(conn, content)
         if not matches:
-            console.print("No matches found.", style="yellow")
+            console.print("No matches found.", style=Theme.NOTICE)
             return
 
         if export is not None:
             try:
                 resolved_format = SearchSettings.resolve_export_format(conn, format_)
             except InvalidSettingValueError as exc:
-                error_console.print(f"Error: {exc}", style="bold red")
+                error_console.print(f"Error: {exc}", style=Theme.ERROR)
                 raise typer.Exit(code=1) from exc
             output_path = Path(export)
             Export.search_results(matches, content, output_path, resolved_format)
             console.print(
                 Text.assemble(
                     "Exported ",
-                    (str(len(matches)), "bright_blue"),
+                    (str(len(matches)), Theme.VALUE),
                     f" match(es) to {output_path} ({resolved_format}).",
                 )
             )
@@ -86,7 +87,7 @@ def search(
             console.print(
                 Text.assemble(
                     "Exported ",
-                    (str(len(matches)), "bright_blue"),
+                    (str(len(matches)), Theme.VALUE),
                     f" match(es) to {output_path} ({resolved_format}).",
                 )
             )

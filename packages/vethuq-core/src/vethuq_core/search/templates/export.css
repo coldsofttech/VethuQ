@@ -1,14 +1,14 @@
   body {
     font-family: -apple-system, Segoe UI, Roboto, sans-serif;
     margin: 2rem;
-    color: #1a1a1a;
-    background: #fafafa;
+    color: var(--vq-text);
+    background: var(--vq-bg);
   }
   h1 { font-size: 1.25rem; }
-  .meta { color: #666; margin-bottom: 1.5rem; }
+  .meta { color: var(--vq-text-muted); margin-bottom: 1.5rem; }
   .results {
-    background: #fff;
-    border: 1px solid #ddd;
+    background: var(--vq-surface);
+    border: 1px solid var(--vq-border);
     border-radius: 6px;
     overflow: hidden;
   }
@@ -20,13 +20,13 @@
   }
   .row-cells.header {
     padding: 0.6rem 1rem;
-    background: #f0f0f0;
+    background: var(--vq-surface-alt);
     font-weight: 600;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--vq-border);
   }
   details.row summary.row-cells {
     padding: 0.6rem 1rem;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--vq-border-soft);
     cursor: pointer;
     list-style: none;
   }
@@ -34,16 +34,16 @@
   details.row:last-of-type summary { border-bottom: none; }
   .chevron { display: inline-block; transition: transform 0.15s; }
   details.row[open] .chevron { transform: rotate(90deg); }
-  .file-path a { color: #0645ad; text-decoration: none; }
-  .file-path a:hover { text-decoration: underline; }
+  .file-path a { color: var(--vq-primary); text-decoration: none; }
+  .file-path a:hover { color: var(--vq-primary-hover); text-decoration: underline; }
   .snippet {
     padding: 0.75rem 1rem 1rem 2.75rem;
     font-family: Consolas, Menlo, monospace;
     white-space: pre-wrap;
     line-height: 1.4;
-    background: #fafafa;
-    border-bottom: 1px solid #eee;
+    background: var(--vq-bg);
+    border-bottom: 1px solid var(--vq-border-soft);
   }
-  .snippet mark { background: #ffe08a; padding: 0 2px; }
-  footer { margin-top: 1.5rem; color: #999; font-size: 0.85rem; }
+  .snippet mark { background: var(--vq-highlight); color: var(--vq-on-highlight); padding: 0 2px; }
+  footer { margin-top: 1.5rem; color: var(--vq-text-muted); font-size: 0.85rem; }
   footer .footer-title { font-weight: 600; }

@@ -10,7 +10,7 @@ from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
-from vethuq_core.branding import APP_NAME, APP_TAGLINE
+from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
 
@@ -94,6 +94,7 @@ class Export:
 
         document = (
             Export.template("export.html")
+            .replace("{{PALETTE}}", Palette.css_variables())
             .replace("{{STYLE}}", Export.template("export.css").rstrip("\n"))
             .replace("{{APP_NAME}}", html.escape(APP_NAME))
             .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))

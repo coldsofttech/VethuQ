@@ -9,6 +9,7 @@ from vethuq_core.stats import Confidence, Processing, Stats
 
 from vethuq_cli.console import console
 from vethuq_cli.stats.renderer import StatsRenderer
+from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="View and reset OCR processing/confidence statistics.")
 
@@ -55,4 +56,4 @@ def reset(
         Stats.reset(conn)
     finally:
         conn.close()
-    console.print("Statistics reset.", style="bold green")
+    console.print("Statistics reset.", style=Theme.OK)

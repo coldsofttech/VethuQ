@@ -21,15 +21,16 @@ from vethuq_core.settings import IndexSettings
 from vethuq_core.source import SourceNotFoundError
 
 from vethuq_cli.console import console
+from vethuq_cli.theme import Theme
 
 
 class StatePanel:
     RUN_STATUS_STYLES = {
-        "running": "blue",
-        "completed": "green",
-        "failed": "red",
-        "stopped": "blue",
-        "paused": "blue",
+        "running": Theme.PRIMARY,
+        "completed": Theme.SUCCESS,
+        "failed": Theme.DANGER,
+        "stopped": Theme.PRIMARY,
+        "paused": Theme.WARNING,
     }
 
     @staticmethod
@@ -65,7 +66,7 @@ class StatePanel:
         status_style = StatePanel.RUN_STATUS_STYLES.get(state.status, "default")
 
         table = Table.grid(padding=(0, 1))
-        table.add_column(style="bright_yellow", no_wrap=True)
+        table.add_column(style=Theme.LABEL, no_wrap=True)
         table.add_column()
 
         table.add_row("Status", Text(state.status, style=f"bold {status_style}"))
@@ -99,7 +100,7 @@ class StatePanel:
                 "Progress",
                 StatePanel.progress_cell(state.processed_files, state.total_files, animated),
             )
-        failed_style = "bold red" if state.failed_files else "default"
+        failed_style = Theme.ERROR if state.failed_files else "default"
         table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
 
         if state.thread_workers_setting == "0":

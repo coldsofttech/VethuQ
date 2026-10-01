@@ -10,6 +10,8 @@ from rich.text import Text
 from vethuq_core.ocr import Deepening
 from vethuq_core.stats import ConfidenceMetric, ProcessingMetric
 
+from vethuq_cli.theme import Theme
+
 
 class StatsRenderer:
     @staticmethod
@@ -19,7 +21,9 @@ class StatsRenderer:
                 "No processing statistics recorded yet.", style="bright_black"
             )
         else:
-            body = Table(box=box.SIMPLE, header_style="bold cyan", border_style="cyan")
+            body = Table(
+                box=box.SIMPLE, header_style=f"bold {Theme.PRIMARY}", border_style=Theme.PRIMARY
+            )
             body.add_column("Phase")
             body.add_column("File type")
             body.add_column("Size")
@@ -37,7 +41,7 @@ class StatsRenderer:
                     f"{m.avg_peak_memory_mb:.0f} MB",
                     f"{m.avg_machine_cpu_percent:.0f}%",
                 )
-        return Panel(body, title="Processing", border_style="cyan")
+        return Panel(body, title="Processing", border_style=Theme.PRIMARY)
 
     @staticmethod
     def confidence_panel(metrics: list[ConfidenceMetric]) -> Panel:
@@ -46,7 +50,9 @@ class StatsRenderer:
                 "No confidence statistics recorded yet.", style="bright_black"
             )
         else:
-            body = Table(box=box.SIMPLE, header_style="bold magenta", border_style="magenta")
+            body = Table(
+                box=box.SIMPLE, header_style=f"bold {Theme.ACCENT}", border_style=Theme.ACCENT
+            )
             body.add_column("File type")
             body.add_column("Process type")
             body.add_column("Pages", justify="right")
@@ -55,7 +61,7 @@ class StatsRenderer:
                 body.add_row(
                     m.file_type, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"
                 )
-        return Panel(body, title="Confidence", border_style="magenta")
+        return Panel(body, title="Confidence", border_style=Theme.ACCENT)
 
     @staticmethod
     def align_widths(render_console: Console, *panels: Panel) -> None:

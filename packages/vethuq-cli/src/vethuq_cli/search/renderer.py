@@ -7,11 +7,13 @@ import textwrap
 from rich.text import Text
 from vethuq_core.search import SearchMatch
 
+from vethuq_cli.theme import Theme
+
 
 class ResultRenderer:
     MIN_BOX_WIDTH = 20
     HEADER_STYLE = "bold bright_white"
-    ACCENT_STYLES = ["bright_cyan", "bright_magenta"]
+    ACCENT_STYLES = [Theme.PRIMARY, Theme.ACCENT]
 
     @staticmethod
     def render_box(match: SearchMatch, width: int, accent: str) -> list[Text]:
@@ -33,7 +35,7 @@ class ResultRenderer:
             local_end = min(len(padded), match_end - start)
             body = Text(padded)
             if 0 <= local_start < local_end:
-                body.stylize(f"bold black on {accent}", local_start, local_end)
+                body.stylize(f"bold {Theme.ON_HIGHLIGHT} on {accent}", local_start, local_end)
             box.append(Text.assemble(border, "   ", body, " ", border))
         box.append(Text.assemble(border, ("_" * interior_width, accent), border))
         return box

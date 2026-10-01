@@ -49,6 +49,7 @@ from vethuq_cli.source import list_ as source_list
 from vethuq_cli.source import remove as source_remove
 from vethuq_cli.stats.commands import reset as stats_reset
 from vethuq_cli.stats.commands import show as stats_show
+from vethuq_cli.theme import Theme
 
 
 class _Quit(Exception):
@@ -58,7 +59,7 @@ class _Quit(Exception):
 class InteractiveMenu:
     @staticmethod
     def _print_banner() -> None:
-        console.print(Panel(APP_TAGLINE, title=APP_NAME, style="bold cyan", expand=False))
+        console.print(Panel(APP_TAGLINE, title=APP_NAME, style=Theme.BRAND, expand=False))
 
     @staticmethod
     def _print_menu(title: str, items: list[tuple[str, str]]) -> None:
@@ -76,7 +77,7 @@ class InteractiveMenu:
                 return raw
             console.print(
                 f"Invalid selection. Choose one of: {', '.join(choices)}, or q to quit.",
-                style="bold red",
+                style=Theme.ERROR,
             )
 
     @staticmethod
@@ -88,7 +89,7 @@ class InteractiveMenu:
         except KeyboardInterrupt:
             console.print()
         except Exception as exc:  # keep the shell alive on unexpected errors
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
 
     @staticmethod
     def _search_action() -> None:

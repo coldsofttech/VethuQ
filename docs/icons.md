@@ -12,3 +12,9 @@ either group share a hue.
 Feed these colors into a manifest entry per icon (SVG source + `color`) and
 run `scripts/dev/generate_icons.py` — see its module docstring for the
 manifest format and full workflow.
+
+## Colors
+
+Icon colors come from the shared palette - see [PALETTE.md](PALETTE.md) for the tokens and the
+role each icon uses (actions `primary`, destructive/PDF `danger`, images/GPU-on `accent`, folders
+and files `warning-fill` with a `warning` outline).

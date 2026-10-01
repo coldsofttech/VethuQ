@@ -9,11 +9,12 @@ from collections.abc import Callable
 from rich.text import Text
 
 from vethuq_cli.console import console
+from vethuq_cli.theme import Theme
 
 
 class Pager:
     MORE_PROMPT = "-- More (Enter key for new line; e to export; q for quit)  --"
-    MORE_PROMPT_STYLE = "bold green"
+    MORE_PROMPT_STYLE = Theme.OK
     CLEAR_LINE = "\r\x1b[2K"
 
     @staticmethod

@@ -119,3 +119,16 @@ class TestExportTemplates:
         text = output.read_text(encoding="utf-8")
         assert "{{" not in text
         assert "<style>" in text and "font-family" in text  # the CSS was inlined
+
+    def test_html_export_uses_the_palette_for_light_and_dark(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match()], "amount due", output, "html")
+
+        text = output.read_text(encoding="utf-8")
+        assert "--vq-primary: #005FB8;" in text
+        assert "@media (prefers-color-scheme: dark)" in text
+        assert 'name="color-scheme" content="light dark"' in text
+
+    def test_the_stylesheet_takes_every_color_from_the_palette(self):
+        assert re.findall(r"#[0-9a-fA-F]{3,6}\b", Export.template("export.css")) == []

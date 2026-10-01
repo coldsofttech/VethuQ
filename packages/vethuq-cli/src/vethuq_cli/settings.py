@@ -14,6 +14,7 @@ from vethuq_core.settings import (
 )
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Manage VethuQ settings.")
 gpu_app = typer.Typer(help="Configure whether OCR should use the GPU when available.")
@@ -60,7 +61,7 @@ def gpu_enable() -> None:
         console.print(
             "GPU enabled. It will be used next time OCR runs, if a CUDA-capable "
             "PaddleOCR build is installed; otherwise CPU is used.",
-            style="bold green",
+            style=Theme.OK,
         )
     finally:
         conn.close()
@@ -100,7 +101,7 @@ def snippet_show() -> None:
         console.print(
             Text.assemble(
                 "Search snippet context: ",
-                (str(SearchSettings.get_snippet_context_chars(conn)), "bright_blue"),
+                (str(SearchSettings.get_snippet_context_chars(conn)), Theme.VALUE),
                 " characters",
             )
         )
@@ -118,11 +119,11 @@ def snippet_set(
         try:
             SearchSettings.set_snippet_context_chars(conn, chars)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(
             Text.assemble(
-                "Search snippet context set to ", (str(chars), "bright_blue"), " characters."
+                "Search snippet context set to ", (str(chars), Theme.VALUE), " characters."
             )
         )
     finally:
@@ -136,7 +137,7 @@ def export_format_show() -> None:
     try:
         console.print(
             Text.assemble(
-                "Search export format: ", (SearchSettings.get_export_format(conn), "bright_blue")
+                "Search export format: ", (SearchSettings.get_export_format(conn), Theme.VALUE)
             )
         )
     finally:
@@ -155,9 +156,9 @@ def export_format_set(
         try:
             SearchSettings.set_export_format(conn, format_)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
-        console.print(Text.assemble("Search export format set to ", (format_, "bright_blue"), "."))
+        console.print(Text.assemble("Search export format set to ", (format_, Theme.VALUE), "."))
     finally:
         conn.close()
 
@@ -170,7 +171,7 @@ def removed_retention_show() -> None:
         console.print(
             Text.assemble(
                 "Removed source retention: ",
-                (str(SourceSettings.get_removed_retention_minutes(conn)), "bright_blue"),
+                (str(SourceSettings.get_removed_retention_minutes(conn)), Theme.VALUE),
                 " minutes",
             )
         )
@@ -190,11 +191,11 @@ def removed_retention_set(
         try:
             SourceSettings.set_removed_retention_minutes(conn, minutes)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(
             Text.assemble(
-                "Removed source retention set to ", (str(minutes), "bright_blue"), " minutes."
+                "Removed source retention set to ", (str(minutes), Theme.VALUE), " minutes."
             )
         )
     finally:
@@ -208,7 +209,7 @@ def ocr_retry_show() -> None:
     try:
         console.print(
             Text.assemble(
-                "OCR retry attempts: ", (str(OcrSettings.get_retry_attempts(conn)), "bright_blue")
+                "OCR retry attempts: ", (str(OcrSettings.get_retry_attempts(conn)), Theme.VALUE)
             )
         )
     finally:
@@ -227,10 +228,10 @@ def ocr_retry_set(
         try:
             OcrSettings.set_retry_attempts(conn, attempts)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(
-            Text.assemble("OCR retry attempts set to ", (str(attempts), "bright_blue"), ".")
+            Text.assemble("OCR retry attempts set to ", (str(attempts), Theme.VALUE), ".")
         )
     finally:
         conn.close()
@@ -243,7 +244,7 @@ def thread_workers_show() -> None:
     try:
         value = IndexSettings.get_thread_workers(conn)
         label = "disabled (sequential)" if value == "0" else value
-        console.print(Text.assemble("Thread workers: ", (label, "bright_blue")))
+        console.print(Text.assemble("Thread workers: ", (label, Theme.VALUE)))
     finally:
         conn.close()
 
@@ -265,10 +266,10 @@ def thread_workers_set(
         try:
             IndexSettings.set_thread_workers(conn, value)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         label = "disabled (sequential)" if value == "0" else value
-        console.print(Text.assemble("Thread workers set to ", (label, "bright_blue"), "."))
+        console.print(Text.assemble("Thread workers set to ", (label, Theme.VALUE), "."))
     finally:
         conn.close()
 
@@ -279,7 +280,7 @@ def stale_lock_show() -> None:
     conn = Db.connect()
     try:
         console.print(
-            Text.assemble("Stale lock: ", (IndexSettings.get_stale_lock(conn), "bright_blue"))
+            Text.assemble("Stale lock: ", (IndexSettings.get_stale_lock(conn), Theme.VALUE))
         )
     finally:
         conn.close()
@@ -297,9 +298,9 @@ def stale_lock_set(
         try:
             IndexSettings.set_stale_lock(conn, value)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
-        console.print(Text.assemble("Stale lock set to ", (value, "bright_blue"), "."))
+        console.print(Text.assemble("Stale lock set to ", (value, Theme.VALUE), "."))
     finally:
         conn.close()
 
@@ -309,7 +310,7 @@ def engine_show() -> None:
     """Show how thoroughly OCR looks for rotated text."""
     conn = Db.connect()
     try:
-        console.print(Text.assemble("OCR engine: ", (OcrSettings.get_engine(conn), "bright_blue")))
+        console.print(Text.assemble("OCR engine: ", (OcrSettings.get_engine(conn), Theme.VALUE)))
     finally:
         conn.close()
 
@@ -339,8 +340,8 @@ def engine_set(
         try:
             OcrSettings.set_engine(conn, value)
         except ValueError as exc:
-            error_console.print(f"Error: {exc}", style="bold red")
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
-        console.print(Text.assemble("OCR engine set to ", (value, "bright_blue"), "."))
+        console.print(Text.assemble("OCR engine set to ", (value, Theme.VALUE), "."))
     finally:
         conn.close()
