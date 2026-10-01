@@ -27,6 +27,16 @@ class SearchMatch:
     duplicate_of_path: str | None
 
 
+@dataclass(frozen=True)
+class FileMatch:
+    """One file with at least one matching page - `SearchMatch`es collapsed per file."""
+
+    file_id: int
+    file_name: str
+    file_path: str
+    is_duplicate: bool
+
+
 class Search:
     @staticmethod
     def _indexed_pages(
@@ -120,3 +130,24 @@ class Search:
 
         matches.sort(key=lambda m: m.file_path)
         return matches
+
+    @staticmethod
+    def files(
+        conn: sqlite3.Connection, query: str, *, context_chars: int | None = None
+    ) -> list[FileMatch]:
+        """Search like `indexed_content`, but return one `FileMatch` per matching file.
+
+        Files keep the order of their first matching page (so, by file path).
+        """
+        files: dict[int, FileMatch] = {}
+        for match in Search.indexed_content(conn, query, context_chars=context_chars):
+            files.setdefault(
+                match.file_id,
+                FileMatch(
+                    file_id=match.file_id,
+                    file_name=match.file_name,
+                    file_path=match.file_path,
+                    is_duplicate=match.duplicate_of_path is not None,
+                ),
+            )
+        return list(files.values())

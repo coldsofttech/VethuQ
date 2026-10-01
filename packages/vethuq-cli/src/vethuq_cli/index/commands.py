@@ -129,7 +129,7 @@ def status(
             return
         conn = Db.connect()
         try:
-            if wait and state.status in ("running", "paused"):
+            if wait and state.is_active:
                 StatePanel.live_wait(conn, state.pid)
             else:
                 StatePanel.print_state(conn, state)

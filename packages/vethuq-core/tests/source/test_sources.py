@@ -32,6 +32,20 @@ def _primary_path(conn: sqlite3.Connection, document_id: int) -> str | None:
 
 
 class TestSources:
+    def test_progress_counts_indexed_and_total_files(self, conn: sqlite3.Connection, tmp_path):
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source = Sources.add(conn, folder)
+        assert Sources.progress(conn, source.id) == (0, 0)
+
+        for name, status in (("a.pdf", "indexed"), ("b.pdf", "indexed"), ("c.pdf", "error")):
+            _insert_document(
+                conn, source_id=source.id, file_path=f"/docs/{name}", file_type="pdf", status=status
+            )
+        conn.commit()
+
+        assert Sources.progress(conn, source.id) == (2, 3)
+
     def test_coerce_turns_digit_strings_into_ids_and_leaves_paths_alone(self):
         assert Sources.coerce("12") == 12
         assert Sources.coerce("./docs") == "./docs"

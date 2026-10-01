@@ -20,7 +20,6 @@ from vethuq_core.index import (
     IndexState,
     StaleLockError,
 )
-from vethuq_core.ocr import Document
 from vethuq_core.search import Search
 from vethuq_core.settings import GpuSettings
 from vethuq_core.source import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
@@ -110,7 +109,7 @@ class MainWindow(tk.Tk):
 
     def _poll_index_status(self) -> None:
         state = IndexRunner.read_state(self._db_path)
-        if state is not None and state.status in ("running", "paused"):
+        if state is not None and state.is_active:
             self._set_indexing_status(state)
             self.refresh_sources()
         else:
@@ -340,14 +339,9 @@ class MainWindow(tk.Tk):
         if not query or query == _SEARCH_PLACEHOLDER:
             return
 
-        seen_files: dict[int, tuple[str, str, bool]] = {}
-        for match in Search.indexed_content(self.conn, query):
-            is_duplicate = match.duplicate_of_path is not None
-            seen_files.setdefault(match.file_id, (match.file_name, match.file_path, is_duplicate))
-
-        for file_id, (file_name, file_path, is_duplicate) in seen_files.items():
-            iid = str(file_id)
-            display_name = f"{file_name} (duplicate)" if is_duplicate else file_name
+        for file in Search.files(self.conn, query):
+            iid = str(file.file_id)
+            display_name = f"{file.file_name} (duplicate)" if file.is_duplicate else file.file_name
             if len(display_name) > _MAX_DISPLAYED_NAME_CHARS:
                 self._search_full_names[iid] = display_name
             self._search_tree.insert(
@@ -355,8 +349,8 @@ class MainWindow(tk.Tk):
                 tk.END,
                 iid=iid,
                 text=self._truncate_name(display_name),
-                image=get_file_icon(file_path),
-                values=(file_path,),
+                image=get_file_icon(file.file_path),
+                values=(file.file_path,),
             )
 
     def _build_source_list(self) -> None:
@@ -480,7 +474,7 @@ class MainWindow(tk.Tk):
     def _toggle_pause_resume(self) -> None:
         state = IndexRunner.read_state(self._db_path)
         try:
-            if state is not None and state.status == "paused":
+            if state is not None and state.is_paused:
                 IndexRunner.request_resume(db_path=self._db_path)
             else:
                 IndexRunner.request_pause(db_path=self._db_path)
@@ -488,8 +482,8 @@ class MainWindow(tk.Tk):
             show_error(self, "Could not update index run", str(exc))
 
     def _update_index_control_buttons(self, state: IndexState | None) -> None:
-        running = state is not None and state.status in ("running", "paused")
-        paused = state is not None and state.status == "paused"
+        running = state is not None and state.is_active
+        paused = state is not None and state.is_paused
         icon = get_icon("resume" if paused else "pause")
         if icon is not None:
             self._pause_resume_button.config(image=icon)
@@ -603,7 +597,7 @@ class MainWindow(tk.Tk):
         self._status_progress.pack(side=tk.RIGHT, pady=4)
 
     def _set_indexing_status(self, state: IndexState) -> None:
-        if state.status == "paused":
+        if state.is_paused:
             self._status_var.set(f"Paused ({state.processed_files}/{state.total_files})")
         else:
             current = (
@@ -642,9 +636,8 @@ class MainWindow(tk.Tk):
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
         for source in Sources.list_all(self.conn):
-            results = Document.get_results(self.conn, source.id)
-            done = sum(1 for result in results if result.status == "indexed")
-            noun = "file" if len(results) == 1 else "files"
+            done, total = Sources.progress(self.conn, source.id)
+            noun = "file" if total == 1 else "files"
             icon_kwargs: dict[str, Any] = {}
             icon = get_icon(source.source_type, 16)
             if icon is not None:
@@ -657,7 +650,7 @@ class MainWindow(tk.Tk):
                 values=(
                     source.path,
                     source.status.capitalize(),
-                    f"{done}/{len(results)} {noun} processed",
+                    f"{done}/{total} {noun} processed",
                 ),
                 **icon_kwargs,
             )

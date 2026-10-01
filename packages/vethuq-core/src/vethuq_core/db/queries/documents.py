@@ -305,6 +305,15 @@ class Document:
         )
 
     @staticmethod
+    def count_index_by_status(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
+        """`(status, count)` of `source_id`'s `document_index` rows, one row per status."""
+        return conn.execute(
+            "SELECT status, COUNT(*) AS count FROM document_index WHERE source_id = ? "
+            "GROUP BY status",
+            (source_id,),
+        ).fetchall()
+
+    @staticmethod
     def get_result_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
         """Return one row per `document_index` row for `source_id`, with duplicate linkage.
 

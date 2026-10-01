@@ -545,3 +545,20 @@ class TestIndexRun:
             "started_at": "2026-01-01T00:00:00+00:00",
             "completed_at": "2026-01-01T00:01:00+00:00",
         }
+
+
+class TestIndexState:
+    @pytest.mark.parametrize(
+        ("status", "active", "paused", "finished"),
+        [
+            ("running", True, False, False),
+            ("paused", True, True, False),
+            ("completed", False, False, True),
+            ("stopped", False, False, True),
+            ("failed", False, False, True),
+        ],
+    )
+    def test_status_properties(self, status, active, paused, finished):
+        state = _state(1, status)
+
+        assert (state.is_active, state.is_paused, state.is_finished) == (active, paused, finished)

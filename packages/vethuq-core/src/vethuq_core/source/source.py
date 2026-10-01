@@ -131,6 +131,14 @@ class Sources:
         return Source._from_row(row)
 
     @staticmethod
+    def progress(conn: sqlite3.Connection, source_id: int) -> tuple[int, int]:
+        """`(indexed, total)` count of the files tracked under `source_id`."""
+        counts = {
+            row["status"]: row["count"] for row in Document.count_index_by_status(conn, source_id)
+        }
+        return counts.get("indexed", 0), sum(counts.values())
+
+    @staticmethod
     def remove(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
         """Soft-delete a registered source by id or path.
 

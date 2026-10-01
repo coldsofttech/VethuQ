@@ -74,6 +74,20 @@ class IndexState:
     phase: int = 1
     deepened_pages: int = 0
 
+    @property
+    def is_active(self) -> bool:
+        """The run is still going (running or paused)."""
+        return self.status in ("running", "paused")
+
+    @property
+    def is_paused(self) -> bool:
+        return self.status == "paused"
+
+    @property
+    def is_finished(self) -> bool:
+        """The run has ended, one way or another."""
+        return self.status in ("completed", "stopped", "failed")
+
     def to_json(self) -> str:
         return json.dumps(asdict(self))
 
@@ -428,7 +442,7 @@ class IndexRunner:
             if state is not None and state.pid == pid:
                 if on_state is not None:
                     on_state(state)
-                if state.status in ("completed", "stopped", "failed"):
+                if state.is_finished:
                     return state
                 continue
             # No state yet for this pid - it may just be starting up (the worker

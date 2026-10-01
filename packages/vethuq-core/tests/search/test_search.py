@@ -59,6 +59,24 @@ def _add_image_page(conn: sqlite3.Connection, document_id: int, text: str) -> No
 
 
 class TestSearch:
+    def test_files_collapses_pages_into_one_result_per_file(self, conn: sqlite3.Connection):
+        source_id = _add_source(conn)
+        report = _add_document(conn, source_id, "/docs/report.pdf")
+        _add_pdf_page(conn, report, 1, "budget overview")
+        _add_pdf_page(conn, report, 2, "final budget numbers")
+        memo = _add_document(conn, source_id, "/docs/memo.pdf")
+        _add_pdf_page(conn, memo, 1, "budget memo")
+
+        files = Search.files(conn, "budget")
+
+        assert [(f.file_name, f.is_duplicate) for f in files] == [
+            ("memo.pdf", False),
+            ("report.pdf", False),
+        ]
+
+    def test_files_empty_query_returns_empty_list(self, conn: sqlite3.Connection):
+        assert Search.files(conn, "") == []
+
     def test_search_matches_pdf_page(self, conn: sqlite3.Connection):
         source_id = _add_source(conn)
         document_id = _add_document(conn, source_id, "/docs/invoice.pdf")
