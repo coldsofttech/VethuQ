@@ -374,31 +374,48 @@ class Document:
         ).fetchall()
 
     @staticmethod
-    def list_indexed_pdf_pages(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    def search_indexed_pdf_pages(conn: sqlite3.Connection, like_pattern: str) -> list[sqlite3.Row]:
+        """Return indexed `pdf_pages` rows whose `ocr_text` matches `like_pattern`.
+
+        `like_pattern` is a caller-escaped `LIKE` pattern (see
+        `vethuq_core.search.Search._like_pattern`), matched against `pdf_pages_fts` -
+        a trigram-tokenized FTS5 index kept in sync with `pdf_pages` by triggers
+        (see `vethuq_core.db.connection`) - rather than `pdf_pages` itself, so the
+        match is resolved through the trigram index instead of a full table scan.
+        """
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
             "pp.page_number AS page_number, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM document_index di "
+            "FROM pdf_pages_fts "
+            "JOIN pdf_pages pp ON pp.id = pdf_pages_fts.rowid "
+            "JOIN document_index carrier ON carrier.id = pp.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "JOIN document_index carrier ON carrier.document_id = di.document_id "
-            "JOIN pdf_pages pp ON pp.document_id = carrier.id "
-            "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
-            "ORDER BY di.file_path, pp.page_number"
+            "WHERE pdf_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "ORDER BY di.file_path, pp.page_number",
+            (like_pattern,),
         ).fetchall()
 
     @staticmethod
-    def list_indexed_image_pages(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    def search_indexed_image_pages(
+        conn: sqlite3.Connection, like_pattern: str
+    ) -> list[sqlite3.Row]:
+        """Like `search_indexed_pdf_pages`, but for `image_pages`/`image_pages_fts`."""
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
             "NULL AS page_number, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM document_index di "
+            "FROM image_pages_fts "
+            "JOIN image_pages ip ON ip.id = image_pages_fts.rowid "
+            "JOIN document_index carrier ON carrier.id = ip.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "JOIN document_index carrier ON carrier.document_id = di.document_id "
-            "JOIN image_pages ip ON ip.document_id = carrier.id "
-            "WHERE di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
-            "ORDER BY di.file_path"
+            "WHERE image_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY di.file_path",
+            (like_pattern,),
         ).fetchall()
 
     @staticmethod

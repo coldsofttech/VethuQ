@@ -567,3 +567,172 @@ class TestMigration:
             assert version == Db.SCHEMA_VERSION
         finally:
             conn.close()
+
+    def test_connect_backfills_fts_index_for_pre_existing_pages(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        # Simulate a database created by an older version of this code, at schema
+        # version 24 - before pdf_pages_fts/image_pages_fts existed - with OCR
+        # pages already written. Their INSERT triggers never fired for these rows
+        # (the triggers didn't exist yet), so connect() must backfill them.
+        old_conn = sqlite3.connect(db_path)
+        old_conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (24);
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                added_at TEXT NOT NULL,
+                last_scanned_at TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                removed_at TEXT
+            );
+            CREATE TABLE documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE document_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                sha256 TEXT,
+                mtime REAL,
+                created_at TEXT,
+                modified_at TEXT,
+                removed_at TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL,
+                cpu_percent REAL
+            );
+            CREATE TABLE pdf_pages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES document_index(id),
+                page_number INTEGER NOT NULL,
+                ocr_text TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source TEXT NOT NULL DEFAULT 'ocr',
+                ocr_engine TEXT,
+                language TEXT,
+                image_width INTEGER,
+                image_height INTEGER
+            );
+            CREATE TABLE image_pages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL REFERENCES document_index(id),
+                ocr_text TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                ocr_engine TEXT,
+                language TEXT,
+                image_width INTEGER,
+                image_height INTEGER
+            );
+            """
+        )
+        old_conn.execute(
+            "INSERT INTO sources (id, path, source_type, status, added_at) "
+            "VALUES (1, '/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00')"
+        )
+        old_conn.execute(
+            "INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01T00:00:00+00:00')"
+        )
+        old_conn.execute(
+            "INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status) "
+            "VALUES (1, 1, 1, '/docs/a.pdf', 'pdf', 'indexed')"
+        )
+        old_conn.execute(
+            "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+            "VALUES (1, 1, 'a legacy page about large invoices', 0.9)"
+        )
+        old_conn.execute(
+            "INSERT INTO documents (id, created_at) VALUES (2, '2026-01-01T00:00:00+00:00')"
+        )
+        old_conn.execute(
+            "INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status) "
+            "VALUES (2, 1, 2, '/docs/b.png', 'image', 'indexed')"
+        )
+        old_conn.execute(
+            "INSERT INTO image_pages (document_id, ocr_text, confidence) "
+            "VALUES (2, 'a legacy scan of a signature', 0.9)"
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            pdf_hit = conn.execute(
+                "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%arge invoi%'"
+            ).fetchone()
+            assert pdf_hit is not None
+
+            image_hit = conn.execute(
+                "SELECT rowid FROM image_pages_fts WHERE ocr_text LIKE '%signature%'"
+            ).fetchone()
+            assert image_hit is not None
+
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION
+        finally:
+            conn.close()
+
+    def test_pdf_pages_fts_stays_in_sync_via_triggers(self, tmp_path):
+        conn = Db.connect(tmp_path / "vethuq.db")
+        try:
+            conn.execute(
+                "INSERT INTO sources (path, source_type, status, added_at) "
+                "VALUES ('/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00')"
+            )
+            conn.execute("INSERT INTO documents (created_at) VALUES ('2026-01-01T00:00:00+00:00')")
+            conn.execute(
+                "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+                "VALUES (1, 1, '/docs/a.pdf', 'pdf', 'indexed')"
+            )
+            conn.execute(
+                "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+                "VALUES (1, 1, 'original wording', 0.9)"
+            )
+            conn.commit()
+
+            assert (
+                conn.execute(
+                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%original%'"
+                ).fetchone()
+                is not None
+            )
+
+            conn.execute("UPDATE pdf_pages SET ocr_text = 'revised wording' WHERE document_id = 1")
+            conn.commit()
+            assert (
+                conn.execute(
+                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%original%'"
+                ).fetchone()
+                is None
+            )
+            assert (
+                conn.execute(
+                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%revised%'"
+                ).fetchone()
+                is not None
+            )
+
+            conn.execute("DELETE FROM pdf_pages WHERE document_id = 1")
+            conn.commit()
+            assert conn.execute("SELECT rowid FROM pdf_pages_fts").fetchone() is None
+
+            # An external-content FTS5 index that's fallen out of sync with its
+            # content table fails this integrity check - a passing 'integrity-check'
+            # command confirms the triggers left it consistent throughout.
+            conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
+        finally:
+            conn.close()

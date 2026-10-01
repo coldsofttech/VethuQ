@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OCR now detects and corrects rotated pages and rotated text lines (e.g. scanned or photographed documents that aren't perfectly upright), instead of assuming every page is already correctly oriented.
 - The test suite now runs in parallel and covers real PDF, PNG and JPEG sample files and the `vethuq` Python package.
 - Identical copies of a file are now recognised as one document, and OCR progress is tracked per document rather than per file copy.
+- Searching is now faster on large libraries, and still matches text anywhere within a word, case-insensitively.
 
 ### Fixed
 
