@@ -1,7 +1,6 @@
 import json
 import os
 from datetime import UTC, datetime
-from functools import partial
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,12 @@ runner = CliRunner()
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(search_module, "connect", partial(db_module.connect, db_path))
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
     return db_path
 
 
@@ -37,7 +41,7 @@ def _add_document(conn) -> int:
 
 
 def _seed_indexed_pdf(db_path, file_path: str, text: str, page_number: int = 1) -> int:
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         source_id = _add_source(conn, path=file_path + ".source")
         logical_document_id = _add_document(conn)
@@ -59,7 +63,7 @@ def _seed_indexed_pdf(db_path, file_path: str, text: str, page_number: int = 1) 
 
 
 def _seed_indexed_image(db_path, file_path: str, text: str) -> int:
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         source_id = _add_source(conn, path=file_path + ".source")
         logical_document_id = _add_document(conn)
@@ -196,7 +200,7 @@ def test_search_shows_all_matches_without_prompting(tmp_path, monkeypatch):
 
 def test_search_multiple_pages_of_same_file_print_file_once(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         source_id = _add_source(conn)
         logical_document_id = _add_document(conn)
@@ -324,7 +328,7 @@ def test_search_pager_export_cancelled_on_blank_filename(tmp_path, monkeypatch):
 
 def test_search_different_files_each_get_their_own_file_line(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         source_id = _add_source(conn)
         logical_document_id = _add_document(conn)

@@ -1,6 +1,3 @@
-from functools import partial
-
-import vethuq_cli.settings as settings_module
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
@@ -10,7 +7,12 @@ runner = CliRunner()
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(settings_module, "connect", partial(db_module.connect, db_path))
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
 
 
 def test_gpu_status_disabled_by_default(tmp_path, monkeypatch):
@@ -174,5 +176,32 @@ def test_stale_lock_set_rejects_invalid_value(tmp_path, monkeypatch):
     _use_temp_db(monkeypatch, tmp_path)
 
     result = runner.invoke(app, ["settings", "index", "stale-lock", "set", "sometimes"])
+
+    assert result.exit_code == 1
+
+
+def test_engine_show_defaults_to_quick(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "engine", "show"])
+
+    assert result.exit_code == 0
+    assert "quick" in result.stdout
+
+
+def test_engine_set_then_show(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    set_result = runner.invoke(app, ["settings", "index", "engine", "set", "deep"])
+    assert set_result.exit_code == 0
+
+    show_result = runner.invoke(app, ["settings", "index", "engine", "show"])
+    assert "deep" in show_result.stdout
+
+
+def test_engine_set_rejects_invalid_value(tmp_path, monkeypatch):
+    _use_temp_db(monkeypatch, tmp_path)
+
+    result = runner.invoke(app, ["settings", "index", "engine", "set", "thorough"])
 
     assert result.exit_code == 1

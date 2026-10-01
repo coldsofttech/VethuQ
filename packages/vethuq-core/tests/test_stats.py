@@ -2,14 +2,14 @@ import sqlite3
 from datetime import UTC, datetime
 
 import pytest
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.stats import get_confidence_metrics, get_processing_metrics, reset_metrics
 
 
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "vethuq.db"
-    connection = connect(db_path)
+    connection = Db.connect(db_path)
     yield connection
     connection.close()
 

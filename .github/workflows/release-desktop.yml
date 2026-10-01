@@ -30,8 +30,13 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Determine version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#desktop-v}" >> "$GITHUB_OUTPUT"
+
       - name: Build VethuQ Desktop installer
-        run: uv run python scripts/dev/release.py --desktop
+        run: uv run python scripts/dev/release.py --desktop --version "${{ steps.version.outputs.version }}"
 
       - name: Determine channel
         id: channel

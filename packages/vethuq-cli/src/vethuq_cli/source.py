@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 from rich.prompt import Confirm
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
@@ -30,7 +30,7 @@ def add(
     ),
 ) -> None:
     """Register a file or folder as a VethuQ source."""
-    conn = connect()
+    conn = Db.connect()
     try:
         source = add_source(conn, path)
     except (SourcePathError, SourceAlreadyExistsError) as exc:
@@ -51,7 +51,7 @@ def add(
 @app.command("list")
 def list_() -> None:
     """List registered sources."""
-    conn = connect()
+    conn = Db.connect()
     try:
         sources = list_sources(conn)
     finally:
@@ -80,7 +80,7 @@ def remove(
     force: bool = typer.Option(False, "--force", help="Remove without asking for confirmation."),
 ) -> None:
     """Remove a registered source."""
-    conn = connect()
+    conn = Db.connect()
     try:
         target: str | int = int(path_or_id) if path_or_id.isdigit() else path_or_id
         try:

@@ -1,5 +1,4 @@
 import io
-from functools import partial
 
 import vethuq_cli.stats as stats_module
 import vethuq_core.db as db_module
@@ -15,12 +14,17 @@ runner = CliRunner()
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(stats_module, "connect", partial(db_module.connect, db_path))
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
     return db_path
 
 
 def _seed_metrics(db_path):
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         conn.execute(
             "INSERT INTO processing_metrics "
@@ -98,7 +102,7 @@ def test_reset_declined_leaves_statistics_intact(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Statistics reset." not in result.stdout
 
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is not None
     finally:
@@ -114,7 +118,7 @@ def test_reset_confirmed_clears_statistics(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Statistics reset." in result.stdout
 
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
         assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
@@ -131,7 +135,7 @@ def test_reset_force_skips_confirmation(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Statistics reset." in result.stdout
 
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
     finally:

@@ -11,7 +11,8 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import Db
+from vethuq_core.ocr import OCR_ENGINE_PHASES
 from vethuq_core.stats import (
     ConfidenceMetric,
     ProcessingMetric,
@@ -24,6 +25,8 @@ from vethuq_cli.console import console
 
 app = typer.Typer(help="View and reset OCR processing/confidence statistics.")
 
+_PHASE_NAMES = {phase: name for name, phase in OCR_ENGINE_PHASES.items()}
+
 
 def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
     if not metrics:
@@ -35,6 +38,7 @@ def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         # reading, instead of e.g. 200%+ on a busy multi-core run.
         cpu_count = os.cpu_count() or 1
         body = Table(box=box.SIMPLE, header_style="bold cyan", border_style="cyan")
+        body.add_column("Phase")
         body.add_column("File type")
         body.add_column("Size")
         body.add_column("Documents", justify="right")
@@ -43,6 +47,7 @@ def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         body.add_column("Avg CPU", justify="right")
         for m in metrics:
             body.add_row(
+                _PHASE_NAMES.get(m.phase, str(m.phase)),
                 m.file_type,
                 m.size_bucket,
                 str(m.document_count),
@@ -80,7 +85,7 @@ def _align_widths(render_console: Console, *panels: Panel) -> None:
 @app.command("show")
 def show() -> None:
     """Show accumulated OCR processing and confidence statistics."""
-    conn = connect()
+    conn = Db.connect()
     try:
         processing = get_processing_metrics(conn)
         confidence = get_confidence_metrics(conn)
@@ -114,7 +119,7 @@ def reset(
         console.print("Aborted.", style="bright_black")
         raise typer.Exit(code=0)
 
-    conn = connect()
+    conn = Db.connect()
     try:
         reset_metrics(conn)
     finally:
