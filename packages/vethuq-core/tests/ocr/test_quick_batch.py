@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from vethuq_core.ocr import Quick, Scheduler
 from vethuq_core.settings import IndexSettings
 from vethuq_core.source import Sources
@@ -181,3 +182,33 @@ class TestQuickBatch:
         # Once per finished file except the last (nothing left to size workers
         # for by then), not just once up front for the whole run.
         assert spy_resolve.call_count == len(file_names) - 1
+
+    @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_batch_rolls_back_pages_and_status_if_a_later_write_fails(
+        self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
+    ):
+        """Same atomicity guarantee as `Quick.run`, exercised through `Quick.process_file`."""
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result()
+        mock_get_engine.return_value = engine
+        mock_update_confidence.side_effect = RuntimeError("boom")
+
+        image_path = tmp_path / "scan.png"
+        image_path.write_bytes(b"fake png bytes")
+        source = Sources.add(conn, image_path)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            Quick.run_batch(conn, [source], workers=1)
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "processing"
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) AS n FROM image_pages WHERE document_id = ?", (doc["id"],)
+            ).fetchone()["n"]
+            == 0
+        )
+        assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None

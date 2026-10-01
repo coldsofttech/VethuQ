@@ -22,7 +22,7 @@ from vethuq_core.db.queries.sources import Source as SourceQuery
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import Pending, PendingFile
-from vethuq_core.ocr.reader import PageResult, Readers
+from vethuq_core.ocr.reader import PageResult, Reader, Readers
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source
@@ -39,6 +39,72 @@ _WAIT = _Wait()
 
 class Quick:
     IDLE_POLL_SECONDS = 0.5
+
+    @staticmethod
+    def run_with_retries(
+        conn: sqlite3.Connection, reader: Reader, file_path: Path
+    ) -> tuple[list[PageResult] | None, int, Exception | None]:
+        """Retry OCR itself (no DB writes) up to the configured attempt count.
+
+        Kept separate from committing a result so a run of failed OCR attempts
+        never touches the database until there's something final to record -
+        see `Quick.finalize_result`. Returns `(pages, attempts_used,
+        last_exception)`; `pages` is None if every attempt failed.
+        """
+        max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
+        attempt = 0
+        last_exc: Exception | None = None
+        pages: list[PageResult] | None = None
+        while attempt < max_attempts and pages is None:
+            attempt += 1
+            try:
+                pages = reader.ocr(conn, file_path)
+            except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
+                last_exc = exc
+        return pages, attempt, last_exc
+
+    @staticmethod
+    def finalize_result(
+        conn: sqlite3.Connection,
+        document_id: int,
+        file_type: str,
+        pages: list[PageResult] | None,
+        attempts_used: int,
+        last_exc: Exception | None,
+        peak_memory_mb: float,
+        cpu_percent: float,
+    ) -> bool:
+        """Commit one document's processing result as a single atomic transaction.
+
+        On success, the pages, the 'indexed' status transition, and the
+        processing/confidence metrics updates land together in one commit; on
+        failure, only the 'error' status and retry stats are written - the
+        previous run's pages (if any) are left untouched rather than cleared
+        ahead of a retry that might not succeed.
+
+        Using `conn` as a context manager (sqlite3's own transaction protocol)
+        means any exception raised while writing this - not just an OCR failure,
+        which is handled by `pages`/`last_exc` before this is even called, but a
+        DB error partway through the writes themselves - rolls back everything
+        written since entry rather than leaving a partial result committed later
+        alongside whatever this connection writes next. The row is left claimed
+        ('processing') in that case, for a future run to retry rather than ever
+        being readable as 'indexed' with missing pages/metrics.
+
+        Returns whether the document was indexed successfully.
+        """
+        with conn:
+            DocumentQuery.update_index_retry_stats(
+                conn, document_id, attempts_used - 1, peak_memory_mb, cpu_percent
+            )
+            if pages is None:
+                Document.mark_error(conn, document_id, str(last_exc))
+                return False
+            Document.store_pages(conn, document_id, file_type, pages)
+            Document.mark_indexed(conn, document_id)
+            Metrics.update_processing(conn, document_id, file_type)
+            Metrics.update_confidence(conn, document_id, file_type)
+            return True
 
     @staticmethod
     def run(
@@ -95,8 +161,8 @@ class Quick:
 
         renamed_paths: set[str] = set()
         if only_new_files and not only_failed:
-            renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
-            conn.commit()
+            with conn:
+                renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
             for new_path in sorted(renamed_paths):
                 processed_paths.append(new_path)
                 if on_file_done is not None:
@@ -123,8 +189,8 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            claim = Document.upsert(conn, source.id, file_path, file_type)
-            conn.commit()
+            with conn:
+                claim = Document.upsert(conn, source.id, file_path, file_type)
             if claim is None:
                 # Already claimed by another concurrently-running index run -
                 # leave it alone, that run owns finishing it.
@@ -135,8 +201,8 @@ class Quick:
             if duplicate_source_id is not None:
                 # Identical content already indexed under the same logical document -
                 # skip OCR entirely rather than redoing the same work.
-                Document.mark_duplicate(conn, document_id)
-                conn.commit()
+                with conn:
+                    Document.mark_duplicate(conn, document_id)
                 if on_file_done is not None:
                     on_file_done(str(file_path))
                 continue
@@ -146,42 +212,33 @@ class Quick:
             mem_before = process.memory_info().rss
 
             reader = Readers.for_path(file_path)
-            max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
-            attempt = 0
-            last_exc: Exception | None = None
-            succeeded = False
-            while attempt < max_attempts and not succeeded:
-                attempt += 1
-                try:
-                    pages = reader.ocr(conn, file_path)
-                    Document.store_pages(conn, document_id, file_type, pages)
-                except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the source
-                    last_exc = exc
-                else:
-                    succeeded = True
+            pages, attempts_used, last_exc = Quick.run_with_retries(conn, reader, file_path)
 
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
-            DocumentQuery.update_index_retry_stats(
-                conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
+            succeeded = Quick.finalize_result(
+                conn,
+                document_id,
+                file_type,
+                pages,
+                attempts_used,
+                last_exc,
+                peak_memory_mb,
+                cpu_percent,
             )
-
             if not succeeded:
                 had_error = True
-                Document.mark_error(conn, document_id, str(last_exc))
-            else:
-                Document.mark_indexed(conn, document_id)
-                Metrics.update_processing(conn, document_id, file_type)
-                Metrics.update_confidence(conn, document_id, file_type)
 
-            conn.commit()
             if on_file_done is not None:
                 on_file_done(str(file_path))
 
-        SourceQuery.update_scan_status(
-            conn, source.id, "error" if had_error else "indexed", datetime.now(UTC).isoformat()
-        )
-        conn.commit()
+        with conn:
+            SourceQuery.update_scan_status(
+                conn,
+                source.id,
+                "error" if had_error else "indexed",
+                datetime.now(UTC).isoformat(),
+            )
         return processed_paths
 
     @staticmethod
@@ -205,18 +262,16 @@ class Quick:
         sqlite read/write around it is serialized through `db_lock` since a
         single connection isn't safe for unsynchronized concurrent use.
         """
-        with db_lock:
+        with db_lock, conn:
             claim = Document.upsert(conn, source.id, file_path, file_type)
-            conn.commit()
 
         if claim is None:
             return None
         document_id, duplicate_source_id = claim
 
         if duplicate_source_id is not None:
-            with db_lock:
+            with db_lock, conn:
                 Document.mark_duplicate(conn, document_id)
-                conn.commit()
             return True
 
         process = psutil.Process()
@@ -224,41 +279,21 @@ class Quick:
         mem_before = process.memory_info().rss
 
         reader = Readers.for_path(file_path)
-        max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
-        attempt = 0
-        last_exc: Exception | None = None
-        succeeded = False
-        pages: list[PageResult] | None = None
-        while attempt < max_attempts and not succeeded:
-            attempt += 1
-            try:
-                pages = reader.ocr(conn, file_path)
-            except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
-                last_exc = exc
-            else:
-                succeeded = True
+        pages, attempts_used, last_exc = Quick.run_with_retries(conn, reader, file_path)
 
         with db_lock:
-            if succeeded:
-                assert pages is not None
-                Document.store_pages(conn, document_id, file_type, pages)
-
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
-            DocumentQuery.update_index_retry_stats(
-                conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
+            return Quick.finalize_result(
+                conn,
+                document_id,
+                file_type,
+                pages,
+                attempts_used,
+                last_exc,
+                peak_memory_mb,
+                cpu_percent,
             )
-
-            if not succeeded:
-                Document.mark_error(conn, document_id, str(last_exc))
-            else:
-                Document.mark_indexed(conn, document_id)
-                Metrics.update_processing(conn, document_id, file_type)
-                Metrics.update_confidence(conn, document_id, file_type)
-
-            conn.commit()
-
-        return succeeded
 
     @staticmethod
     def run_auto_elastic(
@@ -424,8 +459,8 @@ class Quick:
             only_new_files = source.status != "pending"
             if only_new_files and not only_failed:
                 disk_files = list(Readers.iter_files(Path(source.path)))
-                renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
-                conn.commit()
+                with conn:
+                    renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
                 for renamed_path in sorted(renamed_paths):
                     if on_file_done is not None:
                         on_file_done(renamed_path, True)
@@ -489,10 +524,10 @@ class Quick:
                     future.result()
 
         now = datetime.now(UTC).isoformat()
-        for source in sources:
-            if source.id in attempted_source_ids:
-                status = "error" if had_error_by_source[source.id] else "indexed"
-                SourceQuery.update_scan_status(conn, source.id, status, now)
-        conn.commit()
+        with conn:
+            for source in sources:
+                if source.id in attempted_source_ids:
+                    status = "error" if had_error_by_source[source.id] else "indexed"
+                    SourceQuery.update_scan_status(conn, source.id, status, now)
 
         return processed_paths
