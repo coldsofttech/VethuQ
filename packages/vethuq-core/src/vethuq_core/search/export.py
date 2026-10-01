@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.search import SearchMatch
+from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SEARCH_EXPORT_FORMATS
 
 

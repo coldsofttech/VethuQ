@@ -12,8 +12,7 @@ import typer
 from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.export import Export
-from vethuq_core.search import SearchMatch, search_indexed_content
+from vethuq_core.search import Export, SearchMatch, search_indexed_content
 from vethuq_core.settings import (
     SEARCH_EXPORT_FORMATS,
     get_search_export_format,

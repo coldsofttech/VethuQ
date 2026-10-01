@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
-from vethuq._core.export import Export as _Export
 from vethuq._core.index_runner import (
     AlreadyRunningError,
     IndexRun,
@@ -28,6 +27,7 @@ from vethuq._core.index_runner import request_stop as _request_stop
 from vethuq._core.index_runner import start_run as _start_run
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.ocr import get_document_results as _get_document_results
+from vethuq._core.search import Export as _Export
 from vethuq._core.search import SearchMatch
 from vethuq._core.search import search_indexed_content as _search_indexed_content
 from vethuq._core.settings import (

@@ -3,8 +3,8 @@ import re
 from pathlib import Path
 
 import pytest
-from vethuq_core.export import Export
-from vethuq_core.search import SearchMatch
+from vethuq_core.search import Export
+from vethuq_core.search.search import SearchMatch
 
 
 def _match(
