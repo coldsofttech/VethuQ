@@ -472,3 +472,11 @@ class Migration:
             conn.execute("DROP TABLE document_index")
             conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
             conn.execute("PRAGMA foreign_keys = ON")
+        if from_version < 25:
+            # `pdf_pages_fts`/`image_pages_fts` were just created (empty) by `Db._SCHEMA`,
+            # which runs unconditionally before this migration - pages written before
+            # this version never fired their INSERT triggers, so index them in one go.
+            # 'rebuild' (unlike a plain INSERT ... SELECT) is idempotent, so it's safe
+            # even if an index was already populated.
+            conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
+            conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
