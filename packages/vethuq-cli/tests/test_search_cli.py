@@ -4,10 +4,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-import vethuq_cli.search as search_module
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
+from vethuq_cli.search import pager as pager_module
+from vethuq_cli.search.pager import Pager
 
 runner = CliRunner()
 
@@ -88,27 +89,25 @@ def _fail_on_export():
 
 
 def test_page_prints_everything_directly_when_not_a_tty(monkeypatch, capsys):
-    monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: False)
+    monkeypatch.setattr(pager_module.sys.stdout, "isatty", lambda: False)
 
-    search_module._page("line one\nline two\nline three", _fail_on_export)
+    Pager.page("line one\nline two\nline three", _fail_on_export)
 
     out = capsys.readouterr().out
     assert out.splitlines() == ["line one", "line two", "line three"]
 
 
 def test_page_reveals_one_more_line_on_down_and_quits_on_q(monkeypatch):
-    monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: True)
-    monkeypatch.setattr(
-        search_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3))
-    )
+    monkeypatch.setattr(pager_module.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(pager_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3)))
     keys = iter(["down", "quit"])
-    monkeypatch.setattr(search_module, "_read_key_windows", lambda: next(keys))
-    monkeypatch.setattr(search_module, "_read_key_posix", lambda: next(keys))
+    monkeypatch.setattr(Pager, "read_key_windows", lambda: next(keys))
+    monkeypatch.setattr(Pager, "read_key_posix", lambda: next(keys))
     written: list[str] = []
-    monkeypatch.setattr(search_module, "_write_line", lambda message: written.append(message))
+    monkeypatch.setattr(Pager, "write_line", lambda message: written.append(message))
 
     with pytest.raises(KeyboardInterrupt):
-        search_module._page("l1\nl2\nl3\nl4\nl5", _fail_on_export)
+        Pager.page("l1\nl2\nl3\nl4\nl5", _fail_on_export)
 
     # terminal_size.lines=3 reserves one line for the status prompt, so the
     # first screen is 2 lines; pressing "down" reveals exactly one more.
@@ -116,34 +115,32 @@ def test_page_reveals_one_more_line_on_down_and_quits_on_q(monkeypatch):
 
 
 def test_page_stops_without_prompting_when_content_fits_one_screen(monkeypatch, capsys):
-    monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(pager_module.sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr(
-        search_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 10))
+        pager_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 10))
     )
 
     def _fail():
         raise AssertionError("should not read a key when everything already fits")
 
-    monkeypatch.setattr(search_module, "_read_key_windows", lambda: _fail())
-    monkeypatch.setattr(search_module, "_read_key_posix", lambda: _fail())
+    monkeypatch.setattr(Pager, "read_key_windows", lambda: _fail())
+    monkeypatch.setattr(Pager, "read_key_posix", lambda: _fail())
 
-    search_module._page("l1\nl2\nl3", _fail_on_export)
+    Pager.page("l1\nl2\nl3", _fail_on_export)
 
     assert capsys.readouterr().out.splitlines() == ["l1", "l2", "l3"]
 
 
 def test_page_exports_and_closes_on_e(monkeypatch):
-    monkeypatch.setattr(search_module.sys.stdout, "isatty", lambda: True)
-    monkeypatch.setattr(
-        search_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3))
-    )
+    monkeypatch.setattr(pager_module.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(pager_module.shutil, "get_terminal_size", lambda: os.terminal_size((80, 3)))
     keys = iter(["export"])
-    monkeypatch.setattr(search_module, "_read_key_windows", lambda: next(keys))
-    monkeypatch.setattr(search_module, "_read_key_posix", lambda: next(keys))
-    monkeypatch.setattr(search_module, "_write_line", lambda message: None)
+    monkeypatch.setattr(Pager, "read_key_windows", lambda: next(keys))
+    monkeypatch.setattr(Pager, "read_key_posix", lambda: next(keys))
+    monkeypatch.setattr(Pager, "write_line", lambda message: None)
     exported = []
 
-    search_module._page("l1\nl2\nl3\nl4\nl5", lambda: exported.append(True))
+    Pager.page("l1\nl2\nl3\nl4\nl5", lambda: exported.append(True))
 
     assert exported == [True]
 
@@ -304,7 +301,7 @@ def test_search_without_export_does_not_touch_output(tmp_path, monkeypatch):
 def test_search_pager_export_prompts_and_writes_file(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
-    monkeypatch.setattr(search_module, "_page", lambda rendered, on_export: on_export())
+    monkeypatch.setattr(Pager, "page", lambda rendered, on_export: on_export())
     output = tmp_path / "out.json"
 
     result = runner.invoke(app, ["search", "amount due"], input=f"{output}\n\n")
@@ -318,7 +315,7 @@ def test_search_pager_export_prompts_and_writes_file(tmp_path, monkeypatch):
 def test_search_pager_export_cancelled_on_blank_filename(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
-    monkeypatch.setattr(search_module, "_page", lambda rendered, on_export: on_export())
+    monkeypatch.setattr(Pager, "page", lambda rendered, on_export: on_export())
 
     result = runner.invoke(app, ["search", "amount due"], input="\n")
 

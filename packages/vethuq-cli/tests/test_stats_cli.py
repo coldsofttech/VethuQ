@@ -1,12 +1,13 @@
 import io
 
-import vethuq_cli.stats as stats_module
 import vethuq_core.db as db_module
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from typer.testing import CliRunner
 from vethuq_cli.main import app
+from vethuq_cli.stats import renderer as renderer_module
+from vethuq_cli.stats.renderer import StatsRenderer
 from vethuq_core.stats import ProcessingMetric
 
 runner = CliRunner()
@@ -65,7 +66,7 @@ def test_show_displays_seeded_statistics(tmp_path, monkeypatch):
 
 
 def test_processing_panel_normalizes_cpu_percent_by_core_count(monkeypatch):
-    monkeypatch.setattr(stats_module.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(renderer_module.os, "cpu_count", lambda: 4)
     metric = ProcessingMetric(
         file_type="pdf",
         size_bucket="medium",
@@ -76,7 +77,7 @@ def test_processing_panel_normalizes_cpu_percent_by_core_count(monkeypatch):
         updated_at="2026-01-01T00:00:00+00:00",
     )
 
-    panel = stats_module._processing_panel([metric])
+    panel = StatsRenderer.processing_panel([metric])
     buffer = io.StringIO()
     Console(file=buffer, width=120).print(panel)
 
@@ -88,7 +89,7 @@ def test_align_widths_matches_the_widest_panel():
     wide = Panel(Text("x" * 50), title="B")
     console = Console(file=io.StringIO(), width=120)
 
-    stats_module._align_widths(console, narrow, wide)
+    StatsRenderer.align_widths(console, narrow, wide)
 
     assert narrow.width == wide.width
 

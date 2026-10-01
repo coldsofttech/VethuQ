@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from vethuq_core.index.eta import Eta
 from vethuq_core.index.runner import (
     AlreadyRunningError,
     IndexRun,
@@ -13,6 +14,7 @@ from vethuq_core.index.runner import (
 
 __all__ = [
     "AlreadyRunningError",
+    "Eta",
     "IndexRun",
     "IndexRunner",
     "IndexRunnerError",

@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
 
-import vethuq_cli.index as index_cli_module
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
+from vethuq_cli.index import panel as panel_module
+from vethuq_cli.index.panel import StatePanel
 from vethuq_cli.main import app
 from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner_module
@@ -67,7 +68,7 @@ def test_run_wait_keeps_polling_until_state_appears(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(777))
-    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(panel_module.time, "sleep", lambda _seconds: None)
 
     now = datetime.now(UTC).isoformat()
     completed_state = index_runner_module.IndexState(
@@ -104,7 +105,7 @@ def test_run_wait_stops_if_process_ends_without_state(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     _add_pending_source(db_path, tmp_path)
     monkeypatch.setattr(index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(888))
-    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(panel_module.time, "sleep", lambda _seconds: None)
     _patch_polling(
         monkeypatch, read_state=lambda db_path=None: None, is_running=lambda: (False, None)
     )
@@ -230,7 +231,7 @@ def test_status_wait_live_refreshes_until_terminal_state(tmp_path, monkeypatch):
         updated_at=now,
     )
     IndexRunner._write_state(db_path, running_state)
-    monkeypatch.setattr(index_cli_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(panel_module.time, "sleep", lambda _seconds: None)
 
     calls = {"n": 0}
 
@@ -416,7 +417,7 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     )
 
     console = Console(width=100, record=True)
-    console.print(index_cli_module._build_state_panel(conn, state, animated=False))
+    console.print(StatePanel.build(conn, state, animated=False))
     text = console.export_text()
     conn.close()
 
@@ -424,60 +425,3 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     assert "Quick" in text and "3/3 (100%)" in text
     assert "Moderate" in text and "2/3 (67%)" in text
     assert "Deep" in text and "1/3 (33%)" in text
-
-
-def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monkeypatch):
-    from vethuq_core.settings import OcrSettings
-
-    db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.Db.connect(db_path)
-    folder = tmp_path / "src"
-    folder.mkdir()
-    source = Sources.add(conn, folder)
-    conn.execute("UPDATE sources SET status = 'indexed' WHERE id = ?", (source.id,))
-    # Two indexed image documents, both still waiting on moderate and deep.
-    for index in (1, 2):
-        document_id = conn.execute(
-            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
-            "VALUES (?, ?, ?, 'image', 'indexed')",
-            (source.id, document_id, str(folder / f"{index}.png")),
-        )
-        conn.execute(
-            "INSERT INTO image_pages (document_id, ocr_text, confidence, ocr_phase, ocr_angles) "
-            "VALUES (?, 'x', 0.9, 1, '0')",
-            (index,),
-        )
-    # Quick is fast, moderate takes 30s a document; deep has no history yet.
-    conn.execute(
-        "INSERT INTO processing_metrics VALUES (1, 'image', 'small', 5, 1.0, 10, 5, 'now')"
-    )
-    conn.execute(
-        "INSERT INTO processing_metrics VALUES (2, 'image', 'small', 5, 30.0, 10, 5, 'now')"
-    )
-    conn.commit()
-    OcrSettings.set_engine(conn, "deep")
-    now = datetime.now(UTC).isoformat()
-    state = index_runner_module.IndexState(
-        run_id=1,
-        pid=1,
-        target=None,
-        mode="run",
-        status="running",
-        total_files=2,
-        processed_files=2,
-        failed_files=0,
-        thread_workers_setting="0",
-        workers=1,
-        current_files=[],
-        started_at=now,
-        updated_at=now,
-    )
-
-    by_phase = index_cli_module._estimate_phase_seconds(conn, state)
-    conn.close()
-
-    # 2 documents x 30s for moderate; nothing for quick (no files pending) or deep (no history).
-    assert by_phase == {2: 60.0}

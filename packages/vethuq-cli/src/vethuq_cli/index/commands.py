@@ -3,234 +3,30 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-import time
 from pathlib import Path
 
 import typer
-from rich.live import Live
-from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TaskProgressColumn
-from rich.progress import TextColumn as ProgressTextColumn
 from rich.prompt import Confirm
-from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.db.queries import Index, Stats
+from vethuq_core.db.queries import Index
 from vethuq_core.index import (
     AlreadyRunningError,
     IndexRunner,
     IndexRunnerError,
-    IndexState,
     StaleLockError,
 )
-from vethuq_core.ocr import Deepening, Document, Pending, Readers
-from vethuq_core.settings import IndexSettings, OcrSettings
+from vethuq_core.ocr import Document
 from vethuq_core.source import SourceNotFoundError, Sources
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.index.panel import StatePanel
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
-
-_POLL_SECONDS = 1.0
-_PHASE_NAMES = {phase: name for name, phase in Deepening.ENGINE_PHASES.items()}
-_RUN_STATUS_STYLES = {
-    "running": "blue",
-    "completed": "green",
-    "failed": "red",
-    "stopped": "blue",
-    "paused": "blue",
-}
 
 
 def _coerce_target(path_or_id: str) -> str | int:
     return int(path_or_id) if path_or_id.isdigit() else path_or_id
-
-
-def _average_durations(conn: sqlite3.Connection, phase: int) -> dict[str, float]:
-    """Average document duration per file_type for `phase`, across all past runs.
-
-    `processing_metrics` has one row per (phase, file_type, size_bucket) - each
-    bucket's average is weighted by its document_count so a file_type with an
-    uneven mix of small/large files still gets one sensible average back.
-    """
-    return {
-        row["file_type"]: row["avg_duration_seconds"]
-        for row in Stats.get_processing_metrics_avg_duration_by_file_type(conn, phase)
-    }
-
-
-def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict[int, float]:
-    """Estimate the seconds left in each OCR phase, from that phase's own history.
-
-    Each phase is sized by the documents it still has to cover, split by
-    file_type (pdf/image - OCR at very different speeds), and multiplied by
-    that type's average duration *for that phase* across all past runs,
-    rather than this run's own pace, which is noisy - or unavailable - early
-    in a run. A quick pass's timings say nothing about a deep one, so a phase
-    with no history yet simply has no estimate. Only phases the `index_engine`
-    setting reaches, and that still have work, appear in the result.
-    """
-    try:
-        sources = IndexRunner.resolve_targets(conn, state.target)
-    except SourceNotFoundError:
-        return {}
-
-    quick_remaining = Readers.new_file_type_counts()
-    for source in sources:
-        counts = Pending.file_type_counts(
-            conn,
-            source,
-            only_new_files=source.status != "pending",
-            only_failed=state.mode == "restart",
-        )
-        for file_type, count in counts.items():
-            quick_remaining[file_type] += count
-
-    remaining_by_phase = {1: quick_remaining}
-    for phase in range(2, Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1) + 1):
-        remaining_by_phase[phase] = Deepening.pending_documents(conn, sources, phase)
-
-    seconds_by_phase: dict[int, float] = {}
-    for phase, remaining in remaining_by_phase.items():
-        if not any(remaining.values()):
-            continue
-        averages = _average_durations(conn, phase)
-        seconds_left = sum(
-            count * averages[file_type]
-            for file_type, count in remaining.items()
-            if count > 0 and file_type in averages
-        )
-        if seconds_left > 0:
-            seconds_by_phase[phase] = seconds_left
-    return seconds_by_phase
-
-
-def _format_duration(seconds: float) -> str:
-    minutes, secs = divmod(int(seconds), 60)
-    return f"{minutes}m {secs}s" if minutes else f"{secs}s"
-
-
-def _estimate_eta(conn: sqlite3.Connection, state: IndexState) -> str | None:
-    """Total time left across every phase still to run, or None if it can't be estimated."""
-    total = sum(_estimate_phase_seconds(conn, state).values())
-    return _format_duration(total) if total > 0 else None
-
-
-def _progress_bar(processed: int, total: int) -> Progress:
-    """A `Progress` renderable showing an animated bar plus count and percentage.
-
-    Not started (`.start()` is never called) - it's rendered as a plain,
-    self-contained renderable, either once for a static snapshot or repeatedly
-    via `Live.update()`, without spinning up its own refresh thread.
-    """
-    bar = Progress(
-        BarColumn(bar_width=30),
-        ProgressTextColumn("{task.completed}/{task.total}"),
-        TaskProgressColumn(),
-    )
-    bar.add_task("progress", total=total or 1, completed=processed)
-    return bar
-
-
-def _progress_cell(done: int, total: int, animated: bool) -> Progress | str:
-    if animated:
-        return _progress_bar(done, total)
-    percent = (done / total * 100) if total else 100.0
-    return f"{done}/{total} ({percent:.0f}%)"
-
-
-def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated: bool) -> Panel:
-    status_style = _RUN_STATUS_STYLES.get(state.status, "default")
-
-    table = Table.grid(padding=(0, 1))
-    table.add_column(style="bright_yellow", no_wrap=True)
-    table.add_column()
-
-    table.add_row("Status", Text(state.status, style=f"bold {status_style}"))
-    table.add_row("Mode", state.mode)
-    table.add_row("Target", state.target or "all sources")
-
-    phase_name = _PHASE_NAMES.get(state.phase, str(state.phase))
-    max_phase = Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
-    if max_phase > 1:
-        table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
-        # Quick counts files; the deeper phases count pages - each shows how much of
-        # what it applies to has been through it.
-        table.add_row("Quick", _progress_cell(state.processed_files, state.total_files, animated))
-        try:
-            progress = Deepening.progress(
-                conn, IndexRunner.resolve_targets(conn, state.target), max_phase
-            )
-        except SourceNotFoundError:
-            progress = {}
-        for phase, (done, total) in progress.items():
-            table.add_row(_PHASE_NAMES[phase].capitalize(), _progress_cell(done, total, animated))
-    else:
-        table.add_row("Phase", Text(phase_name))
-        table.add_row(
-            "Progress", _progress_cell(state.processed_files, state.total_files, animated)
-        )
-    failed_style = "bold red" if state.failed_files else "default"
-    table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
-
-    if state.thread_workers_setting == "0":
-        workers_label = "disabled (sequential)"
-    elif state.thread_workers_setting == IndexSettings.THREAD_WORKERS_AUTO:
-        thread_word = "thread" if state.workers == 1 else "threads"
-        workers_label = f"auto (currently {state.workers} {thread_word})"
-    else:
-        workers_label = f"{state.workers} threads"
-    table.add_row("Workers", workers_label)
-
-    if state.current_files:
-        label = "Current files" if len(state.current_files) > 1 else "Current file"
-        files_text = Text("\n".join(f"• {Path(f).name}" for f in state.current_files))
-        table.add_row(label, files_text)
-
-    if state.status == "running":
-        by_phase = _estimate_phase_seconds(conn, state)
-        if by_phase:
-            eta = Text(f"~{_format_duration(sum(by_phase.values()))}")
-            if len(by_phase) > 1:
-                breakdown = " · ".join(
-                    f"{_PHASE_NAMES[phase]} ~{_format_duration(seconds)}"
-                    for phase, seconds in sorted(by_phase.items())
-                )
-                eta.append(f"\n{breakdown}", style="bright_black")
-            table.add_row("ETA", eta)
-
-    border_style = status_style if status_style != "default" else "white"
-    return Panel(table, title="Index Run", border_style=border_style, expand=False)
-
-
-def _print_state(conn: sqlite3.Connection, state: IndexState) -> None:
-    console.print(_build_state_panel(conn, state, animated=False))
-
-
-def _live_wait(conn: sqlite3.Connection, pid: int) -> None:
-    """Live-refresh the state panel until the run owned by `pid` reaches a terminal state."""
-    with Live(console=console, refresh_per_second=4) as live:
-        while True:
-            time.sleep(_POLL_SECONDS)
-            state = IndexRunner.read_state()
-            if state is not None and state.pid == pid:
-                live.update(_build_state_panel(conn, state, animated=True))
-                if state.status in ("completed", "stopped", "failed"):
-                    return
-                continue
-            # No state yet for this pid - could just be starting up (the worker
-            # hasn't written its first state file yet) or it could genuinely be
-            # gone (e.g. crashed before writing anything). Only stop waiting once
-            # the process itself is confirmed no longer running.
-            running, current_pid = IndexRunner.is_running()
-            if not running or current_pid != pid:
-                live.stop()
-                console.print(
-                    "Background run ended before reporting any progress. "
-                    f"If this is unexpected, check {IndexRunner.log_path()} for errors."
-                )
-                return
 
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
@@ -268,7 +64,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
 
     conn = Db.connect()
     try:
-        _live_wait(conn, pid)
+        StatePanel.live_wait(conn, pid)
     finally:
         conn.close()
 
@@ -339,9 +135,9 @@ def status(
         conn = Db.connect()
         try:
             if wait and state.status in ("running", "paused"):
-                _live_wait(conn, state.pid)
+                StatePanel.live_wait(conn, state.pid)
             else:
-                _print_state(conn, state)
+                StatePanel.print_state(conn, state)
         finally:
             conn.close()
         return
@@ -489,7 +285,7 @@ def history(
             "  ",
             (f"target={target}", "bright_yellow"),
             "  status=",
-            (row["status"], _RUN_STATUS_STYLES.get(row["status"], "default")),
+            (row["status"], StatePanel.RUN_STATUS_STYLES.get(row["status"], "default")),
             f"  {row['processed_files']}/{row['total_files']} processed, "
             f"{row['failed_files']} failed",
             f"  workers={workers if workers is not None else 'n/a'}",
