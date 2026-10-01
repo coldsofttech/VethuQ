@@ -156,8 +156,12 @@ class TestQuickBatch:
     ):
         mock_cpu_count.return_value = 8
         mock_cpu_percent.return_value = 5.0
+        # `total` is needed too: `Scheduler.would_exceed_budget` divides by it once a
+        # file has produced a metrics row, and an unset attribute is a MagicMock.
         mock_virtual_memory.return_value = MagicMock(
-            percent=10.0, available=32 * 1024 * 1024 * 1024
+            percent=10.0,
+            available=32 * 1024 * 1024 * 1024,
+            total=64 * 1024 * 1024 * 1024,
         )
         engine = MagicMock()
         engine.predict.return_value = _fake_ocr_result()
