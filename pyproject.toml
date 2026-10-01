@@ -51,6 +51,8 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.mypy]
 platform = "linux"
+# Each package has its own tests/conftest.py; mypy rejects the duplicate module name.
+exclude = ["conftest\\.py$"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 
