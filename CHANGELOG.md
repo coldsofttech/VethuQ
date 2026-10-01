@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two overlapping index runs can no longer process the same file at once, and a file left mid-processing by a crashed or force-stopped run is now retried automatically.
 - OCR now detects and corrects rotated pages and rotated text lines (e.g. scanned or photographed documents that aren't perfectly upright), instead of assuming every page is already correctly oriented.
 - The test suite now runs in parallel and covers real PDF, PNG and JPEG sample files and the `vethuq` Python package.
+- The database now survives a crash mid-write and no longer fails with "database is locked" when indexing and a CLI command overlap; a schema upgrade first backs up the database to `vethuq.db.bkp`.
 - Identical copies of a file are now recognised as one document, and OCR progress is tracked per document rather than per file copy.
 
 ### Fixed

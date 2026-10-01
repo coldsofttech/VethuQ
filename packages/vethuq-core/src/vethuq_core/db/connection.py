@@ -14,6 +14,13 @@ class Db:
     APP_NAME = "VethuQ"
     DB_FILENAME = "vethuq.db"
 
+    # How long a writer waits on a lock held by another connection (WAL still
+    # serializes writers against each other) before raising "database is locked" -
+    # generous enough to ride out a concurrent writer's transaction (e.g. the
+    # desktop app's background indexing overlapping a CLI command against the
+    # same database) rather than failing immediately.
+    BUSY_TIMEOUT_MS = 5000
+
     SCHEMA_VERSION = 24
 
     _SCHEMA = """
@@ -164,12 +171,22 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
         `vethuq_core.ocr.Quick.run_batch`'s `db_lock`, which serializes every use
         of such a connection since SQLite connections aren't safe for
         unsynchronized concurrent access on their own).
+
+        WAL journal mode lets the database recover cleanly after an application
+        crash mid-write (rolling back an incomplete transaction from the WAL file
+        instead of leaving the main db file in a torn state), and - combined with
+        `busy_timeout` - lets readers and writers on separate connections
+        (including from separate processes, e.g. the desktop app's background
+        indexing alongside a CLI command) proceed without racing into "database
+        is locked" errors.
         """
         path = db_path or Db.default_db_path()
         conn = sqlite3.connect(path, check_same_thread=check_same_thread)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        Db._ensure_schema(conn)
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
+        Db._ensure_schema(conn, path)
 
         from vethuq_core.source import Sources
 
@@ -178,12 +195,30 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
         return conn
 
     @staticmethod
-    def _ensure_schema(conn: sqlite3.Connection) -> None:
+    def _backup_before_migration(conn: sqlite3.Connection, db_path: Path) -> None:
+        """Snapshot the pre-migration database to `<db_path>.bkp`.
+
+        Goes through SQLite's own backup API rather than copying `db_path` on
+        disk, so the snapshot is consistent even though - under WAL - some
+        already-committed data may currently live only in the `-wal` file rather
+        than in `db_path` itself. Runs before `Migration.schema` so a failed or
+        bad migration can be rolled back to this pre-migration copy.
+        """
+        backup_path = Path(f"{db_path}.bkp")
+        backup_conn = sqlite3.connect(backup_path)
+        try:
+            conn.backup(backup_conn)
+        finally:
+            backup_conn.close()
+
+    @staticmethod
+    def _ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
         conn.executescript(Db._SCHEMA)
         row = conn.execute("SELECT version FROM schema_version").fetchone()
         if row is None:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (Db.SCHEMA_VERSION,))
         elif row["version"] < Db.SCHEMA_VERSION:
+            Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
             conn.execute("UPDATE schema_version SET version = ?", (Db.SCHEMA_VERSION,))
         # Created after the table (and any migration adding these columns to it)
