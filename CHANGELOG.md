@@ -63,3 +63,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commands that don't do OCR (e.g. `vethuq settings gpu status`) no longer print unrelated OCR-engine startup messages.
 - Searching no longer returns matches from files whose source has been removed.
 - Permanently purging removed sources no longer fails with a database error when two of them shared duplicate-flagged content, and no longer leaves `index history` pointing at a source that's gone.
+- A document's indexed result is now saved all-or-nothing, so a failure partway through can no longer leave it marked `indexed` with missing pages or metrics.

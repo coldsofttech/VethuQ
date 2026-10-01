@@ -282,6 +282,43 @@ class TestQuick:
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
         assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
 
+    @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_rolls_back_pages_and_status_if_a_later_write_fails(
+        self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
+    ):
+        """A document's pages, status, and metrics are one atomic transaction.
+
+        If anything after the pages are written (here, the confidence metrics
+        update) raises, the whole result - including the already-executed page
+        inserts and the 'indexed' status transition - is rolled back. The row
+        stays 'processing' for a future run to retry, rather than ever being
+        readable as 'indexed' with missing pages or metrics.
+        """
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result()
+        mock_get_engine.return_value = engine
+        mock_update_confidence.side_effect = RuntimeError("boom")
+
+        image_path = tmp_path / "scan.png"
+        image_path.write_bytes(b"fake png bytes")
+        source = Sources.add(conn, image_path)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            Quick.run(conn, source)
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "processing"
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) AS n FROM image_pages WHERE document_id = ?", (doc["id"],)
+            ).fetchone()["n"]
+            == 0
+        )
+        assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
+
     @patch("vethuq_core.ocr.Engine.get")
     def test_run_ocr_skips_unsupported_files(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
