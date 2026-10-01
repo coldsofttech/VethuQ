@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
 - The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.
 - The Python library now offers a `vethuq.Vethuq()` client with `client.sources` (add/list/remove), `client.index` (run/restart/status/stop/pause/resume/history), `client.settings` (GPU, search snippet/export format, and indexing retention/retry/workers/stale-lock), `client.stats` (processing/confidence statistics), and `client.search` (search indexed content and export results) — no database connection to manage yourself.
@@ -50,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each indexed document now has a stable logical identity, independent of its file path, so duplicate copies of the same content can be tracked as one document behind the scenes rather than only ever chaining to a specific file row.
 - Indexed documents now also record OS-level file creation/modification timestamps captured at scan time, alongside their content hash; the hash column is now named `sha256` for what it's always held.
 - A document actively being OCR'd now shows a distinct `processing` status instead of staying `pending` for the whole run.
+- OCR now detects and corrects rotated pages and rotated text lines (e.g. scanned or photographed documents that aren't perfectly upright), instead of assuming every page is already correctly oriented.
+- The test suite now runs in parallel and covers real PDF, PNG and JPEG sample files and the `vethuq` Python package.
+- Identical copies of a file are now recognised as one document, and OCR progress is tracked per document rather than per file copy.
 
 ### Fixed
 

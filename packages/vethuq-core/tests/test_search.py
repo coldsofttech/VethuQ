@@ -2,14 +2,14 @@ import sqlite3
 from datetime import UTC, datetime
 
 import pytest
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.search import search_indexed_content
 from vethuq_core.settings import set_search_snippet_context_chars
 
 
 @pytest.fixture
 def conn(tmp_path):
-    connection = connect(tmp_path / "vethuq.db")
+    connection = Db.connect(tmp_path / "vethuq.db")
     yield connection
     connection.close()
 

@@ -31,8 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq_core.db import (
-    connect,
-    default_db_path,
+    Db,
     end_running_index_run,
     fail_all_running_index_runs,
     fail_index_run,
@@ -46,9 +45,9 @@ from vethuq_core.ocr import (
     pending_file_count,
     pending_file_type_counts,
     resolve_thread_workers,
-    run_ocr_batch,
+    run_ocr_phased,
 )
-from vethuq_core.settings import get_stale_lock, get_thread_workers
+from vethuq_core.settings import get_ocr_engine, get_stale_lock, get_thread_workers
 from vethuq_core.sources import Source, get_source, list_sources
 
 _STATE_FILENAME = "index_state.json"
@@ -57,6 +56,10 @@ _LOCK_FILENAME = "index.lock"
 _LOG_FILENAME = "index_worker.log"
 _STOP_TIMEOUT_SECONDS = 5.0
 _PAUSE_POLL_SECONDS = 1.0
+# Bundled next to the desktop/CLI exes by the installer build. A frozen exe
+# can't be asked to run `-m vethuq_core.index_runner` (it would just start
+# the app again), so frozen builds spawn this dedicated worker exe instead.
+_WORKER_EXE_NAME = "vethuq-worker.exe"
 
 
 class IndexRunnerError(Exception):
@@ -86,6 +89,14 @@ class IndexState:
     current_files: list[str]  # files each active worker is on right now (0-N of them)
     started_at: str
     updated_at: str
+    # What the run is on: 1 while files get their quick first pass, then the
+    # phase (2/3) of the deeper page pass in progress. `engine` is the
+    # `index_engine` setting the run started with; `deepened_pages` counts pages
+    # that finished a deeper phase. Defaulted so a state file from before
+    # phases existed still loads.
+    engine: str = "quick"
+    phase: int = 1
+    deepened_pages: int = 0
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
@@ -109,7 +120,7 @@ def _lock_path(db_path: Path) -> Path:
 
 def log_path(db_path: Path | None = None) -> Path:
     """Path to the worker's log file, where a crash's traceback is written."""
-    return (db_path or default_db_path()).parent / _LOG_FILENAME
+    return (db_path or Db.default_db_path()).parent / _LOG_FILENAME
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -167,7 +178,7 @@ def read_state(db_path: Path | None = None) -> IndexState | None:
     older version of this code, in a since-changed format, is treated the
     same as no state at all rather than raised as an error.
     """
-    path = _state_path(db_path or default_db_path())
+    path = _state_path(db_path or Db.default_db_path())
     if not path.exists():
         return None
     try:
@@ -194,7 +205,7 @@ def _set_control(db_path: Path, control: str) -> None:
 
 def is_running(db_path: Path | None = None) -> tuple[bool, int | None]:
     """Return (running, pid). `running` is False if the lock is stale."""
-    lock_path = _lock_path(db_path or default_db_path())
+    lock_path = _lock_path(db_path or Db.default_db_path())
     if not lock_path.exists():
         return False, None
     try:
@@ -206,6 +217,16 @@ def is_running(db_path: Path | None = None) -> tuple[bool, int | None]:
 
 def _coerce_target(target: str) -> str | int:
     return int(target) if target.isdigit() else target
+
+
+def _worker_command(db_path: Path, target: str | None, restart: bool) -> list[str]:
+    args = [str(db_path), target or "", "restart" if restart else "run"]
+    if getattr(sys, "frozen", False):
+        worker = Path(sys.executable).with_name(_WORKER_EXE_NAME)
+        if not worker.exists():
+            raise IndexRunnerError(f"index worker not found at {worker}")
+        return [str(worker), *args]
+    return [sys.executable, "-m", "vethuq_core.index_runner", *args]
 
 
 def start_run(
@@ -221,7 +242,7 @@ def start_run(
     (see `run_ocr`'s `only_failed`); otherwise new and previously-failed
     files are processed as usual.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, pid = is_running(db_path)
     if running:
         raise AlreadyRunningError(f"An index run is already in progress (pid {pid}).")
@@ -229,7 +250,7 @@ def start_run(
     lock_path = _lock_path(db_path)
     if lock_path.exists():
         if not force:
-            conn = connect(db_path)
+            conn = Db.connect(db_path)
             try:
                 auto_clear = get_stale_lock(conn) != "disable"
             finally:
@@ -244,7 +265,7 @@ def start_run(
         lock_path.unlink(missing_ok=True)
         _reconcile_orphaned_run(db_path)
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         if target is not None:
             get_source(conn, _coerce_target(target))  # raises SourceNotFoundError if invalid
@@ -265,14 +286,10 @@ def start_run(
     # the only place that failure is visible at all.
     with open(log_path(db_path), "a", encoding="utf-8") as log_file:
         process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
-            [
-                sys.executable,
-                "-m",
-                "vethuq_core.index_runner",
-                str(db_path),
-                target or "",
-                "restart" if restart else "run",
-            ],
+            _worker_command(db_path, target, restart),
+            # Stops a onefile-frozen parent's bundle env from leaking into
+            # the (also onefile) worker exe, which must unpack its own.
+            env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=log_file,
@@ -294,7 +311,7 @@ def _reconcile_orphaned_run(db_path: Path) -> None:
     if state is not None and state.status == "running":
         _mark_run_ended(db_path, state, "failed")
         return
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         fail_all_running_index_runs(conn, datetime.now(UTC).isoformat())
         conn.commit()
@@ -305,12 +322,13 @@ def _reconcile_orphaned_run(db_path: Path) -> None:
 def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
     state.status = status
     _write_state(db_path, state)
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         end_running_index_run(
             conn,
             state.run_id,
             status,
+            state.total_files,
             state.processed_files,
             state.failed_files,
             datetime.now(UTC).isoformat(),
@@ -333,7 +351,7 @@ def signal_stop(db_path: Path | None = None) -> None:
     closing. For an interactive "stop it now and tell me" (`vethuq index
     stop`), use `request_stop` instead.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     if not is_running(db_path)[0]:
         raise IndexRunnerError("No background index run is currently running.")
     _set_control(db_path, "stop")
@@ -348,7 +366,7 @@ def request_stop(db_path: Path | None = None, *, timeout: float = _STOP_TIMEOUT_
     wants to know it actually stopped before returning. A caller that
     shouldn't block on that should use `signal_stop` instead.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, pid = is_running(db_path)
     if not running or pid is None:
         raise IndexRunnerError("No background index run is currently running.")
@@ -368,7 +386,7 @@ def request_stop(db_path: Path | None = None, *, timeout: float = _STOP_TIMEOUT_
 
 
 def request_pause(db_path: Path | None = None) -> None:
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, _pid = is_running(db_path)
     if not running:
         raise IndexRunnerError("No background index run is currently running.")
@@ -376,7 +394,7 @@ def request_pause(db_path: Path | None = None) -> None:
 
 
 def request_resume(db_path: Path | None = None) -> None:
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, _pid = is_running(db_path)
     if not running:
         raise IndexRunnerError("No background index run is currently running.")
@@ -443,7 +461,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
     # check_same_thread=False: `run_ocr_batch` below may hand this connection
     # to worker threads when `workers` > 1 - every use of it is already
     # serialized through `db_lock` there.
-    conn = connect(db_path, check_same_thread=False)
+    conn = Db.connect(db_path, check_same_thread=False)
     pid = os.getpid()
     started_at = datetime.now(UTC).isoformat()
     run_id: int | None = None
@@ -482,6 +500,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
             current_files=[],
             started_at=started_at,
             updated_at=started_at,
+            engine=get_ocr_engine(conn),
         )
         _write_state(db_path, state)
 
@@ -489,6 +508,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
 
         def on_file_start(file_path: str) -> None:
             with state_lock:
+                state.phase = 1
                 state.current_files.append(file_path)
                 _write_state(db_path, state)
 
@@ -499,6 +519,25 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
                 state.processed_files += 1
                 if not succeeded:
                     state.failed_files += 1
+                _write_state(db_path, state)
+
+        def on_files_queued(count: int) -> None:
+            # Files that turned up after the run started, e.g. added to a source.
+            with state_lock:
+                state.total_files += count
+                _write_state(db_path, state)
+
+        def on_unit_start(file_path: str, phase: int) -> None:
+            with state_lock:
+                state.phase = phase
+                state.current_files.append(file_path)
+                _write_state(db_path, state)
+
+        def on_unit_done(file_path: str) -> None:
+            with state_lock:
+                if file_path in state.current_files:
+                    state.current_files.remove(file_path)
+                state.deepened_pages += 1
                 _write_state(db_path, state)
 
         def on_workers_changed(new_workers: int) -> None:
@@ -527,15 +566,18 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
                 state.status = "running"
             return False
 
-        run_ocr_batch(
+        run_ocr_phased(
             conn,
-            sources,
+            lambda: resolve_targets(conn, target),
             only_failed=restart,
             workers=workers,
             on_file_start=on_file_start,
             on_file_done=on_file_done,
             on_workers_changed=on_workers_changed,
             should_stop=should_stop,
+            on_files_queued=on_files_queued,
+            on_unit_start=on_unit_start,
+            on_unit_done=on_unit_done,
         )
 
         final_status = "stopped" if stopped else "completed"

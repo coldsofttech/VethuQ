@@ -191,6 +191,13 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 - `set(value)` — `value` must be one of `STALE_LOCK_VALUES`
   (`"enable"`, `"disable"`, `"auto"`); raises `InvalidSettingValueError` otherwise
 
+### `client.settings.index.engine`
+
+- `get()` — how thoroughly OCR looks for rotated text (`"quick"` by default)
+- `set(value)` — `value` must be one of `OCR_ENGINE_MODES` (`"quick"`, `"moderate"`,
+  `"deep"`); raises `InvalidSettingValueError` otherwise. Files are always indexed
+  quick first; moderate (90/180/270°) and deep (every 15°) then run in the background.
+
 ```python
 client.settings.gpu.enable()
 client.settings.search.snippet.set(120)
@@ -204,8 +211,9 @@ in the CLI.
 
 ### `processing()`
 
-Return per-(file type, size) running averages (`ProcessingMetric`): document
-count, average duration, peak memory, and CPU use.
+Return per-(phase, file type, size) running averages (`ProcessingMetric`):
+document count, average duration, peak memory, and CPU use. `phase` is 1 (quick),
+2 (moderate) or 3 (deep) — each phase keeps its own averages.
 
 ### `confidence()`
 
@@ -227,7 +235,7 @@ client.stats.reset()
 
 ## `ProcessingMetric`
 
-- `file_type`, `size_bucket`, `document_count`
+- `phase`, `file_type`, `size_bucket`, `document_count`
 - `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`
 - `updated_at`
 

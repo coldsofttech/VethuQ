@@ -52,14 +52,15 @@ def end_running_index_run(
     conn: sqlite3.Connection,
     run_id: int,
     status: str,
+    total_files: int,
     processed_files: int,
     failed_files: int,
     completed_at: str,
 ) -> None:
     conn.execute(
-        "UPDATE index_runs SET status = ?, processed_files = ?, failed_files = ?, "
-        "completed_at = ? WHERE id = ? AND status = 'running'",
-        (status, processed_files, failed_files, completed_at, run_id),
+        "UPDATE index_runs SET status = ?, total_files = ?, processed_files = ?, "
+        "failed_files = ?, completed_at = ? WHERE id = ? AND status = 'running'",
+        (status, total_files, processed_files, failed_files, completed_at, run_id),
     )
 
 

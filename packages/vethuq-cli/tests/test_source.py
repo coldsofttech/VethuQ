@@ -1,6 +1,3 @@
-from functools import partial
-
-import vethuq_cli.source as source_module
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
@@ -10,7 +7,12 @@ runner = CliRunner()
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(source_module, "connect", partial(db_module.connect, db_path))
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
 
 
 def test_add_and_list_source(tmp_path, monkeypatch):

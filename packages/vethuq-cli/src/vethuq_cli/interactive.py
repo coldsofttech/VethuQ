@@ -15,6 +15,7 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.settings import (
+    OCR_ENGINE_MODES,
     SEARCH_EXPORT_FORMATS,
     STALE_LOCK_VALUES,
     THREAD_WORKERS_AUTO,
@@ -31,6 +32,8 @@ from vethuq_cli.index import status as index_status
 from vethuq_cli.index import stop as index_stop
 from vethuq_cli.search import search as run_search
 from vethuq_cli.settings import (
+    engine_set,
+    engine_show,
     export_format_set,
     export_format_show,
     gpu_disable,
@@ -301,6 +304,24 @@ def _settings_stale_lock_menu() -> None:
             _run_safely(stale_lock_set, value=value)
 
 
+def _settings_engine_menu() -> None:
+    while True:
+        console.print()
+        _print_menu("Settings > Index > OCR Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")])
+        choice = _prompt_choice(["1", "2", "0"])
+        if choice == "0":
+            return
+        if choice == "1":
+            _run_safely(engine_show)
+        elif choice == "2":
+            value = Prompt.ask(
+                "How thoroughly OCR looks for rotated text",
+                console=console,
+                choices=list(OCR_ENGINE_MODES),
+            )
+            _run_safely(engine_set, value=value)
+
+
 def _settings_index_menu() -> None:
     while True:
         console.print()
@@ -311,10 +332,11 @@ def _settings_index_menu() -> None:
                 ("2", "OCR Retry"),
                 ("3", "Thread Workers"),
                 ("4", "Stale Lock"),
+                ("5", "OCR Engine"),
                 ("0", "Back"),
             ],
         )
-        choice = _prompt_choice(["1", "2", "3", "4", "0"])
+        choice = _prompt_choice(["1", "2", "3", "4", "5", "0"])
         if choice == "0":
             return
         if choice == "1":
@@ -325,6 +347,8 @@ def _settings_index_menu() -> None:
             _settings_thread_workers_menu()
         elif choice == "4":
             _settings_stale_lock_menu()
+        elif choice == "5":
+            _settings_engine_menu()
 
 
 def _stats_menu() -> None:

@@ -6,11 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from vethuq_core.db import (
-    get_pdf_page_counts_by_document,
-    list_indexed_image_pages,
-    list_indexed_pdf_pages,
-)
+from vethuq_core.db.queries import Document
 from vethuq_core.settings import get_search_snippet_context_chars
 
 
@@ -45,8 +41,8 @@ def _indexed_pages(
     `document_id`/`file_path`), reusing the carrier's OCR text, so it still
     surfaces as its own search result.
     """
-    pdf_rows = list_indexed_pdf_pages(conn)
-    image_rows = list_indexed_image_pages(conn)
+    pdf_rows = Document.list_indexed_pdf_pages(conn)
+    image_rows = Document.list_indexed_image_pages(conn)
     return [
         (
             row["document_id"],
@@ -61,7 +57,7 @@ def _indexed_pages(
 
 
 def _pdf_page_counts(conn: sqlite3.Connection) -> dict[int, int]:
-    return {row["document_id"]: row["total"] for row in get_pdf_page_counts_by_document(conn)}
+    return {row["document_id"]: row["total"] for row in Document.get_pdf_page_counts(conn)}
 
 
 def search_indexed_content(

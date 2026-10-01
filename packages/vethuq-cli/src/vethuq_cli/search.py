@@ -11,7 +11,7 @@ from pathlib import Path
 import typer
 from rich.prompt import Prompt
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.export import export_search_results
 from vethuq_core.search import SearchMatch, search_indexed_content
 from vethuq_core.settings import (
@@ -174,7 +174,7 @@ def search(
     With `--export`, results are written to that file as JSON or HTML
     instead of being printed here.
     """
-    conn = connect()
+    conn = Db.connect()
     try:
         matches = search_indexed_content(conn, content)
         if not matches:

@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 from typing import Any
 
 import sv_ttk
-from vethuq_core.db import connect, default_db_path
+from vethuq_core.db import Db
 from vethuq_core.index_runner import (
     AlreadyRunningError,
     IndexRunnerError,
@@ -59,7 +59,7 @@ def _configure_logging(db_path: Path | None) -> None:
     """
     if _logger.handlers:
         return
-    log_path = (db_path or default_db_path()).parent / _LOG_FILENAME
+    log_path = (db_path or Db.default_db_path()).parent / _LOG_FILENAME
     handler = logging.FileHandler(log_path, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     _logger.addHandler(handler)
@@ -70,7 +70,7 @@ class MainWindow(tk.Tk):
     def __init__(self, conn: sqlite3.Connection | None = None, db_path: Path | None = None) -> None:
         _configure_logging(db_path)
         super().__init__()
-        self.conn = conn or connect(db_path)
+        self.conn = conn or Db.connect(db_path)
         self._db_path = db_path
         _logger.info("VethuQ UI started")
 

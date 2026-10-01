@@ -1,6 +1,6 @@
 import sqlite3
 
-from vethuq_core.db import SCHEMA_VERSION, connect
+from vethuq_core.db import Db
 
 
 def test_connect_migrates_index_runs_missing_mode_column(tmp_path):
@@ -29,7 +29,7 @@ def test_connect_migrates_index_runs_missing_mode_column(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(index_runs)")}
         assert "mode" in columns
@@ -46,7 +46,7 @@ def test_connect_migrates_index_runs_missing_mode_column(tmp_path):
         assert row["mode"] == "run"
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -87,13 +87,13 @@ def test_connect_migrates_document_index_missing_file_size_column(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         assert "file_size_bytes" in columns
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -136,7 +136,7 @@ def test_connect_migrates_document_index_missing_checksum_columns(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         # Renamed to "sha256" by the version-18 migration, which also runs here
@@ -147,7 +147,7 @@ def test_connect_migrates_document_index_missing_checksum_columns(tmp_path):
         assert "duplicate_of_id" not in columns
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -192,13 +192,13 @@ def test_connect_migrates_document_index_missing_mtime_column(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         assert "mtime" in columns
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -253,7 +253,7 @@ def test_connect_migrates_document_index_status_check_and_removed_at(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         assert "removed_at" in columns
@@ -268,16 +268,17 @@ def test_connect_migrates_document_index_status_check_and_removed_at(tmp_path):
         conn.commit()
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
 
 def test_connect_creates_processing_metrics_table(tmp_path):
-    conn = connect(tmp_path / "vethuq.db")
+    conn = Db.connect(tmp_path / "vethuq.db")
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
         assert columns == {
+            "phase",
             "file_type",
             "size_bucket",
             "document_count",
@@ -291,7 +292,7 @@ def test_connect_creates_processing_metrics_table(tmp_path):
 
 
 def test_connect_creates_confidence_metrics_table(tmp_path):
-    conn = connect(tmp_path / "vethuq.db")
+    conn = Db.connect(tmp_path / "vethuq.db")
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(confidence_metrics)")}
         assert columns == {
@@ -394,7 +395,7 @@ def test_connect_migrates_processing_metrics_confidence_split(tmp_path):
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_metrics)")}
         assert "avg_confidence" not in columns
@@ -419,7 +420,7 @@ def test_connect_migrates_processing_metrics_confidence_split(tmp_path):
         assert confidence_rows[("image", "ocr")] == (1, 0.7)
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -487,7 +488,7 @@ def test_connect_migrates_document_index_checksum_to_sha256_and_adds_timestamps(
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
         assert "sha256" in columns
@@ -506,7 +507,7 @@ def test_connect_migrates_document_index_checksum_to_sha256_and_adds_timestamps(
         assert "idx_document_index_checksum" not in indexes
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
 
@@ -516,12 +517,12 @@ def test_connect_migrates_document_index_status_check_allows_processing(tmp_path
 
     # Simulate a database created by an older version of this code: a
     # document_index table whose status CHECK constraint doesn't yet allow
-    # 'processing', at schema version 18.
+    # 'processing', at schema version 23.
     old_conn = sqlite3.connect(db_path)
     old_conn.executescript(
         """
         CREATE TABLE schema_version (version INTEGER NOT NULL);
-        INSERT INTO schema_version (version) VALUES (18);
+        INSERT INTO schema_version (version) VALUES (23);
         CREATE TABLE sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT NOT NULL UNIQUE,
@@ -576,7 +577,7 @@ def test_connect_migrates_document_index_status_check_allows_processing(tmp_path
     old_conn.commit()
     old_conn.close()
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         # The pre-existing row survives the rebuild.
         row = conn.execute("SELECT * FROM document_index WHERE id = 1").fetchone()
@@ -600,6 +601,6 @@ def test_connect_migrates_document_index_status_check_allows_processing(tmp_path
         assert "idx_document_index_sha256" in indexes
 
         version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-        assert version == SCHEMA_VERSION
+        assert version == Db.SCHEMA_VERSION
     finally:
         conn.close()
