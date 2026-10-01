@@ -11,13 +11,6 @@ from __future__ import annotations
 from vethuq_core.db.connection import (
     Db,
 )
-from vethuq_core.db.index_runs_queries import (
-    end_running_index_run,
-    fail_all_running_index_runs,
-    fail_index_run,
-    insert_index_run,
-    list_index_runs,
-)
 from vethuq_core.db.ocr_phases_queries import (
     complete_document_phase,
     count_documents_short_of_phase,
@@ -39,15 +32,10 @@ __all__ = [
     "complete_document_phase",
     "count_documents_short_of_phase",
     "count_pages_short_of_phase",
-    "end_running_index_run",
-    "fail_all_running_index_runs",
-    "fail_index_run",
     "get_document_index_file_size",
     "get_document_phase_completion",
     "get_document_phase_work",
     "get_page_text_row",
-    "insert_index_run",
-    "list_index_runs",
     "list_pages_short_of_phase",
     "list_phase_progress_rows",
     "mark_page_phase_done",
