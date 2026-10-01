@@ -2,16 +2,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 import pytest
-from vethuq_core.db import Db
 from vethuq_core.stats import Confidence, Processing, Stats
-
-
-@pytest.fixture
-def conn(tmp_path):
-    db_path = tmp_path / "vethuq.db"
-    connection = Db.connect(db_path)
-    yield connection
-    connection.close()
 
 
 def _seed_metrics(conn: sqlite3.Connection) -> None:
@@ -31,38 +22,40 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def test_get_processing_metrics_returns_rows(conn: sqlite3.Connection):
-    _seed_metrics(conn)
+class TestProcessing:
+    def test_get_processing_metrics_returns_rows(self, conn: sqlite3.Connection):
+        _seed_metrics(conn)
 
-    metrics = Processing.get_metrics(conn)
+        metrics = Processing.get_metrics(conn)
 
-    assert len(metrics) == 1
-    assert metrics[0].file_type == "pdf"
-    assert metrics[0].document_count == 2
-    assert metrics[0].avg_duration_seconds == pytest.approx(5.0)
-
-
-def test_get_confidence_metrics_returns_rows(conn: sqlite3.Connection):
-    _seed_metrics(conn)
-
-    metrics = Confidence.get_metrics(conn)
-
-    assert len(metrics) == 1
-    assert metrics[0].file_type == "pdf"
-    assert metrics[0].process_type == "native"
-    assert metrics[0].page_count == 3
-    assert metrics[0].avg_confidence == pytest.approx(1.0)
+        assert len(metrics) == 1
+        assert metrics[0].file_type == "pdf"
+        assert metrics[0].document_count == 2
+        assert metrics[0].avg_duration_seconds == pytest.approx(5.0)
 
 
-def test_get_metrics_empty_when_no_data(conn: sqlite3.Connection):
-    assert Processing.get_metrics(conn) == []
-    assert Confidence.get_metrics(conn) == []
+class TestConfidence:
+    def test_get_confidence_metrics_returns_rows(self, conn: sqlite3.Connection):
+        _seed_metrics(conn)
+
+        metrics = Confidence.get_metrics(conn)
+
+        assert len(metrics) == 1
+        assert metrics[0].file_type == "pdf"
+        assert metrics[0].process_type == "native"
+        assert metrics[0].page_count == 3
+        assert metrics[0].avg_confidence == pytest.approx(1.0)
 
 
-def test_reset_metrics_clears_both_tables(conn: sqlite3.Connection):
-    _seed_metrics(conn)
+class TestStats:
+    def test_get_metrics_empty_when_no_data(self, conn: sqlite3.Connection):
+        assert Processing.get_metrics(conn) == []
+        assert Confidence.get_metrics(conn) == []
 
-    Stats.reset(conn)
+    def test_reset_metrics_clears_both_tables(self, conn: sqlite3.Connection):
+        _seed_metrics(conn)
 
-    assert Processing.get_metrics(conn) == []
-    assert Confidence.get_metrics(conn) == []
+        Stats.reset(conn)
+
+        assert Processing.get_metrics(conn) == []
+        assert Confidence.get_metrics(conn) == []

@@ -3,105 +3,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vethuq_core.db import Db
 from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
 
 
-@pytest.fixture
-def conn(tmp_path):
-    db_path = tmp_path / "vethuq.db"
-    connection = Db.connect(db_path)
-    yield connection
-    connection.close()
-
-
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
     return [{"rec_texts": [text], "rec_scores": [score]}]
 
 
-@pytest.mark.integration
-@patch("vethuq_core.ocr.Engine.get")
-def test_run_ocr_digital_pdf_skips_engine_entirely(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    pdf_path = tmp_path / "digital.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
-    source = Sources.add(conn, pdf_path)
-
-    Quick.run(conn, source)
-
-    mock_get_engine.assert_not_called()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    assert doc["status"] == "indexed"
-
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "native"
-    assert page["confidence"] == pytest.approx(1.0)
-    assert len(page["ocr_text"]) > 0
-
-
-@pytest.mark.integration
-@patch("vethuq_core.ocr.Engine.get")
-def test_run_ocr_scanned_pdf_runs_full_page_ocr(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    engine = MagicMock()
-    engine.predict.return_value = _fake_ocr_result("scanned page text")
-    mock_get_engine.return_value = engine
-
-    pdf_path = tmp_path / "scanned.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
-    source = Sources.add(conn, pdf_path)
-
-    Quick.run(conn, source)
-
-    engine.predict.assert_called_once()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "ocr"
-    assert page["ocr_text"] == "scanned page text"
-
-
-@pytest.mark.integration
-@patch("vethuq_core.ocr.Engine.get")
-def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
-    mock_get_engine, conn: sqlite3.Connection, tmp_path
-):
-    engine = MagicMock()
-    engine.predict.return_value = _fake_ocr_result("banner region text")
-    mock_get_engine.return_value = engine
-
-    pdf_path = tmp_path / "mixed.pdf"
-    pdf_path.write_bytes(
-        (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
-    )
-    source = Sources.add(conn, pdf_path)
-
-    Quick.run(conn, source)
-
-    engine.predict.assert_called_once()
-
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    page = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchone()
-    assert page["source"] == "mixed"
-    assert "Discover Andhra Pradesh" in page["ocr_text"]
-    assert "banner region text" in page["ocr_text"]
-
-
-# (fixture file, expected pdf_pages.source, expected page count, expected engine calls,
-#  {page number: phrase that page's text must contain}). Scanned fixtures (09, 11) have no
-#  native text, so their phrase is the mocked OCR output.
 _PDF_CASES = [
     (
         "06_Digital Structured Business Documents.pdf",
@@ -197,72 +108,155 @@ _PDF_CASES = [
 ]
 
 
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    ("fixture_name", "source_type", "page_count", "engine_calls", "expected_text"),
-    _PDF_CASES,
-    ids=[case[0][:2] for case in _PDF_CASES],
-)
-@patch("vethuq_core.ocr.Engine.get")
-def test_run_ocr_fixture_pdf_indexes_expected_pages(
-    mock_get_engine,
-    fixture_name,
-    source_type,
-    page_count,
-    engine_calls,
-    expected_text,
-    conn: sqlite3.Connection,
-    tmp_path,
-):
-    engine = MagicMock()
-    engine.predict.return_value = _fake_ocr_result("ocr text")
-    mock_get_engine.return_value = engine
+class TestPdfIntegration:
+    @pytest.mark.integration
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_digital_pdf_skips_engine_entirely(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        pdf_path = tmp_path / "digital.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
+        source = Sources.add(conn, pdf_path)
 
-    pdf_path = tmp_path / "doc.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-    source = Sources.add(conn, pdf_path)
+        Quick.run(conn, source)
 
-    Quick.run(conn, source)
+        mock_get_engine.assert_not_called()
 
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    assert doc["status"] == "indexed"
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "indexed"
 
-    pages = conn.execute("SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)).fetchall()
-    assert len(pages) == page_count
-    assert {page["source"] for page in pages} == {source_type}
-    assert engine.predict.call_count == engine_calls
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "native"
+        assert page["confidence"] == pytest.approx(1.0)
+        assert len(page["ocr_text"]) > 0
 
-    text_by_page = {page["page_number"]: " ".join(page["ocr_text"].split()) for page in pages}
-    for page_number, phrase in expected_text.items():
-        assert phrase in text_by_page[page_number]
+    @pytest.mark.integration
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_scanned_pdf_runs_full_page_ocr(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result("scanned page text")
+        mock_get_engine.return_value = engine
 
+        pdf_path = tmp_path / "scanned.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
+        source = Sources.add(conn, pdf_path)
 
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    "fixture_name",
-    [
-        "17_Digital Protected File (Pass - Abc123).pdf",
-        "18_Digital Corrupted.pdf",
-    ],
-    ids=["protected", "corrupted"],
-)
-@patch("vethuq_core.ocr.Engine.get")
-def test_run_ocr_unreadable_pdf_records_error_without_aborting(
-    mock_get_engine, fixture_name, conn: sqlite3.Connection, tmp_path
-):
-    pdf_path = tmp_path / "doc.pdf"
-    pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-    source = Sources.add(conn, pdf_path)
+        Quick.run(conn, source)
 
-    Quick.run(conn, source)
+        engine.predict.assert_called_once()
 
-    mock_get_engine.return_value.predict.assert_not_called()
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "ocr"
+        assert page["ocr_text"] == "scanned page text"
 
-    doc = conn.execute(
-        "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-    ).fetchone()
-    assert doc["status"] == "error"
-    assert doc["error_message"]
-    assert conn.execute("SELECT COUNT(*) FROM pdf_pages").fetchone()[0] == 0
+    @pytest.mark.integration
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result("banner region text")
+        mock_get_engine.return_value = engine
+
+        pdf_path = tmp_path / "mixed.pdf"
+        pdf_path.write_bytes(
+            (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
+        )
+        source = Sources.add(conn, pdf_path)
+
+        Quick.run(conn, source)
+
+        engine.predict.assert_called_once()
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "mixed"
+        assert "Discover Andhra Pradesh" in page["ocr_text"]
+        assert "banner region text" in page["ocr_text"]
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        ("fixture_name", "source_type", "page_count", "engine_calls", "expected_text"),
+        _PDF_CASES,
+        ids=[case[0][:2] for case in _PDF_CASES],
+    )
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_fixture_pdf_indexes_expected_pages(
+        self,
+        mock_get_engine,
+        fixture_name,
+        source_type,
+        page_count,
+        engine_calls,
+        expected_text,
+        conn: sqlite3.Connection,
+        tmp_path,
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result("ocr text")
+        mock_get_engine.return_value = engine
+
+        pdf_path = tmp_path / "doc.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
+        source = Sources.add(conn, pdf_path)
+
+        Quick.run(conn, source)
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "indexed"
+
+        pages = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchall()
+        assert len(pages) == page_count
+        assert {page["source"] for page in pages} == {source_type}
+        assert engine.predict.call_count == engine_calls
+
+        text_by_page = {page["page_number"]: " ".join(page["ocr_text"].split()) for page in pages}
+        for page_number, phrase in expected_text.items():
+            assert phrase in text_by_page[page_number]
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [
+            "17_Digital Protected File (Pass - Abc123).pdf",
+            "18_Digital Corrupted.pdf",
+        ],
+        ids=["protected", "corrupted"],
+    )
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_run_ocr_unreadable_pdf_records_error_without_aborting(
+        self, mock_get_engine, fixture_name, conn: sqlite3.Connection, tmp_path
+    ):
+        pdf_path = tmp_path / "doc.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
+        source = Sources.add(conn, pdf_path)
+
+        Quick.run(conn, source)
+
+        mock_get_engine.return_value.predict.assert_not_called()
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "error"
+        assert doc["error_message"]
+        assert conn.execute("SELECT COUNT(*) FROM pdf_pages").fetchone()[0] == 0
