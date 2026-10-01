@@ -27,18 +27,11 @@ jobs:
       - name: Merge vethuq-core/vethuq-cli into packages/vethuq
         run: uv run python packages/vethuq/scripts/merge_sources.py
 
-      - name: Install Xvfb (the desktop UI tests need a display)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
       - name: Run tests
         shell: bash
         run: |
           set +e
-          # The desktop UI tests need a display; Linux runners have none, so wrap in Xvfb there.
-          runner=""
-          if [ "$RUNNER_OS" = "Linux" ]; then runner="xvfb-run -a"; fi
-          $runner uv run pytest -n auto --cov --cov-report=xml
+          uv run pytest -n auto --cov --cov-report=xml
           code=$?
           # pytest exits 5 when no tests were collected — not a failure this early in the project.
           if [ $code -eq 5 ]; then
