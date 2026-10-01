@@ -32,13 +32,7 @@ from pathlib import Path
 
 from vethuq_core.db import Db
 from vethuq_core.db.queries import Index
-from vethuq_core.ocr import (
-    new_file_type_counts,
-    pending_file_count,
-    pending_file_type_counts,
-    resolve_thread_workers,
-    run_ocr_phased,
-)
+from vethuq_core.ocr import Ocr, Pending, Readers, Scheduler
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source, Sources
 
@@ -66,7 +60,7 @@ class IndexState:
     processed_files: int
     failed_files: int
     thread_workers_setting: str  # raw `thread_workers` setting for this run: "0" | "1"-"8" | "auto"
-    workers: int  # current effective worker count (see resolve_thread_workers) - live for "auto"
+    workers: int  # current effective worker count (see Scheduler.resolve_workers) - live for "auto"
     current_files: list[str]  # files each active worker is on right now (0-N of them)
     started_at: str
     updated_at: str
@@ -266,7 +260,7 @@ class IndexRunner:
         """Launch OCR indexing as a detached background process. Returns its pid.
 
         When `restart` is True, only files that previously failed are retried
-        (see `run_ocr`'s `only_failed`); otherwise new and previously-failed
+        (see `Quick.run`'s `only_failed`); otherwise new and previously-failed
         files are processed as usual.
         """
         db_path = db_path or Db.default_db_path()
@@ -460,7 +454,7 @@ class IndexRunner:
 
     @staticmethod
     def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:
-        # check_same_thread=False: `run_ocr_batch` below may hand this connection
+        # check_same_thread=False: `Quick.run_batch` below may hand this connection
         # to worker threads when `workers` > 1 - every use of it is already
         # serialized through `db_lock` there.
         conn = Db.connect(db_path, check_same_thread=False)
@@ -472,20 +466,20 @@ class IndexRunner:
         try:
             sources = IndexRunner.resolve_targets(conn, target)
             total = sum(
-                pending_file_count(
+                Pending.file_count(
                     conn, s, only_new_files=s.status != "pending", only_failed=restart
                 )
                 for s in sources
             )
-            type_counts = new_file_type_counts()
+            type_counts = Readers.new_file_type_counts()
             for source in sources:
-                counts = pending_file_type_counts(
+                counts = Pending.file_type_counts(
                     conn, source, only_new_files=source.status != "pending", only_failed=restart
                 )
                 for file_type, count in counts.items():
                     type_counts[file_type] += count
             thread_workers_setting = IndexSettings.get_thread_workers(conn)
-            workers = resolve_thread_workers(conn, type_counts)
+            workers = Scheduler.resolve_workers(conn, type_counts)
 
             run_id = Index.insert_run(conn, target, mode, pid, total, workers, started_at)
             conn.commit()
@@ -550,7 +544,7 @@ class IndexRunner:
                     IndexRunner._write_state(db_path, state)
 
             def should_stop() -> bool:
-                # Called from every active worker thread once `run_ocr_batch`
+                # Called from every active worker thread once `Quick.run_batch`
                 # resolves to more than one worker - `state_lock` keeps their
                 # writes to the shared state file from racing each other the
                 # same way `on_file_start`/`on_file_done` already do.
@@ -570,7 +564,7 @@ class IndexRunner:
                     state.status = "running"
                 return False
 
-            run_ocr_phased(
+            Ocr.run_phased(
                 conn,
                 lambda: IndexRunner.resolve_targets(conn, target),
                 only_failed=restart,

@@ -24,14 +24,7 @@ from vethuq_core.index import (
     IndexState,
     StaleLockError,
 )
-from vethuq_core.ocr import (
-    OCR_ENGINE_PHASES,
-    deepening_pending_documents,
-    deepening_progress,
-    get_document_results,
-    new_file_type_counts,
-    pending_file_type_counts,
-)
+from vethuq_core.ocr import Deepening, Document, Pending, Readers
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import SourceNotFoundError, Sources
 
@@ -40,7 +33,7 @@ from vethuq_cli.console import console, error_console
 app = typer.Typer(help="Run OCR indexing on registered sources.")
 
 _POLL_SECONDS = 1.0
-_PHASE_NAMES = {phase: name for name, phase in OCR_ENGINE_PHASES.items()}
+_PHASE_NAMES = {phase: name for name, phase in Deepening.ENGINE_PHASES.items()}
 _RUN_STATUS_STYLES = {
     "running": "blue",
     "completed": "green",
@@ -83,9 +76,9 @@ def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict
     except SourceNotFoundError:
         return {}
 
-    quick_remaining = new_file_type_counts()
+    quick_remaining = Readers.new_file_type_counts()
     for source in sources:
-        counts = pending_file_type_counts(
+        counts = Pending.file_type_counts(
             conn,
             source,
             only_new_files=source.status != "pending",
@@ -95,8 +88,8 @@ def _estimate_phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict
             quick_remaining[file_type] += count
 
     remaining_by_phase = {1: quick_remaining}
-    for phase in range(2, OCR_ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1) + 1):
-        remaining_by_phase[phase] = deepening_pending_documents(conn, sources, phase)
+    for phase in range(2, Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1) + 1):
+        remaining_by_phase[phase] = Deepening.pending_documents(conn, sources, phase)
 
     seconds_by_phase: dict[int, float] = {}
     for phase, remaining in remaining_by_phase.items():
@@ -159,14 +152,14 @@ def _build_state_panel(conn: sqlite3.Connection, state: IndexState, *, animated:
     table.add_row("Target", state.target or "all sources")
 
     phase_name = _PHASE_NAMES.get(state.phase, str(state.phase))
-    max_phase = OCR_ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
+    max_phase = Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
     if max_phase > 1:
         table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
         # Quick counts files; the deeper phases count pages - each shows how much of
         # what it applies to has been through it.
         table.add_row("Quick", _progress_cell(state.processed_files, state.total_files, animated))
         try:
-            progress = deepening_progress(
+            progress = Deepening.progress(
                 conn, IndexRunner.resolve_targets(conn, state.target), max_phase
             )
         except SourceNotFoundError:
@@ -360,7 +353,7 @@ def status(
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style="bold red")
             raise typer.Exit(code=1) from exc
-        results = get_document_results(conn, source.id)
+        results = Document.get_results(conn, source.id)
     finally:
         conn.close()
 

@@ -5,16 +5,8 @@ from unittest.mock import MagicMock, patch
 import cv2
 import numpy as np
 import pytest
-import vethuq_core.ocr as ocr_module
 from vethuq_core.db import Db
-from vethuq_core.ocr import (
-    OCR_PHASE_ANGLES,
-    _completed_phase,
-    _find_deepening_units,
-    _merge_lines,
-    _rotate_array,
-    run_ocr_phased,
-)
+from vethuq_core.ocr import Deepening, Document, Ocr
 from vethuq_core.settings import InvalidSettingValueError, OcrSettings
 from vethuq_core.source import Sources
 
@@ -54,21 +46,23 @@ def test_ocr_engine_defaults_to_quick_and_validates(conn: sqlite3.Connection):
 
 
 def test_phase_angles_cover_every_15_degrees_once():
-    all_angles = [angle for phase in sorted(OCR_PHASE_ANGLES) for angle in OCR_PHASE_ANGLES[phase]]
+    all_angles = [
+        angle for phase in sorted(Deepening.PHASE_ANGLES) for angle in Deepening.PHASE_ANGLES[phase]
+    ]
 
     assert sorted(all_angles) == list(range(0, 360, 15))
 
 
 def test_completed_phase_needs_every_angle_in_order():
-    assert _completed_phase({0}) == 1
-    assert _completed_phase({0, 90, 180}) == 1
-    assert _completed_phase({0, 90, 180, 270}) == 2
-    assert _completed_phase(set(range(0, 360, 15))) == 3
-    assert _completed_phase({15, 30}) == 0
+    assert Deepening.completed_phase({0}) == 1
+    assert Deepening.completed_phase({0, 90, 180}) == 1
+    assert Deepening.completed_phase({0, 90, 180, 270}) == 2
+    assert Deepening.completed_phase(set(range(0, 360, 15))) == 3
+    assert Deepening.completed_phase({15, 30}) == 0
 
 
 def test_merge_lines_skips_known_text_and_keeps_fuller_word():
-    merged, added = _merge_lines("Invoice\nSECRETAR", ["invoice", "SECRETARY", "DIRECTOR"])
+    merged, added = Deepening.merge_lines("Invoice\nSECRETAR", ["invoice", "SECRETARY", "DIRECTOR"])
 
     assert merged.split("\n") == ["Invoice", "SECRETARY", "DIRECTOR"]
     assert added == [1, 2]  # indexes into the new lines: "invoice" (index 0) was already known
@@ -77,9 +71,9 @@ def test_merge_lines_skips_known_text_and_keeps_fuller_word():
 def test_rotate_array_right_angles_swap_dimensions_and_others_grow():
     array = np.zeros((20, 40, 3), dtype=np.uint8)
 
-    assert _rotate_array(array, 90).shape[:2] == (40, 20)
-    assert _rotate_array(array, 180).shape[:2] == (20, 40)
-    rotated = _rotate_array(array, 45)
+    assert Deepening.rotate_array(array, 90).shape[:2] == (40, 20)
+    assert Deepening.rotate_array(array, 180).shape[:2] == (20, 40)
+    rotated = Deepening.rotate_array(array, 45)
     assert rotated.shape[0] > 20 and rotated.shape[1] > 20
 
 
@@ -109,7 +103,7 @@ def test_migration_adds_phase_columns_to_existing_pages(tmp_path):
         migrated.close()
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_quick_engine_reads_each_file_once(mock_get_engine, conn, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
@@ -119,14 +113,14 @@ def test_quick_engine_reads_each_file_once(mock_get_engine, conn, tmp_path):
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert engine.predict.call_count == 1
     page = _image_page(conn, "a.png")
     assert (page["ocr_phase"], page["ocr_angles"]) == (1, "0")
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_moderate_engine_adds_rotated_text_and_records_progress(mock_get_engine, conn, tmp_path):
     # Quick read finds one line; every rotated read finds the same extra one.
     engine = MagicMock()
@@ -140,15 +134,15 @@ def test_moderate_engine_adds_rotated_text_and_records_progress(mock_get_engine,
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     page = _image_page(conn, "a.png")
     assert page["ocr_text"].split("\n") == ["hello", "DIRECTOR"]
     assert (page["ocr_phase"], page["ocr_angles"]) == (2, "0,90,180,270")
-    assert engine.predict.call_count == 1 + len(OCR_PHASE_ANGLES[2])
+    assert engine.predict.call_count == 1 + len(Deepening.PHASE_ANGLES[2])
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_deep_engine_reads_every_angle_and_is_not_repeated(mock_get_engine, conn, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
@@ -159,16 +153,16 @@ def test_deep_engine_reads_every_angle_and_is_not_repeated(mock_get_engine, conn
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert _image_page(conn, "a.png")["ocr_phase"] == 3
     assert engine.predict.call_count == 360 // 15
 
     # Already at the deepest phase: a second run has nothing left to read.
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert engine.predict.call_count == 360 // 15
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_raising_engine_setting_deepens_already_indexed_files(mock_get_engine, conn, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
@@ -177,22 +171,22 @@ def test_raising_engine_setting_deepens_already_indexed_files(mock_get_engine, c
     folder.mkdir()
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert engine.predict.call_count == 1
 
     OcrSettings.set_engine(conn, "moderate")
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert _image_page(conn, "a.png")["ocr_phase"] == 2
     # Only the new angles were read - the quick pass wasn't redone.
-    assert engine.predict.call_count == 1 + len(OCR_PHASE_ANGLES[2])
+    assert engine.predict.call_count == 1 + len(Deepening.PHASE_ANGLES[2])
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
     mock_get_engine, conn, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(ocr_module, "_QUICK_WORK_CHECK_SECONDS", 0.0)
+    monkeypatch.setattr(Deepening, "QUICK_WORK_CHECK_SECONDS", 0.0)
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -211,7 +205,7 @@ def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
     OcrSettings.set_engine(conn, "moderate")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     # a.png quick, one angle of a.png, then b.png's quick pass jumps the queue.
     assert calls[:3] == ["a.png", "angle", "b.png"], calls
@@ -220,7 +214,7 @@ def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
     assert _image_page(conn, "b.png")["ocr_angles"] == "0,90,180,270"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_failed_file_is_not_retried_by_later_rounds(mock_get_engine, conn, tmp_path):
     engine = MagicMock()
     engine.predict.side_effect = RuntimeError("boom")
@@ -231,7 +225,7 @@ def test_failed_file_is_not_retried_by_later_rounds(mock_get_engine, conn, tmp_p
     source = Sources.add(conn, folder)
     attempts = 1 + 3  # first try plus the default retries
 
-    processed = run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    processed = Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     assert len(processed) == 1
     assert engine.predict.call_count == attempts
@@ -257,12 +251,12 @@ def test_deepening_units_order_moderate_before_deep_and_skip_native(conn, tmp_pa
         )
     conn.commit()
 
-    units = _find_deepening_units(conn, [source], max_phase=3)
+    units = Deepening.find_units(conn, [source], max_phase=3)
 
     # The phase-1 page (next: moderate) goes before the phase-2 one (next: deep);
     # the native-text page has nothing to read.
     assert [(unit.document_id, unit.phase) for unit in units] == [(2, 2), (1, 3)]
-    assert _find_deepening_units(conn, [source], max_phase=1) == []
+    assert Deepening.find_units(conn, [source], max_phase=1) == []
 
 
 def test_migration_renames_old_setting_keys_keeping_values(tmp_path):
@@ -303,7 +297,6 @@ def test_migration_renames_old_setting_keys_keeping_values(tmp_path):
 
 
 def test_deepening_progress_counts_pages_done_per_phase(conn, tmp_path):
-    from vethuq_core.ocr import deepening_progress
 
     folder = tmp_path / "src"
     folder.mkdir()
@@ -327,16 +320,16 @@ def test_deepening_progress_counts_pages_done_per_phase(conn, tmp_path):
     conn.commit()
 
     # The native page isn't counted; of the three OCR pages, 2 reached moderate, 1 deep.
-    assert deepening_progress(conn, [source], 3) == {2: (2, 3), 3: (1, 3)}
-    assert deepening_progress(conn, [source], 2) == {2: (2, 3)}
-    assert deepening_progress(conn, [source], 1) == {}
+    assert Deepening.progress(conn, [source], 3) == {2: (2, 3), 3: (1, 3)}
+    assert Deepening.progress(conn, [source], 2) == {2: (2, 3)}
+    assert Deepening.progress(conn, [source], 1) == {}
 
 
 def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(tmp_path):
-    from vethuq_core.ocr import PageResult, _page_phase_columns
+    from vethuq_core.ocr import PageResult
 
-    assert _page_phase_columns(PageResult("text", 1.0, "native")) == (1, "")
-    assert _page_phase_columns(PageResult("text", 0.9, "ocr")) == (1, "0")
+    assert PageResult("text", 1.0, "native").phase_columns() == (1, "")
+    assert PageResult("text", 0.9, "ocr").phase_columns() == (1, "0")
 
     db_path = tmp_path / "v18.db"
     setup = Db.connect(db_path)
@@ -368,7 +361,7 @@ def _scored(*lines: tuple[str, float]):
     return [{"rec_texts": [t for t, _ in lines], "rec_scores": [sc for _, sc in lines]}]
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_deeper_phases_track_timestamps_and_their_own_metrics(mock_get_engine, conn, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _result("hello")
@@ -379,7 +372,7 @@ def test_deeper_phases_track_timestamps_and_their_own_metrics(mock_get_engine, c
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     phases = {
         row["phase"]: row for row in conn.execute("SELECT * FROM document_phases ORDER BY phase")
@@ -397,11 +390,11 @@ def test_deeper_phases_track_timestamps_and_their_own_metrics(mock_get_engine, c
     assert metrics == {1: 1, 2: 1, 3: 1}
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_interrupted_phase_is_not_completed_or_folded_until_finished(
     mock_get_engine, conn, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(ocr_module, "_QUICK_WORK_CHECK_SECONDS", 0.0)
+    monkeypatch.setattr(Deepening, "QUICK_WORK_CHECK_SECONDS", 0.0)
     folder = tmp_path / "src"
     folder.mkdir()
     _write_png(folder / "a.png")
@@ -425,7 +418,7 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
         return stop_after["pending"] and _image_page(conn, "b.png") is not None
 
     stop_after["pending"] = True
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)], should_stop=should_stop)
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)], should_stop=should_stop)
 
     a_row = conn.execute(
         "SELECT dp.* FROM document_phases dp "
@@ -439,7 +432,7 @@ def test_interrupted_phase_is_not_completed_or_folded_until_finished(
     )
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
     mock_get_engine, conn, tmp_path
 ):
@@ -451,16 +444,16 @@ def test_reindexing_a_changed_file_clears_its_deeper_phase_tracking(
     folder.mkdir()
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
     assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 1
 
     _write_png(folder / "a.png", width=60)  # content changes
-    ocr_module._upsert_document(conn, source.id, folder / "a.png", "image")
+    Document.upsert(conn, source.id, folder / "a.png", "image")
 
     assert conn.execute("SELECT COUNT(*) FROM document_phases").fetchone()[0] == 0
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
     mock_get_engine, conn, tmp_path
 ):
@@ -478,7 +471,7 @@ def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
     _write_png(folder / "a.png")
     source = Sources.add(conn, folder)
 
-    run_ocr_phased(conn, lambda: [Sources.get(conn, source.id)])
+    Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
 
     # DIRECTOR is added once (later angles find it already there): (0.9 * 1 + 0.5) / 2.
     assert _image_page(conn, "a.png")["confidence"] == pytest.approx(0.7)

@@ -19,8 +19,8 @@ from vethuq._core.index import (
     StaleLockError,
 )
 from vethuq._core.index import IndexRunner as _IndexRunner
+from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
-from vethuq._core.ocr import get_document_results as _get_document_results
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import Search as _Search
 from vethuq._core.search import SearchMatch
@@ -199,7 +199,7 @@ class Index:
         conn = _Db.connect()
         try:
             source = _Sources.get(conn, _coerce_target(target))
-            return _get_document_results(conn, source.id)
+            return _Document.get_results(conn, source.id)
         finally:
             conn.close()
 

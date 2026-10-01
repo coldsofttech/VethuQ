@@ -1,0 +1,481 @@
+"""The quick (first) OCR pass: every file read once, upright, so it's searchable fast."""
+
+from __future__ import annotations
+
+import logging
+import sqlite3
+import threading
+import time
+from collections.abc import Callable, Collection
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import psutil
+
+if TYPE_CHECKING:
+    pass
+
+from vethuq_core.db.queries import Document as DocumentQuery
+from vethuq_core.db.queries.sources import Source as SourceQuery
+from vethuq_core.ocr.document import Document
+from vethuq_core.ocr.metrics import Metrics
+from vethuq_core.ocr.pending import Pending, PendingFile
+from vethuq_core.ocr.reader import PageResult, Readers
+from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.settings import IndexSettings, OcrSettings
+from vethuq_core.source import Source
+
+_logger = logging.getLogger(__name__)
+
+
+class _Wait:
+    """Sentinel: this slot is idle - parked past the current active worker count."""
+
+
+_WAIT = _Wait()
+
+
+class Quick:
+    IDLE_POLL_SECONDS = 0.5
+
+    @staticmethod
+    def run(
+        conn: sqlite3.Connection,
+        source: Source,
+        *,
+        only_new_files: bool = False,
+        only_failed: bool = False,
+        on_file_done: Callable[[str], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> list[str]:
+        """Run OCR over supported files under `source` and index the results.
+
+        Unsupported files are silently skipped. Per-file OCR failures are recorded
+        on that file's `document_index` row (status='error') without aborting the
+        rest of the source; `sources.status` reflects the overall outcome.
+
+        When `only_new_files` is True, a file that already has a successful
+        `document_index` row is left untouched unless its content has changed
+        since - checked via mtime/size first, falling back to a full checksum
+        comparison when either moved. A changed file is treated as modified and
+        (re)processed just like a new one. Use this for a source that's already
+        been indexed, to pick up files added or edited since the last run
+        without redoing OCR on everything else. When False (the default), every
+        supported file under the source is (re)processed unconditionally -
+        appropriate for a source that's freshly added or reactivated after
+        removal.
+
+        When `only_failed` is True, only files whose `document_index` row has
+        status='error' are (re)processed - new and already-indexed files are
+        left untouched. Use this to retry failures without touching anything
+        else. Takes precedence over `only_new_files` if both are set.
+
+        When `only_new_files` is True (and `only_failed` is False), this also
+        reconciles the source's tracked files against what's actually on disk
+        before processing anything - see `Document.reconcile_renamed_and_removed`.
+        A file that was renamed/moved within the source is detected by content
+        and has its `document_index` row updated in place rather than being
+        reprocessed as new; a tracked file that's gone missing (and wasn't
+        claimed by a rename) is marked 'removed' for later cleanup by
+        `Sources.purge_expired_documents`.
+
+        `on_file_done`, when given, is called with a file's path immediately after
+        it's (re)processed - used to report progress. `should_stop`, when given,
+        is checked before each file and stops the source early (leaving remaining
+        files untouched) if it returns True.
+
+        Returns the paths of the files actually (re)processed in this call.
+        """
+        root = Path(source.path)
+        had_error = False
+        processed_paths: list[str] = []
+        disk_files = list(Readers.iter_files(root))
+
+        renamed_paths: set[str] = set()
+        if only_new_files and not only_failed:
+            renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
+            conn.commit()
+            for new_path in sorted(renamed_paths):
+                processed_paths.append(new_path)
+                if on_file_done is not None:
+                    on_file_done(new_path)
+
+        for file_path in disk_files:
+            if should_stop is not None and should_stop():
+                break
+            if str(file_path) in renamed_paths:
+                continue
+
+            existing = None
+            if only_new_files or only_failed:
+                existing = DocumentQuery.get_index_pending_check(conn, str(file_path))
+            if only_failed:
+                if existing is None or existing["status"] != "error":
+                    continue
+            elif (
+                only_new_files
+                and existing is not None
+                and existing["status"] == "indexed"
+                and not Document.has_content_changed(file_path, existing)
+            ):
+                continue
+
+            file_type = Readers.for_path(file_path).file_type
+            document_id, duplicate_source_id = Document.upsert(
+                conn, source.id, file_path, file_type
+            )
+            conn.commit()
+            processed_paths.append(str(file_path))
+
+            if duplicate_source_id is not None:
+                # Identical content already indexed under the same logical document -
+                # skip OCR entirely rather than redoing the same work.
+                Document.mark_duplicate(conn, document_id)
+                conn.commit()
+                if on_file_done is not None:
+                    on_file_done(str(file_path))
+                continue
+
+            process = psutil.Process()
+            process.cpu_percent(interval=None)  # prime; the next call reports usage since now
+            mem_before = process.memory_info().rss
+
+            reader = Readers.for_path(file_path)
+            max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
+            attempt = 0
+            last_exc: Exception | None = None
+            succeeded = False
+            while attempt < max_attempts and not succeeded:
+                attempt += 1
+                try:
+                    pages = reader.ocr(conn, file_path)
+                    Document.store_pages(conn, document_id, file_type, pages)
+                except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the source
+                    last_exc = exc
+                else:
+                    succeeded = True
+
+            peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
+            cpu_percent = process.cpu_percent(interval=None)
+            DocumentQuery.update_index_retry_stats(
+                conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
+            )
+
+            if not succeeded:
+                had_error = True
+                Document.mark_error(conn, document_id, str(last_exc))
+            else:
+                Document.mark_indexed(conn, document_id)
+                Metrics.update_processing(conn, document_id, file_type)
+                Metrics.update_confidence(conn, document_id, file_type)
+
+            conn.commit()
+            if on_file_done is not None:
+                on_file_done(str(file_path))
+
+        SourceQuery.update_scan_status(
+            conn, source.id, "error" if had_error else "indexed", datetime.now(UTC).isoformat()
+        )
+        conn.commit()
+        return processed_paths
+
+    @staticmethod
+    def process_file(
+        conn: sqlite3.Connection,
+        source: Source,
+        file_path: Path,
+        file_type: str,
+        *,
+        db_lock: threading.Lock,
+    ) -> bool:
+        """Index one file: upsert its row, dedupe by checksum, and OCR it if new content.
+
+        Returns whether it succeeded (False on an OCR failure recorded as an
+        error). This is `Quick.run`'s per-file body, pulled out separately so
+        `Quick.run_batch` can process files interleaved across sources rather than
+        one whole source at a time, and so OCR inference - the actual work
+        worth parallelizing - runs without `db_lock` held; every sqlite read/
+        write around it is serialized through `db_lock` since a single
+        connection isn't safe for unsynchronized concurrent use.
+        """
+        with db_lock:
+            document_id, duplicate_source_id = Document.upsert(
+                conn, source.id, file_path, file_type
+            )
+            conn.commit()
+
+        if duplicate_source_id is not None:
+            with db_lock:
+                Document.mark_duplicate(conn, document_id)
+                conn.commit()
+            return True
+
+        process = psutil.Process()
+        process.cpu_percent(interval=None)  # prime; the next call reports usage since now
+        mem_before = process.memory_info().rss
+
+        reader = Readers.for_path(file_path)
+        max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
+        attempt = 0
+        last_exc: Exception | None = None
+        succeeded = False
+        pages: list[PageResult] | None = None
+        while attempt < max_attempts and not succeeded:
+            attempt += 1
+            try:
+                pages = reader.ocr(conn, file_path)
+            except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
+                last_exc = exc
+            else:
+                succeeded = True
+
+        with db_lock:
+            if succeeded:
+                assert pages is not None
+                Document.store_pages(conn, document_id, file_type, pages)
+
+            peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
+            cpu_percent = process.cpu_percent(interval=None)
+            DocumentQuery.update_index_retry_stats(
+                conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
+            )
+
+            if not succeeded:
+                Document.mark_error(conn, document_id, str(last_exc))
+            else:
+                Document.mark_indexed(conn, document_id)
+                Metrics.update_processing(conn, document_id, file_type)
+                Metrics.update_confidence(conn, document_id, file_type)
+
+            conn.commit()
+
+        return succeeded
+
+    @staticmethod
+    def run_auto_elastic(
+        conn: sqlite3.Connection,
+        pending: list[PendingFile],
+        initial_workers: int,
+        handle_one: Callable[[PendingFile], None],
+        should_stop: Callable[[], bool] | None,
+        on_workers_changed: Callable[[int], None] | None,
+        *,
+        db_lock: threading.Lock,
+    ) -> None:
+        """Process `pending` with a worker count re-resolved after every file.
+
+        Spawns up to `min(IndexSettings.THREAD_WORKERS_MAX, len(pending))` worker threads up
+        front - an idle one just waits (cheap), never torn down or recreated -
+        but only lets `active_workers` of them (by slot index) actually pull
+        work at a time. `active_workers` is recomputed via
+        `Scheduler.resolve_workers` after every file finishes, from the file-type
+        mix still remaining, so the active count grows or shrinks with current
+        CPU/memory headroom as the run progresses rather than being fixed for
+        the whole run.
+        """
+        max_slots = max(1, min(IndexSettings.THREAD_WORKERS_MAX, len(pending)))
+        remaining_counts = Readers.new_file_type_counts()
+        for item in pending:
+            remaining_counts[item.file_type] += 1
+
+        coord_lock = threading.Lock()
+        next_index = 0
+        in_flight = 0
+        active_workers = max(1, min(initial_workers, max_slots))
+
+        def take_next(slot: int) -> PendingFile | _Wait | None:
+            nonlocal next_index, in_flight
+            with coord_lock:
+                # Checked in this order deliberately: once the queue is drained,
+                # every slot must be able to exit - including one parked past
+                # `active_workers` - rather than waiting forever for a turn that
+                # active_workers shrinking (as remaining work runs low) may
+                # never actually give it.
+                if next_index >= len(pending):
+                    return None
+                if slot >= active_workers:
+                    return _WAIT
+                item = pending[next_index]
+                # Only defer for a heavier-than-usual file when something else is
+                # already running - if this slot is the only thing left, nothing
+                # will ever free up the budget it's waiting on, so it must proceed
+                # regardless (queue order is otherwise preserved either way: the
+                # head of the queue is never skipped, just held).
+                if in_flight > 0:
+                    with db_lock:
+                        if Scheduler.would_exceed_budget(conn, item):
+                            return _WAIT
+                next_index += 1
+                in_flight += 1
+                return item
+
+        def report_done(file_type: str) -> None:
+            nonlocal active_workers, in_flight
+            changed_to: int | None = None
+            with coord_lock:
+                in_flight -= 1
+                remaining_counts[file_type] -= 1
+                if sum(remaining_counts.values()) > 0:
+                    # `db_lock`, not just `coord_lock`: `Scheduler.resolve_workers`
+                    # reads `conn` (the `thread_workers` setting), and every use
+                    # of this connection across worker threads is serialized
+                    # through `db_lock` - see `Quick.process_file`.
+                    with db_lock:
+                        resolved = Scheduler.resolve_workers(conn, remaining_counts)
+                    new_active_workers = max(1, min(resolved, max_slots))
+                    if new_active_workers != active_workers:
+                        active_workers = new_active_workers
+                        changed_to = new_active_workers
+            if changed_to is not None and on_workers_changed is not None:
+                on_workers_changed(changed_to)
+
+        def worker_loop(slot: int) -> None:
+            while True:
+                if should_stop is not None and should_stop():
+                    return
+                item = take_next(slot)
+                if item is None:
+                    return
+                if isinstance(item, _Wait):
+                    time.sleep(Quick.IDLE_POLL_SECONDS)
+                    continue
+                handle_one(item)
+                report_done(item.file_type)
+
+        threads = [threading.Thread(target=worker_loop, args=(slot,)) for slot in range(max_slots)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+    @staticmethod
+    def run_batch(
+        conn: sqlite3.Connection,
+        sources: list[Source],
+        *,
+        only_failed: bool = False,
+        workers: int = 1,
+        on_file_start: Callable[[str], None] | None = None,
+        on_file_done: Callable[[str, bool], None] | None = None,
+        on_workers_changed: Callable[[int], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        exclude_paths: Collection[str] = (),
+        on_pending: Callable[[int], None] | None = None,
+    ) -> list[str]:
+        """Like `Quick.run`, but across every source in `sources` at once.
+
+        Every source's pending files are flattened into a single list ordered
+        by filename - `Path.name`, not the full path, and not grouped by source
+        - before processing, so a run over multiple sources reads as them
+        indexing in parallel rather than strictly one source at a time. This
+        ordering is independent of `workers`, which separately controls how
+        many files are actually OCR'd concurrently (see `Scheduler.resolve_workers`
+        for how that count is chosen; 0 or 1 processes the list sequentially in
+        the calling thread with no pool at all).
+
+        `only_failed` and the per-source `only_new_files` choice (a source
+        that's already been indexed only has new/changed/failed files
+        reconsidered; a fresh/reactivated source has every file reprocessed)
+        match `Quick.run`'s semantics exactly, just applied per source before the
+        combined list is built.
+
+        `should_stop` is checked before each file is started; once it returns
+        True, no further files are started - in-flight ones still finish - and
+        the rest of the list is left untouched. `on_file_start`, when given, is
+        called with a file's path right before it's (re)processed; `on_file_done`
+        is called with its path and whether it succeeded immediately after -
+        both from whichever thread actually processed that file.
+
+        When the `thread_workers` setting is 'auto', the worker count is instead
+        re-resolved after every file (see `Quick.run_auto_elastic`) rather than fixed
+        for the whole run at `workers` - so it keeps adapting to CPU/memory
+        headroom and the shrinking pending mix as the run progresses; whenever
+        that changes it, `on_workers_changed` (when given) is called with the
+        new count, so a caller reporting progress can keep it current.
+
+        `exclude_paths` leaves those files out of the list (see
+        `Pending.iter_files`); `on_pending`, when given, is called once with the
+        number of files the list ended up with, before any is processed.
+
+        A source's `sources.status` is only updated once at least one of its
+        files in this run's list was attempted, using the outcome of whichever
+        of its files got processed before the run stopped (if it did) - a
+        source with no files attempted this run is left untouched.
+
+        Returns the paths of the files actually (re)processed, in the order
+        they finished (not the processing order for `workers` > 1).
+        """
+        pending: list[PendingFile] = []
+        for source in sources:
+            only_new_files = source.status != "pending"
+            if only_new_files and not only_failed:
+                disk_files = list(Readers.iter_files(Path(source.path)))
+                renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
+                conn.commit()
+                for renamed_path in sorted(renamed_paths):
+                    if on_file_done is not None:
+                        on_file_done(renamed_path, True)
+            for file_path, file_type in Pending.iter_files(
+                conn,
+                source,
+                only_new_files=only_new_files,
+                only_failed=only_failed,
+                exclude_paths=exclude_paths,
+            ):
+                pending.append(PendingFile(source, file_path, file_type))
+
+        pending.sort(key=lambda item: (item.path.name, str(item.path)))
+        if on_pending is not None:
+            on_pending(len(pending))
+
+        attempted_source_ids: set[int] = set()
+        had_error_by_source: dict[int, bool] = {}
+        processed_paths: list[str] = []
+        state_lock = threading.Lock()
+        db_lock = threading.Lock()
+
+        def handle_one(item: PendingFile) -> None:
+            path_str = str(item.path)
+            if on_file_start is not None:
+                on_file_start(path_str)
+            succeeded = Quick.process_file(
+                conn, item.source, item.path, item.file_type, db_lock=db_lock
+            )
+            with state_lock:
+                processed_paths.append(path_str)
+                attempted_source_ids.add(item.source.id)
+                had_error_by_source[item.source.id] = (
+                    had_error_by_source.get(item.source.id, False) or not succeeded
+                )
+            if on_file_done is not None:
+                on_file_done(path_str, succeeded)
+
+        if IndexSettings.get_thread_workers(conn) == IndexSettings.THREAD_WORKERS_AUTO:
+            Quick.run_auto_elastic(
+                conn, pending, workers, handle_one, should_stop, on_workers_changed, db_lock=db_lock
+            )
+        elif workers <= 1:
+            for item in pending:
+                if should_stop is not None and should_stop():
+                    break
+                handle_one(item)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = []
+                for item in pending:
+                    if should_stop is not None and should_stop():
+                        break
+                    futures.append(executor.submit(handle_one, item))
+                for future in futures:
+                    future.result()
+
+        now = datetime.now(UTC).isoformat()
+        for source in sources:
+            if source.id in attempted_source_ids:
+                status = "error" if had_error_by_source[source.id] else "indexed"
+                SourceQuery.update_scan_status(conn, source.id, status, now)
+        conn.commit()
+
+        return processed_paths

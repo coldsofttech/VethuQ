@@ -5,15 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.ocr import (
-    _capture_timestamps,
-    _engine_local,
-    _get_engine,
-    _has_content_changed,
-    _is_native_text,
-    _resolve_device,
-    run_ocr,
-)
+from vethuq_core.ocr import Document, Engine, PdfReader, Quick
 from vethuq_core.settings import GpuSettings
 from vethuq_core.source import Sources
 
@@ -30,7 +22,7 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
     return [{"rec_texts": [text], "rec_scores": [score]}]
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _fake_ocr_result()
@@ -40,7 +32,7 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
     image_path.write_bytes(b"fake png bytes")
     source = Sources.add(conn, image_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -61,7 +53,7 @@ def test_run_ocr_indexes_image_file(mock_get_engine, conn: sqlite3.Connection, t
     assert doc["modified_at"] is not None
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_marks_document_processing_while_in_flight(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -84,7 +76,7 @@ def test_run_ocr_marks_document_processing_while_in_flight(
 
     source = Sources.add(conn, image_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     assert captured["status"] == "processing"
     assert captured["started_at"] is not None
@@ -95,7 +87,7 @@ def test_run_ocr_marks_document_processing_while_in_flight(
     assert doc["status"] == "indexed"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -109,7 +101,7 @@ def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     (folder / "b.png").write_bytes(b"identical bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     assert engine.predict.call_count == 1
 
@@ -139,7 +131,7 @@ def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
     )
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_promotes_duplicate_when_original_is_modified(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -155,7 +147,7 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     file2.write_bytes(b"identical bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc1 = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file1.resolve()),)
@@ -177,7 +169,7 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     os.utime(file1, (new_mtime, new_mtime))
     engine.predict.return_value = _fake_ocr_result("new content for file1")
 
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     # Only file1 needed reprocessing - file2's own bytes never changed.
     assert second_run == [str(file1.resolve())]
@@ -203,7 +195,7 @@ def test_run_ocr_promotes_duplicate_when_original_is_modified(
     assert page2["ocr_text"] == "shared content"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_updates_processing_metrics_on_success(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -213,7 +205,7 @@ def test_run_ocr_updates_processing_metrics_on_success(
 
     first = tmp_path / "first.png"
     first.write_bytes(b"fake png bytes")
-    run_ocr(conn, Sources.add(conn, first))
+    Quick.run(conn, Sources.add(conn, first))
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 1
@@ -227,7 +219,7 @@ def test_run_ocr_updates_processing_metrics_on_success(
     engine.predict.return_value = _fake_ocr_result(score=0.6)
     second = tmp_path / "second.png"
     second.write_bytes(b"more fake png bytes")
-    run_ocr(conn, Sources.add(conn, second))
+    Quick.run(conn, Sources.add(conn, second))
 
     metrics = conn.execute("SELECT * FROM processing_metrics WHERE file_type = 'image'").fetchone()
     assert metrics["document_count"] == 2
@@ -239,7 +231,7 @@ def test_run_ocr_updates_processing_metrics_on_success(
     assert confidence["avg_confidence"] == pytest.approx(0.7)
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_does_not_update_processing_metrics_on_error(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -249,13 +241,13 @@ def test_run_ocr_does_not_update_processing_metrics_on_error(
 
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
-    run_ocr(conn, Sources.add(conn, image_path))
+    Quick.run(conn, Sources.add(conn, image_path))
 
     assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
     assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_skips_unsupported_files(mock_get_engine, conn: sqlite3.Connection, tmp_path):
     engine = MagicMock()
     engine.predict.return_value = _fake_ocr_result()
@@ -267,14 +259,14 @@ def test_run_ocr_skips_unsupported_files(mock_get_engine, conn: sqlite3.Connecti
     (folder / "scan.jpg").write_bytes(b"fake jpg bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     docs = conn.execute("SELECT file_path FROM document_index").fetchall()
     assert len(docs) == 1
     assert docs[0]["file_path"].endswith("scan.jpg")
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_records_error_without_aborting(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -286,7 +278,7 @@ def test_run_ocr_records_error_without_aborting(
     image_path.write_bytes(b"fake png bytes")
     source = Sources.add(conn, image_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -300,7 +292,7 @@ def test_run_ocr_records_error_without_aborting(
     assert updated_source["status"] == "error"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_rerun_replaces_stale_page_rows(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -311,10 +303,10 @@ def test_run_ocr_rerun_replaces_stale_page_rows(
     image_path = tmp_path / "scan.png"
     image_path.write_bytes(b"fake png bytes")
     source = Sources.add(conn, image_path)
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     engine.predict.return_value = _fake_ocr_result("second pass")
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -324,7 +316,7 @@ def test_run_ocr_rerun_replaces_stale_page_rows(
     assert pages[0]["ocr_text"] == "second pass"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_only_new_files_skips_already_indexed(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -337,14 +329,14 @@ def test_run_ocr_only_new_files_skips_already_indexed(
     (folder / "first.png").write_bytes(b"fake png bytes")
     source = Sources.add(conn, folder)
 
-    first_run = run_ocr(conn, source)
+    first_run = Quick.run(conn, source)
     assert first_run == [str((folder / "first.png").resolve())]
 
     # A new file shows up in the folder after the source is already indexed.
     (folder / "second.png").write_bytes(b"fake png bytes")
     engine.predict.return_value = _fake_ocr_result("second file")
 
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     assert second_run == [str((folder / "second.png").resolve())]
 
@@ -356,7 +348,7 @@ def test_run_ocr_only_new_files_skips_already_indexed(
     assert docs[str((folder / "second.png").resolve())] == "indexed"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_only_new_files_reindexes_modified_file(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -368,7 +360,7 @@ def test_run_ocr_only_new_files_reindexes_modified_file(
     image_path.write_bytes(b"original bytes")
     source = Sources.add(conn, image_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
     doc = conn.execute(
         "SELECT id FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
     ).fetchone()
@@ -379,7 +371,7 @@ def test_run_ocr_only_new_files_reindexes_modified_file(
     os.utime(image_path, (new_mtime, new_mtime))
     engine.predict.return_value = _fake_ocr_result("updated content")
 
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     assert second_run == [str(image_path.resolve())]
     page = conn.execute(
@@ -388,7 +380,7 @@ def test_run_ocr_only_new_files_reindexes_modified_file(
     assert page["ocr_text"] == "updated content"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -400,16 +392,16 @@ def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
     image_path.write_bytes(b"original bytes")
     source = Sources.add(conn, image_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
-    with patch("vethuq_core.ocr._compute_sha256") as mock_checksum:
-        second_run = run_ocr(conn, source, only_new_files=True)
+    with patch("vethuq_core.ocr.Document.compute_sha256") as mock_checksum:
+        second_run = Quick.run(conn, source, only_new_files=True)
         mock_checksum.assert_not_called()
 
     assert second_run == []
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_only_new_files_detects_plain_rename(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -423,7 +415,7 @@ def test_run_ocr_only_new_files_detects_plain_rename(
     old_path.write_bytes(b"fake png bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(old_path.resolve()),)
     ).fetchone()
@@ -431,7 +423,7 @@ def test_run_ocr_only_new_files_detects_plain_rename(
     new_path = folder / "renamed.png"
     old_path.rename(new_path)
 
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     assert engine.predict.call_count == 1  # no re-OCR for a plain rename
     assert second_run == [str(new_path.resolve())]
@@ -448,7 +440,7 @@ def test_run_ocr_only_new_files_detects_plain_rename(
     )
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_only_new_files_marks_missing_file_removed(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -462,14 +454,14 @@ def test_run_ocr_only_new_files_marks_missing_file_removed(
     image_path.write_bytes(b"fake png bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
     ).fetchone()
     assert doc["status"] == "indexed"
 
     image_path.unlink()
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     assert second_run == []
     updated = conn.execute(
@@ -479,7 +471,7 @@ def test_run_ocr_only_new_files_marks_missing_file_removed(
     assert updated["removed_at"] is not None
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -495,7 +487,7 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     file_b.write_bytes(b"identical bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc_a = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file_a.resolve()),)
@@ -515,7 +507,7 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     file_a.unlink()
     file_b.rename(file_c)
 
-    second_run = run_ocr(conn, source, only_new_files=True)
+    second_run = Quick.run(conn, source, only_new_files=True)
 
     # No OCR needed - the content at file_c already matches an indexed row.
     assert engine.predict.call_count == 1
@@ -542,7 +534,7 @@ def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
     assert page["ocr_text"] == "shared content"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_purge_promotes_duplicate_when_original_document_is_removed(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -558,7 +550,7 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
     file_b.write_bytes(b"identical bytes")
     source = Sources.add(conn, folder)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc_a = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(file_a.resolve()),)
@@ -570,7 +562,7 @@ def test_purge_promotes_duplicate_when_original_document_is_removed(
 
     # file_a (the original) is deleted outright, with nothing to rename it to.
     file_a.unlink()
-    run_ocr(conn, source, only_new_files=True)
+    Quick.run(conn, source, only_new_files=True)
 
     removed = conn.execute(
         "SELECT status, removed_at FROM document_index WHERE id = ?", (doc_a["id"],)
@@ -611,8 +603,8 @@ def test_has_content_changed_skips_hash_when_mtime_and_size_unchanged(tmp_path):
         "sha256": "irrelevant",
     }
 
-    with patch("vethuq_core.ocr._compute_sha256") as mock_checksum:
-        assert _has_content_changed(file_path, existing) is False
+    with patch("vethuq_core.ocr.Document.compute_sha256") as mock_checksum:
+        assert Document.has_content_changed(file_path, existing) is False
         mock_checksum.assert_not_called()
 
 
@@ -626,7 +618,7 @@ def test_has_content_changed_true_when_checksum_differs_despite_same_size(tmp_pa
         "sha256": "not-the-real-checksum",
     }
 
-    assert _has_content_changed(file_path, existing) is True
+    assert Document.has_content_changed(file_path, existing) is True
 
 
 class _FakeStat:
@@ -642,7 +634,7 @@ class _FakeStat:
 def test_capture_timestamps_uses_st_birthtime_when_available():
     fake_stat = _FakeStat(st_mtime=1_700_000_000.0, st_birthtime=1_600_000_000.0)
 
-    created_at, modified_at = _capture_timestamps(fake_stat)
+    created_at, modified_at = Document.capture_timestamps(fake_stat)
 
     assert created_at != modified_at
 
@@ -652,7 +644,7 @@ def test_capture_timestamps_falls_back_to_mtime_without_birthtime():
     assert not hasattr(fake_stat, "st_birthtime")
 
     with patch.object(sys, "platform", "linux"):
-        created_at, modified_at = _capture_timestamps(fake_stat)
+        created_at, modified_at = Document.capture_timestamps(fake_stat)
 
     assert created_at == modified_at
 
@@ -662,13 +654,13 @@ def test_capture_timestamps_uses_st_ctime_on_windows_without_birthtime():
     assert not hasattr(fake_stat, "st_birthtime")
 
     with patch.object(sys, "platform", "win32"):
-        created_at, modified_at = _capture_timestamps(fake_stat)
+        created_at, modified_at = Document.capture_timestamps(fake_stat)
 
     assert created_at != modified_at
 
 
 def test_resolve_device_defaults_to_cpu(conn: sqlite3.Connection):
-    assert _resolve_device(conn) == "cpu"
+    assert Engine.resolve_device(conn) == "cpu"
 
 
 def test_resolve_device_uses_gpu_when_enabled_and_available(conn: sqlite3.Connection):
@@ -678,7 +670,7 @@ def test_resolve_device_uses_gpu_when_enabled_and_available(conn: sqlite3.Connec
     GpuSettings.set_enabled(conn, True)
 
     with patch.dict(sys.modules, {"paddle": mock_paddle}):
-        assert _resolve_device(conn) == "gpu"
+        assert Engine.resolve_device(conn) == "gpu"
 
 
 def test_resolve_device_falls_back_to_cpu_when_enabled_but_unsupported(
@@ -689,20 +681,20 @@ def test_resolve_device_falls_back_to_cpu_when_enabled_but_unsupported(
     GpuSettings.set_enabled(conn, True)
 
     with patch.dict(sys.modules, {"paddle": mock_paddle}):
-        assert _resolve_device(conn) == "cpu"
+        assert Engine.resolve_device(conn) == "cpu"
 
 
 def test_get_engine_enables_angle_orientation_detection(conn: sqlite3.Connection):
     mock_paddleocr_module = MagicMock()
 
-    if hasattr(_engine_local, "engine"):
-        del _engine_local.engine
+    if hasattr(Engine._local, "engine"):
+        del Engine._local.engine
     try:
         with patch.dict(sys.modules, {"paddleocr": mock_paddleocr_module}):
-            _get_engine(conn)
+            Engine.get(conn)
     finally:
-        if hasattr(_engine_local, "engine"):
-            del _engine_local.engine
+        if hasattr(Engine._local, "engine"):
+            del Engine._local.engine
 
     _, kwargs = mock_paddleocr_module.PaddleOCR.call_args
     assert kwargs["use_doc_orientation_classify"] is True
@@ -710,7 +702,7 @@ def test_get_engine_enables_angle_orientation_detection(conn: sqlite3.Connection
 
 
 def test_is_native_text_threshold():
-    assert not _is_native_text("")
-    assert not _is_native_text("p.3")
-    assert not _is_native_text("a-long-single-token-with-no-spaces-at-all")
-    assert _is_native_text("This is a real paragraph of page content.")
+    assert not PdfReader.is_native_text("")
+    assert not PdfReader.is_native_text("p.3")
+    assert not PdfReader.is_native_text("a-long-single-token-with-no-spaces-at-all")
+    assert PdfReader.is_native_text("This is a real paragraph of page content.")

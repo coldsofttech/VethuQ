@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.ocr import run_ocr
+from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
@@ -23,7 +23,7 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 
 @pytest.mark.integration
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_digital_pdf_skips_engine_entirely(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -31,7 +31,7 @@ def test_run_ocr_digital_pdf_skips_engine_entirely(
     pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
     source = Sources.add(conn, pdf_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     mock_get_engine.assert_not_called()
 
@@ -47,7 +47,7 @@ def test_run_ocr_digital_pdf_skips_engine_entirely(
 
 
 @pytest.mark.integration
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_scanned_pdf_runs_full_page_ocr(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -59,7 +59,7 @@ def test_run_ocr_scanned_pdf_runs_full_page_ocr(
     pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
     source = Sources.add(conn, pdf_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     engine.predict.assert_called_once()
 
@@ -72,7 +72,7 @@ def test_run_ocr_scanned_pdf_runs_full_page_ocr(
 
 
 @pytest.mark.integration
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -86,7 +86,7 @@ def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
     )
     source = Sources.add(conn, pdf_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     engine.predict.assert_called_once()
 
@@ -203,7 +203,7 @@ _PDF_CASES = [
     _PDF_CASES,
     ids=[case[0][:2] for case in _PDF_CASES],
 )
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_fixture_pdf_indexes_expected_pages(
     mock_get_engine,
     fixture_name,
@@ -222,7 +222,7 @@ def test_run_ocr_fixture_pdf_indexes_expected_pages(
     pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
     source = Sources.add(conn, pdf_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     doc = conn.execute(
         "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
@@ -248,7 +248,7 @@ def test_run_ocr_fixture_pdf_indexes_expected_pages(
     ],
     ids=["protected", "corrupted"],
 )
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_unreadable_pdf_records_error_without_aborting(
     mock_get_engine, fixture_name, conn: sqlite3.Connection, tmp_path
 ):
@@ -256,7 +256,7 @@ def test_run_ocr_unreadable_pdf_records_error_without_aborting(
     pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
     source = Sources.add(conn, pdf_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     mock_get_engine.return_value.predict.assert_not_called()
 

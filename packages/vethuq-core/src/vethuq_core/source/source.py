@@ -241,7 +241,7 @@ class Sources:
 
         A document is marked 'removed' (rather than deleted outright) when its
         file goes missing from an otherwise still-active source - see
-        `vethuq_core.ocr._reconcile_renamed_and_removed_files` - so it survives
+        `vethuq_core.ocr.Document.reconcile_renamed_and_removed` - so it survives
         briefly in case the file reappears (e.g. it was moved out and back, or
         the miss was transient). This mirrors `Sources.purge_expired_sources`
         but at the individual-file level, and shares the same retention setting.

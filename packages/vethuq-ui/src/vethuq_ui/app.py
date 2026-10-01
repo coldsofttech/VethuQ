@@ -20,7 +20,7 @@ from vethuq_core.index import (
     IndexState,
     StaleLockError,
 )
-from vethuq_core.ocr import get_document_results
+from vethuq_core.ocr import Document
 from vethuq_core.search import Search
 from vethuq_core.settings import GpuSettings
 from vethuq_core.source import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
@@ -642,7 +642,7 @@ class MainWindow(tk.Tk):
     def refresh_sources(self) -> None:
         self.tree.delete(*self.tree.get_children())
         for source in Sources.list_all(self.conn):
-            results = get_document_results(self.conn, source.id)
+            results = Document.get_results(self.conn, source.id)
             done = sum(1 for result in results if result.status == "indexed")
             noun = "file" if len(results) == 1 else "files"
             icon_kwargs: dict[str, Any] = {}

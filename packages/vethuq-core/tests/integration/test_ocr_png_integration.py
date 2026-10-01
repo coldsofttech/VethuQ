@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from vethuq_core.db import Db
-from vethuq_core.ocr import run_ocr
+from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "png"
@@ -26,7 +26,7 @@ def test_png_fixtures_are_present():
 
 @pytest.mark.integration
 @pytest.mark.parametrize("fixture_path", _PNG_FIXTURES, ids=[p.stem for p in _PNG_FIXTURES])
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_fixture_png_indexes_as_single_image_page(
     mock_get_engine, fixture_path: Path, conn: sqlite3.Connection, tmp_path
 ):
@@ -38,7 +38,7 @@ def test_run_ocr_fixture_png_indexes_as_single_image_page(
     png_path.write_bytes(fixture_path.read_bytes())
     source = Sources.add(conn, png_path)
 
-    run_ocr(conn, source)
+    Quick.run(conn, source)
 
     engine.predict.assert_called_once()
 

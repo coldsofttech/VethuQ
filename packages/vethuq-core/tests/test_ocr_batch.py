@@ -3,16 +3,15 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import vethuq_core.ocr as ocr_module
 from vethuq_core.db import Db
-from vethuq_core.ocr import _auto_worker_count, resolve_thread_workers, run_ocr_batch
+from vethuq_core.ocr import Quick, Scheduler
 from vethuq_core.settings import IndexSettings
 from vethuq_core.source import Sources
 
 
 @pytest.fixture
 def conn(tmp_path):
-    # check_same_thread=False: `run_ocr_batch` with workers > 1 hands this
+    # check_same_thread=False: `Quick.run_batch` with workers > 1 hands this
     # connection to worker threads, same as `_run_worker` does for real.
     db_path = tmp_path / "vethuq.db"
     connection = Db.connect(db_path, check_same_thread=False)
@@ -25,24 +24,24 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 
 def test_resolve_thread_workers_disabled_by_default(conn: sqlite3.Connection):
-    assert resolve_thread_workers(conn, {"pdf": 0, "image": 5}) == 0
+    assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 5}) == 0
 
 
 def test_resolve_thread_workers_fixed_value_capped_to_pending_count(conn: sqlite3.Connection):
     IndexSettings.set_thread_workers(conn, "8")
 
-    assert resolve_thread_workers(conn, {"pdf": 0, "image": 3}) == 3
+    assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 3}) == 3
 
 
 def test_resolve_thread_workers_fixed_value_unaffected_by_zero_pending(conn: sqlite3.Connection):
     IndexSettings.set_thread_workers(conn, "4")
 
-    assert resolve_thread_workers(conn, {"pdf": 0, "image": 0}) == 4
+    assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 0}) == 4
 
 
-@patch("vethuq_core.ocr.psutil.virtual_memory")
-@patch("vethuq_core.ocr.psutil.cpu_percent")
-@patch("vethuq_core.ocr.psutil.cpu_count")
+@patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_count")
 def test_auto_worker_count_scales_down_when_cpu_busy(
     mock_cpu_count, mock_cpu_percent, mock_virtual_memory
 ):
@@ -50,12 +49,12 @@ def test_auto_worker_count_scales_down_when_cpu_busy(
     mock_cpu_percent.return_value = 90.0
     mock_virtual_memory.return_value = MagicMock(percent=20.0, available=8 * 1024 * 1024 * 1024)
 
-    assert _auto_worker_count({"pdf": 0, "image": 10}, 10) == 1
+    assert Scheduler.auto_worker_count({"pdf": 0, "image": 10}, 10) == 1
 
 
-@patch("vethuq_core.ocr.psutil.virtual_memory")
-@patch("vethuq_core.ocr.psutil.cpu_percent")
-@patch("vethuq_core.ocr.psutil.cpu_count")
+@patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_count")
 def test_auto_worker_count_scales_down_when_memory_scarce(
     mock_cpu_count, mock_cpu_percent, mock_virtual_memory
 ):
@@ -66,12 +65,12 @@ def test_auto_worker_count_scales_down_when_memory_scarce(
         available=500 * 1024 * 1024,  # under one engine's footprint
     )
 
-    assert _auto_worker_count({"pdf": 0, "image": 10}, 10) == 1
+    assert Scheduler.auto_worker_count({"pdf": 0, "image": 10}, 10) == 1
 
 
-@patch("vethuq_core.ocr.psutil.virtual_memory")
-@patch("vethuq_core.ocr.psutil.cpu_percent")
-@patch("vethuq_core.ocr.psutil.cpu_count")
+@patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_count")
 def test_auto_worker_count_capped_at_pending_file_count(
     mock_cpu_count, mock_cpu_percent, mock_virtual_memory
 ):
@@ -79,10 +78,10 @@ def test_auto_worker_count_capped_at_pending_file_count(
     mock_cpu_percent.return_value = 5.0
     mock_virtual_memory.return_value = MagicMock(percent=10.0, available=32 * 1024 * 1024 * 1024)
 
-    assert _auto_worker_count({"pdf": 0, "image": 2}, 2) == 2
+    assert Scheduler.auto_worker_count({"pdf": 0, "image": 2}, 2) == 2
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_batch_orders_files_by_basename_across_sources(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -101,7 +100,7 @@ def test_run_ocr_batch_orders_files_by_basename_across_sources(
     source_b = Sources.add(conn, second)
 
     seen_order: list[str] = []
-    run_ocr_batch(
+    Quick.run_batch(
         conn,
         [source_a, source_b],
         workers=1,
@@ -111,7 +110,7 @@ def test_run_ocr_batch_orders_files_by_basename_across_sources(
     assert seen_order == ["a_report.png", "b_report.png"]
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -125,7 +124,7 @@ def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
         (folder / name).write_bytes(f"bytes for {name}".encode())
     source = Sources.add(conn, folder)
 
-    processed = run_ocr_batch(conn, [source], workers=4)
+    processed = Quick.run_batch(conn, [source], workers=4)
 
     assert len(processed) == 4
     docs = conn.execute("SELECT status FROM document_index").fetchall()
@@ -136,7 +135,7 @@ def test_run_ocr_batch_processes_every_pending_file_with_multiple_workers(
     assert updated_source["status"] == "indexed"
 
 
-@patch("vethuq_core.ocr._get_engine")
+@patch("vethuq_core.ocr.Engine.get")
 def test_run_ocr_batch_stops_early_leaves_rest_untouched(
     mock_get_engine, conn: sqlite3.Connection, tmp_path
 ):
@@ -156,15 +155,15 @@ def test_run_ocr_batch_stops_early_leaves_rest_untouched(
         calls["n"] += 1
         return calls["n"] > 1
 
-    processed = run_ocr_batch(conn, [source], workers=1, should_stop=should_stop)
+    processed = Quick.run_batch(conn, [source], workers=1, should_stop=should_stop)
 
     assert [Path(p).name for p in processed] == ["a.png"]
 
 
-@patch("vethuq_core.ocr._get_engine")
-@patch("vethuq_core.ocr.psutil.virtual_memory")
-@patch("vethuq_core.ocr.psutil.cpu_percent")
-@patch("vethuq_core.ocr.psutil.cpu_count")
+@patch("vethuq_core.ocr.Engine.get")
+@patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")
+@patch("vethuq_core.ocr.scheduler.psutil.cpu_count")
 def test_run_ocr_batch_auto_re_resolves_workers_after_each_file(
     mock_cpu_count,
     mock_cpu_percent,
@@ -188,10 +187,8 @@ def test_run_ocr_batch_auto_re_resolves_workers_after_each_file(
     source = Sources.add(conn, folder)
     IndexSettings.set_thread_workers(conn, "auto")
 
-    with patch.object(
-        ocr_module, "resolve_thread_workers", wraps=ocr_module.resolve_thread_workers
-    ) as spy_resolve:
-        processed = run_ocr_batch(conn, [source], workers=1)
+    with patch.object(Scheduler, "resolve_workers", wraps=Scheduler.resolve_workers) as spy_resolve:
+        processed = Quick.run_batch(conn, [source], workers=1)
 
     assert len(processed) == len(file_names)
     docs = conn.execute("SELECT status FROM document_index").fetchall()

@@ -34,7 +34,7 @@ class OcrSettings:
         270 degrees), or 'deep' (also every 15 degrees in between). Each mode
         includes the ones before it: everything is indexed 'quick' first so it's
         searchable right away, then the deeper passes run in the background - see
-        `vethuq_core.ocr.OCR_PHASE_ANGLES`.
+        `vethuq_core.ocr.Deepening.PHASE_ANGLES`.
         """
         value = Settings.get(conn, OcrSettings.ENGINE_KEY)
         return value if value is not None else OcrSettings.DEFAULT_ENGINE

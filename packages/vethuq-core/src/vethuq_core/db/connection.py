@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
 
         `check_same_thread=False` is only for a connection that's deliberately
         shared across threads (background indexing with worker threads - see
-        `vethuq_core.ocr.run_ocr_batch`'s `db_lock`, which serializes every use
+        `vethuq_core.ocr.Quick.run_batch`'s `db_lock`, which serializes every use
         of such a connection since SQLite connections aren't safe for
         unsynchronized concurrent access on their own).
         """

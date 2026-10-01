@@ -85,7 +85,7 @@ without a full migration framework yet.
 
 ## OCR indexing pipeline
 
-`vethuq_core.ocr.run_ocr(conn, source)` walks a registered source
+`vethuq_core.ocr.Quick.run(conn, source)` walks a registered source
 (recursively for folders), runs PaddleOCR (`lang="en"`) on every
 supported file, and writes the extracted text to SQLite. Unsupported
 extensions are skipped silently. PDFs are rasterized page-by-page via
@@ -111,7 +111,7 @@ Storage, alongside `sources`:
 | `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal. |
 
 A PaddleOCR engine instance is lazily created and reused per *thread*
-(`vethuq_core.ocr._get_engine`, backed by `threading.local`) since model
+(`vethuq_core.ocr.Engine.get`, backed by `threading.local`) since model
 init is expensive — a background run with multiple worker threads gets one
 engine per thread, so OCR inference itself parallelizes, at the cost of
 one engine's memory footprint per worker. A failure on one file is
@@ -124,7 +124,7 @@ any failed).
 
 `vethuq_core.index.runner.IndexRunner._run_worker` (the detached process `vethuq
 index run`/`restart` launches) no longer processes one source at a time:
-`vethuq_core.ocr.run_ocr_batch` flattens every targeted source's pending
+`vethuq_core.ocr.Quick.run_batch` flattens every targeted source's pending
 files into a single list ordered by filename (`Path.name`, not the full
 path or source grouping) before processing, so a run over multiple
 sources reads as them indexing in parallel rather than strictly one
@@ -135,7 +135,7 @@ How many files are actually OCR'd concurrently is controlled by the
 index thread-workers set/show`) — `0` (default) processes the list
 sequentially in the calling thread with no pool at all; `1`-`8` uses a
 fixed-size `ThreadPoolExecutor`; `auto` uses an elastic pool
-(`vethuq_core.ocr._run_auto_elastic`) that re-resolves the active worker
+(`vethuq_core.ocr.Quick.run_auto_elastic`) that re-resolves the active worker
 count after every file via `resolve_thread_workers`, from current
 CPU/memory headroom (`psutil`) and the file-type mix (PDFs weighted
 heavier than images) still remaining — up to `min(THREAD_WORKERS_MAX,
@@ -163,7 +163,7 @@ pages (in `pdf_pages`/`image_pages`, keyed by `document_index.id` — not
 own, and readers resolve which row is the carrier by checking which one
 actually has page rows for that `document_id` group.
 
-Duplicate detection (`vethuq_core.ocr._upsert_document`) hashes every file
+Duplicate detection (`vethuq_core.ocr.Document.upsert`) hashes every file
 (SHA-256) as it's processed and, if another *indexed* document already has
 that checksum, links the new one to that document's `document_id` instead
 of running OCR — duplicates are detected globally across all sources, not
@@ -178,7 +178,7 @@ If no row is left referencing a `documents` row afterward, it's deleted too
 (`vethuq_core.sources._prune_orphaned_documents`) rather than lingering as
 dead weight.
 
-Modified-file detection (`vethuq_core.ocr._has_content_changed`) lets
+Modified-file detection (`vethuq_core.ocr.Document.has_content_changed`) lets
 `vethuq index run` (`only_new_files=True`) also pick up files whose
 content changed since they were last indexed, not just newly-added ones.
 For each already-`indexed` file, its current mtime/size are compared
@@ -198,7 +198,7 @@ new, unrelated OCR text. If that leaves the old `documents` row with no
 other physical row referencing it, it's pruned.
 
 Rename/move and removal detection
-(`vethuq_core.ocr._reconcile_renamed_and_removed_files`) runs before the
+(`vethuq_core.ocr.Document.reconcile_renamed_and_removed`) runs before the
 main indexing loop whenever `vethuq index run` scans an already-indexed
 source. It compares the source's tracked file paths against what's
 actually on disk: a brand-new path whose checksum exactly matches a

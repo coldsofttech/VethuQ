@@ -22,7 +22,7 @@ class IndexSettings:
 
         One of '0' (disabled - sequential, single-threaded indexing), '1'-'8'
         (a fixed worker count), or 'auto' (sized at run time from current CPU/
-        memory headroom - see `vethuq_core.ocr.resolve_thread_workers`).
+        memory headroom - see `vethuq_core.ocr.Scheduler.resolve_workers`).
         """
         value = Settings.get(conn, IndexSettings.THREAD_WORKERS_KEY)
         return value if value is not None else IndexSettings.DEFAULT_THREAD_WORKERS

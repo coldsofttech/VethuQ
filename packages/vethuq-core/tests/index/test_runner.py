@@ -8,6 +8,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner
+from vethuq_core.ocr import Ocr, Pending
 from vethuq_core.source import SourceNotFoundError, Sources
 
 
@@ -85,8 +86,8 @@ def test_run_worker_completes(db_path, conn, tmp_path):
     conn.close()
 
     with (
-        patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr_phased", side_effect=_fake_run_ocr_phased),
+        patch.object(Pending, "file_count", return_value=3),
+        patch.object(Ocr, "run_phased", side_effect=_fake_run_ocr_phased),
     ):
         IndexRunner._run_worker(db_path, None)
 
@@ -134,8 +135,8 @@ def test_run_worker_stops_when_requested(db_path, conn, tmp_path):
         return processed
 
     with (
-        patch.object(index_runner, "pending_file_count", return_value=3),
-        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
+        patch.object(Pending, "file_count", return_value=3),
+        patch.object(Ocr, "run_phased", side_effect=fake_run_ocr_phased),
     ):
         IndexRunner._run_worker(db_path, None)
 
@@ -175,8 +176,8 @@ def test_run_worker_pauses_then_resumes(db_path, conn, tmp_path, monkeypatch):
         return []
 
     with (
-        patch.object(index_runner, "pending_file_count", return_value=0),
-        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
+        patch.object(Pending, "file_count", return_value=0),
+        patch.object(Ocr, "run_phased", side_effect=fake_run_ocr_phased),
     ):
         IndexRunner._run_worker(db_path, None)
 
@@ -208,8 +209,8 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
         return []
 
     with (
-        patch.object(index_runner, "pending_file_count", return_value=0) as fake_count,
-        patch.object(index_runner, "run_ocr_phased", side_effect=fake_run_ocr_phased),
+        patch.object(Pending, "file_count", return_value=0) as fake_count,
+        patch.object(Ocr, "run_phased", side_effect=fake_run_ocr_phased),
     ):
         IndexRunner._run_worker(db_path, None, restart=True)
 

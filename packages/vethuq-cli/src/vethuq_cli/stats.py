@@ -12,14 +12,14 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import Db
-from vethuq_core.ocr import OCR_ENGINE_PHASES
+from vethuq_core.ocr import Deepening
 from vethuq_core.stats import Confidence, ConfidenceMetric, Processing, ProcessingMetric, Stats
 
 from vethuq_cli.console import console
 
 app = typer.Typer(help="View and reset OCR processing/confidence statistics.")
 
-_PHASE_NAMES = {phase: name for name, phase in OCR_ENGINE_PHASES.items()}
+_PHASE_NAMES = {phase: name for name, phase in Deepening.ENGINE_PHASES.items()}
 
 
 def _processing_panel(metrics: list[ProcessingMetric]) -> Panel:
