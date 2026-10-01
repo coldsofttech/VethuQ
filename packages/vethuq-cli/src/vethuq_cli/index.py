@@ -16,10 +16,10 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.db import (
-    connect,
-    get_processing_metrics_avg_duration_by_file_type,
+    Db,
     list_index_runs,
 )
+from vethuq_core.db.queries import Stats
 from vethuq_core.index_runner import (
     AlreadyRunningError,
     IndexRunnerError,
@@ -73,7 +73,7 @@ def _average_durations(conn: sqlite3.Connection, phase: int) -> dict[str, float]
     """
     return {
         row["file_type"]: row["avg_duration_seconds"]
-        for row in get_processing_metrics_avg_duration_by_file_type(conn, phase)
+        for row in Stats.get_processing_metrics_avg_duration_by_file_type(conn, phase)
     }
 
 
@@ -250,7 +250,7 @@ def _live_wait(conn: sqlite3.Connection, pid: int) -> None:
 
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
     if target is None:
-        conn = connect()
+        conn = Db.connect()
         try:
             has_sources = bool(list_sources(conn))
         finally:
@@ -281,7 +281,7 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         )
         return
 
-    conn = connect()
+    conn = Db.connect()
     try:
         _live_wait(conn, pid)
     finally:
@@ -351,7 +351,7 @@ def status(
         if state is None:
             console.print("No index run has been started yet.", style="bright_black")
             return
-        conn = connect()
+        conn = Db.connect()
         try:
             if wait and state.status in ("running", "paused"):
                 _live_wait(conn, state.pid)
@@ -361,7 +361,7 @@ def status(
             conn.close()
         return
 
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             source = get_source(conn, _coerce_target(target))
@@ -470,7 +470,7 @@ def history(
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
 ) -> None:
     """List past background index runs, optionally filtered to one source."""
-    conn = connect()
+    conn = Db.connect()
     try:
         if target is not None:
             try:

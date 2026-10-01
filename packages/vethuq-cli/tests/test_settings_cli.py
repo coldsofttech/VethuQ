@@ -1,6 +1,3 @@
-from functools import partial
-
-import vethuq_cli.settings as settings_module
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
@@ -10,7 +7,12 @@ runner = CliRunner()
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(settings_module, "connect", partial(db_module.connect, db_path))
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
 
 
 def test_gpu_status_disabled_by_default(tmp_path, monkeypatch):

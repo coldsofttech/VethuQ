@@ -2,7 +2,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceNotFoundError,
@@ -18,7 +18,7 @@ from vethuq_core.sources import (
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "vethuq.db"
-    connection = connect(db_path)
+    connection = Db.connect(db_path)
     yield connection
     connection.close()
 
@@ -188,7 +188,7 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
         file_path="/removed/original.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     logical_document_id = conn.execute(
         "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
@@ -205,7 +205,7 @@ def test_purge_expired_removed_sources_promotes_surviving_duplicate(
         file_path="/kept/copy.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     conn.commit()
 
@@ -256,7 +256,7 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
         file_path="/original_source/a.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     logical_document_id = conn.execute(
         "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
@@ -268,7 +268,7 @@ def test_purge_expired_removed_sources_across_two_expired_sources_with_duplicate
         file_path="/duplicate_source/a.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     conn.commit()
 
@@ -350,7 +350,7 @@ def test_document_primary_path_moves_to_surviving_copy_on_purge(conn: sqlite3.Co
         file_path="/removed/original.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     logical_document_id = conn.execute(
         "SELECT document_id FROM document_index WHERE id = ?", (original_id,)
@@ -362,7 +362,7 @@ def test_document_primary_path_moves_to_surviving_copy_on_purge(conn: sqlite3.Co
         file_path="/kept/copy.pdf",
         file_type="pdf",
         status="indexed",
-        checksum="abc",
+        sha256="abc",
     )
     _refresh_document_paths(conn, {logical_document_id})
     assert _primary_path(conn, logical_document_id) == "/removed/original.pdf"

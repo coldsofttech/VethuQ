@@ -31,8 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq_core.db import (
-    connect,
-    default_db_path,
+    Db,
     end_running_index_run,
     fail_all_running_index_runs,
     fail_index_run,
@@ -121,7 +120,7 @@ def _lock_path(db_path: Path) -> Path:
 
 def log_path(db_path: Path | None = None) -> Path:
     """Path to the worker's log file, where a crash's traceback is written."""
-    return (db_path or default_db_path()).parent / _LOG_FILENAME
+    return (db_path or Db.default_db_path()).parent / _LOG_FILENAME
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -179,7 +178,7 @@ def read_state(db_path: Path | None = None) -> IndexState | None:
     older version of this code, in a since-changed format, is treated the
     same as no state at all rather than raised as an error.
     """
-    path = _state_path(db_path or default_db_path())
+    path = _state_path(db_path or Db.default_db_path())
     if not path.exists():
         return None
     try:
@@ -206,7 +205,7 @@ def _set_control(db_path: Path, control: str) -> None:
 
 def is_running(db_path: Path | None = None) -> tuple[bool, int | None]:
     """Return (running, pid). `running` is False if the lock is stale."""
-    lock_path = _lock_path(db_path or default_db_path())
+    lock_path = _lock_path(db_path or Db.default_db_path())
     if not lock_path.exists():
         return False, None
     try:
@@ -243,7 +242,7 @@ def start_run(
     (see `run_ocr`'s `only_failed`); otherwise new and previously-failed
     files are processed as usual.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, pid = is_running(db_path)
     if running:
         raise AlreadyRunningError(f"An index run is already in progress (pid {pid}).")
@@ -251,7 +250,7 @@ def start_run(
     lock_path = _lock_path(db_path)
     if lock_path.exists():
         if not force:
-            conn = connect(db_path)
+            conn = Db.connect(db_path)
             try:
                 auto_clear = get_stale_lock(conn) != "disable"
             finally:
@@ -266,7 +265,7 @@ def start_run(
         lock_path.unlink(missing_ok=True)
         _reconcile_orphaned_run(db_path)
 
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         if target is not None:
             get_source(conn, _coerce_target(target))  # raises SourceNotFoundError if invalid
@@ -312,7 +311,7 @@ def _reconcile_orphaned_run(db_path: Path) -> None:
     if state is not None and state.status == "running":
         _mark_run_ended(db_path, state, "failed")
         return
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         fail_all_running_index_runs(conn, datetime.now(UTC).isoformat())
         conn.commit()
@@ -323,7 +322,7 @@ def _reconcile_orphaned_run(db_path: Path) -> None:
 def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
     state.status = status
     _write_state(db_path, state)
-    conn = connect(db_path)
+    conn = Db.connect(db_path)
     try:
         end_running_index_run(
             conn,
@@ -352,7 +351,7 @@ def signal_stop(db_path: Path | None = None) -> None:
     closing. For an interactive "stop it now and tell me" (`vethuq index
     stop`), use `request_stop` instead.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     if not is_running(db_path)[0]:
         raise IndexRunnerError("No background index run is currently running.")
     _set_control(db_path, "stop")
@@ -367,7 +366,7 @@ def request_stop(db_path: Path | None = None, *, timeout: float = _STOP_TIMEOUT_
     wants to know it actually stopped before returning. A caller that
     shouldn't block on that should use `signal_stop` instead.
     """
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, pid = is_running(db_path)
     if not running or pid is None:
         raise IndexRunnerError("No background index run is currently running.")
@@ -387,7 +386,7 @@ def request_stop(db_path: Path | None = None, *, timeout: float = _STOP_TIMEOUT_
 
 
 def request_pause(db_path: Path | None = None) -> None:
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, _pid = is_running(db_path)
     if not running:
         raise IndexRunnerError("No background index run is currently running.")
@@ -395,7 +394,7 @@ def request_pause(db_path: Path | None = None) -> None:
 
 
 def request_resume(db_path: Path | None = None) -> None:
-    db_path = db_path or default_db_path()
+    db_path = db_path or Db.default_db_path()
     running, _pid = is_running(db_path)
     if not running:
         raise IndexRunnerError("No background index run is currently running.")
@@ -462,7 +461,7 @@ def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> 
     # check_same_thread=False: `run_ocr_batch` below may hand this connection
     # to worker threads when `workers` > 1 - every use of it is already
     # serialized through `db_lock` there.
-    conn = connect(db_path, check_same_thread=False)
+    conn = Db.connect(db_path, check_same_thread=False)
     pid = os.getpid()
     started_at = datetime.now(UTC).isoformat()
     run_id: int | None = None

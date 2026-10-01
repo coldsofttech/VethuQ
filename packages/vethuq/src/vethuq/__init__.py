@@ -10,8 +10,7 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 import time
 from pathlib import Path
 
-from vethuq._core.db import connect as _connect
-from vethuq._core.db import default_db_path as _default_db_path
+from vethuq._core.db import Db as _Db
 from vethuq._core.export import export_search_results as _export_search_results
 from vethuq._core.index_runner import (
     AlreadyRunningError,
@@ -82,7 +81,7 @@ from vethuq._core.stats import reset_metrics as _reset_metrics
 
 _STATE_POLL_SECONDS = 1.0
 
-DB_PATH = _default_db_path()
+DB_PATH = _Db.default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
 
 __all__ = [
@@ -143,7 +142,7 @@ class Sources:
         of failing. Raises `SourcePathError` if `path` doesn't exist, and
         `SourceAlreadyExistsError` if it's already an active source.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _add_source(conn, path)
         finally:
@@ -151,7 +150,7 @@ class Sources:
 
     def list(self, include_inactive: bool = False) -> list[Source]:
         """Return registered sources, most recently added first."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _list_sources(conn, include_inactive)
         finally:
@@ -159,7 +158,7 @@ class Sources:
 
     def remove(self, path_or_id: str | Path | int) -> Source:
         """Unregister a source by id or path. Raises `SourceNotFoundError` if it doesn't exist."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _remove_source(conn, path_or_id)
         finally:
@@ -222,7 +221,7 @@ class Index:
         if target is None:
             return _read_state()
 
-        conn = _connect()
+        conn = _Db.connect()
         try:
             source = _get_source(conn, _coerce_target(target))
             return _get_document_results(conn, source.id)
@@ -257,7 +256,7 @@ class Index:
         just `target`. Raises `SourceNotFoundError` if `target` doesn't
         match a registered source.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             if target is not None:
                 _get_source(conn, _coerce_target(target))
@@ -274,7 +273,7 @@ class GPUSettings:
 
     def is_enabled(self) -> bool:
         """Whether OCR should attempt to use the GPU. Disabled by default."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _is_gpu_enabled(conn)
         finally:
@@ -287,7 +286,7 @@ class GPUSettings:
         visible GPU is actually installed - otherwise OCR silently falls
         back to CPU.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_gpu_enabled(conn, True)
         finally:
@@ -295,7 +294,7 @@ class GPUSettings:
 
     def disable(self) -> None:
         """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_gpu_enabled(conn, False)
         finally:
@@ -310,7 +309,7 @@ class SnippetSettings:
 
     def get(self) -> int:
         """How many characters of context `search` shows around a match. 80 by default."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_search_snippet_context_chars(conn)
         finally:
@@ -321,7 +320,7 @@ class SnippetSettings:
 
         Raises `InvalidSettingValueError` if `chars` is negative.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_search_snippet_context_chars(conn, chars)
         finally:
@@ -336,7 +335,7 @@ class ExportFormatSettings:
 
     def get(self) -> str:
         """Default format `search --export` writes to when none is given. 'json' by default."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_search_export_format(conn)
         finally:
@@ -348,7 +347,7 @@ class ExportFormatSettings:
         `format_` must be one of `SEARCH_EXPORT_FORMATS`. Raises
         `InvalidSettingValueError` otherwise.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_search_export_format(conn, format_)
         finally:
@@ -369,7 +368,7 @@ class RemovedRetentionSettings:
 
     def get(self) -> int:
         """Minutes a removed source is kept before it's purged from the DB. 7 days by default."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_removed_source_retention_minutes(conn)
         finally:
@@ -380,7 +379,7 @@ class RemovedRetentionSettings:
 
         Raises `InvalidSettingValueError` if `minutes` is negative.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_removed_source_retention_minutes(conn, minutes)
         finally:
@@ -393,7 +392,7 @@ class OcrRetrySettings:
 
     def get(self) -> int:
         """How many times to retry a file's OCR after a transient failure. 3 by default."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_ocr_retry_attempts(conn)
         finally:
@@ -404,7 +403,7 @@ class OcrRetrySettings:
 
         Raises `InvalidSettingValueError` if `attempts` is negative.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_ocr_retry_attempts(conn, attempts)
         finally:
@@ -425,7 +424,7 @@ class ThreadWorkersSettings:
         '1'-`MAX` (a fixed worker count), or `AUTO` (sized at run time from
         current CPU/memory headroom).
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_thread_workers(conn)
         finally:
@@ -437,7 +436,7 @@ class ThreadWorkersSettings:
         `value` must be '0'-`MAX` or `AUTO`. Raises `InvalidSettingValueError`
         otherwise.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_thread_workers(conn, value)
         finally:
@@ -456,7 +455,7 @@ class StaleLockSettings:
         explicit opt-in with the same effect as 'auto'), or 'disable'
         (require `force=True` on `Index.run`/`Index.restart`, as before).
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_stale_lock(conn)
         finally:
@@ -468,7 +467,7 @@ class StaleLockSettings:
         `value` must be one of `STALE_LOCK_VALUES`. Raises
         `InvalidSettingValueError` otherwise.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_stale_lock(conn, value)
         finally:
@@ -488,7 +487,7 @@ class OcrEngineSettings:
         'quick' first so they're searchable right away; the deeper passes
         then run in the background while indexing continues.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_ocr_engine(conn)
         finally:
@@ -501,7 +500,7 @@ class OcrEngineSettings:
         `InvalidSettingValueError` otherwise. Files already indexed are
         brought up to the new level the next time indexing runs.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _set_ocr_engine(conn, value)
         finally:
@@ -536,7 +535,7 @@ class Stats:
 
     def processing(self) -> list[ProcessingMetric]:
         """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_processing_metrics(conn)
         finally:
@@ -544,7 +543,7 @@ class Stats:
 
     def confidence(self) -> list[ConfidenceMetric]:
         """Return per-(file_type, process_type) running averages of OCR confidence."""
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _get_confidence_metrics(conn)
         finally:
@@ -558,7 +557,7 @@ class Stats:
         are unavailable again until enough files have been (re)indexed to
         rebuild them.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             _reset_metrics(conn)
         finally:
@@ -579,7 +578,7 @@ class Search:
         indexed documents are considered. `context_chars` defaults to
         `Vethuq().settings.search.snippet` if not given.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             return _search_indexed_content(conn, content, context_chars=context_chars)
         finally:
@@ -593,7 +592,7 @@ class Search:
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`.
         """
-        conn = _connect()
+        conn = _Db.connect()
         try:
             resolved_format = format_ if format_ is not None else _get_search_export_format(conn)
         finally:

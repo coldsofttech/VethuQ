@@ -11,7 +11,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.ocr import OCR_ENGINE_PHASES
 from vethuq_core.stats import (
     ConfidenceMetric,
@@ -85,7 +85,7 @@ def _align_widths(render_console: Console, *panels: Panel) -> None:
 @app.command("show")
 def show() -> None:
     """Show accumulated OCR processing and confidence statistics."""
-    conn = connect()
+    conn = Db.connect()
     try:
         processing = get_processing_metrics(conn)
         confidence = get_confidence_metrics(conn)
@@ -119,7 +119,7 @@ def reset(
         console.print("Aborted.", style="bright_black")
         raise typer.Exit(code=0)
 
-    conn = connect()
+    conn = Db.connect()
     try:
         reset_metrics(conn)
     finally:

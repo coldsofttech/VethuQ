@@ -6,20 +6,20 @@ from unittest.mock import patch
 
 import pytest
 from vethuq_core import index_runner
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.sources import SourceNotFoundError, add_source
 
 
 @pytest.fixture
 def db_path(tmp_path) -> Path:
     path = tmp_path / "vethuq.db"
-    connect(path).close()
+    Db.connect(path).close()
     return path
 
 
 @pytest.fixture
 def conn(db_path):
-    connection = connect(db_path)
+    connection = Db.connect(db_path)
     yield connection
     connection.close()
 
@@ -96,7 +96,7 @@ def test_run_worker_completes(db_path, conn, tmp_path):
     assert state.current_files == []
     assert not index_runner._lock_path(db_path).exists()
 
-    result_conn = connect(db_path)
+    result_conn = Db.connect(db_path)
     row = result_conn.execute("SELECT * FROM index_runs").fetchone()
     result_conn.close()
     assert row["status"] == "completed"
@@ -215,7 +215,7 @@ def test_run_worker_restart_passes_only_failed(db_path, conn, tmp_path):
     assert seen["only_failed"] is True
     assert fake_count.call_args.kwargs["only_failed"] is True
 
-    result_conn = connect(db_path)
+    result_conn = Db.connect(db_path)
     row = result_conn.execute("SELECT mode FROM index_runs").fetchone()
     result_conn.close()
     assert row["mode"] == "restart"
@@ -475,7 +475,7 @@ def test_request_stop_marks_state_and_history(db_path, conn, tmp_path, monkeypat
     assert final_state is not None
     assert final_state.status == "stopped"
 
-    result_conn = connect(db_path)
+    result_conn = Db.connect(db_path)
     row = result_conn.execute("SELECT status FROM index_runs WHERE id = ?", (run_id,)).fetchone()
     result_conn.close()
     assert row["status"] == "stopped"

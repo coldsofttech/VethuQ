@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 import vethuq_core.ocr as ocr_module
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.ocr import (
     OCR_PHASE_ANGLES,
     _completed_phase,
@@ -25,7 +25,7 @@ from vethuq_core.sources import add_source, get_source
 
 @pytest.fixture
 def conn(tmp_path):
-    connection = connect(tmp_path / "vethuq.db", check_same_thread=False)
+    connection = Db.connect(tmp_path / "vethuq.db", check_same_thread=False)
     yield connection
     connection.close()
 
@@ -105,7 +105,7 @@ def test_migration_adds_phase_columns_to_existing_pages(tmp_path):
     old.commit()
     old.close()
 
-    migrated = connect(db_path)
+    migrated = Db.connect(db_path)
     try:
         row = migrated.execute("SELECT ocr_phase, ocr_angles FROM image_pages").fetchone()
         assert (row["ocr_phase"], row["ocr_angles"]) == (1, "0")
@@ -289,7 +289,7 @@ def test_migration_renames_old_setting_keys_keeping_values(tmp_path):
     old.commit()
     old.close()
 
-    migrated = connect(db_path)
+    migrated = Db.connect(db_path)
     try:
         settings = {
             row["key"]: row["value"] for row in migrated.execute("SELECT key, value FROM settings")
@@ -343,7 +343,7 @@ def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(tmp_path)
     assert _page_phase_columns(PageResult("text", 0.9, "ocr")) == (1, "0")
 
     db_path = tmp_path / "v18.db"
-    setup = connect(db_path)
+    setup = Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
     source = add_source(setup, folder)
@@ -361,7 +361,7 @@ def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(tmp_path)
     setup.commit()
     setup.close()
 
-    migrated = connect(db_path)
+    migrated = Db.connect(db_path)
     try:
         assert migrated.execute("SELECT ocr_phase FROM pdf_pages").fetchone()["ocr_phase"] == 1
     finally:
@@ -490,7 +490,7 @@ def test_page_confidence_is_weighted_by_lines_added_in_deeper_phases(
 
 def test_migration_v20_makes_existing_processing_metrics_phase_1(tmp_path):
     db_path = tmp_path / "v19.db"
-    setup = connect(db_path)
+    setup = Db.connect(db_path)
     setup.execute("DROP TABLE processing_metrics")
     setup.execute(
         "CREATE TABLE processing_metrics (file_type TEXT NOT NULL, size_bucket TEXT NOT NULL, "
@@ -503,7 +503,7 @@ def test_migration_v20_makes_existing_processing_metrics_phase_1(tmp_path):
     setup.commit()
     setup.close()
 
-    migrated = connect(db_path)
+    migrated = Db.connect(db_path)
     try:
         row = migrated.execute("SELECT * FROM processing_metrics").fetchone()
         assert (row["phase"], row["document_count"], row["avg_duration_seconds"]) == (1, 4, 2.5)

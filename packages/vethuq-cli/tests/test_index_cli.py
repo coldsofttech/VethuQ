@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from functools import partial
 
 import vethuq_cli.index as index_cli_module
 import vethuq_core.db as db_module
@@ -18,13 +17,18 @@ class _FakeProcess:
 
 def _use_temp_db(monkeypatch, tmp_path):
     db_path = tmp_path / "vethuq.db"
-    monkeypatch.setattr(index_cli_module, "connect", partial(db_module.connect, db_path))
-    monkeypatch.setattr(index_runner_module, "default_db_path", lambda: db_path)
+    real_connect = db_module.Db.connect
+    monkeypatch.setattr(
+        db_module.Db,
+        "connect",
+        staticmethod(lambda path=None, **kwargs: real_connect(db_path, **kwargs)),
+    )
+    monkeypatch.setattr(db_module.Db, "default_db_path", staticmethod(lambda: db_path))
     return db_path
 
 
 def _add_pending_source(db_path, tmp_path):
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     try:
         add_source(conn, tmp_path)
     finally:
@@ -234,7 +238,7 @@ def test_status_shows_eta_from_processing_metrics(tmp_path, monkeypatch):
     (folder / "a.png").write_bytes(b"fake png bytes")
     (folder / "b.png").write_bytes(b"fake png bytes")
 
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     add_source(conn, folder)
     now = datetime.now(UTC).isoformat()
     conn.execute(
@@ -275,7 +279,7 @@ def test_status_detail_for_target(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
     folder = tmp_path / "docs"
     folder.mkdir()
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     add_source(conn, folder)
     conn.close()
 
@@ -337,7 +341,7 @@ def test_history_empty(tmp_path, monkeypatch):
 
 def test_history_lists_runs(tmp_path, monkeypatch):
     db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     conn.execute(
         "INSERT INTO index_runs (target, status, pid, total_files, processed_files, "
         "failed_files, started_at) VALUES (NULL, 'completed', 1, 3, 3, 0, ?)",
@@ -357,7 +361,7 @@ def test_state_panel_shows_phase_and_a_bar_per_phase(tmp_path, monkeypatch):
     from vethuq_core.settings import set_ocr_engine
 
     db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
     source = add_source(conn, folder)
@@ -410,7 +414,7 @@ def test_eta_is_estimated_per_phase_from_each_phases_own_history(tmp_path, monke
     from vethuq_core.settings import set_ocr_engine
 
     db_path = _use_temp_db(monkeypatch, tmp_path)
-    conn = db_module.connect(db_path)
+    conn = db_module.Db.connect(db_path)
     folder = tmp_path / "src"
     folder.mkdir()
     source = add_source(conn, folder)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 from rich.text import Text
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.settings import (
     OCR_ENGINE_MODES,
     SEARCH_EXPORT_FORMATS,
@@ -70,7 +70,7 @@ def gpu_enable() -> None:
     Only takes effect if a CUDA-capable PaddlePaddle build with a visible GPU
     is actually installed - otherwise OCR silently falls back to CPU.
     """
-    conn = connect()
+    conn = Db.connect()
     try:
         set_gpu_enabled(conn, True)
         console.print(
@@ -85,7 +85,7 @@ def gpu_enable() -> None:
 @gpu_app.command("disable")
 def gpu_disable() -> None:
     """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
-    conn = connect()
+    conn = Db.connect()
     try:
         set_gpu_enabled(conn, False)
         console.print("GPU disabled. OCR will run on CPU.", style="bright_black")
@@ -96,7 +96,7 @@ def gpu_disable() -> None:
 @gpu_app.command("status")
 def gpu_status() -> None:
     """Show whether GPU use is currently enabled."""
-    conn = connect()
+    conn = Db.connect()
     try:
         enabled = is_gpu_enabled(conn)
         line = Text("GPU: ")
@@ -111,7 +111,7 @@ def gpu_status() -> None:
 @snippet_app.command("show")
 def snippet_show() -> None:
     """Show how many characters of context `search` shows around a match."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(
             Text.assemble(
@@ -129,7 +129,7 @@ def snippet_set(
     chars: int = typer.Argument(..., help="Characters of context to show on each side of a match."),
 ) -> None:
     """Set how many characters of context `search` shows around a match."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_search_snippet_context_chars(conn, chars)
@@ -148,7 +148,7 @@ def snippet_set(
 @export_format_app.command("show")
 def export_format_show() -> None:
     """Show the default format `search --export` writes to when none is given."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(
             Text.assemble("Search export format: ", (get_search_export_format(conn), "bright_blue"))
@@ -164,7 +164,7 @@ def export_format_set(
     ),
 ) -> None:
     """Set the default format `search --export` writes to when none is given."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_search_export_format(conn, format_)
@@ -179,7 +179,7 @@ def export_format_set(
 @removed_retention_app.command("show")
 def removed_retention_show() -> None:
     """Show, in minutes, how long a removed source is kept before it's purged from the DB."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(
             Text.assemble(
@@ -199,7 +199,7 @@ def removed_retention_set(
     ),
 ) -> None:
     """Set, in minutes, how long a removed source is kept before it's purged from the DB."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_removed_source_retention_minutes(conn, minutes)
@@ -218,7 +218,7 @@ def removed_retention_set(
 @ocr_retry_app.command("show")
 def ocr_retry_show() -> None:
     """Show how many times a file's OCR is retried after a transient failure."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(
             Text.assemble(
@@ -236,7 +236,7 @@ def ocr_retry_set(
     ),
 ) -> None:
     """Set how many times a file's OCR is retried after a transient failure."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_ocr_retry_attempts(conn, attempts)
@@ -253,7 +253,7 @@ def ocr_retry_set(
 @thread_workers_app.command("show")
 def thread_workers_show() -> None:
     """Show how many worker threads background indexing uses."""
-    conn = connect()
+    conn = Db.connect()
     try:
         value = get_thread_workers(conn)
         label = "disabled (sequential)" if value == "0" else value
@@ -271,7 +271,7 @@ def thread_workers_set(
     ),
 ) -> None:
     """Set how many worker threads background indexing uses."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_thread_workers(conn, value)
@@ -287,7 +287,7 @@ def thread_workers_set(
 @stale_lock_app.command("show")
 def stale_lock_show() -> None:
     """Show whether a stale lock is auto-cleared on the next run."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(Text.assemble("Stale lock: ", (get_stale_lock(conn), "bright_blue")))
     finally:
@@ -301,7 +301,7 @@ def stale_lock_set(
     ),
 ) -> None:
     """Set whether a stale lock is auto-cleared on the next run."""
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_stale_lock(conn, value)
@@ -316,7 +316,7 @@ def stale_lock_set(
 @engine_app.command("show")
 def engine_show() -> None:
     """Show how thoroughly OCR looks for rotated text."""
-    conn = connect()
+    conn = Db.connect()
     try:
         console.print(Text.assemble("OCR engine: ", (get_ocr_engine(conn), "bright_blue")))
     finally:
@@ -342,7 +342,7 @@ def engine_set(
     Files already indexed are brought up to the new level the next time
     indexing runs.
     """
-    conn = connect()
+    conn = Db.connect()
     try:
         try:
             set_ocr_engine(conn, value)

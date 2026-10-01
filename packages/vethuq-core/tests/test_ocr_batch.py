@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import vethuq_core.ocr as ocr_module
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.ocr import _auto_worker_count, resolve_thread_workers, run_ocr_batch
 from vethuq_core.settings import set_thread_workers
 from vethuq_core.sources import add_source
@@ -15,7 +15,7 @@ def conn(tmp_path):
     # check_same_thread=False: `run_ocr_batch` with workers > 1 hands this
     # connection to worker threads, same as `_run_worker` does for real.
     db_path = tmp_path / "vethuq.db"
-    connection = connect(db_path, check_same_thread=False)
+    connection = Db.connect(db_path, check_same_thread=False)
     yield connection
     connection.close()
 

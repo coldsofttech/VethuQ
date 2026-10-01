@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.ocr import run_ocr
 from vethuq_core.sources import add_source
 
@@ -15,7 +15,7 @@ _PNG_FIXTURES = sorted(FIXTURES_DIR.glob("*.png"), key=lambda path: int(path.nam
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "vethuq.db"
-    connection = connect(db_path)
+    connection = Db.connect(db_path)
     yield connection
     connection.close()
 

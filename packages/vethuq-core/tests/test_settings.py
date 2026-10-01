@@ -1,7 +1,7 @@
 import sqlite3
 
 import pytest
-from vethuq_core.db import connect
+from vethuq_core.db import Db
 from vethuq_core.settings import (
     get_search_export_format,
     get_search_snippet_context_chars,
@@ -19,7 +19,7 @@ from vethuq_core.settings import (
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "vethuq.db"
-    connection = connect(db_path)
+    connection = Db.connect(db_path)
     yield connection
     connection.close()
 

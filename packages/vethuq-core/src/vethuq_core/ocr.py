@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import sqlite3
+import sys
 import threading
 import time
 from collections.abc import Callable, Collection, Iterator
@@ -40,46 +41,19 @@ from vethuq_core.db import (
     complete_document_phase,
     count_documents_short_of_phase,
     count_pages_short_of_phase,
-    delete_document_phases,
-    delete_image_pages_for_document,
-    delete_pdf_pages_for_document,
-    find_duplicate_document_index,
-    get_confidence_metrics_row,
-    get_document_index_by_path,
     get_document_index_file_size,
-    get_document_index_id_by_path,
-    get_document_index_metrics_stats,
-    get_document_index_pending_check,
     get_document_phase_completion,
     get_document_phase_work,
-    get_document_result_rows,
-    get_page_confidences,
     get_page_text_row,
-    get_pdf_page_sources,
-    get_processing_metrics_budget_row,
-    get_processing_metrics_row,
-    insert_confidence_metrics,
-    insert_document,
-    insert_image_page,
-    insert_pdf_pages,
-    insert_processing_metrics,
     list_pages_short_of_phase,
     list_phase_progress_rows,
-    list_tracked_document_index_rows,
-    mark_document_index_error,
-    mark_document_index_indexed,
-    mark_document_index_removed,
     mark_page_phase_done,
     start_document_phase,
-    update_confidence_metrics,
-    update_document_index_path,
-    update_document_index_retry_stats,
     update_document_phase_work,
     update_page_text,
-    update_processing_metrics,
-    update_source_scan_status,
-    upsert_document_index,
 )
+from vethuq_core.db.queries import Document, Stats
+from vethuq_core.db.queries.sources import Source as SourceQuery
 from vethuq_core.settings import (
     THREAD_WORKERS_AUTO,
     THREAD_WORKERS_MAX,
@@ -392,7 +366,7 @@ def new_file_type_counts() -> dict[str, int]:
 _CHECKSUM_CHUNK_BYTES = 1024 * 1024
 
 
-def _compute_checksum(file_path: Path) -> str:
+def _compute_sha256(file_path: Path) -> str:
     """Return the SHA-256 hex digest of a file's contents, read in chunks."""
     digest = hashlib.sha256()
     with file_path.open("rb") as handle:
@@ -401,17 +375,37 @@ def _compute_checksum(file_path: Path) -> str:
     return digest.hexdigest()
 
 
+def _capture_timestamps(stat: os.stat_result) -> tuple[str, str]:
+    """Return `(created_at, modified_at)` ISO-8601 timestamps from a file's `stat` result.
+
+    `modified_at` is always `st_mtime`. `created_at` uses the OS's actual
+    file-birth time where one is exposed - `st_birthtime` (macOS/BSD) or, on
+    Windows, `st_ctime` (which is creation time there, not metadata-change
+    time as on POSIX). Linux exposes neither via `os.stat`, so `created_at`
+    falls back to `st_mtime` there too, same as `modified_at`.
+    """
+    modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat()
+    # getattr with a default, not hasattr: `st_birthtime` isn't in typeshed's
+    # stat_result (it's only actually present on macOS/BSD at runtime), so a
+    # plain attribute access would be a static type error.
+    created = getattr(stat, "st_birthtime", None)
+    if created is None:
+        created = stat.st_ctime if sys.platform == "win32" else stat.st_mtime
+    created_at = datetime.fromtimestamp(created, tz=UTC).isoformat()
+    return created_at, modified_at
+
+
 def _find_duplicate_source(
-    conn: sqlite3.Connection, checksum: str, row_id: int
+    conn: sqlite3.Connection, sha256: str, row_id: int
 ) -> sqlite3.Row | None:
-    """Return the earliest-indexed `document_index` row (id, document_id) matching `checksum`.
+    """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`.
 
     Excludes `row_id` itself. Used to link a (re)indexed row to an existing
     logical document (`documents.id`) with identical content, rather than
     creating a new one - the earliest-indexed match is used so a whole
     duplicate group always converges on a single `documents` row.
     """
-    return find_duplicate_document_index(conn, checksum, row_id)
+    return Document.find_duplicate_index(conn, sha256, row_id)
 
 
 def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
@@ -419,14 +413,14 @@ def _has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
 
     A file's mtime and size are checked first - if neither moved since it was
     last indexed, its content is assumed unchanged and the (expensive) full
-    checksum is skipped entirely. Only when mtime or size differ is the
-    checksum recomputed and compared, to confirm this is an actual content
-    change rather than e.g. a touch that left the bytes alone.
+    hash is skipped entirely. Only when mtime or size differ is the SHA-256
+    recomputed and compared, to confirm this is an actual content change
+    rather than e.g. a touch that left the bytes alone.
     """
     stat = file_path.stat()
     if stat.st_mtime == existing["mtime"] and stat.st_size == existing["file_size_bytes"]:
         return False
-    return _compute_checksum(file_path) != existing["checksum"]
+    return _compute_sha256(file_path) != existing["sha256"]
 
 
 def _upsert_document(
@@ -459,27 +453,28 @@ def _upsert_document(
     stat = file_path.stat()
     file_size_bytes = stat.st_size
     mtime = stat.st_mtime
-    checksum = _compute_checksum(file_path)
+    created_at, modified_at = _capture_timestamps(stat)
+    sha256 = _compute_sha256(file_path)
 
-    existing = get_document_index_by_path(conn, str(file_path))
-    if existing is not None and existing["checksum"] != checksum:
+    existing = Document.get_index_by_path(conn, str(file_path))
+    if existing is not None and existing["sha256"] != sha256:
         _promote_surviving_duplicate(conn, existing["id"], set())
 
     existing_id = existing["id"] if existing is not None else -1
-    duplicate_source = _find_duplicate_source(conn, checksum, existing_id)
+    duplicate_source = _find_duplicate_source(conn, sha256, existing_id)
 
     old_document_id = existing["document_id"] if existing is not None else None
     if duplicate_source is not None:
         document_id = duplicate_source["document_id"]
-    elif existing is not None and existing["checksum"] == checksum:
+    elif existing is not None and existing["sha256"] == sha256:
         document_id = old_document_id
     else:
-        document_id = insert_document(conn, started_at)
+        document_id = Document.insert(conn, started_at)
     if duplicate_source is None:
         # Re-indexing starts the document over from its quick pass.
-        delete_document_phases(conn, document_id)
+        Document.delete_phases(conn, document_id)
 
-    upsert_document_index(
+    Document.upsert_index(
         conn,
         source_id,
         document_id,
@@ -487,14 +482,16 @@ def _upsert_document(
         file_type,
         started_at,
         file_size_bytes,
-        checksum,
+        sha256,
         mtime,
+        created_at,
+        modified_at,
     )
     if old_document_id is not None and old_document_id != document_id:
         _prune_orphaned_documents(conn, {old_document_id})
     _refresh_document_paths(conn, {document_id, old_document_id} - {None})
 
-    row = get_document_index_id_by_path(conn, str(file_path))
+    row = Document.get_index_id_by_path(conn, str(file_path))
     assert row is not None
     row_id = row["id"]
     return row_id, (duplicate_source["id"] if duplicate_source is not None else None)
@@ -531,7 +528,7 @@ def _reconcile_renamed_and_removed_files(
     so the caller can skip (re-)indexing them.
     """
     disk_path_strs = {str(path) for path in disk_files}
-    tracked = list_tracked_document_index_rows(conn, source.id)
+    tracked = Document.list_tracked_index_rows(conn, source.id)
     tracked_paths = {row["file_path"] for row in tracked}
 
     missing_rows = [row for row in tracked if row["file_path"] not in disk_path_strs]
@@ -541,21 +538,24 @@ def _reconcile_renamed_and_removed_files(
     claimed_row_ids: set[int] = set()
 
     if missing_rows and new_paths:
-        new_checksums = {path: _compute_checksum(Path(path)) for path in new_paths}
-        missing_by_checksum: dict[str, list[sqlite3.Row]] = {}
+        new_sha256s = {path: _compute_sha256(Path(path)) for path in new_paths}
+        missing_by_sha256: dict[str, list[sqlite3.Row]] = {}
         for row in sorted(missing_rows, key=lambda r: r["id"]):
-            missing_by_checksum.setdefault(row["checksum"], []).append(row)
-        new_by_checksum: dict[str, list[str]] = {}
+            missing_by_sha256.setdefault(row["sha256"], []).append(row)
+        new_by_sha256: dict[str, list[str]] = {}
         for path in new_paths:
-            new_by_checksum.setdefault(new_checksums[path], []).append(path)
+            new_by_sha256.setdefault(new_sha256s[path], []).append(path)
 
-        for checksum, rows in missing_by_checksum.items():
-            matching_paths = new_by_checksum.get(checksum)
+        for sha256, rows in missing_by_sha256.items():
+            matching_paths = new_by_sha256.get(sha256)
             if not matching_paths:
                 continue
             for row, new_path in zip(rows, matching_paths, strict=False):
                 stat = Path(new_path).stat()
-                update_document_index_path(conn, row["id"], new_path, stat.st_mtime, stat.st_size)
+                created_at, modified_at = _capture_timestamps(stat)
+                Document.update_index_path(
+                    conn, row["id"], new_path, stat.st_mtime, stat.st_size, created_at, modified_at
+                )
                 claimed_paths.add(new_path)
                 claimed_row_ids.add(row["id"])
 
@@ -563,7 +563,7 @@ def _reconcile_renamed_and_removed_files(
     for row in missing_rows:
         if row["id"] in claimed_row_ids:
             continue
-        mark_document_index_removed(conn, row["id"], removed_at)
+        Document.mark_index_removed(conn, row["id"], removed_at)
 
     from vethuq_core.sources import _refresh_document_paths
 
@@ -572,7 +572,7 @@ def _reconcile_renamed_and_removed_files(
 
 
 def _mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
-    mark_document_index_indexed(conn, document_id, datetime.now(UTC).isoformat())
+    Document.mark_indexed(conn, document_id, datetime.now(UTC).isoformat())
 
 
 def _mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
@@ -582,11 +582,11 @@ def _mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
     content) was already set by `_upsert_document`, so there's nothing left
     to link here beyond the status itself.
     """
-    mark_document_index_indexed(conn, document_id, datetime.now(UTC).isoformat())
+    Document.mark_indexed(conn, document_id, datetime.now(UTC).isoformat())
 
 
 def _mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> None:
-    mark_document_index_error(conn, document_id, message, datetime.now(UTC).isoformat())
+    Document.mark_error(conn, document_id, message, datetime.now(UTC).isoformat())
 
 
 def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
@@ -597,7 +597,7 @@ def _update_processing_metrics(conn: sqlite3.Connection, document_id: int, file_
     duration that doesn't reflect a full OCR pass, so it would skew the
     averages `vethuq index run` uses to estimate ETAs.
     """
-    doc = get_document_index_metrics_stats(conn, document_id)
+    doc = Document.get_index_metrics_stats(conn, document_id)
     duration = (
         datetime.fromisoformat(doc["completed_at"]) - datetime.fromisoformat(doc["started_at"])
     ).total_seconds()
@@ -629,9 +629,9 @@ def _fold_processing_metrics(
     """
     size_bucket = _size_bucket(file_size_bytes)
     now = datetime.now(UTC).isoformat()
-    existing = get_processing_metrics_row(conn, phase, file_type, size_bucket)
+    existing = Stats.get_processing_metrics_row(conn, phase, file_type, size_bucket)
     if existing is None:
-        insert_processing_metrics(
+        Stats.insert_processing_metrics(
             conn, phase, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now
         )
         return
@@ -646,7 +646,7 @@ def _fold_processing_metrics(
     avg_cpu_percent = (
         existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
     )
-    update_processing_metrics(
+    Stats.update_processing_metrics(
         conn,
         phase,
         file_type,
@@ -668,9 +668,9 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
     tracking each process_type separately keeps them meaningful.
     """
     if file_type == "pdf":
-        pages = get_pdf_page_sources(conn, document_id)
+        pages = Document.get_pdf_page_sources(conn, document_id)
     else:
-        pages = get_page_confidences(conn, file_type, document_id)
+        pages = Document.get_page_confidences(conn, file_type, document_id)
     if not pages:
         return
 
@@ -681,9 +681,9 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
 
     now = datetime.now(UTC).isoformat()
     for process_type, confidences in by_process_type.items():
-        existing = get_confidence_metrics_row(conn, file_type, process_type)
+        existing = Stats.get_confidence_metrics_row(conn, file_type, process_type)
         if existing is None:
-            insert_confidence_metrics(
+            Stats.insert_confidence_metrics(
                 conn,
                 file_type,
                 process_type,
@@ -697,7 +697,9 @@ def _update_confidence_metrics(conn: sqlite3.Connection, document_id: int, file_
         avg_confidence = (
             existing["avg_confidence"] * existing["page_count"] + sum(confidences)
         ) / new_count
-        update_confidence_metrics(conn, file_type, process_type, new_count, avg_confidence, now)
+        Stats.update_confidence_metrics(
+            conn, file_type, process_type, new_count, avg_confidence, now
+        )
 
 
 def _store_pages(
@@ -705,8 +707,8 @@ def _store_pages(
 ) -> None:
     """Replace a document's OCR pages with freshly (re)extracted `pages`."""
     if file_type == "pdf":
-        delete_pdf_pages_for_document(conn, document_id)
-        insert_pdf_pages(
+        Document.delete_pdf_pages(conn, document_id)
+        Document.insert_pdf_pages(
             conn,
             [
                 (
@@ -726,8 +728,8 @@ def _store_pages(
         )
     else:
         page = pages[0]
-        delete_image_pages_for_document(conn, document_id)
-        insert_image_page(
+        Document.delete_image_pages(conn, document_id)
+        Document.insert_image_page(
             conn,
             document_id,
             page.text,
@@ -766,7 +768,7 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
     # `document_id` actually carries OCR pages of its own (itself, if it does)
     # - duplicates are detected globally, so that carrier may belong to a
     # different source than `source_id`.
-    rows = get_document_result_rows(conn, source_id)
+    rows = Document.get_result_rows(conn, source_id)
 
     results = []
     for row in rows:
@@ -774,7 +776,9 @@ def get_document_results(conn: sqlite3.Connection, source_id: int) -> list[Docum
         if row["status"] == "indexed":
             scores = [
                 page["confidence"]
-                for page in get_page_confidences(conn, row["file_type"], row["canonical_id"])
+                for page in Document.get_page_confidences(
+                    conn, row["file_type"], row["canonical_id"]
+                )
             ]
             confidence = sum(scores) / len(scores) if scores else None
 
@@ -821,7 +825,7 @@ def _iter_pending_files(
             continue
         existing = None
         if only_new_files or only_failed:
-            existing = get_document_index_pending_check(conn, str(file_path))
+            existing = Document.get_index_pending_check(conn, str(file_path))
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
@@ -1013,7 +1017,7 @@ def run_ocr(
 
         existing = None
         if only_new_files or only_failed:
-            existing = get_document_index_pending_check(conn, str(file_path))
+            existing = Document.get_index_pending_check(conn, str(file_path))
         if only_failed:
             if existing is None or existing["status"] != "error":
                 continue
@@ -1060,7 +1064,7 @@ def run_ocr(
 
         peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
         cpu_percent = process.cpu_percent(interval=None)
-        update_document_index_retry_stats(
+        Document.update_index_retry_stats(
             conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
         )
 
@@ -1076,7 +1080,7 @@ def run_ocr(
         if on_file_done is not None:
             on_file_done(str(file_path))
 
-    update_source_scan_status(
+    SourceQuery.update_scan_status(
         conn, source.id, "error" if had_error else "indexed", datetime.now(UTC).isoformat()
     )
     conn.commit()
@@ -1144,7 +1148,7 @@ def _process_file(
 
         peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
         cpu_percent = process.cpu_percent(interval=None)
-        update_document_index_retry_stats(
+        Document.update_index_retry_stats(
             conn, document_id, attempt - 1, peak_memory_mb, cpu_percent
         )
 
@@ -1185,7 +1189,9 @@ def _would_exceed_budget(conn: sqlite3.Connection, item: _PendingFile) -> bool:
     except OSError:
         return False
 
-    row = get_processing_metrics_budget_row(conn, 1, item.file_type, _size_bucket(file_size_bytes))
+    row = Stats.get_processing_metrics_budget_row(
+        conn, 1, item.file_type, _size_bucket(file_size_bytes)
+    )
     if row is None:
         return False
 
@@ -1422,7 +1428,7 @@ def run_ocr_batch(
     for source in sources:
         if source.id in attempted_source_ids:
             status = "error" if had_error_by_source[source.id] else "indexed"
-            update_source_scan_status(conn, source.id, status, now)
+            SourceQuery.update_scan_status(conn, source.id, status, now)
     conn.commit()
 
     return processed_paths
