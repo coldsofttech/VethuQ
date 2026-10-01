@@ -39,11 +39,24 @@ class FileMatch:
 
 class Search:
     @staticmethod
+    def _like_pattern(query: str) -> str:
+        """Escape `query` for use as a `LIKE '%...%'` pattern, so its `%`/`_`/`\\` are literal."""
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return f"%{escaped}%"
+
+    @staticmethod
     def _indexed_pages(
-        conn: sqlite3.Connection,
+        conn: sqlite3.Connection, query: str
     ) -> list[tuple[int, str, str, int | None, int, str | None]]:
         """Return rows of `(document_id, file_path, ocr_text, page_number, canonical_id,
-        duplicate_of_path)`.
+        duplicate_of_path)` for every indexed page whose `ocr_text` may contain `query`.
+
+        Narrowed down via `pdf_pages_fts`/`image_pages_fts` - trigram-tokenized FTS5
+        indexes kept in sync with `pdf_pages`/`image_pages` by triggers (see
+        `vethuq_core.db.connection`) - queried with `LIKE` rather than `MATCH` so
+        matching stays substring-based (e.g. "arge" still matches "large") and
+        case-insensitive, same as before this index existed, just without a full
+        Python-side scan of every indexed page's text.
 
         `canonical_id` is the `document_index.id` whose `pdf_pages`/`image_pages`
         rows actually hold the text - among every row sharing this one's logical
@@ -54,8 +67,9 @@ class Search:
         `document_id`/`file_path`), reusing the carrier's OCR text, so it still
         surfaces as its own search result.
         """
-        pdf_rows = Document.list_indexed_pdf_pages(conn)
-        image_rows = Document.list_indexed_image_pages(conn)
+        like_pattern = Search._like_pattern(query)
+        pdf_rows = Document.search_indexed_pdf_pages(conn, like_pattern)
+        image_rows = Document.search_indexed_image_pages(conn, like_pattern)
         return [
             (
                 row["document_id"],
@@ -102,7 +116,7 @@ class Search:
             page_number,
             canonical_id,
             duplicate_of_path,
-        ) in Search._indexed_pages(conn):
+        ) in Search._indexed_pages(conn, query):
             text = ocr_text.replace("\n", " ")
             position = text.lower().find(query_lower)
             if position == -1:

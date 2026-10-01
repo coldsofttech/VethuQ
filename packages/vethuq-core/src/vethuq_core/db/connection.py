@@ -21,7 +21,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 24
+    SCHEMA_VERSION = 25
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -151,6 +151,61 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (file_type, process_type)
 );
+
+-- Full-text index over ocr_text, one per pages table, so `vethuq_core.search`
+-- can query matching pages through SQLite's trigram index instead of
+-- scanning every indexed page's text in Python. `tokenize='trigram'`
+-- (rather than FTS5's default word tokenizer) keeps the same "any substring,
+-- anywhere, case-insensitively" matching that predates this index (e.g. a
+-- query of "arge" must still match "large") - achieved by querying these
+-- tables with LIKE '%...%' instead of MATCH, which SQLite still resolves
+-- through the trigram index. Declared as external-content tables
+-- (content=/content_rowid=) so ocr_text isn't duplicated on disk; the
+-- triggers below are what keep them in sync, since an external-content FTS5
+-- index doesn't update itself.
+CREATE VIRTUAL TABLE IF NOT EXISTS pdf_pages_fts USING fts5(
+    ocr_text,
+    content='pdf_pages',
+    content_rowid='id',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_ai AFTER INSERT ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_ad AFTER DELETE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_fts(pdf_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_au AFTER UPDATE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_fts(pdf_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+    INSERT INTO pdf_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS image_pages_fts USING fts5(
+    ocr_text,
+    content='image_pages',
+    content_rowid='id',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS image_pages_fts_ai AFTER INSERT ON image_pages BEGIN
+    INSERT INTO image_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS image_pages_fts_ad AFTER DELETE ON image_pages BEGIN
+    INSERT INTO image_pages_fts(image_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS image_pages_fts_au AFTER UPDATE ON image_pages BEGIN
+    INSERT INTO image_pages_fts(image_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+    INSERT INTO image_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
 """
 
     @staticmethod
