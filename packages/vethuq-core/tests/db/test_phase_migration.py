@@ -70,7 +70,7 @@ class TestPhaseMigration:
         }
 
     def test_native_pages_are_stored_at_the_quick_phase_and_migrated_there(self, tmp_path):
-        from vethuq_core.ocr import PageResult
+        from vethuq_core.readers import PageResult
 
         assert PageResult("text", 1.0, "native").phase_columns() == (1, "")
         assert PageResult("text", 0.9, "ocr").phase_columns() == (1, "0")
