@@ -9,6 +9,8 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.reader import (
+    CssReader,
+    EmbeddedImages,
     HtmlReader,
     ImageReader,
     JpgReader,
@@ -23,10 +25,12 @@ from vethuq_core.ocr.runner import Ocr
 from vethuq_core.ocr.scheduler import Scheduler
 
 __all__ = [
+    "CssReader",
     "Deepening",
     "DeepenUnit",
     "Document",
     "DocumentResult",
+    "EmbeddedImages",
     "Engine",
     "HtmlReader",
     "ImageReader",

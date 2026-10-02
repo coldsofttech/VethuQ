@@ -209,32 +209,24 @@ class PdfReader(Reader):
             return [PdfReader.ocr_page(conn, page) for page in doc]
 
 
-class HtmlReader(Reader):
-    """An HTML file (`.html`, `.htm`, `.xhtml`): its text is read directly, and local
-    images it embeds are OCR'd.
+class EmbeddedImages:
+    """Reads the local images a text file (HTML, CSS) references into extra text.
 
-    The visible text (not tags, scripts, styles or comments) is extracted, along with the
-    title, descriptive `<meta>` tags and image `alt` text. Each `<img src>` pointing at a
-    local PNG/JPEG file has that image OCR'd and its text appended - remote (`http:`,
-    `data:`, ...) and absolute-path images are never followed, so indexing stays offline
-    and can't pull in unrelated files. The file is one page: 'native' when no image text
-    was added, 'mixed' when it was.
+    Only plain relative references to PNG/JPEG (OCR'd) or SVG (its `<text>` read directly,
+    never rasterised) files are followed - remote (`http:`, `data:`, ...) and absolute-path
+    images never are, so indexing stays offline and can't pull in unrelated files.
     """
 
-    file_type = "html"
+    RASTER_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+    SUFFIXES = RASTER_SUFFIXES | {".svg"}
 
-    _IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
-
-    # Bounds the OCR work a single page full of images (a gallery, a saved web page) can cost.
+    # Bounds the OCR work a single file full of images (a gallery, a saved web page) can cost.
     MAX_IMAGES = 50
 
-    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
-        return [HtmlReader.read_file(conn, file_path)]
-
     @staticmethod
-    def resolve_image(html_path: Path, source: str) -> Path | None:
-        """The local image file `source` names relative to `html_path`, else None."""
-        parts = urlsplit(source)
+    def resolve(owner_path: Path, source: str) -> Path | None:
+        """The local image file `source` names relative to `owner_path`, else None."""
+        parts = urlsplit(source.strip())
         # Any scheme or host (http:, data:, file:, //cdn...) is not a plain relative path;
         # neither is a Windows drive ("C:\\x.png", scheme "c"), which `urlsplit` also reports.
         if parts.scheme or parts.netloc or not parts.path:
@@ -242,45 +234,97 @@ class HtmlReader(Reader):
         raw = unquote(parts.path)
         if raw.startswith(("/", "\\")) or Path(raw).is_absolute():
             return None
-        candidate = html_path.parent / raw
-        if candidate.suffix.lower() not in HtmlReader._IMAGE_SUFFIXES or not candidate.is_file():
+        candidate = owner_path.parent / raw
+        if candidate.suffix.lower() not in EmbeddedImages.SUFFIXES or not candidate.is_file():
             return None
         return candidate
+
+    @staticmethod
+    def read(conn: sqlite3.Connection, owner_path: Path, sources: list[str]) -> list[PageResult]:
+        """One non-empty `PageResult` per distinct followable image in `sources` (source
+        'ocr' for rasters, 'native' for SVG text). Images that fail are skipped."""
+        results: list[PageResult] = []
+        seen: set[Path] = set()
+        for source in sources:
+            image_path = EmbeddedImages.resolve(owner_path, source)
+            if image_path is None or image_path in seen:
+                continue
+            if len(seen) >= EmbeddedImages.MAX_IMAGES:
+                _logger.warning("Only reading the first %d images in %s", len(seen), owner_path)
+                break
+            seen.add(image_path)
+            try:
+                if image_path.suffix.lower() == ".svg":
+                    text = Markup.svg_text(image_path.read_bytes())
+                    image = PageResult(text=text, confidence=1.0, source="native")
+                else:
+                    image = ImageReader.ocr_file(conn, image_path)
+            except Exception:
+                _logger.warning("Could not read %s embedded in %s", image_path, owner_path)
+                continue
+            if image.text.strip():
+                results.append(image)
+        return results
+
+    @staticmethod
+    def combine(
+        text: str, confidence: float, encoding: str, images: list[PageResult]
+    ) -> PageResult:
+        """The page for a text file's own `text` plus its `images`' text: 'mixed' (with the
+        OCR engine recorded) when any image was OCR'd, else 'native'. Confidence is the
+        average across the file's text and each image."""
+        used_ocr = any(image.source == "ocr" for image in images)
+        parts = [text, *(image.text.strip() for image in images)]
+        confidences = [confidence, *(image.confidence for image in images)]
+        return PageResult(
+            text="\n".join(part for part in parts if part),
+            confidence=sum(confidences) / len(confidences),
+            source="mixed" if used_ocr else "native",
+            ocr_engine=Engine.name() if used_ocr else None,
+            language=Engine.LANGUAGE if used_ocr else None,
+            encoding=encoding,
+        )
+
+
+class HtmlReader(Reader):
+    """An HTML file (`.html`, `.htm`, `.xhtml`): its text is read directly, and the local
+    images it embeds (see `EmbeddedImages`) are read too.
+
+    The visible text (not tags, scripts, styles or comments) is extracted, along with the
+    title, descriptive `<meta>` tags, image `alt` text and inline `<svg>` text. Images come
+    from `<img src>`, `srcset`/`<picture>` and CSS `url(...)` in `<style>` blocks and
+    `style` attributes. The file is one page: 'native' unless an image was OCR'd, then 'mixed'.
+    """
+
+    file_type = "html"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [HtmlReader.read_file(conn, file_path)]
 
     @staticmethod
     def read_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
         decoded = Markup.decode(file_path.read_bytes(), is_html=True)
         text, sources = Markup.html_text(decoded.text)
+        images = EmbeddedImages.read(conn, file_path, sources)
+        return EmbeddedImages.combine(text, decoded.confidence, decoded.encoding, images)
 
-        texts = [text]
-        confidences = [decoded.confidence]
-        seen: set[Path] = set()
-        for source in sources:
-            image_path = HtmlReader.resolve_image(file_path, source)
-            if image_path is None or image_path in seen:
-                continue
-            if len(seen) >= HtmlReader.MAX_IMAGES:
-                _logger.warning("Only OCR'ing the first %d images in %s", len(seen), file_path)
-                break
-            seen.add(image_path)
-            try:
-                image = ImageReader.ocr_file(conn, image_path)
-            except Exception:
-                _logger.warning("Could not OCR %s embedded in %s", image_path, file_path)
-                continue
-            if image.text.strip():
-                texts.append(image.text.strip())
-                confidences.append(image.confidence)
 
-        has_image_text = len(texts) > 1
-        return PageResult(
-            text="\n".join(part for part in texts if part),
-            confidence=sum(confidences) / len(confidences),
-            source="mixed" if has_image_text else "native",
-            ocr_engine=Engine.name() if has_image_text else None,
-            language=Engine.LANGUAGE if has_image_text else None,
-            encoding=decoded.encoding,
-        )
+class CssReader(Reader):
+    """A stylesheet (`.css`): read as text - selectors, values, `content:` strings and
+    comments - plus the local images its `url(...)` references point at (see
+    `EmbeddedImages`; relative to the stylesheet, as a browser would)."""
+
+    file_type = "css"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [CssReader.read_file(conn, file_path)]
+
+    @staticmethod
+    def read_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
+        decoded = Markup.decode_css(file_path.read_bytes())
+        text, sources = Markup.css_text(decoded.text)
+        images = EmbeddedImages.read(conn, file_path, sources)
+        return EmbeddedImages.combine(text, decoded.confidence, decoded.encoding, images)
 
 
 class XmlReader(Reader):
@@ -336,6 +380,7 @@ class Readers:
         ".htm": HtmlReader(),
         ".xhtml": HtmlReader(),
         ".xml": XmlReader(),
+        ".css": CssReader(),
     }
 
     @staticmethod

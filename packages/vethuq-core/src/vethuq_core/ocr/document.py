@@ -320,7 +320,7 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
-        elif file_type in ("html", "xml"):
+        elif file_type in ("html", "xml", "css"):
             page = pages[0]
             DocumentQuery.delete_markup_pages(conn, document_id)
             DocumentQuery.insert_markup_page(

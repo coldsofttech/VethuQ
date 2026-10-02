@@ -3,7 +3,15 @@ import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vethuq_core.ocr import HtmlReader, PageResult, Quick, Readers, XmlReader
+from vethuq_core.ocr import (
+    CssReader,
+    EmbeddedImages,
+    HtmlReader,
+    PageResult,
+    Quick,
+    Readers,
+    XmlReader,
+)
 from vethuq_core.ocr.markup import Markup
 from vethuq_core.search import Search
 from vethuq_core.source import Sources
@@ -133,7 +141,7 @@ class TestHtmlImages:
         (tmp_path / "notes.txt").write_text("x")
         page = tmp_path / "page.html"
 
-        assert HtmlReader.resolve_image(page, source) is None
+        assert EmbeddedImages.resolve(page, source) is None
 
     def test_relative_sources_resolve_including_encoded_and_parent_paths(self, tmp_path):
         (tmp_path / "img").mkdir()
@@ -142,10 +150,10 @@ class TestHtmlImages:
         (tmp_path / "site").mkdir()
         page = tmp_path / "site" / "page.html"
 
-        assert HtmlReader.resolve_image(page, "../img/my%20chart.PNG?v=2#f") == (
+        assert EmbeddedImages.resolve(page, "../img/my%20chart.PNG?v=2#f") == (
             tmp_path / "site" / ".." / "img" / "my chart.PNG"
         )
-        assert HtmlReader.resolve_image(page, "../top.jpg") is not None
+        assert EmbeddedImages.resolve(page, "../top.jpg") is not None
 
     def test_local_image_text_is_appended_and_page_is_mixed(self, tmp_path):
         (tmp_path / "chart.png").write_bytes(b"x")
@@ -171,7 +179,7 @@ class TestHtmlImages:
         assert ocr_file.call_count == 1
 
     def test_image_count_is_capped(self, tmp_path):
-        count = HtmlReader.MAX_IMAGES + 5
+        count = EmbeddedImages.MAX_IMAGES + 5
         for i in range(count):
             (tmp_path / f"{i}.png").write_bytes(b"x")
         page_path = tmp_path / "page.html"
@@ -182,7 +190,7 @@ class TestHtmlImages:
         with self._ocr() as ocr_file:
             HtmlReader.read_file(MagicMock(), page_path)
 
-        assert ocr_file.call_count == HtmlReader.MAX_IMAGES
+        assert ocr_file.call_count == EmbeddedImages.MAX_IMAGES
 
     def test_failing_or_empty_image_is_skipped(self, tmp_path):
         (tmp_path / "bad.png").write_bytes(b"x")
@@ -197,6 +205,49 @@ class TestHtmlImages:
         assert page.text == "Body"
         assert page.source == "native"
         assert page.ocr_engine is None
+
+    def test_srcset_picture_and_css_urls_are_followed(self, tmp_path):
+        for name in ("a.png", "b.png", "c.png", "d.jpg", "e.png", "f.png"):
+            (tmp_path / name).write_bytes(b"x")
+        page_path = tmp_path / "page.html"
+        page_path.write_text(
+            """<style>/* url(f.png) */ .hero { background: url('d.jpg') }</style>
+            <img src="a.png" srcset="b.png 1x, c.png 2x">
+            <picture><source srcset="e.png"><img alt="x"></picture>
+            <div style="background-image: url(&quot;f.png&quot;)"></div>"""
+        )
+        seen = []
+
+        def fake(_conn, path):
+            seen.append(path.name)
+            return PageResult(text=path.name, confidence=1.0, source="ocr")
+
+        with patch("vethuq_core.ocr.ImageReader.ocr_file", side_effect=fake):
+            HtmlReader.read_file(MagicMock(), page_path)
+
+        assert seen == ["a.png", "b.png", "c.png", "e.png", "d.jpg", "f.png"]
+
+    def test_svg_images_are_read_as_text_without_ocr(self, tmp_path):
+        (tmp_path / "logo.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"><title>Acme logo</title>'
+            "<text>Acme <tspan>Corp</tspan></text></svg>"
+        )
+        page_path = tmp_path / "page.html"
+        page_path.write_text('<p>Body</p><img src="logo.svg">')
+
+        with patch("vethuq_core.ocr.ImageReader.ocr_file") as ocr_file:
+            page = HtmlReader.read_file(MagicMock(), page_path)
+
+        ocr_file.assert_not_called()
+        assert page.text == "Body\nAcme logo\nAcme Corp"
+        assert page.source == "native"
+
+    def test_inline_svg_text_is_indexed(self):
+        text, _ = Markup.html_text(
+            "<p>Before</p><svg><style>.x{fill:red}</style><text>One</text><text>Two</text></svg>"
+        )
+
+        assert text.splitlines() == ["Before", "One Two"]
 
     def test_no_images_never_touches_the_ocr_engine(self, tmp_path):
         page_path = tmp_path / "page.html"
@@ -225,6 +276,85 @@ class TestHtmlImages:
             == 1
         )
         assert [m.file_name for m in Search.indexed_content(conn, "total 4242")] == ["page.html"]
+
+
+class TestCss:
+    CSS = """@charset "utf-8";
+/* Brand colours - see design doc */
+.hero{background:url("img/banner.png") no-repeat}.a::after{content:"Sale!"}
+.logo { background: url(data:image/png;base64,AAAA/BBBB==) }
+"""
+
+    def test_text_keeps_comments_values_and_strings_one_rule_per_line(self):
+        text, _ = Markup.css_text(self.CSS)
+
+        lines = text.splitlines()
+        assert "/* Brand colours - see design doc */" in lines
+        assert '.hero{background:url("img/banner.png") no-repeat}' in lines
+        assert '.a::after{content:"Sale!"}' in lines
+
+    def test_data_uris_are_dropped_from_text(self):
+        text, urls = Markup.css_text(self.CSS)
+
+        assert "AAAA" not in text
+        assert "url(data:)" in text
+
+    def test_urls_ignore_comments(self):
+        urls = Markup.css_urls("/* url(old.png) */ a{b:url(new.png)} c{d:url( 'x y.jpg' )}")
+
+        assert urls == ["new.png", "x y.jpg"]
+
+    def test_charset_rule_is_honoured(self):
+        data = '@charset "windows-1251";\n.a::after{content:"Привет"}'.encode("cp1251")
+
+        decoded = Markup.decode_css(data)
+
+        assert "Привет" in decoded.text
+        assert decoded.confidence == 1.0
+
+    def test_read_file_ocrs_local_url_images_relative_to_the_stylesheet(self, tmp_path):
+        (tmp_path / "css").mkdir()
+        (tmp_path / "css" / "img").mkdir()
+        (tmp_path / "css" / "img" / "banner.png").write_bytes(b"x")
+        path = tmp_path / "css" / "site.css"
+        path.write_text(self.CSS, encoding="utf-8")
+
+        with patch(
+            "vethuq_core.ocr.ImageReader.ocr_file",
+            return_value=PageResult(text="SUMMER SALE", confidence=0.7, source="ocr"),
+        ):
+            page = CssReader.read_file(MagicMock(), path)
+
+        assert page.source == "mixed"
+        assert page.text.endswith("SUMMER SALE")
+        assert "Sale!" in page.text
+
+    def test_plain_stylesheet_is_native(self, tmp_path):
+        path = tmp_path / "a.css"
+        path.write_text("body { color: red }")
+
+        page = CssReader.read_file(MagicMock(), path)
+
+        assert (page.text, page.source, page.confidence) == ("body { color: red }", "native", 1.0)
+
+    def test_registered_by_suffix(self, tmp_path):
+        assert Readers.for_path(tmp_path / "A.CSS").file_type == "css"
+        assert Readers.new_file_type_counts()["css"] == 0
+
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_indexing_makes_css_searchable(self, mock_engine, conn, tmp_path):
+        path = tmp_path / "site.css"
+        path.write_text('/* Brand palette */ a::after { content: "Limited offer" }')
+        source = Sources.add(conn, path)
+
+        Quick.run(conn, source)
+
+        mock_engine.assert_not_called()
+        assert conn.execute("SELECT file_type, status FROM document_index").fetchone()[:] == (
+            "css",
+            "indexed",
+        )
+        assert [m.file_name for m in Search.indexed_content(conn, "limited OFFER")] == ["site.css"]
 
 
 class TestXmlText:

@@ -35,27 +35,36 @@ class Markup:
     UNPARSED_CONFIDENCE = 0.5
 
     # Elements whose content never reads as page text.
-    _HTML_SKIP = ("script", "style", "template", "noscript", "svg", "head")
+    _HTML_SKIP = ("script", "style", "template", "noscript", "head")
 
     # Elements that end a line of text; everything else flows inline.
     _HTML_BLOCKS = (
         "address article aside blockquote body dd details dialog div dl dt fieldset "
         "figcaption figure footer form h1 h2 h3 h4 h5 h6 header hgroup hr li main menu nav "
-        "ol p pre section summary table tbody tfoot thead title tr ul caption"
+        "ol p pre section summary svg table tbody tfoot thead title tr ul caption"
     ).split()
+
+    # `url(...)`, quoted or not, in CSS that's already had its comments stripped.
+    _CSS_URL = re.compile(r"""url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s'"]*))\s*\)""", re.IGNORECASE)
+    _CSS_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+    _CSS_DATA_URL = re.compile(r"""url\(\s*(["']?)\s*data:.*?\1\s*\)""", re.IGNORECASE | re.DOTALL)
+    _CSS_CHARSET = re.compile(rb"""^(?:\xef\xbb\xbf)?@charset\s+["']([\w.:-]+)["']""")
 
     _META_TEXT_NAMES = ("description", "keywords", "title", "og:title", "og:description")
 
     @staticmethod
-    def decode(data: bytes, *, is_html: bool) -> Decoded:
+    def decode(data: bytes, *, is_html: bool, known_encodings: tuple[str, ...] = ()) -> Decoded:
         """Decode `data` to text, working the encoding out from its BOM, its declaration
         (`<meta charset>` / `<?xml encoding?>`), or by detection.
 
-        Raises `ValueError` for data that's evidently binary rather than markup.
+        `known_encodings` are tried first and, if one decodes the data, trusted outright
+        (e.g. a CSS `@charset`). Raises `ValueError` for data that's evidently binary.
         """
         from bs4 import UnicodeDammit
 
-        dammit = UnicodeDammit(data, is_html=is_html)
+        dammit = UnicodeDammit(
+            data, is_html=is_html, known_definite_encodings=list(known_encodings)
+        )
         if dammit.unicode_markup is None or dammit.original_encoding is None:
             raise ValueError("file could not be decoded as text")
         # Wide encodings (UTF-16/32) are recognised and decoded above, so a NUL that's
@@ -66,7 +75,11 @@ class Markup:
         encoding = dammit.original_encoding
         if dammit.contains_replacement_characters:
             confidence = Markup.LOSSY_CONFIDENCE
-        elif dammit.declared_html_encoding or encoding.lower() in ("utf-8", "ascii"):
+        elif (
+            dammit.declared_html_encoding
+            or encoding.lower() in ("utf-8", "ascii")
+            or encoding in known_encodings
+        ):
             confidence = 1.0
         elif data.startswith(codecs.BOM_UTF8) or data.startswith(Markup._WIDE_BOMS):
             confidence = 1.0
@@ -82,8 +95,10 @@ class Markup:
 
         The text is what a reader sees: no tags, scripts, styles or comments, block
         elements on their own lines, plus `<title>`, descriptive `<meta>` tags and images'
-        `alt` text. `image_sources` are the raw `<img src>` values in document order
-        (duplicates kept - callers resolve and de-duplicate them).
+        `alt` text; text inside an inline `<svg>` is included. `image_sources` are the raw
+        references to images in document order - `<img src>`, `srcset` candidates (also on
+        `<picture>`'s `<source>`), then CSS `url(...)` from `<style>` blocks and `style`
+        attributes (duplicates kept - callers resolve and de-duplicate them).
         """
         from bs4 import BeautifulSoup
 
@@ -102,13 +117,22 @@ class Markup:
             ):
                 extra.append(content)
 
+        css = [style.get_text() for style in soup.find_all("style")]
+        css += [v for tag in soup.find_all(style=True) if isinstance(v := tag.get("style"), str)]
+
+        sources: list[str] = []
+        for tag in soup.find_all(["img", "source"]):
+            src = tag.get("src") if tag.name == "img" else None
+            if isinstance(src, str) and src.strip():
+                sources.append(src.strip())
+            srcset = tag.get("srcset")
+            if isinstance(srcset, str):
+                sources += [c.split()[0] for c in srcset.split(",") if c.strip()]
+        for chunk in css:
+            sources += Markup.css_urls(chunk)
+
         for tag in soup.find_all(Markup._HTML_SKIP):
             tag.decompose()
-        sources = [
-            src.strip()
-            for img in soup.find_all("img")
-            if isinstance(src := img.get("src"), str) and src.strip()
-        ]
         for tag in soup.find_all("br"):
             tag.replace_with("\n")
         for tag in soup.find_all("img"):
@@ -118,12 +142,69 @@ class Markup:
         for tag in soup.find_all(Markup._HTML_BLOCKS):
             tag.insert_before("\n")
             tag.insert_after("\n")
-        for tag in soup.find_all(["td", "th"]):
+        for tag in soup.find_all(["td", "th", "text"]):
             tag.insert_after(" ")
 
         body = Markup._normalize(soup.get_text())
         lines = (*(Markup._collapse(e) for e in extra), body)
         return "\n".join(line for line in lines if line), sources
+
+    # --- CSS -----------------------------------------------------------------------
+
+    @staticmethod
+    def decode_css(data: bytes) -> Decoded:
+        """Decode a stylesheet, honouring a leading `@charset` rule (else a BOM, else
+        detection - see `decode`)."""
+        match = Markup._CSS_CHARSET.match(data)
+        known: tuple[str, ...] = ()
+        if match:
+            known = (match.group(1).decode("ascii"),)
+        return Markup.decode(data, is_html=False, known_encodings=known)
+
+    @staticmethod
+    def css_urls(css: str) -> list[str]:
+        """The raw `url(...)` references in `css` (comments ignored), in order. `data:`
+        URIs are included - callers decide what's followable."""
+        uncommented = Markup._CSS_COMMENT.sub("", css)
+        return [
+            (quoted or single or bare).strip()
+            for quoted, single, bare in Markup._CSS_URL.findall(uncommented)
+            if (quoted or single or bare).strip()
+        ]
+
+    @staticmethod
+    def css_text(css: str) -> tuple[str, list[str]]:
+        """`(text, url_references)` for a stylesheet.
+
+        The text is the stylesheet itself - selectors, values, `content:` strings and
+        comments (often its only documentation) - with whitespace collapsed, one rule
+        per line even when minified, and inline `data:` URIs (base64 blobs) dropped.
+        """
+        text = Markup._CSS_DATA_URL.sub("url(data:)", css)
+        text = text.replace("}", "}\n")
+        return Markup._normalize(text), Markup.css_urls(css)
+
+    # --- SVG -----------------------------------------------------------------------
+
+    @staticmethod
+    def svg_text(data: bytes) -> str:
+        """The text an SVG image displays (`<text>`) or describes (`<title>`, `<desc>`),
+        one element per line. Empty for anything that isn't well-formed SVG."""
+        from xml.etree.ElementTree import ParseError
+
+        from defusedxml.ElementTree import fromstring
+
+        try:
+            root = fromstring(data)
+        except (ParseError, ValueError):
+            return ""
+        lines = []
+        for element in root.iter():
+            if Markup._local_name(element.tag) in ("text", "title", "desc"):
+                line = Markup._collapse("".join(element.itertext()))
+                if line:
+                    lines.append(line)
+        return "\n".join(lines)
 
     # --- XML -----------------------------------------------------------------------
 

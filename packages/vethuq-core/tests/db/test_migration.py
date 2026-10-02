@@ -772,6 +772,7 @@ class TestMarkupFileTypeMigration:
             assert conn.execute("SELECT page_count FROM confidence_metrics").fetchone()[0] == 3
             conn.execute("INSERT INTO confidence_metrics VALUES ('html', 'native', 1, 1.0, 'now')")
             conn.execute("INSERT INTO confidence_metrics VALUES ('xml', 'native', 1, 1.0, 'now')")
+            conn.execute("INSERT INTO confidence_metrics VALUES ('css', 'native', 1, 1.0, 'now')")
             conn.execute(
                 "INSERT INTO markup_pages (document_id, ocr_text, confidence) VALUES (1, 'x', 1)"
             )

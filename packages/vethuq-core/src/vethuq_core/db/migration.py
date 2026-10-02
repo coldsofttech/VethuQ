@@ -481,7 +481,7 @@ class Migration:
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
             conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
         if from_version < 26:
-            # Adds 'html' and 'xml' to the file_type CHECK constraints (stored in
+            # Adds 'html', 'xml' and 'css' to the file_type CHECK constraints (stored in
             # `markup_pages`, which `Db._SCHEMA` just created). SQLite can't widen a
             # CHECK in place, so these three tables follow the same rebuild-the-table
             # pattern as the earlier migrations.
@@ -494,7 +494,8 @@ class Migration:
                     source_id INTEGER NOT NULL REFERENCES sources(id),
                     document_id INTEGER NOT NULL REFERENCES documents(id),
                     file_path TEXT NOT NULL UNIQUE,
-                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'html', 'xml')),
+                    file_type TEXT NOT NULL
+                        CHECK (file_type IN ('pdf', 'image', 'html', 'xml', 'css')),
                     status TEXT NOT NULL DEFAULT 'pending'
                         CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
                     error_message TEXT,
@@ -521,7 +522,8 @@ class Migration:
                 """
                 CREATE TABLE processing_metrics_new (
                     phase INTEGER NOT NULL DEFAULT 1,
-                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'html', 'xml')),
+                    file_type TEXT NOT NULL
+                        CHECK (file_type IN ('pdf', 'image', 'html', 'xml', 'css')),
                     size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
                     document_count INTEGER NOT NULL DEFAULT 0,
                     avg_duration_seconds REAL NOT NULL DEFAULT 0,
@@ -539,7 +541,8 @@ class Migration:
             conn.execute(
                 """
                 CREATE TABLE confidence_metrics_new (
-                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'html', 'xml')),
+                    file_type TEXT NOT NULL
+                        CHECK (file_type IN ('pdf', 'image', 'html', 'xml', 'css')),
                     process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
                     page_count INTEGER NOT NULL DEFAULT 0,
                     avg_confidence REAL NOT NULL DEFAULT 0,

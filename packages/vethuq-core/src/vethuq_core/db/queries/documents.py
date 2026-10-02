@@ -12,6 +12,7 @@ class Document:
         "image": "image_pages",
         "html": "markup_pages",
         "xml": "markup_pages",
+        "css": "markup_pages",
     }
 
     @staticmethod
@@ -465,7 +466,7 @@ class Document:
         conn: sqlite3.Connection, like_pattern: str
     ) -> list[sqlite3.Row]:
         """Like `search_indexed_pdf_pages`, but for `markup_pages`/`markup_pages_fts`
-        (HTML and XML files)."""
+        (HTML, XML and CSS files)."""
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, mp.ocr_text AS ocr_text, "
             "NULL AS page_number, carrier.id AS canonical_id, "
@@ -477,7 +478,7 @@ class Document:
             "JOIN sources s ON s.id = di.source_id "
             "WHERE markup_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 "
-            "AND di.file_type IN ('html', 'xml') "
+            "AND di.file_type IN ('html', 'xml', 'css') "
             "ORDER BY di.file_path",
             (like_pattern,),
         ).fetchall()
