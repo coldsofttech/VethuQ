@@ -9,6 +9,7 @@ from vethuq_core.settings import (
     DbSettings,
     GpuSettings,
     IndexSettings,
+    LogSettings,
     OcrSettings,
     SearchSettings,
     SourceSettings,
@@ -46,6 +47,9 @@ integrity_check_interval_app = typer.Typer(
 engine_app = typer.Typer(
     help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
 )
+logs_app = typer.Typer(help="Configure logging.")
+log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
+log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
@@ -59,6 +63,9 @@ index_app.add_typer(engine_app, name="engine")
 app.add_typer(db_app, name="db")
 db_app.add_typer(integrity_check_app, name="integrity-check")
 integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
+app.add_typer(logs_app, name="logs")
+logs_app.add_typer(log_level_app, name="level")
+logs_app.add_typer(log_retention_app, name="retention")
 
 
 @gpu_app.command("enable")
@@ -423,5 +430,65 @@ def engine_set(
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("OCR engine set to ", (value, Theme.VALUE), "."))
+    finally:
+        conn.close()
+
+
+@log_level_app.command("show")
+def log_level_show() -> None:
+    """Show the current log level."""
+    conn = Db.connect()
+    try:
+        console.print(Text.assemble("Log level: ", (LogSettings.get_level(conn), Theme.VALUE)))
+    finally:
+        conn.close()
+
+
+@log_level_app.command("set")
+def log_level_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(LogSettings.LEVEL_VALUES)}."
+    ),
+) -> None:
+    """Set the log level used for VethuQ's log files (in the logs/ folder)."""
+    conn = Db.connect()
+    try:
+        try:
+            LogSettings.set_level(conn, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Log level set to ", (value, Theme.VALUE), "."))
+    finally:
+        conn.close()
+
+
+@log_retention_app.command("show")
+def log_retention_show() -> None:
+    """Show how many days of log files are kept."""
+    conn = Db.connect()
+    try:
+        console.print(
+            Text.assemble(
+                "Log retention: ", (f"{LogSettings.get_retention_days(conn)} days", Theme.VALUE)
+            )
+        )
+    finally:
+        conn.close()
+
+
+@log_retention_app.command("set")
+def log_retention_set(
+    days: int = typer.Argument(..., help="Days of daily log files to keep (at least 1)."),
+) -> None:
+    """Set how many days of daily log files are kept (older ones are deleted)."""
+    conn = Db.connect()
+    try:
+        try:
+            LogSettings.set_retention_days(conn, days)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Log retention set to ", (f"{days} days", Theme.VALUE), "."))
     finally:
         conn.close()

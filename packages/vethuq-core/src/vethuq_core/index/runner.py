@@ -34,7 +34,9 @@ from pathlib import Path
 from vethuq_core.db import Db
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.db.queries import Index
+from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Readers, Scheduler
+from vethuq_core.paths import Paths
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source, Sources
 
@@ -135,7 +137,7 @@ class IndexRunner:
     _STATE_FILENAME = "index_state.json"
     _CONTROL_FILENAME = "index.control"
     _LOCK_FILENAME = "index.lock"
-    _LOG_FILENAME = "index_worker.log"
+    _logger = Logs.get_logger("index")
     _STOP_TIMEOUT_SECONDS = 5.0
     _PAUSE_POLL_SECONDS = 1.0
     _INTERRUPTED_MESSAGE = "Interrupted: a previous index run did not finish cleanly."
@@ -146,20 +148,20 @@ class IndexRunner:
 
     @staticmethod
     def _state_path(db_path: Path) -> Path:
-        return db_path.parent / IndexRunner._STATE_FILENAME
+        return Paths.run_dir(db_path) / IndexRunner._STATE_FILENAME
 
     @staticmethod
     def _control_path(db_path: Path) -> Path:
-        return db_path.parent / IndexRunner._CONTROL_FILENAME
+        return Paths.run_dir(db_path) / IndexRunner._CONTROL_FILENAME
 
     @staticmethod
     def _lock_path(db_path: Path) -> Path:
-        return db_path.parent / IndexRunner._LOCK_FILENAME
+        return Paths.run_dir(db_path) / IndexRunner._LOCK_FILENAME
 
     @staticmethod
     def log_path(db_path: Path | None = None) -> Path:
-        """Path to the worker's log file, where a crash's traceback is written."""
-        return (db_path or Db.default_db_path()).parent / IndexRunner._LOG_FILENAME
+        """Path to the index log (`index.log`), which records runs, worker threads and crashes."""
+        return Paths.logs_dir(db_path or Db.default_db_path()) / Logs.COMPONENTS["index"]
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
@@ -280,6 +282,7 @@ class IndexRunner:
         files are processed as usual.
         """
         db_path = db_path or Db.default_db_path()
+        Logs.setup("index", db_path)
         running, pid = IndexRunner.is_running(db_path)
         if running:
             raise AlreadyRunningError(f"An index run is already in progress (pid {pid}).")
@@ -300,6 +303,9 @@ class IndexRunner:
                         "automatically next time."
                     )
             lock_path.unlink(missing_ok=True)
+            IndexRunner._logger.warning(
+                "Cleared stale index lock; reconciling the run that left it"
+            )
             IndexRunner._reconcile_orphaned_run(db_path)
 
         conn = Db.connect(db_path)
@@ -310,6 +316,7 @@ class IndexRunner:
             conn.close()
 
         IndexRunner._set_control(db_path, "run")
+        mode_name = "restart" if restart else "run"
 
         creationflags = 0
         if sys.platform == "win32":
@@ -317,22 +324,22 @@ class IndexRunner:
             # child (python.exe) would otherwise pop up; CREATE_NEW_PROCESS_GROUP
             # keeps it from receiving Ctrl+C aimed at the parent's console.
             creationflags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        # stderr goes to a log file (appended across runs) rather than DEVNULL -
-        # if the worker crashes before it can record anything in index_runs or
-        # the state file (e.g. an unexpected exception during startup), this is
-        # the only place that failure is visible at all.
-        with open(IndexRunner.log_path(db_path), "a", encoding="utf-8") as log_file:
-            process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
-                IndexRunner._worker_command(db_path, target, restart),
-                # Stops a onefile-frozen parent's bundle env from leaking into
-                # the (also onefile) worker exe, which must unpack its own.
-                env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=log_file,
-                start_new_session=(sys.platform != "win32"),
-                creationflags=creationflags,
-            )
+        # The worker logs to `index.log` itself (see `main`), including a crash's
+        # traceback, so its stdout/stderr aren't needed.
+        process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
+            IndexRunner._worker_command(db_path, target, restart),
+            # Stops a onefile-frozen parent's bundle env from leaking into
+            # the (also onefile) worker exe, which must unpack its own.
+            env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=(sys.platform != "win32"),
+            creationflags=creationflags,
+        )
+        IndexRunner._logger.info(
+            "Started index worker pid=%d mode=%s target=%s", process.pid, mode_name, target or "all"
+        )
         IndexRunner._atomic_write(lock_path, str(process.pid))
         return process.pid
 
@@ -439,6 +446,9 @@ class IndexRunner:
             time.sleep(0.25)
         force_killed = False
         if IndexRunner._is_pid_running(pid):
+            IndexRunner._logger.warning(
+                "Index worker pid=%d missed the stop timeout; force-killing it", pid
+            )
             IndexRunner._force_kill(pid)
             force_killed = True
 
@@ -561,6 +571,15 @@ class IndexRunner:
             run_id = Index.insert_run(conn, target, mode, pid, total, workers, started_at)
             conn.commit()
 
+            IndexRunner._logger.info(
+                "Index run %d started: mode=%s target=%s files=%d workers=%d (thread_workers=%s)",
+                run_id,
+                mode,
+                target or "all",
+                total,
+                workers,
+                thread_workers_setting,
+            )
             state = IndexState(
                 run_id=run_id,
                 pid=pid,
@@ -582,12 +601,19 @@ class IndexRunner:
             state_lock = threading.Lock()
 
             def on_file_start(file_path: str) -> None:
+                IndexRunner._logger.info("Processing %s", file_path)
                 with state_lock:
                     state.phase = 1
                     state.current_files.append(file_path)
                     IndexRunner._write_state(db_path, state)
 
             def on_file_done(file_path: str, succeeded: bool | None) -> None:
+                if succeeded is None:
+                    IndexRunner._logger.info("Skipped %s (claimed by another run)", file_path)
+                elif succeeded:
+                    IndexRunner._logger.info("Indexed %s", file_path)
+                else:
+                    IndexRunner._logger.warning("Failed to index %s", file_path)
                 with state_lock:
                     if file_path in state.current_files:
                         state.current_files.remove(file_path)
@@ -620,6 +646,7 @@ class IndexRunner:
                     IndexRunner._write_state(db_path, state)
 
             def on_workers_changed(new_workers: int) -> None:
+                IndexRunner._logger.info("Active workers changed to %d", new_workers)
                 with state_lock:
                     state.workers = new_workers
                     IndexRunner._write_state(db_path, state)
@@ -660,8 +687,16 @@ class IndexRunner:
             )
 
             final_status = "stopped" if stopped else "completed"
+            IndexRunner._logger.info(
+                "Index run %d %s: processed=%d failed=%d",
+                run_id,
+                final_status,
+                state.processed_files,
+                state.failed_files,
+            )
             IndexRunner._mark_run_ended(db_path, state, final_status)
         except Exception:  # noqa: BLE001 - record the crash, then re-raise for the process exit code
+            IndexRunner._logger.exception("Index run crashed")
             if run_id is not None:
                 Index.fail_run(conn, run_id, datetime.now(UTC).isoformat())
             # Whatever file was in flight when this crashed is left claimed
@@ -686,6 +721,7 @@ class IndexRunner:
         db_path = Path(sys.argv[1])
         target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"
+        Logs.setup("index", db_path)
         IndexRunner._run_worker(db_path, target, restart=mode == "restart")
 
 

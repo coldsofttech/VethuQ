@@ -10,15 +10,15 @@ reported clearly instead of failing later with a confusing
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from vethuq_core.db.queries import Integrity as IntegrityQuery
+from vethuq_core.logs import Logs
 from vethuq_core.settings import DbSettings, Settings
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("database")
 
 
 @dataclass(frozen=True)

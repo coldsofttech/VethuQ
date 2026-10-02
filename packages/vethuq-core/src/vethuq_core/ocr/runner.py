@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING
@@ -10,13 +9,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.deepening import Deepening
 from vethuq_core.ocr.pending import Pending
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.source import Source
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 class Ocr:

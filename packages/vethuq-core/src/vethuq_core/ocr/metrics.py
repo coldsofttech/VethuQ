@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -12,8 +11,9 @@ if TYPE_CHECKING:
 
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.db.queries import Stats as StatsQuery
+from vethuq_core.logs import Logs
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 class Metrics:

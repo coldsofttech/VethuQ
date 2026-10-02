@@ -304,20 +304,18 @@ class TestStartRun:
         assert pid == 4321
         assert IndexRunner._lock_path(db_path).read_text(encoding="utf-8").strip() == "4321"
 
-    def test_start_run_redirects_stderr_to_log_file(self, db_path, monkeypatch):
-        captured = {}
-
-        def fake_popen(argv, **kwargs):
-            captured["stderr"] = kwargs.get("stderr")
-            return _FakeProcess(4321)
-
-        monkeypatch.setattr(index_runner.subprocess, "Popen", fake_popen)
+    def test_start_run_logs_worker_start_to_index_log(self, db_path, monkeypatch):
+        monkeypatch.setattr(
+            index_runner.subprocess, "Popen", lambda argv, **kwargs: _FakeProcess(4321)
+        )
 
         IndexRunner.start_run(None, db_path=db_path)
+        for handler in IndexRunner._logger.handlers:
+            handler.flush()
 
-        assert captured["stderr"] is not None
-        assert captured["stderr"] != index_runner.subprocess.DEVNULL
-        assert IndexRunner.log_path(db_path).exists()
+        assert "Started index worker pid=4321" in IndexRunner.log_path(db_path).read_text(
+            encoding="utf-8"
+        )
 
     def test_start_run_passes_restart_mode_to_worker_argv(self, db_path, monkeypatch):
         captured = {}

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from collections.abc import Collection, Iterator
 from dataclasses import dataclass
@@ -13,11 +12,12 @@ if TYPE_CHECKING:
     pass
 
 from vethuq_core.db.queries import Document as DocumentQuery
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.reader import Readers
 from vethuq_core.source import Source
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 @dataclass(frozen=True)

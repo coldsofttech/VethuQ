@@ -1,7 +1,7 @@
 """Consumer-facing smoke tests for the merged `vethuq` package.
 
 These exercise the public API documented in docs/PYTHON_API.md the way an installed
-package would be used. `user_data_dir` is redirected to a temp directory so nothing
+package would be used. The data root is redirected to a temp directory so nothing
 touches the real local `vethuq.db`.
 """
 
@@ -19,7 +19,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> vethuq.Vethuq:
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     monkeypatch.setattr(
-        "vethuq._core.db.connection.user_data_dir", lambda *args, **kwargs: str(data_dir)
+        "vethuq._core.paths.Paths.default_data_root", staticmethod(lambda: data_dir)
     )
     return vethuq.Vethuq()
 
@@ -283,7 +283,7 @@ def test_index_errors_share_a_base_class():
 @pytest.fixture
 def indexed_client(client: vethuq.Vethuq, tmp_path: Path) -> vethuq.Vethuq:
     """A client whose database already holds OCR'd pages (OCR itself isn't run here)."""
-    db_file = tmp_path / "data" / "vethuq.db"
+    db_file = tmp_path / "data" / "db" / "vethuq.db"
     client.sources.list()  # creates the database
     conn = sqlite3.connect(db_file)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -379,3 +379,21 @@ def test_cli_help_lists_commands():
     assert result.exit_code == 0
     for command in ("source", "index", "search", "settings", "stats"):
         assert command in result.output
+
+
+def test_logs_tail_reads_a_component_log(client: vethuq.Vethuq, tmp_path: Path):
+    log_dir = tmp_path / "data" / "logs"
+    log_dir.mkdir(exist_ok=True)
+    (log_dir / "index.log").write_text(
+        "2026-10-01 10:00:00,000 INFO [MainThread] vethuq.index: from the log\n",
+        encoding="utf-8",
+    )
+
+    assert client.logs.tail("index", 5) == [
+        "2026-10-01 10:00:00,000 INFO [MainThread] vethuq.index: from the log"
+    ]
+
+
+def test_logs_tail_raises_when_there_is_no_log(client: vethuq.Vethuq):
+    with pytest.raises(vethuq.LogNotFoundError):
+        client.logs.tail("ui")

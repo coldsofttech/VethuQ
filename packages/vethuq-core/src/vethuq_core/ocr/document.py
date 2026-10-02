@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 import sqlite3
 import sys
@@ -16,10 +15,11 @@ if TYPE_CHECKING:
     pass
 
 from vethuq_core.db.queries import Document as DocumentQuery
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.reader import PageResult
 from vethuq_core.source import Source
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 @dataclass(frozen=True)

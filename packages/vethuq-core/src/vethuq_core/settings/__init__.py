@@ -5,6 +5,7 @@ from __future__ import annotations
 from vethuq_core.settings.db import DbSettings
 from vethuq_core.settings.gpu import GpuSettings
 from vethuq_core.settings.index import IndexSettings
+from vethuq_core.settings.logs import LogSettings
 from vethuq_core.settings.ocr import OcrSettings
 from vethuq_core.settings.search import SearchSettings
 from vethuq_core.settings.settings import InvalidSettingValueError, Settings, SettingsError
@@ -15,6 +16,7 @@ __all__ = [
     "GpuSettings",
     "IndexSettings",
     "InvalidSettingValueError",
+    "LogSettings",
     "OcrSettings",
     "SearchSettings",
     "Settings",

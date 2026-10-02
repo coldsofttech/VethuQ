@@ -243,3 +243,53 @@ class TestEngine:
         result = runner.invoke(app, ["settings", "index", "engine", "set", "thorough"])
 
         assert result.exit_code == 1
+
+
+class TestLogs:
+    def test_level_show_defaults_to_info(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "logs", "level", "show"])
+
+        assert result.exit_code == 0
+        assert "info" in result.stdout
+
+    def test_level_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "logs", "level", "set", "debug"])
+        assert set_result.exit_code == 0
+
+        show_result = runner.invoke(app, ["settings", "logs", "level", "show"])
+        assert "debug" in show_result.stdout
+
+    def test_level_set_rejects_invalid_value(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "logs", "level", "set", "loud"])
+
+        assert result.exit_code == 1
+
+    def test_retention_defaults_to_15_days(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "logs", "retention", "show"])
+
+        assert result.exit_code == 0
+        assert "15 days" in result.stdout
+
+    def test_retention_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "logs", "retention", "set", "7"])
+        assert set_result.exit_code == 0
+
+        show_result = runner.invoke(app, ["settings", "logs", "retention", "show"])
+        assert "7 days" in show_result.stdout
+
+    def test_retention_set_rejects_zero(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "logs", "retention", "set", "0"])
+
+        assert result.exit_code == 1

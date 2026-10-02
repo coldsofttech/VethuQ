@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 import threading
 import time
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 from vethuq_core.db.queries import Ocr as OcrQuery
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.engine import Engine
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.reader import PdfReader, Readers
@@ -25,7 +25,7 @@ from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Source
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 @dataclass(frozen=True)
