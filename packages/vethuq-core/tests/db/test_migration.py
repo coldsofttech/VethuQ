@@ -736,3 +736,123 @@ class TestMigration:
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
         finally:
             conn.close()
+
+    def test_connect_migrates_file_type_checks_to_allow_word_documents(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        # A version-25 database: file_type CHECKs that only allow 'pdf'/'image'.
+        old_conn = sqlite3.connect(db_path)
+        old_conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (25);
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                added_at TEXT NOT NULL,
+                last_scanned_at TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                removed_at TEXT
+            );
+            CREATE TABLE documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                file_path TEXT
+            );
+            CREATE TABLE document_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                sha256 TEXT,
+                mtime REAL,
+                created_at TEXT,
+                modified_at TEXT,
+                removed_at TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL,
+                cpu_percent REAL
+            );
+            CREATE TABLE processing_metrics (
+                phase INTEGER NOT NULL DEFAULT 1,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (phase, file_type, size_bucket)
+            );
+            CREATE TABLE confidence_metrics (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                page_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, process_type)
+            );
+            INSERT INTO sources (id, path, source_type, status, added_at)
+                VALUES (1, '/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00');
+            INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01T00:00:00+00:00');
+            INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status)
+                VALUES (1, 1, 1, '/docs/a.pdf', 'pdf', 'indexed');
+            INSERT INTO processing_metrics
+                (phase, file_type, size_bucket, document_count, avg_duration_seconds, updated_at)
+                VALUES (1, 'pdf', 'small', 3, 1.5, '2026-01-01T00:00:00+00:00');
+            INSERT INTO confidence_metrics
+                (file_type, process_type, page_count, avg_confidence, updated_at)
+                VALUES ('pdf', 'native', 4, 1.0, '2026-01-01T00:00:00+00:00');
+            """
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            assert conn.execute("SELECT file_type FROM document_index").fetchone()[0] == "pdf"
+            assert conn.execute(
+                "SELECT document_count, avg_duration_seconds FROM processing_metrics"
+            ).fetchone()[:] == (3, 1.5)
+            assert conn.execute("SELECT page_count FROM confidence_metrics").fetchone()[0] == 4
+
+            for file_type in ("doc", "docx"):
+                conn.execute(
+                    "INSERT INTO document_index (source_id, document_id, file_path, file_type) "
+                    "VALUES (1, 1, ?, ?)",
+                    (f"/docs/a.{file_type}", file_type),
+                )
+                conn.execute(
+                    "INSERT INTO processing_metrics "
+                    "(file_type, size_bucket, updated_at) VALUES (?, 'small', 'now')",
+                    (file_type,),
+                )
+                conn.execute(
+                    "INSERT INTO confidence_metrics (file_type, process_type, updated_at) "
+                    "VALUES (?, 'native', 'now')",
+                    (file_type,),
+                )
+            conn.execute(
+                "INSERT INTO office_pages (document_id, ocr_text, confidence) VALUES (1, 'hi', 1)"
+            )
+            hit = conn.execute(
+                "SELECT rowid FROM office_pages_fts WHERE ocr_text LIKE '%hi%'"
+            ).fetchone()
+            assert hit is not None
+
+            indexes = {row["name"] for row in conn.execute("PRAGMA index_list(document_index)")}
+            assert "idx_document_index_sha256" in indexes
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION == 26
+        finally:
+            conn.close()

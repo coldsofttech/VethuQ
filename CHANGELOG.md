@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Word documents are now indexed: `.docx` files have their text read directly from the file (no OCR) and any embedded images OCR'd, and `.doc` files are supported on a best-effort basis (text, plus embedded PNG/JPEG pictures where they can be found; password-protected files are reported as errors). Word's temporary `~$` lock files are ignored.
 - OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
 - The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.

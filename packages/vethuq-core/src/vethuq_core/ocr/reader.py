@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
+from vethuq_core.ocr.office import DocParser, DocxParser
 
 _logger = logging.getLogger(__name__)
 
@@ -206,6 +207,90 @@ class PdfReader(Reader):
             return [PdfReader.ocr_page(conn, page) for page in doc]
 
 
+class OfficeReader(Reader):
+    """Shared by Word readers: native text, plus OCR over the document's embedded images.
+
+    A Word file has no fixed pages without laying it out, so it becomes a single
+    `PageResult` - `native` if only its own text is used, `mixed` if embedded images added
+    text of their own, `ocr` if the images are all there is.
+    """
+
+    # Smaller embedded images are bullets, rules and logos rather than scanned content.
+    MIN_IMAGE_SIDE_PIXELS = 40
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        raise NotImplementedError
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        text, images = self.extract(file_path)
+        return [OfficeReader.build_page(conn, text, images)]
+
+    @staticmethod
+    def decode_image(data: bytes) -> np.ndarray | None:
+        import cv2
+        import numpy as np
+
+        array = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if array is None:
+            return None
+        height, width = array.shape[:2]
+        if min(height, width) < OfficeReader.MIN_IMAGE_SIDE_PIXELS:
+            return None
+        return array
+
+    @staticmethod
+    def build_page(conn: sqlite3.Connection, native_text: str, images: list[bytes]) -> PageResult:
+        native_text = native_text.strip()
+        image_texts: list[str] = []
+        image_scores: list[float] = []
+        for data in images:
+            array = OfficeReader.decode_image(data)
+            if array is None:
+                continue
+            try:
+                text, confidence, _, _ = ImageReader.ocr_array(conn, array)
+            except Exception:  # noqa: BLE001 - one unreadable picture shouldn't lose the text
+                _logger.warning("OCR failed on an embedded image", exc_info=True)
+                continue
+            if text.strip():
+                image_texts.append(text.strip())
+                image_scores.append(confidence)
+
+        if not image_texts:
+            return PageResult(text=native_text, confidence=1.0, source="native")
+        return PageResult(
+            text="\n".join([native_text, *image_texts]) if native_text else "\n".join(image_texts),
+            confidence=sum(image_scores) / len(image_scores),
+            source="mixed" if native_text else "ocr",
+            ocr_engine=Engine.name(),
+            language=Engine.LANGUAGE,
+        )
+
+
+class DocxReader(OfficeReader):
+    """A .docx file: text read straight from the package, embedded images OCR'd."""
+
+    file_type = "docx"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return DocxParser.extract(file_path)
+
+
+class DocReader(OfficeReader):
+    """A legacy .doc file: text from its piece table, embedded PNG/JPEG pictures OCR'd.
+
+    Best effort - see `DocParser`.
+    """
+
+    file_type = "doc"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return DocParser.extract(file_path)
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -224,7 +309,12 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".docx": DocxReader(),
+        ".doc": DocReader(),
     }
+
+    # Word's `~$name.docx` owner-lock files carry the extension but aren't documents.
+    _LOCK_FILE_PREFIX = "~$"
 
     @staticmethod
     def for_path(file_path: Path) -> Reader:
@@ -232,6 +322,8 @@ class Readers:
 
     @staticmethod
     def is_supported(file_path: Path) -> bool:
+        if file_path.name.startswith(Readers._LOCK_FILE_PREFIX):
+            return False
         return file_path.suffix.lower() in Readers._BY_SUFFIX
 
     @staticmethod

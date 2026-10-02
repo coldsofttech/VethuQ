@@ -111,8 +111,10 @@ class Metrics:
         blending them into a single average would dilute the OCR/mixed signal -
         tracking each process_type separately keeps them meaningful.
         """
-        if file_type == "pdf":
-            pages = DocumentQuery.get_pdf_page_sources(conn, document_id)
+        # Images are always plain OCR; every other file type records a per-page `source`.
+        has_source = file_type != "image"
+        if has_source:
+            pages = DocumentQuery.get_page_sources(conn, file_type, document_id)
         else:
             pages = DocumentQuery.get_page_confidences(conn, file_type, document_id)
         if not pages:
@@ -120,7 +122,7 @@ class Metrics:
 
         by_process_type: dict[str, list[float]] = {}
         for page in pages:
-            process_type = page["source"] if file_type == "pdf" else "ocr"
+            process_type = page["source"] if has_source else "ocr"
             by_process_type.setdefault(process_type, []).append(page["confidence"])
 
         now = datetime.now(UTC).isoformat()

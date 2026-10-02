@@ -320,6 +320,20 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
+        elif file_type in ("doc", "docx"):
+            page = pages[0]
+            DocumentQuery.delete_office_pages(conn, document_id)
+            DocumentQuery.insert_office_page(
+                conn,
+                document_id,
+                page.text,
+                page.confidence,
+                page.source,
+                page.ocr_engine,
+                page.language,
+                page.image_width,
+                page.image_height,
+            )
         else:
             page = pages[0]
             DocumentQuery.delete_image_pages(conn, document_id)

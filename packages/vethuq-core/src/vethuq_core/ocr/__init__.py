@@ -9,6 +9,8 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.reader import (
+    DocReader,
+    DocxReader,
     ImageReader,
     JpgReader,
     PageResult,
@@ -24,7 +26,9 @@ __all__ = [
     "Deepening",
     "DeepenUnit",
     "Document",
+    "DocReader",
     "DocumentResult",
+    "DocxReader",
     "Engine",
     "ImageReader",
     "JpgReader",
