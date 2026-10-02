@@ -77,10 +77,14 @@ class Markup:
     # --- HTML ----------------------------------------------------------------------
 
     @staticmethod
-    def html_text(markup: str) -> str:
-        """Visible text of an HTML document: no tags, scripts, styles or comments, with
-        block elements on their own lines, plus `<title>`, descriptive `<meta>` tags and
-        images' `alt` text (all of which a reader sees or a search should find)."""
+    def html_text(markup: str) -> tuple[str, list[str]]:
+        """`(text, image_sources)` for an HTML document.
+
+        The text is what a reader sees: no tags, scripts, styles or comments, block
+        elements on their own lines, plus `<title>`, descriptive `<meta>` tags and images'
+        `alt` text. `image_sources` are the raw `<img src>` values in document order
+        (duplicates kept - callers resolve and de-duplicate them).
+        """
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(markup, "html.parser")
@@ -100,6 +104,11 @@ class Markup:
 
         for tag in soup.find_all(Markup._HTML_SKIP):
             tag.decompose()
+        sources = [
+            src.strip()
+            for img in soup.find_all("img")
+            if isinstance(src := img.get("src"), str) and src.strip()
+        ]
         for tag in soup.find_all("br"):
             tag.replace_with("\n")
         for tag in soup.find_all("img"):
@@ -113,7 +122,8 @@ class Markup:
             tag.insert_after(" ")
 
         body = Markup._normalize(soup.get_text())
-        return "\n".join(line for line in (*(Markup._collapse(e) for e in extra), body) if line)
+        lines = (*(Markup._collapse(e) for e in extra), body)
+        return "\n".join(line for line in lines if line), sources
 
     # --- XML -----------------------------------------------------------------------
 

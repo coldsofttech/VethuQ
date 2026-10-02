@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import unquote, urlsplit
 
 if TYPE_CHECKING:
     import numpy as np
@@ -209,25 +210,75 @@ class PdfReader(Reader):
 
 
 class HtmlReader(Reader):
-    """An HTML file (`.html`, `.htm`, `.xhtml`), read straight from disk - no OCR.
+    """An HTML file (`.html`, `.htm`, `.xhtml`): its text is read directly, and local
+    images it embeds are OCR'd.
 
     The visible text (not tags, scripts, styles or comments) is extracted, along with the
-    title, descriptive `<meta>` tags and image `alt` text. Like a PDF's text layer, the
-    whole file is one 'native' page.
+    title, descriptive `<meta>` tags and image `alt` text. Each `<img src>` pointing at a
+    local PNG/JPEG file has that image OCR'd and its text appended - remote (`http:`,
+    `data:`, ...) and absolute-path images are never followed, so indexing stays offline
+    and can't pull in unrelated files. The file is one page: 'native' when no image text
+    was added, 'mixed' when it was.
     """
 
     file_type = "html"
 
+    _IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+
+    # Bounds the OCR work a single page full of images (a gallery, a saved web page) can cost.
+    MAX_IMAGES = 50
+
     def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
-        return [HtmlReader.read_file(file_path)]
+        return [HtmlReader.read_file(conn, file_path)]
 
     @staticmethod
-    def read_file(file_path: Path) -> PageResult:
+    def resolve_image(html_path: Path, source: str) -> Path | None:
+        """The local image file `source` names relative to `html_path`, else None."""
+        parts = urlsplit(source)
+        # Any scheme or host (http:, data:, file:, //cdn...) is not a plain relative path;
+        # neither is a Windows drive ("C:\\x.png", scheme "c"), which `urlsplit` also reports.
+        if parts.scheme or parts.netloc or not parts.path:
+            return None
+        raw = unquote(parts.path)
+        if raw.startswith(("/", "\\")) or Path(raw).is_absolute():
+            return None
+        candidate = html_path.parent / raw
+        if candidate.suffix.lower() not in HtmlReader._IMAGE_SUFFIXES or not candidate.is_file():
+            return None
+        return candidate
+
+    @staticmethod
+    def read_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
         decoded = Markup.decode(file_path.read_bytes(), is_html=True)
+        text, sources = Markup.html_text(decoded.text)
+
+        texts = [text]
+        confidences = [decoded.confidence]
+        seen: set[Path] = set()
+        for source in sources:
+            image_path = HtmlReader.resolve_image(file_path, source)
+            if image_path is None or image_path in seen:
+                continue
+            if len(seen) >= HtmlReader.MAX_IMAGES:
+                _logger.warning("Only OCR'ing the first %d images in %s", len(seen), file_path)
+                break
+            seen.add(image_path)
+            try:
+                image = ImageReader.ocr_file(conn, image_path)
+            except Exception:
+                _logger.warning("Could not OCR %s embedded in %s", image_path, file_path)
+                continue
+            if image.text.strip():
+                texts.append(image.text.strip())
+                confidences.append(image.confidence)
+
+        has_image_text = len(texts) > 1
         return PageResult(
-            text=Markup.html_text(decoded.text),
-            confidence=decoded.confidence,
-            source="native",
+            text="\n".join(part for part in texts if part),
+            confidence=sum(confidences) / len(confidences),
+            source="mixed" if has_image_text else "native",
+            ocr_engine=Engine.name() if has_image_text else None,
+            language=Engine.LANGUAGE if has_image_text else None,
             encoding=decoded.encoding,
         )
 

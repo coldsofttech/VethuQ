@@ -1,9 +1,9 @@
 import codecs
 import sqlite3
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from vethuq_core.ocr import HtmlReader, Quick, Readers, XmlReader
+from vethuq_core.ocr import HtmlReader, PageResult, Quick, Readers, XmlReader
 from vethuq_core.ocr.markup import Markup
 from vethuq_core.search import Search
 from vethuq_core.source import Sources
@@ -66,7 +66,7 @@ class TestMarkupDecode:
 
 class TestHtmlText:
     def test_visible_text_only(self):
-        text = Markup.html_text(HTML)
+        text = Markup.html_text(HTML)[0]
 
         assert "do not index" not in text
         assert "color: red" not in text
@@ -74,29 +74,157 @@ class TestHtmlText:
         assert "<" not in text
 
     def test_inline_markup_does_not_split_phrases(self):
-        assert "Total amount due is 1200." in Markup.html_text(HTML)
+        assert "Total amount due is 1200." in Markup.html_text(HTML)[0]
 
     def test_blocks_and_breaks_become_lines(self):
-        lines = Markup.html_text(HTML).splitlines()
+        lines = Markup.html_text(HTML)[0].splitlines()
 
         assert "Budget" in lines
         assert "Pay by Friday." in lines
 
     def test_title_meta_and_alt_text_are_indexed(self):
-        text = Markup.html_text(HTML)
+        text = Markup.html_text(HTML)[0]
 
         assert "Quarterly Report" in text
         assert "Budget overview for Q3" in text
         assert "Revenue chart" in text
 
     def test_table_cells_stay_separated(self):
-        assert "Item Laptop" in Markup.html_text(HTML)
+        assert "Item Laptop" in Markup.html_text(HTML)[0]
 
     def test_fragment_and_malformed_html(self):
-        assert Markup.html_text("<p>unclosed <b>bold").strip() == "unclosed bold"
+        assert Markup.html_text("<p>unclosed <b>bold")[0].strip() == "unclosed bold"
+
+    def test_image_sources_are_returned_in_order(self):
+        _, sources = Markup.html_text(
+            '<img src="a.png"><img alt="no src"><img src=" b.jpg "><img src="">'
+        )
+
+        assert sources == ["a.png", "b.jpg"]
 
     def test_empty(self):
-        assert Markup.html_text("") == ""
+        assert Markup.html_text("") == ("", [])
+
+
+class TestHtmlImages:
+    @staticmethod
+    def _ocr(text="TEXT FROM IMAGE", confidence=0.9):
+        return patch(
+            "vethuq_core.ocr.ImageReader.ocr_file",
+            return_value=PageResult(text=text, confidence=confidence, source="ocr"),
+        )
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "http://example.com/a.png",
+            "https://example.com/a.png",
+            "//cdn.example.com/a.png",
+            "data:image/png;base64,AAAA",
+            "file:///etc/a.png",
+            "/abs/a.png",
+            "C:\\images\\a.png",
+            "missing.png",
+            "notes.txt",
+            "",
+        ],
+    )
+    def test_non_local_or_unsupported_sources_are_not_followed(self, tmp_path, source):
+        (tmp_path / "notes.txt").write_text("x")
+        page = tmp_path / "page.html"
+
+        assert HtmlReader.resolve_image(page, source) is None
+
+    def test_relative_sources_resolve_including_encoded_and_parent_paths(self, tmp_path):
+        (tmp_path / "img").mkdir()
+        (tmp_path / "img" / "my chart.PNG").write_bytes(b"x")
+        (tmp_path / "top.jpg").write_bytes(b"x")
+        (tmp_path / "site").mkdir()
+        page = tmp_path / "site" / "page.html"
+
+        assert HtmlReader.resolve_image(page, "../img/my%20chart.PNG?v=2#f") == (
+            tmp_path / "site" / ".." / "img" / "my chart.PNG"
+        )
+        assert HtmlReader.resolve_image(page, "../top.jpg") is not None
+
+    def test_local_image_text_is_appended_and_page_is_mixed(self, tmp_path):
+        (tmp_path / "chart.png").write_bytes(b"x")
+        page_path = tmp_path / "page.html"
+        page_path.write_text('<p>Caption</p><img src="chart.png">', encoding="utf-8")
+
+        with self._ocr(confidence=0.5):
+            page = HtmlReader.read_file(MagicMock(), page_path)
+
+        assert page.text == "Caption\nTEXT FROM IMAGE"
+        assert page.source == "mixed"
+        assert page.ocr_engine is not None
+        assert page.confidence == pytest.approx(0.75)
+
+    def test_same_image_is_only_ocrd_once(self, tmp_path):
+        (tmp_path / "a.png").write_bytes(b"x")
+        page_path = tmp_path / "page.html"
+        page_path.write_text('<img src="a.png"><img src="./a.png">', encoding="utf-8")
+
+        with self._ocr() as ocr_file:
+            HtmlReader.read_file(MagicMock(), page_path)
+
+        assert ocr_file.call_count == 1
+
+    def test_image_count_is_capped(self, tmp_path):
+        count = HtmlReader.MAX_IMAGES + 5
+        for i in range(count):
+            (tmp_path / f"{i}.png").write_bytes(b"x")
+        page_path = tmp_path / "page.html"
+        page_path.write_text(
+            "".join(f'<img src="{i}.png">' for i in range(count)), encoding="utf-8"
+        )
+
+        with self._ocr() as ocr_file:
+            HtmlReader.read_file(MagicMock(), page_path)
+
+        assert ocr_file.call_count == HtmlReader.MAX_IMAGES
+
+    def test_failing_or_empty_image_is_skipped(self, tmp_path):
+        (tmp_path / "bad.png").write_bytes(b"x")
+        (tmp_path / "blank.png").write_bytes(b"x")
+        page_path = tmp_path / "page.html"
+        page_path.write_text('<p>Body</p><img src="bad.png"><img src="blank.png">')
+        results = [RuntimeError("boom"), PageResult(text="  ", confidence=0.9, source="ocr")]
+
+        with patch("vethuq_core.ocr.ImageReader.ocr_file", side_effect=results):
+            page = HtmlReader.read_file(MagicMock(), page_path)
+
+        assert page.text == "Body"
+        assert page.source == "native"
+        assert page.ocr_engine is None
+
+    def test_no_images_never_touches_the_ocr_engine(self, tmp_path):
+        page_path = tmp_path / "page.html"
+        page_path.write_text("<p>Body</p>")
+
+        with patch("vethuq_core.ocr.Engine.get") as get_engine:
+            HtmlReader.read_file(MagicMock(), page_path)
+
+        get_engine.assert_not_called()
+
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_indexing_makes_image_text_searchable(self, _engine, conn, tmp_path):
+        (tmp_path / "scan.png").write_bytes(b"x")
+        (tmp_path / "page.html").write_text('<p>Intro</p><img src="scan.png">')
+        source = Sources.add(conn, tmp_path / "page.html")
+
+        with self._ocr(text="Invoice total 4242"):
+            Quick.run(conn, source)
+
+        assert conn.execute("SELECT status FROM document_index").fetchone()[0] == "indexed"
+        assert (
+            conn.execute(
+                "SELECT page_count FROM confidence_metrics "
+                "WHERE file_type = 'html' AND process_type = 'mixed'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert [m.file_name for m in Search.indexed_content(conn, "total 4242")] == ["page.html"]
 
 
 class TestXmlText:
@@ -142,7 +270,7 @@ class TestReaders:
         path = tmp_path / "page.html"
         path.write_text(HTML, encoding="utf-8")
 
-        page = HtmlReader.read_file(path)
+        page = HtmlReader.read_file(MagicMock(), path)
 
         assert page.source == "native"
         assert page.confidence == 1.0
