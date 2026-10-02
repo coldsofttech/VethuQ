@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
+from vethuq_core.ocr.markup import Markup
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class PageResult:
     language: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    encoding: str | None = None  # markup files only: the character encoding decoded from
 
     def phase_columns(self) -> tuple[int, str]:
         """`(ocr_phase, ocr_angles)` to store for a page just read at 0 degrees.
@@ -206,6 +208,61 @@ class PdfReader(Reader):
             return [PdfReader.ocr_page(conn, page) for page in doc]
 
 
+class HtmlReader(Reader):
+    """An HTML file (`.html`, `.htm`, `.xhtml`), read straight from disk - no OCR.
+
+    The visible text (not tags, scripts, styles or comments) is extracted, along with the
+    title, descriptive `<meta>` tags and image `alt` text. Like a PDF's text layer, the
+    whole file is one 'native' page.
+    """
+
+    file_type = "html"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [HtmlReader.read_file(file_path)]
+
+    @staticmethod
+    def read_file(file_path: Path) -> PageResult:
+        decoded = Markup.decode(file_path.read_bytes(), is_html=True)
+        return PageResult(
+            text=Markup.html_text(decoded.text),
+            confidence=decoded.confidence,
+            source="native",
+            encoding=decoded.encoding,
+        )
+
+
+class XmlReader(Reader):
+    """An XML file (`.xml`), read straight from disk - no OCR.
+
+    Each value is indexed under its element path (`catalog/book/title: Dune`, attributes as
+    `catalog/book@id: 7`) so a search matches the name as well as the value. A file that
+    isn't well-formed (or uses entity declarations, which are never expanded) is indexed
+    as its loose text instead of failing, at a reduced confidence.
+    """
+
+    file_type = "xml"
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [XmlReader.read_file(file_path)]
+
+    @staticmethod
+    def read_file(file_path: Path) -> PageResult:
+        from xml.etree.ElementTree import ParseError
+
+        data = file_path.read_bytes()
+        decoded = Markup.decode(data, is_html=False)
+        try:
+            text = Markup.xml_text(data)
+            confidence = decoded.confidence
+        except (ParseError, ValueError):
+            text = Markup.loose_text(decoded.text)
+            confidence = min(decoded.confidence, Markup.UNPARSED_CONFIDENCE)
+        return PageResult(
+            text=text, confidence=confidence, source="native", encoding=decoded.encoding
+        )
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -224,6 +281,10 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".html": HtmlReader(),
+        ".htm": HtmlReader(),
+        ".xhtml": HtmlReader(),
+        ".xml": XmlReader(),
     }
 
     @staticmethod

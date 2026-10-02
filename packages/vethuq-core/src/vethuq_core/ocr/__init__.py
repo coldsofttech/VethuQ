@@ -9,6 +9,7 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.reader import (
+    HtmlReader,
     ImageReader,
     JpgReader,
     PageResult,
@@ -16,6 +17,7 @@ from vethuq_core.ocr.reader import (
     PngReader,
     Reader,
     Readers,
+    XmlReader,
 )
 from vethuq_core.ocr.runner import Ocr
 from vethuq_core.ocr.scheduler import Scheduler
@@ -26,6 +28,7 @@ __all__ = [
     "Document",
     "DocumentResult",
     "Engine",
+    "HtmlReader",
     "ImageReader",
     "JpgReader",
     "Metrics",
@@ -39,4 +42,5 @@ __all__ = [
     "Reader",
     "Readers",
     "Scheduler",
+    "XmlReader",
 ]

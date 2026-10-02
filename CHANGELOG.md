@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTML and XML files are now indexed and searchable. `.html`, `.htm` and `.xhtml` files are read as text (tags, scripts, styles and comments are ignored; the title, description `<meta>` tags and image `alt` text are included); `.xml` files are indexed with each value under its element path (e.g. `catalog/book/title: Dune`, attributes as `catalog/book@id: 7`) so you can search by name or value. Neither is OCR'd, character encodings are detected automatically, and XML entity declarations are never expanded. An XML file that isn't well-formed is indexed as plain text instead of failing.
 - OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
 - The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.
