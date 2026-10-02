@@ -10,6 +10,8 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
+from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
+from vethuq._core.db.integrity import IntegrityCheckResult
 from vethuq._core.index import (
     AlreadyRunningError,
     IndexRun,
@@ -23,6 +25,7 @@ from vethuq._core.ocr import DocumentResult
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import Search as _Search
 from vethuq._core.search import SearchMatch
+from vethuq._core.settings import DbSettings as _DbSettings
 from vethuq._core.settings import GpuSettings as _GpuSettings
 from vethuq._core.settings import IndexSettings as _IndexSettings
 from vethuq._core.settings import (
@@ -51,14 +54,18 @@ DB_PATH = _Db.default_db_path()
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
+INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 
 __all__ = [
+    "INTEGRITY_CHECK_VALUES",
     "OCR_ENGINE_MODES",
     "SEARCH_EXPORT_FORMATS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
     "ConfidenceMetric",
     "DB_PATH",
+    "Db",
+    "DbSettings",
     "DocumentResult",
     "ExportFormatSettings",
     "GPUSettings",
@@ -67,6 +74,8 @@ __all__ = [
     "IndexRunnerError",
     "IndexSettings",
     "IndexState",
+    "IntegrityCheckResult",
+    "IntegrityCheckSettings",
     "InvalidSettingValueError",
     "OcrEngineSettings",
     "OcrRetrySettings",
@@ -462,6 +471,62 @@ class OcrEngineSettings:
             conn.close()
 
 
+class IntegrityCheckSettings:
+    """Whether `PRAGMA integrity_check` runs automatically when the database is opened.
+    Not instantiated directly — use `Vethuq().settings.db.integrity_check`."""
+
+    def get(self) -> str:
+        """Whether the check runs automatically when the database is opened. 'auto' by default.
+
+        One of 'auto' (run at most once per `get_interval_minutes()` - the
+        default), 'enable' (run on every connection), or 'disable' (never
+        run automatically - only via `Db.integrity_check`).
+        """
+        conn = _Db.connect()
+        try:
+            return _DbSettings.get_integrity_check(conn)
+        finally:
+            conn.close()
+
+    def set(self, value: str) -> None:
+        """Set whether the check runs automatically when the database is opened.
+
+        `value` must be one of `INTEGRITY_CHECK_VALUES`. Raises
+        `InvalidSettingValueError` otherwise.
+        """
+        conn = _Db.connect()
+        try:
+            _DbSettings.set_integrity_check(conn, value)
+        finally:
+            conn.close()
+
+    def get_interval_minutes(self) -> int:
+        """Minutes between automatic integrity checks when `get()` is 'auto'. 1 day by default."""
+        conn = _Db.connect()
+        try:
+            return _DbSettings.get_integrity_check_interval_minutes(conn)
+        finally:
+            conn.close()
+
+    def set_interval_minutes(self, minutes: int) -> None:
+        """Set, in minutes, how often automatic integrity checks run when `get()` is 'auto'.
+
+        Raises `InvalidSettingValueError` if `minutes` is negative.
+        """
+        conn = _Db.connect()
+        try:
+            _DbSettings.set_integrity_check_interval_minutes(conn, minutes)
+        finally:
+            conn.close()
+
+
+class DbSettings:
+    """Configure database behavior. Not instantiated directly — use `Vethuq().settings.db`."""
+
+    def __init__(self) -> None:
+        self.integrity_check = IntegrityCheckSettings()
+
+
 class IndexSettings:
     """Configure indexing behavior. Not instantiated directly — use `Vethuq().settings.index`."""
 
@@ -480,6 +545,7 @@ class Settings:
         self.gpu = GPUSettings()
         self.search = SearchSettings()
         self.index = IndexSettings()
+        self.db = DbSettings()
 
 
 class Stats:
@@ -557,6 +623,24 @@ class Search:
         return output_path
 
 
+class Db:
+    """Database maintenance. Not instantiated directly — use `Vethuq().db`."""
+
+    def integrity_check(self) -> IntegrityCheckResult:
+        """Run `PRAGMA integrity_check` now and return the result.
+
+        Also logged via the standard `logging` module (info on success,
+        error with the specific corruption messages on failure). See
+        `Vethuq().settings.db.integrity_check` to control whether this
+        also runs automatically when the database is opened.
+        """
+        conn = _Db.connect()
+        try:
+            return _IntegrityCheck.run(conn)
+        finally:
+            conn.close()
+
+
 class Vethuq:
     """Client for VethuQ's local database — the same one the CLI and desktop app use.
 
@@ -576,3 +660,4 @@ class Vethuq:
         self.settings = Settings()
         self.stats = Stats()
         self.search = Search()
+        self.db = Db()

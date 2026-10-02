@@ -8,39 +8,51 @@ The `vethuq` command-line tool manages sources (files/folders registered
 for OCR/indexing), runs the OCR indexing pipeline, and configures
 settings.
 
-## `source`
+## `db`
 
-### `add <path>`
+### `integrity-check`
 
-Register a file or folder as a source. Folders are indexed recursively.
-Prints a hint to run `vethuq index run` once added — adding a source
-does not index it automatically.
+Check the database for corruption now and print the result. Exits with a non-zero status and lists the problems SQLite found if the check fails; the outcome is also logged.
 
 ```bash
-vethuq source add ./path/to/folder-or-file
-```
-
-### `list`
-
-List all registered (active) sources, most recently added first, with
-their id, type (`file`/`folder`), and status (`pending`/`indexed`/`error`).
-
-```bash
-vethuq source list
-```
-
-### `remove <id-or-path>`
-
-Remove a registered source (soft-delete — the source stops being
-processed but its history isn't erased). Accepts either the source's id
-(from `source list`) or its path.
-
-```bash
-vethuq source remove 3
-vethuq source remove ./path/to/folder-or-file
+vethuq db integrity-check
 ```
 
 ## `index`
+
+### `history [--limit N] [--json]`
+
+List past background index runs (target, status, files
+processed/failed, start/end time), most recent first. `--limit` caps how
+many are shown (default 10).
+
+```bash
+vethuq index history
+vethuq index history --limit 25 --json
+```
+
+### `pause` / `resume`
+
+Pause or resume the currently running background index. Pausing takes
+effect after the file currently being processed finishes; the run stays
+alive, waiting to be resumed.
+
+```bash
+vethuq index pause
+vethuq index resume
+```
+
+### `restart [source] [--wait] [--force]`
+
+Retry only files that previously failed OCR, as a background process.
+Unlike `run`, new files and already-indexed files are left untouched —
+only files whose last attempt errored are (re)processed. Takes the same
+`source`/`--wait`/`--force` options as `run`.
+
+```bash
+vethuq index restart
+vethuq index restart ./path/to/folder-or-file
+```
 
 ### `run [source] [--wait] [--force]`
 
@@ -72,18 +84,6 @@ vethuq index run 3 --wait
 vethuq index run --force
 ```
 
-### `restart [source] [--wait] [--force]`
-
-Retry only files that previously failed OCR, as a background process.
-Unlike `run`, new files and already-indexed files are left untouched —
-only files whose last attempt errored are (re)processed. Takes the same
-`source`/`--wait`/`--force` options as `run`.
-
-```bash
-vethuq index restart
-vethuq index restart ./path/to/folder-or-file
-```
-
 ### `status [source] [--json]`
 
 Without a source, shows the current (or most recently finished)
@@ -102,17 +102,6 @@ vethuq index status ./path/to/folder-or-file
 vethuq index status 3 --json
 ```
 
-### `pause` / `resume`
-
-Pause or resume the currently running background index. Pausing takes
-effect after the file currently being processed finishes; the run stays
-alive, waiting to be resumed.
-
-```bash
-vethuq index pause
-vethuq index resume
-```
-
 ### `stop`
 
 Stop the currently running background index. Requests a graceful stop
@@ -120,17 +109,6 @@ first and force-terminates the process if it doesn't exit promptly.
 
 ```bash
 vethuq index stop
-```
-
-### `history [--limit N] [--json]`
-
-List past background index runs (target, status, files
-processed/failed, start/end time), most recent first. `--limit` caps how
-many are shown (default 10).
-
-```bash
-vethuq index history
-vethuq index history --limit 25 --json
 ```
 
 ## `search <content>`
@@ -184,34 +162,18 @@ a time on Enter and doesn't render colors.
 vethuq search "invoice total"
 ```
 
-## `stats`
-
-### `show`
-
-Show accumulated OCR statistics in two panels: Processing (per file
-type — documents indexed, average duration, average peak memory,
-average CPU) and Confidence (per file type and text-source — native,
-OCR, mixed — page count and average confidence). Both are running
-averages folded in after each successfully indexed document/page; the
-Processing figures also feed `vethuq index run`'s ETA estimate.
-
-```bash
-vethuq stats show
-```
-
-### `reset [--force]`
-
-Clear both statistics tables. Asks for confirmation first unless
-`--force` is given — resetting means `vethuq index run`'s ETA is
-unavailable again until enough files have been (re)indexed to rebuild
-the averages.
-
-```bash
-vethuq stats reset
-vethuq stats reset --force
-```
-
 ## `settings`
+
+### `db integrity-check`
+
+Configure whether VethuQ checks the database for corruption (`PRAGMA integrity_check`) when it's opened. One of `auto` (the default — at most once per interval), `enable` (every time it's opened), or `disable` (only when you run `vethuq db integrity-check`). The interval for `auto` defaults to 1 day (1440 minutes).
+
+```bash
+vethuq settings db integrity-check set auto
+vethuq settings db integrity-check show
+vethuq settings db integrity-check interval set 60
+vethuq settings db integrity-check interval show
+```
 
 ### `gpu enable|disable|status`
 
@@ -226,14 +188,20 @@ vethuq settings gpu disable
 vethuq settings gpu status
 ```
 
-### `search snippet set <chars>|show`
+### `index engine`
 
-Configure how many characters of context `vethuq search` shows on each
-side of a match. Defaults to 80.
+Configure how thoroughly OCR looks for rotated text. One of `quick` (the
+default — upright text only), `moderate` (also 90°, 180° and 270°), or `deep`
+(also every 15° in between). Each includes the ones before it. Files are
+always indexed `quick` first so they're searchable right away; the deeper
+passes then run in the background, moderate before deep, and any new or
+changed file gets its quick pass before deeper work continues. Raising the
+setting deepens already-indexed files the next time indexing runs; lowering
+it never removes text. `vethuq index status` shows the current phase.
 
 ```bash
-vethuq settings search snippet set 40
-vethuq settings search snippet show
+vethuq settings index engine set moderate
+vethuq settings index engine show
 ```
 
 ### `index removed-retention set <minutes>|show`
@@ -249,18 +217,71 @@ vethuq settings index removed-retention set 60
 vethuq settings index removed-retention show
 ```
 
-### `settings index engine`
+### `search snippet set <chars>|show`
 
-Configure how thoroughly OCR looks for rotated text. One of `quick` (the
-default — upright text only), `moderate` (also 90°, 180° and 270°), or `deep`
-(also every 15° in between). Each includes the ones before it. Files are
-always indexed `quick` first so they're searchable right away; the deeper
-passes then run in the background, moderate before deep, and any new or
-changed file gets its quick pass before deeper work continues. Raising the
-setting deepens already-indexed files the next time indexing runs; lowering
-it never removes text. `vethuq index status` shows the current phase.
+Configure how many characters of context `vethuq search` shows on each
+side of a match. Defaults to 80.
 
 ```bash
-vethuq settings index engine set moderate
-vethuq settings index engine show
+vethuq settings search snippet set 40
+vethuq settings search snippet show
+```
+
+## `source`
+
+### `add <path>`
+
+Register a file or folder as a source. Folders are indexed recursively.
+Prints a hint to run `vethuq index run` once added — adding a source
+does not index it automatically.
+
+```bash
+vethuq source add ./path/to/folder-or-file
+```
+
+### `list`
+
+List all registered (active) sources, most recently added first, with
+their id, type (`file`/`folder`), and status (`pending`/`indexed`/`error`).
+
+```bash
+vethuq source list
+```
+
+### `remove <id-or-path>`
+
+Remove a registered source (soft-delete — the source stops being
+processed but its history isn't erased). Accepts either the source's id
+(from `source list`) or its path.
+
+```bash
+vethuq source remove 3
+vethuq source remove ./path/to/folder-or-file
+```
+
+## `stats`
+
+### `reset [--force]`
+
+Clear both statistics tables. Asks for confirmation first unless
+`--force` is given — resetting means `vethuq index run`'s ETA is
+unavailable again until enough files have been (re)indexed to rebuild
+the averages.
+
+```bash
+vethuq stats reset
+vethuq stats reset --force
+```
+
+### `show`
+
+Show accumulated OCR statistics in two panels: Processing (per file
+type — documents indexed, average duration, average peak memory,
+average CPU) and Confidence (per file type and text-source — native,
+OCR, mixed — page count and average confidence). Both are running
+averages folded in after each successfully indexed document/page; the
+Processing figures also feed `vethuq index run`'s ETA estimate.
+
+```bash
+vethuq stats show
 ```

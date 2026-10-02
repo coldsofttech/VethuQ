@@ -14,9 +14,10 @@ from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
-from vethuq_core.settings import IndexSettings, OcrSettings, SearchSettings
+from vethuq_core.settings import DbSettings, IndexSettings, OcrSettings, SearchSettings
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.db import integrity_check as db_integrity_check
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
 from vethuq_cli.index.commands import restart as index_restart
@@ -33,6 +34,10 @@ from vethuq_cli.settings import (
     gpu_disable,
     gpu_enable,
     gpu_status,
+    integrity_check_interval_set,
+    integrity_check_interval_show,
+    integrity_check_set,
+    integrity_check_show,
     ocr_retry_set,
     ocr_retry_show,
     removed_retention_set,
@@ -325,6 +330,48 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(stale_lock_set, value=value)
 
     @staticmethod
+    def _settings_integrity_check_interval_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Db > Integrity Check > Interval",
+                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(integrity_check_interval_show)
+            elif choice == "2":
+                minutes = IntPrompt.ask(
+                    "Minutes between automatic integrity checks when 'auto'", console=console
+                )
+                InteractiveMenu._run_safely(integrity_check_interval_set, minutes=minutes)
+
+    @staticmethod
+    def _settings_integrity_check_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Db > Integrity Check",
+                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("0", "Back")],
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(integrity_check_show)
+            elif choice == "2":
+                value = Prompt.ask(
+                    "Run 'PRAGMA integrity_check' automatically when the database is opened",
+                    console=console,
+                    choices=list(DbSettings.INTEGRITY_CHECK_VALUES),
+                )
+                InteractiveMenu._run_safely(integrity_check_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._settings_integrity_check_interval_menu()
+
+    @staticmethod
     def _settings_engine_menu() -> None:
         while True:
             console.print()
@@ -387,13 +434,25 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(stats_reset, force=False)
 
     @staticmethod
+    def _settings_db_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu("Settings > Db", [("1", "Integrity Check"), ("0", "Back")])
+            choice = InteractiveMenu._prompt_choice(["1", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._settings_integrity_check_menu()
+
+    @staticmethod
     def _settings_menu() -> None:
         while True:
             console.print()
             InteractiveMenu._print_menu(
-                "Settings", [("1", "GPU"), ("2", "Search"), ("3", "Index"), ("0", "Back")]
+                "Settings",
+                [("1", "GPU"), ("2", "Search"), ("3", "Index"), ("4", "Db"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -402,6 +461,19 @@ class InteractiveMenu:
                 InteractiveMenu._settings_search_menu()
             elif choice == "3":
                 InteractiveMenu._settings_index_menu()
+            elif choice == "4":
+                InteractiveMenu._settings_db_menu()
+
+    @staticmethod
+    def _db_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu("Db", [("1", "Integrity Check"), ("0", "Back")])
+            choice = InteractiveMenu._prompt_choice(["1", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(db_integrity_check)
 
     @staticmethod
     def run() -> None:
@@ -418,11 +490,12 @@ class InteractiveMenu:
                         ("3", "Index"),
                         ("4", "Settings"),
                         ("5", "Stats"),
-                        ("6", "Exit"),
+                        ("6", "Db"),
+                        ("7", "Exit"),
                     ],
                 )
-                choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6"])
-                if choice == "6":
+                choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "7"])
+                if choice == "7":
                     break
                 if choice == "1":
                     InteractiveMenu._search_action()
@@ -434,6 +507,8 @@ class InteractiveMenu:
                     InteractiveMenu._settings_menu()
                 elif choice == "5":
                     InteractiveMenu._stats_menu()
+                elif choice == "6":
+                    InteractiveMenu._db_menu()
         except _Quit:
             pass
         console.print()

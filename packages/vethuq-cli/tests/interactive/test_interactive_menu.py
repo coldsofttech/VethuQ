@@ -8,7 +8,7 @@ class TestInteractiveMenu:
     def test_no_args_shows_banner_and_main_menu(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="6\n")
+        result = runner.invoke(app, [], input="7\n")
 
         assert result.exit_code == 0
         assert "VethuQ" in result.stdout
@@ -18,7 +18,7 @@ class TestInteractiveMenu:
     def test_sources_list_then_back_then_exit(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="2\n1\n0\n6\n")
+        result = runner.invoke(app, [], input="2\n1\n0\n7\n")
 
         assert result.exit_code == 0
         assert "No sources registered yet." in result.stdout
@@ -26,10 +26,26 @@ class TestInteractiveMenu:
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n6\n")
+        result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n7\n")
 
         assert result.exit_code == 0
         assert "GPU: " in result.stdout
+
+    def test_db_integrity_check_navigation(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="6\n1\n0\n7\n")
+
+        assert result.exit_code == 0
+        assert "passed" in result.stdout
+
+    def test_settings_db_integrity_check_show_navigation(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n4\n1\n1\n0\n0\n0\n7\n")
+
+        assert result.exit_code == 0
+        assert "Integrity check: " in result.stdout
 
     def test_invalid_selection_then_quit(self, use_temp_db):
         use_temp_db()

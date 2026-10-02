@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 from vethuq_core.settings import (
+    DbSettings,
     GpuSettings,
     IndexSettings,
     InvalidSettingValueError,
@@ -82,3 +83,28 @@ class TestIndexSettings:
     ):
         with pytest.raises(ValueError):
             IndexSettings.set_thread_workers(conn, value)
+
+
+class TestDbSettings:
+    def test_integrity_check_defaults_to_auto(self, conn: sqlite3.Connection):
+        assert DbSettings.get_integrity_check(conn) == "auto"
+
+    @pytest.mark.parametrize("value", ["enable", "disable", "auto"])
+    def test_set_integrity_check_roundtrip(self, conn: sqlite3.Connection, value: str):
+        DbSettings.set_integrity_check(conn, value)
+        assert DbSettings.get_integrity_check(conn) == value
+
+    def test_set_integrity_check_rejects_invalid_value(self, conn: sqlite3.Connection):
+        with pytest.raises(ValueError):
+            DbSettings.set_integrity_check(conn, "sometimes")
+
+    def test_integrity_check_interval_minutes_defaults_to_one_day(self, conn: sqlite3.Connection):
+        assert DbSettings.get_integrity_check_interval_minutes(conn) == 24 * 60
+
+    def test_set_integrity_check_interval_minutes_roundtrip(self, conn: sqlite3.Connection):
+        DbSettings.set_integrity_check_interval_minutes(conn, 60)
+        assert DbSettings.get_integrity_check_interval_minutes(conn) == 60
+
+    def test_set_integrity_check_interval_minutes_rejects_negative(self, conn: sqlite3.Connection):
+        with pytest.raises(ValueError, match="non-negative"):
+            DbSettings.set_integrity_check_interval_minutes(conn, -1)

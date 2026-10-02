@@ -6,6 +6,7 @@ import typer
 from rich.text import Text
 from vethuq_core.db import Db
 from vethuq_core.settings import (
+    DbSettings,
     GpuSettings,
     IndexSettings,
     OcrSettings,
@@ -33,6 +34,15 @@ stale_lock_app = typer.Typer(
     help="Configure whether a lock left behind by a run that didn't exit cleanly "
     "is auto-cleared on the next run."
 )
+db_app = typer.Typer(help="Configure database behavior.")
+integrity_check_app = typer.Typer(
+    help="Configure whether 'PRAGMA integrity_check' runs automatically when the "
+    "database is opened."
+)
+integrity_check_interval_app = typer.Typer(
+    help="Configure, in minutes, how often automatic integrity checks run when "
+    "'integrity-check' is 'auto'."
+)
 engine_app = typer.Typer(
     help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
 )
@@ -46,6 +56,9 @@ index_app.add_typer(ocr_retry_app, name="ocr-retry")
 index_app.add_typer(thread_workers_app, name="thread-workers")
 index_app.add_typer(stale_lock_app, name="stale-lock")
 index_app.add_typer(engine_app, name="engine")
+app.add_typer(db_app, name="db")
+db_app.add_typer(integrity_check_app, name="integrity-check")
+integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
 
 
 @gpu_app.command("enable")
@@ -301,6 +314,73 @@ def stale_lock_set(
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Stale lock set to ", (value, Theme.VALUE), "."))
+    finally:
+        conn.close()
+
+
+@integrity_check_app.command("show")
+def integrity_check_show() -> None:
+    """Show whether 'PRAGMA integrity_check' runs automatically when the database is opened."""
+    conn = Db.connect()
+    try:
+        console.print(
+            Text.assemble("Integrity check: ", (DbSettings.get_integrity_check(conn), Theme.VALUE))
+        )
+    finally:
+        conn.close()
+
+
+@integrity_check_app.command("set")
+def integrity_check_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(DbSettings.INTEGRITY_CHECK_VALUES)}."
+    ),
+) -> None:
+    """Set whether 'PRAGMA integrity_check' runs automatically when the database is opened."""
+    conn = Db.connect()
+    try:
+        try:
+            DbSettings.set_integrity_check(conn, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Integrity check set to ", (value, Theme.VALUE), "."))
+    finally:
+        conn.close()
+
+
+@integrity_check_interval_app.command("show")
+def integrity_check_interval_show() -> None:
+    """Show, in minutes, how often automatic integrity checks run when 'auto'."""
+    conn = Db.connect()
+    try:
+        minutes = DbSettings.get_integrity_check_interval_minutes(conn)
+        console.print(
+            Text.assemble("Integrity check interval: ", (str(minutes), Theme.VALUE), " minutes")
+        )
+    finally:
+        conn.close()
+
+
+@integrity_check_interval_app.command("set")
+def integrity_check_interval_set(
+    minutes: int = typer.Argument(
+        ..., help="Minutes between automatic integrity checks when 'auto'."
+    ),
+) -> None:
+    """Set, in minutes, how often automatic integrity checks run when 'auto'."""
+    conn = Db.connect()
+    try:
+        try:
+            DbSettings.set_integrity_check_interval_minutes(conn, minutes)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            Text.assemble(
+                "Integrity check interval set to ", (str(minutes), Theme.VALUE), " minutes."
+            )
+        )
     finally:
         conn.close()
 
