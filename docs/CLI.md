@@ -54,9 +54,12 @@ renamed or moved within the source is recognized by its unchanged content
 and simply relabeled, without re-running OCR on it; a file that's gone
 missing from the source is flagged and automatically cleaned up after a
 retention period (like a removed source — see `vethuq settings` below).
-Extracts text (English; PDF, PNG, and JPEG files supported) and stores it
-locally. PDF pages with a real text layer are read directly from it; OCR
-only runs on scanned pages/regions.
+Extracts text (English; PDF, PNG, JPEG, JSON, and YAML files supported) and
+stores it locally. PDF pages with a real text layer are read directly from it;
+OCR only runs on scanned pages/regions. JSON (`.json`) and YAML (`.yaml`,
+`.yml`) files need no OCR: they're parsed and indexed as `path: value` lines
+(e.g. `server.ports[0]: 8080`), so both keys and values are searchable. A file
+that isn't valid JSON/YAML is indexed as plain text instead of failing.
 
 Pass a source id or path to index only that source; omit it to index
 every active source. `--wait` blocks until the run finishes, printing
@@ -141,7 +144,7 @@ searched. Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, and press `q` to close
 it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every matching page in
-that file (PDFs only show `Page:` — an image is a single page). A
+that file (PDFs only show `Page:` — an image, JSON, or YAML file is a single page). A
 duplicate file (identical content to another already-indexed file) is
 still shown as its own result, reusing the original's matched text, with
 its `File:` line noting which file it's a duplicate of:

@@ -51,14 +51,14 @@ class Search:
         """Return rows of `(document_id, file_path, ocr_text, page_number, canonical_id,
         duplicate_of_path)` for every indexed page whose `ocr_text` may contain `query`.
 
-        Narrowed down via `pdf_pages_fts`/`image_pages_fts` - trigram-tokenized FTS5
-        indexes kept in sync with `pdf_pages`/`image_pages` by triggers (see
+        Narrowed down via `pdf_pages_fts`/`image_pages_fts`/`structured_pages_fts` -
+        trigram-tokenized FTS5 indexes kept in sync with the page tables by triggers (see
         `vethuq_core.db.connection`) - queried with `LIKE` rather than `MATCH` so
         matching stays substring-based (e.g. "arge" still matches "large") and
         case-insensitive, same as before this index existed, just without a full
         Python-side scan of every indexed page's text.
 
-        `canonical_id` is the `document_index.id` whose `pdf_pages`/`image_pages`
+        `canonical_id` is the `document_index.id` whose page-table
         rows actually hold the text - among every row sharing this one's logical
         document (`document_index.document_id`), exactly one carries OCR pages of
         its own (the rest are checksum links with none); `duplicate_of_path` is
@@ -70,6 +70,7 @@ class Search:
         like_pattern = Search._like_pattern(query)
         pdf_rows = Document.search_indexed_pdf_pages(conn, like_pattern)
         image_rows = Document.search_indexed_image_pages(conn, like_pattern)
+        structured_rows = Document.search_indexed_structured_pages(conn, like_pattern)
         return [
             (
                 row["document_id"],
@@ -79,7 +80,7 @@ class Search:
                 row["canonical_id"],
                 row["duplicate_of_path"],
             )
-            for row in (*pdf_rows, *image_rows)
+            for row in (*pdf_rows, *image_rows, *structured_rows)
         ]
 
     @staticmethod

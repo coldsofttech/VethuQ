@@ -14,6 +14,15 @@ class Migration:
         return "document_id" not in columns or "duplicate_of_id" in columns
 
     @staticmethod
+    def _allow_structured(conn: sqlite3.Connection, table: str, create_new_sql: str) -> None:
+        """Rebuild `table` from `create_new_sql` (which creates `<table>_new`), keeping its rows."""
+        columns = ", ".join(row["name"] for row in conn.execute(f"PRAGMA table_info({table})"))
+        conn.execute(create_new_sql)
+        conn.execute(f"INSERT INTO {table}_new ({columns}) SELECT {columns} FROM {table}")
+        conn.execute(f"DROP TABLE {table}")
+        conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+
+    @staticmethod
     def schema(conn: sqlite3.Connection, *, from_version: int) -> None:
         if from_version < 3:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
@@ -480,3 +489,70 @@ class Migration:
             # even if an index was already populated.
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
             conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
+        if from_version < 26:
+            # Adds 'structured' (JSON/YAML) to the file_type CHECK constraint on
+            # every table that has one. SQLite can't widen a CHECK in place, so
+            # each is rebuilt - same pattern as the version-24 migration.
+            # `structured_pages` (and its FTS index) came from `_SCHEMA` above.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            Migration._allow_structured(
+                conn,
+                "document_index",
+                """
+                CREATE TABLE document_index_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id INTEGER NOT NULL REFERENCES sources(id),
+                    document_id INTEGER NOT NULL REFERENCES documents(id),
+                    file_path TEXT NOT NULL UNIQUE,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'structured')),
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                    error_message TEXT,
+                    indexed_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    file_size_bytes INTEGER,
+                    sha256 TEXT,
+                    mtime REAL,
+                    created_at TEXT,
+                    modified_at TEXT,
+                    removed_at TEXT,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    peak_memory_mb REAL,
+                    cpu_percent REAL
+                )
+                """,
+            )
+            Migration._allow_structured(
+                conn,
+                "processing_metrics",
+                """
+                CREATE TABLE processing_metrics_new (
+                    phase INTEGER NOT NULL DEFAULT 1,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'structured')),
+                    size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                    document_count INTEGER NOT NULL DEFAULT 0,
+                    avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                    avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                    avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (phase, file_type, size_bucket)
+                )
+                """,
+            )
+            Migration._allow_structured(
+                conn,
+                "confidence_metrics",
+                """
+                CREATE TABLE confidence_metrics_new (
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'structured')),
+                    process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    avg_confidence REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (file_type, process_type)
+                )
+                """,
+            )
+            conn.execute("PRAGMA foreign_keys = ON")

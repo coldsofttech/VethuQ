@@ -23,6 +23,9 @@ dependencies = [
     # access violation - so `cv2` here is provided solely by paddlex's pin.
     "numpy>=1.26",
     "psutil>=5.9",
+    # JSON/YAML files are indexed as text (see `vethuq_core.ocr.StructuredText`);
+    # `paddlex` already pulls PyYAML in, so this adds nothing to an install.
+    "pyyaml>=6.0",
 ]
 
 [build-system]

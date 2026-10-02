@@ -736,3 +736,127 @@ class TestMigration:
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
         finally:
             conn.close()
+
+    def test_connect_migrates_file_type_check_to_allow_structured(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        # A version-25 database: file_type CHECKs only allow 'pdf'/'image', and it
+        # already holds a document plus metrics that must survive the rebuild.
+        old_conn = sqlite3.connect(db_path)
+        old_conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (25);
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL CHECK (source_type IN ('file', 'folder')),
+                status TEXT NOT NULL DEFAULT 'pending',
+                added_at TEXT NOT NULL,
+                last_scanned_at TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                removed_at TEXT
+            );
+            CREATE TABLE documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                file_path TEXT
+            );
+            CREATE TABLE document_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                sha256 TEXT,
+                mtime REAL,
+                created_at TEXT,
+                modified_at TEXT,
+                removed_at TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL,
+                cpu_percent REAL
+            );
+            CREATE TABLE processing_metrics (
+                phase INTEGER NOT NULL DEFAULT 1,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (phase, file_type, size_bucket)
+            );
+            CREATE TABLE confidence_metrics (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                page_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, process_type)
+            );
+            INSERT INTO sources (path, source_type, added_at)
+                VALUES ('/docs', 'folder', '2026-01-01T00:00:00+00:00');
+            INSERT INTO documents (created_at) VALUES ('2026-01-01T00:00:00+00:00');
+            INSERT INTO document_index (source_id, document_id, file_path, file_type, status)
+                VALUES (1, 1, '/docs/a.png', 'image', 'indexed');
+            INSERT INTO processing_metrics
+                (phase, file_type, size_bucket, document_count, updated_at)
+                VALUES (1, 'image', 'small', 4, '2026-01-01T00:00:00+00:00');
+            INSERT INTO confidence_metrics
+                (file_type, process_type, page_count, avg_confidence, updated_at)
+                VALUES ('image', 'ocr', 4, 0.9, '2026-01-01T00:00:00+00:00');
+            """
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            # Existing rows survive...
+            kept = conn.execute("SELECT file_path, file_type FROM document_index").fetchall()
+            assert [tuple(row) for row in kept] == [("/docs/a.png", "image")]
+            assert conn.execute("SELECT document_count FROM processing_metrics").fetchone()[0] == 4
+            assert (
+                conn.execute("SELECT avg_confidence FROM confidence_metrics").fetchone()[0] == 0.9
+            )
+
+            # ...and all three tables now accept the new file_type.
+            conn.execute(
+                "INSERT INTO document_index (source_id, document_id, file_path, file_type) "
+                "VALUES (1, 1, '/docs/a.json', 'structured')"
+            )
+            conn.execute(
+                "INSERT INTO processing_metrics (phase, file_type, size_bucket, updated_at) "
+                "VALUES (1, 'structured', 'small', 'now')"
+            )
+            conn.execute(
+                "INSERT INTO confidence_metrics (file_type, process_type, updated_at) "
+                "VALUES ('structured', 'native', 'now')"
+            )
+            conn.execute(
+                "INSERT INTO structured_pages (document_id, ocr_text, confidence) "
+                "VALUES (2, 'a: 1', 1.0)"
+            )
+            conn.commit()
+
+            # The foreign key from the page tables still points at the rebuilt table,
+            # and the FTS index sees new rows.
+            assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+            found = conn.execute(
+                "SELECT rowid FROM structured_pages_fts WHERE ocr_text LIKE '%a: 1%'"
+            ).fetchall()
+            assert len(found) == 1
+
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION
+        finally:
+            conn.close()

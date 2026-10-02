@@ -9,11 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import yaml
+
 if TYPE_CHECKING:
     import numpy as np
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
+from vethuq_core.ocr.structured import StructuredText
 
 _logger = logging.getLogger(__name__)
 
@@ -216,6 +219,57 @@ class JpgReader(ImageReader):
     for JPEG-specific handling later."""
 
 
+class StructuredReader(Reader):
+    """A text-based data file (JSON, YAML): no OCR - it's parsed and flattened into
+    `path: value` lines (see `StructuredText`), always as a single page.
+
+    A file that doesn't parse (a Helm template, a truncated export) is indexed as
+    its raw text instead of failing, since its content is still worth finding.
+    """
+
+    file_type = "structured"
+
+    # Raised by the parsers for a file that's malformed rather than just unreadable.
+    PARSE_ERRORS: tuple[type[Exception], ...] = (ValueError, RecursionError, yaml.YAMLError)
+
+    def parse(self, text: str) -> str:
+        raise NotImplementedError
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        size = file_path.stat().st_size
+        if size > StructuredText.MAX_FILE_BYTES:
+            raise ValueError(
+                f"file is {size} bytes, over the {StructuredText.MAX_FILE_BYTES} byte "
+                "limit for JSON/YAML files"
+            )
+        text = StructuredText.decode(file_path.read_bytes())
+        try:
+            content = self.parse(text)
+        except StructuredReader.PARSE_ERRORS as exc:
+            _logger.warning(
+                "%s is not valid %s, indexing it as plain text: %s",
+                file_path,
+                type(self).__name__.removesuffix("Reader"),
+                exc,
+            )
+            content = text.strip()
+        return [PageResult(text=content, confidence=1.0, source="native")]
+
+
+class JsonReader(StructuredReader):
+    """A .json file."""
+
+    def parse(self, text: str) -> str:
+        return StructuredText.from_json(text)
+
+
+class YamlReader(StructuredReader):
+    """A .yaml/.yml file (a stream with several `---` documents is read as one page)."""
+
+    def parse(self, text: str) -> str:
+        return StructuredText.from_yaml(text)
+
+
 class Readers:
     """The registered readers, by file suffix."""
 
@@ -224,6 +278,9 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".json": JsonReader(),
+        ".yaml": YamlReader(),
+        ".yml": YamlReader(),
     }
 
     @staticmethod

@@ -25,6 +25,7 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "types-psutil>=5.9",
+    "types-pyyaml>=6.0",
 ]
 
 # For scripts/dev/generate_icons.py only - opt-in via

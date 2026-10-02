@@ -19,6 +19,9 @@ Modes are cumulative. The setting is `index_engine` (`vethuq settings index
 engine`, `client.settings.index.engine`) and is re-read each round, so changing
 it mid-run takes effect without a restart.
 
+JSON/YAML files have no OCR phases: they're read once, as text, so they're
+complete after the quick pass and never appear in deeper-phase work or ETAs.
+
 ## Scheduling
 
 `run_ocr_phased` (used by the background worker) loops:

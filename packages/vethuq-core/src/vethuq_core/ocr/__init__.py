@@ -11,11 +11,14 @@ from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.reader import (
     ImageReader,
     JpgReader,
+    JsonReader,
     PageResult,
     PdfReader,
     PngReader,
     Reader,
     Readers,
+    StructuredReader,
+    YamlReader,
 )
 from vethuq_core.ocr.runner import Ocr
 from vethuq_core.ocr.scheduler import Scheduler
@@ -28,6 +31,7 @@ __all__ = [
     "Engine",
     "ImageReader",
     "JpgReader",
+    "JsonReader",
     "Metrics",
     "Ocr",
     "PageResult",
@@ -39,4 +43,6 @@ __all__ = [
     "Reader",
     "Readers",
     "Scheduler",
+    "StructuredReader",
+    "YamlReader",
 ]

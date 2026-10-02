@@ -103,6 +103,14 @@ class Metrics:
         )
 
     @staticmethod
+    def _process_type(file_type: str, page: sqlite3.Row) -> str:
+        """How a page's text was obtained: a PDF page records it, a structured file's text is
+        read directly from the file (native), and an image's is always OCR."""
+        if file_type == "pdf":
+            return str(page["source"])
+        return "native" if file_type == "structured" else "ocr"
+
+    @staticmethod
     def update_confidence(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
         """Fold one freshly-indexed document's pages into `confidence_metrics`'s running
         averages, grouped independently by (file_type, process_type).
@@ -120,7 +128,7 @@ class Metrics:
 
         by_process_type: dict[str, list[float]] = {}
         for page in pages:
-            process_type = page["source"] if file_type == "pdf" else "ocr"
+            process_type = Metrics._process_type(file_type, page)
             by_process_type.setdefault(process_type, []).append(page["confidence"])
 
         now = datetime.now(UTC).isoformat()

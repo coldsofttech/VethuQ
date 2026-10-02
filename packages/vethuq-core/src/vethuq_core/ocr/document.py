@@ -320,6 +320,11 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
+        elif file_type == "structured":
+            DocumentQuery.delete_structured_pages(conn, document_id)
+            DocumentQuery.insert_structured_page(
+                conn, document_id, pages[0].text, pages[0].confidence
+            )
         else:
             page = pages[0]
             DocumentQuery.delete_image_pages(conn, document_id)
