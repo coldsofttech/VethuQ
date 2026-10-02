@@ -7,7 +7,12 @@ import sqlite3
 
 class Document:
     # The pages table a `document_index.file_type`'s text is stored in.
-    PAGE_TABLES = {"pdf": "pdf_pages", "image": "image_pages", "txt": "text_pages"}
+    PAGE_TABLES = {
+        "pdf": "pdf_pages",
+        "image": "image_pages",
+        "txt": "text_pages",
+        "md": "text_pages",
+    }
 
     @staticmethod
     def get_id_for_index_row(
@@ -468,7 +473,7 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE text_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'txt' "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type IN ('txt', 'md') "
             "ORDER BY di.file_path",
             (like_pattern,),
         ).fetchall()

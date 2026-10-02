@@ -552,3 +552,73 @@ class Migration:
             conn.execute("DROP TABLE confidence_metrics")
             conn.execute("ALTER TABLE confidence_metrics_new RENAME TO confidence_metrics")
             conn.execute("PRAGMA foreign_keys = ON")
+        if from_version < 27:
+            # Adds 'md' to the file_type CHECK constraints (Markdown support, stored in
+            # `text_pages` alongside .txt). Same rebuild-the-table pattern as v26.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute(
+                """
+                CREATE TABLE document_index_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id INTEGER NOT NULL REFERENCES sources(id),
+                    document_id INTEGER NOT NULL REFERENCES documents(id),
+                    file_path TEXT NOT NULL UNIQUE,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'txt', 'md')),
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                    error_message TEXT,
+                    indexed_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    file_size_bytes INTEGER,
+                    sha256 TEXT,
+                    mtime REAL,
+                    created_at TEXT,
+                    modified_at TEXT,
+                    removed_at TEXT,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    peak_memory_mb REAL,
+                    cpu_percent REAL
+                )
+                """
+            )
+            conn.execute("INSERT INTO document_index_new SELECT * FROM document_index")
+            conn.execute("DROP TABLE document_index")
+            conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
+
+            conn.execute(
+                """
+                CREATE TABLE processing_metrics_new (
+                    phase INTEGER NOT NULL DEFAULT 1,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'txt', 'md')),
+                    size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                    document_count INTEGER NOT NULL DEFAULT 0,
+                    avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                    avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                    avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (phase, file_type, size_bucket)
+                )
+                """
+            )
+            conn.execute("INSERT INTO processing_metrics_new SELECT * FROM processing_metrics")
+            conn.execute("DROP TABLE processing_metrics")
+            conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
+
+            conn.execute(
+                """
+                CREATE TABLE confidence_metrics_new (
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'txt', 'md')),
+                    process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    avg_confidence REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (file_type, process_type)
+                )
+                """
+            )
+            conn.execute("INSERT INTO confidence_metrics_new SELECT * FROM confidence_metrics")
+            conn.execute("DROP TABLE confidence_metrics")
+            conn.execute("ALTER TABLE confidence_metrics_new RENAME TO confidence_metrics")
+            conn.execute("PRAGMA foreign_keys = ON")

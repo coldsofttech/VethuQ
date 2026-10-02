@@ -320,7 +320,7 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
-        elif file_type == "txt":
+        elif file_type in ("txt", "md"):
             page = pages[0]
             DocumentQuery.delete_text_pages(conn, document_id)
             DocumentQuery.insert_text_page(

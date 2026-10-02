@@ -18,6 +18,13 @@ dependencies = [
     # Detects the character encoding of `.txt` files (see `vethuq_core.ocr.TxtReader`),
     # which carry no declaration of it. Pure Python wheels, so no native-build risk.
     "charset-normalizer>=3.0",
+    # Parses `.md` files (see `vethuq_core.ocr.MdReader`) into plain text, front matter
+    # and image references. Pure Python, so no native-build risk.
+    "markdown-it-py>=3.0",
+    "mdit-py-plugins>=0.4",
+    # YAML front matter in `.md` files; `paddlex` already pulls PyYAML in, so this
+    # adds nothing to an install.
+    "pyyaml>=6.0",
     # No explicit opencv dependency here on purpose: `paddleocr` pulls in
     # `paddlex`, which hard-pins an exact `opencv-contrib-python` version.
     # Also declaring our own `opencv-python-headless` installs a second,

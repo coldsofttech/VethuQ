@@ -11,6 +11,7 @@ from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.reader import (
     ImageReader,
     JpgReader,
+    MdReader,
     PageResult,
     PdfReader,
     PngReader,
@@ -37,6 +38,7 @@ __all__ = [
     "PendingFile",
     "PngReader",
     "Quick",
+    "MdReader",
     "Reader",
     "Readers",
     "Scheduler",

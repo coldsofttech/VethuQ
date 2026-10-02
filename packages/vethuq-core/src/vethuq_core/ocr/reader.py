@@ -8,7 +8,8 @@ import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote, urlsplit
 
 if TYPE_CHECKING:
     import numpy as np
@@ -278,6 +279,139 @@ class TxtReader(Reader):
         )
 
 
+class MdReader(Reader):
+    """A Markdown `.md` file: its prose is read as text, and local images it embeds are OCR'd.
+
+    The syntax is stripped (emphasis markers, link targets, HTML, fences' backticks) so
+    search matches the words rather than the markup; code blocks, table cells, YAML
+    front matter values and image alt text are kept. Each `![alt](path)` pointing at a
+    local image file has that image OCR'd and its text appended - remote (`http://`,
+    `data:`...) images are never fetched, so indexing stays offline. The file is one
+    page: 'native' when it has no readable local image, 'mixed' when image text was added.
+    """
+
+    file_type = "md"
+
+    # Images are only followed when the reader for their suffix is an `ImageReader`.
+    _IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [MdReader.read_file(conn, file_path)]
+
+    @staticmethod
+    def _parser() -> Any:
+        from markdown_it import MarkdownIt
+        from mdit_py_plugins.footnote import footnote_plugin
+        from mdit_py_plugins.front_matter import front_matter_plugin
+
+        return (
+            MarkdownIt("commonmark")
+            .enable(["table", "strikethrough"])
+            .use(front_matter_plugin)
+            .use(footnote_plugin)
+        )
+
+    @staticmethod
+    def _flatten_front_matter(value: object, key: str | None = None) -> list[str]:
+        """Front matter as `key: value` lines (lists as one comma-joined line)."""
+        if isinstance(value, dict):
+            lines: list[str] = []
+            for child_key, child in value.items():
+                lines.extend(MdReader._flatten_front_matter(child, str(child_key)))
+            return lines
+        if isinstance(value, list):
+            if all(not isinstance(item, dict | list) for item in value):
+                text = ", ".join(str(item) for item in value)
+                return [f"{key}: {text}" if key else text]
+            return [line for item in value for line in MdReader._flatten_front_matter(item, key)]
+        if value is None:
+            return []
+        return [f"{key}: {value}" if key else str(value)]
+
+    @staticmethod
+    def extract(markdown: str) -> tuple[str, list[str]]:
+        """`(plain_text, image_targets)` for Markdown source; targets are raw `![]()` paths."""
+        import yaml
+
+        lines: list[str] = []
+        images: list[str] = []
+        for token in MdReader._parser().parse(markdown):
+            if token.type == "front_matter":
+                try:
+                    meta = yaml.safe_load(token.content)
+                except yaml.YAMLError:
+                    continue
+                lines.extend(MdReader._flatten_front_matter(meta))
+            elif token.type in ("fence", "code_block"):
+                lines.append(token.content.rstrip("\n"))
+            elif token.type == "inline":
+                parts: list[str] = []
+                for child in token.children or []:
+                    if child.type in ("text", "code_inline"):
+                        parts.append(child.content)
+                    elif child.type in ("softbreak", "hardbreak"):
+                        parts.append("\n")
+                    elif child.type == "image":
+                        parts.append(child.content)  # the alt text
+                        images.append(str(child.attrGet("src") or ""))
+                line = "".join(parts).strip()
+                if line:
+                    lines.append(line)
+        return "\n".join(lines), images
+
+    @staticmethod
+    def resolve_image(markdown_path: Path, target: str) -> Path | None:
+        """The local image file `target` names relative to `markdown_path`, else None."""
+        target = target.strip()
+        if not target:
+            return None
+        parts = urlsplit(target)
+        # Any scheme or host (http:, data:, file:, //cdn...) is not a plain local path.
+        # A single letter scheme is a Windows drive ("C:\\x.png"), which is local.
+        if (parts.scheme and len(parts.scheme) > 1) or parts.netloc:
+            return None
+        raw = unquote(parts.path) if len(parts.scheme) != 1 else target
+        if not raw:
+            return None
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = markdown_path.parent / candidate
+        if candidate.suffix.lower() not in MdReader._IMAGE_SUFFIXES or not candidate.is_file():
+            return None
+        return candidate
+
+    @staticmethod
+    def read_file(conn: sqlite3.Connection, file_path: Path) -> PageResult:
+        markdown, encoding, confidence = TxtReader.decode(file_path.read_bytes())
+        text, targets = MdReader.extract(markdown)
+
+        confidences = [confidence]
+        texts = [text]
+        seen: set[Path] = set()
+        for target in targets:
+            image_path = MdReader.resolve_image(file_path, target)
+            if image_path is None or image_path in seen:
+                continue
+            seen.add(image_path)
+            try:
+                image = ImageReader.ocr_file(conn, image_path)
+            except Exception:
+                _logger.warning("Could not OCR %s embedded in %s", image_path, file_path)
+                continue
+            if image.text.strip():
+                texts.append(image.text.strip())
+                confidences.append(image.confidence)
+
+        return PageResult(
+            text="\n".join(part for part in texts if part).strip(),
+            confidence=sum(confidences) / len(confidences),
+            source="mixed" if len(texts) > 1 else "native",
+            ocr_engine=Engine.name() if len(texts) > 1 else None,
+            language=Engine.LANGUAGE if len(texts) > 1 else None,
+            encoding=encoding,
+        )
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -297,6 +431,8 @@ class Readers:
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
         ".txt": TxtReader(),
+        ".md": MdReader(),
+        ".markdown": MdReader(),
     }
 
     @staticmethod
