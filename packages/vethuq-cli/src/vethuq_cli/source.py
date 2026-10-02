@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich import box
@@ -13,6 +15,8 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.ocr import Deepening
+from vethuq_core.search import Export
+from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_core.sources import (
     Source,
     SourceAlreadyExistsError,
@@ -181,6 +185,60 @@ class SourceFiles:
         return SourcePanel.build(grid, Theme.PRIMARY, title=title)
 
 
+class SourceSort:
+    """`--sort` / `--sort-by` for `source list`."""
+
+    class Order(StrEnum):
+        ASC = "asc"
+        DESC = "desc"
+
+    class By(StrEnum):
+        FILENAME = "filename"
+        ID = "id"
+        STATUS = "status"
+
+    @staticmethod
+    def files(
+        source: Source, files: list[SourceFile], order: SourceSort.Order, by: SourceSort.By
+    ) -> list[SourceFile]:
+        keys = {
+            SourceSort.By.FILENAME: lambda f: SourceFiles._name(source, f).casefold(),
+            SourceSort.By.ID: lambda f: f.id,
+            SourceSort.By.STATUS: lambda f: f.status,
+        }
+        return sorted(files, key=keys[by], reverse=order is SourceSort.Order.DESC)
+
+    @staticmethod
+    def sources(sources: list[Source], order: SourceSort.Order, by: SourceSort.By) -> list[Source]:
+        """For sources, `filename` sorts by the registered path."""
+        keys = {
+            SourceSort.By.FILENAME: lambda s: s.path.casefold(),
+            SourceSort.By.ID: lambda s: s.id,
+            SourceSort.By.STATUS: lambda s: s.status,
+        }
+        return sorted(sources, key=keys[by], reverse=order is SourceSort.Order.DESC)
+
+
+def _resolve_export(storage, export: str | None, format_: str | None) -> tuple[Path, str] | None:
+    """The `(output path, format)` to export to, or None if `--export` wasn't given."""
+    if export is None:
+        if format_ is not None:
+            error_console.print("--format needs --export.", style=Theme.ERROR)
+            raise typer.Exit(code=1)
+        return None
+    try:
+        return Path(export), SearchSettings.resolve_export_format(storage, format_)
+    except InvalidSettingValueError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+
+
+def _report_export(count: int, noun: str, output: Path, format_: str) -> None:
+    console.print(
+        Text.assemble("Exported ", (str(count), Theme.VALUE), f" {noun} to {output} ({format_}).")
+    )
+
+
 @app.command("list")
 def list_(
     target: str | None = typer.Argument(
@@ -191,6 +249,27 @@ def list_(
         "--detail",
         help="With a source: also show timestamps, OCR phases, and other per-file detail.",
     ),
+    export: str | None = typer.Option(
+        None,
+        "--export",
+        help=(
+            "Write the listing to this file instead of printing it. The format defaults to "
+            "`vethuq settings search export-format` unless --format overrides it."
+        ),
+    ),
+    format_: str | None = typer.Option(
+        None, "--format", help="Export format: 'json' or 'html'. Only used with --export."
+    ),
+    sort: Annotated[
+        SourceSort.Order, typer.Option("--sort", help="Sort order: asc or desc.")
+    ] = SourceSort.Order.ASC,
+    sort_by: Annotated[
+        SourceSort.By,
+        typer.Option(
+            "--sort-by",
+            help="Sort by filename, id or status (for the sources list, filename is the path).",
+        ),
+    ] = SourceSort.By.FILENAME,
 ) -> None:
     """List registered sources, or the files under one source (id, file, index status)."""
     if target is None:
@@ -199,20 +278,27 @@ def list_(
                 "--detail needs a source id or path to list the files of.", style=Theme.ERROR
             )
             raise typer.Exit(code=1)
-        _list_sources()
+        _list_sources(export, format_, sort, sort_by)
         return
 
     storage = open_storage()
     try:
+        target_export = _resolve_export(storage, export, format_)
         try:
             source = Sources.get(storage, Sources.coerce(target))
-            files = Sources.list_files(storage, source.id)
+            files = SourceSort.files(source, Sources.list_files(storage, source.id), sort, sort_by)
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         max_phase = Deepening.max_phase(storage)
     finally:
         storage.close()
+
+    if target_export is not None:
+        output, resolved_format = target_export
+        Export.source_files(source, files, output, resolved_format, detail=detail)
+        _report_export(len(files), "file(s)", output, resolved_format)
+        return
 
     if not files:
         console.print(SourcePanel.build("No files indexed yet for this source.", "bright_black"))
@@ -225,12 +311,21 @@ def list_(
         console.print(SourceFiles.table(source, files))
 
 
-def _list_sources() -> None:
+def _list_sources(
+    export: str | None, format_: str | None, sort: SourceSort.Order, sort_by: SourceSort.By
+) -> None:
     storage = open_storage()
     try:
-        sources = Sources.list_all(storage)
+        target_export = _resolve_export(storage, export, format_)
+        sources = SourceSort.sources(Sources.list_all(storage), sort, sort_by)
     finally:
         storage.close()
+
+    if target_export is not None:
+        output, resolved_format = target_export
+        Export.sources(sources, output, resolved_format)
+        _report_export(len(sources), "source(s)", output, resolved_format)
+        return
 
     if not sources:
         console.print(SourcePanel.build("No sources registered yet.", "bright_black"))

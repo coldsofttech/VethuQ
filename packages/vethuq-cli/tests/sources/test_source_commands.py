@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 from typer.testing import CliRunner
@@ -181,3 +182,196 @@ class TestSourceListFiles:
         result = runner.invoke(app, ["source", "list", "--detail"])
 
         assert result.exit_code == 1
+
+
+class TestSourceListExport:
+    def _setup(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source_id, indexed_id = _seed_files(db_path, folder)
+        return folder, source_id, indexed_id
+
+    def test_export_files_json(self, use_temp_db, tmp_path):
+        _, source_id, indexed_id = self._setup(use_temp_db, tmp_path)
+        out = tmp_path / "files.json"
+
+        result = runner.invoke(
+            app, ["source", "list", str(source_id), "--export", str(out), "--format", "json"]
+        )
+
+        assert result.exit_code == 0
+        assert "Exported 2 file(s)" in result.stdout
+        data = json.loads(out.read_text())
+        assert data["file_count"] == 2 and data["detail"] is False
+        first = next(f for f in data["files"] if f["id"] == indexed_id)
+        assert set(first) == {"id", "file_name", "status"}
+        assert first["file_name"] == "sub/report.pdf"
+
+    def test_export_files_detail_json(self, use_temp_db, tmp_path):
+        _, source_id, _ = self._setup(use_temp_db, tmp_path)
+        out = tmp_path / "files.json"
+
+        result = runner.invoke(
+            app,
+            [
+                "source",
+                "list",
+                str(source_id),
+                "--detail",
+                "--export",
+                str(out),
+                "--format",
+                "json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(out.read_text())
+        first = next(f for f in data["files"] if f["file_name"] == "sub/report.pdf")
+        assert data["detail"] is True
+        assert first["size_bytes"] == 1536
+        assert first["duration"] == 3.0
+        assert first["ocr_phase_name"] == "quick"
+        assert next(f for f in data["files"] if f["status"] == "error")["error"] == "unreadable"
+
+    def test_export_files_html_with_and_without_detail(self, use_temp_db, tmp_path):
+        _, source_id, _ = self._setup(use_temp_db, tmp_path)
+        plain, detailed = tmp_path / "plain.html", tmp_path / "detail.html"
+
+        runner.invoke(
+            app, ["source", "list", str(source_id), "--export", str(plain), "--format", "html"]
+        )
+        runner.invoke(
+            app,
+            [
+                "source",
+                "list",
+                str(source_id),
+                "--detail",
+                "--export",
+                str(detailed),
+                "--format",
+                "html",
+            ],
+        )
+
+        assert "<th>Status</th>" in plain.read_text()
+        assert "sub/report.pdf" in plain.read_text()
+        assert "<th>Completed</th>" not in plain.read_text()
+        assert "<th>Completed</th>" in detailed.read_text()
+        assert "unreadable" in detailed.read_text()
+
+    def test_export_sources_json_and_html(self, use_temp_db, tmp_path):
+        folder, _, _ = self._setup(use_temp_db, tmp_path)
+        as_json, as_html = tmp_path / "s.json", tmp_path / "s.html"
+
+        r1 = runner.invoke(app, ["source", "list", "--export", str(as_json), "--format", "json"])
+        r2 = runner.invoke(app, ["source", "list", "--export", str(as_html), "--format", "html"])
+
+        assert r1.exit_code == 0 and r2.exit_code == 0
+        data = json.loads(as_json.read_text())
+        assert data["source_count"] == 1
+        assert data["sources"][0]["path"] == str(folder.resolve())
+        assert str(folder.resolve()) in as_html.read_text()
+
+    def test_format_defaults_to_the_search_export_format_setting(self, use_temp_db, tmp_path):
+        _, source_id, _ = self._setup(use_temp_db, tmp_path)
+        out = tmp_path / "out"
+
+        result = runner.invoke(app, ["source", "list", str(source_id), "--export", str(out)])
+
+        assert "(json)" in result.stdout
+        json.loads(out.read_text())
+
+    def test_html_escapes_file_names(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        _seed_files(db_path, folder)
+        conn = Db.connect(db_path)
+        conn.execute(
+            "UPDATE document_index SET file_path = ? WHERE status = 'error'",
+            (str(folder / "<b>x</b>.png"),),
+        )
+        conn.commit()
+        conn.close()
+        out = tmp_path / "o.html"
+
+        runner.invoke(
+            app, ["source", "list", str(folder), "--export", str(out), "--format", "html"]
+        )
+
+        assert "<b>x</b>.png" not in out.read_text()
+        assert "&lt;b&gt;x&lt;/b&gt;.png" in out.read_text()
+
+    def test_invalid_format_fails(self, use_temp_db, tmp_path):
+        _, source_id, _ = self._setup(use_temp_db, tmp_path)
+
+        result = runner.invoke(
+            app,
+            ["source", "list", str(source_id), "--export", str(tmp_path / "o"), "--format", "xml"],
+        )
+
+        assert result.exit_code == 1
+
+    def test_format_without_export_fails(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["source", "list", "--format", "json"])
+
+        assert result.exit_code == 1
+
+
+class TestSourceListSort:
+    def test_files_default_to_filename_ascending(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source_id, _ = _seed_files(db_path, folder)
+
+        out = _unwrapped(runner.invoke(app, ["source", "list", str(source_id)]).stdout)
+
+        assert out.index("scan.png") < out.index("sub/report.pdf")
+
+    def test_files_sort_by_filename_descending(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source_id, _ = _seed_files(db_path, folder)
+
+        result = runner.invoke(app, ["source", "list", str(source_id), "--sort", "desc"])
+
+        out = _unwrapped(result.stdout)
+        assert out.index("sub/report.pdf") < out.index("scan.png")
+
+    def test_files_sort_by_status(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source_id, _ = _seed_files(db_path, folder)
+
+        result = runner.invoke(app, ["source", "list", str(source_id), "--sort-by", "status"])
+
+        out = _unwrapped(result.stdout)
+        assert out.index("error") < out.index("indexed")
+
+    def test_sources_sort_by_id_descending(self, use_temp_db, tmp_path):
+        use_temp_db()
+        for name in ("a", "b"):
+            (tmp_path / name).mkdir()
+            runner.invoke(app, ["source", "add", str(tmp_path / name)])
+
+        result = runner.invoke(app, ["source", "list", "--sort-by", "id", "--sort", "desc"])
+
+        out = _unwrapped(result.stdout)
+        assert out.index(_unwrapped(str(tmp_path / "b"))) < out.index(
+            _unwrapped(str(tmp_path / "a"))
+        )
+
+    def test_invalid_sort_value_fails(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["source", "list", "--sort-by", "size"])
+
+        assert result.exit_code != 0

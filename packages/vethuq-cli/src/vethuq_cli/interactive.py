@@ -73,6 +73,7 @@ from vethuq_cli.settings import (
     thread_workers_set,
     thread_workers_show,
 )
+from vethuq_cli.source import SourceSort
 from vethuq_cli.source import add as source_add
 from vethuq_cli.source import list_ as source_list
 from vethuq_cli.source import remove as source_remove
@@ -150,6 +151,42 @@ class InteractiveMenu:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
 
     @staticmethod
+    def _ask_sort() -> tuple[SourceSort.Order, SourceSort.By]:
+        """Ask how to sort a listing; Enter keeps the default (filename, ascending)."""
+        by = Prompt.ask(
+            "Sort by",
+            console=console,
+            default=SourceSort.By.FILENAME.value,
+            choices=[b.value for b in SourceSort.By],
+        )
+        order = Prompt.ask(
+            "Sort order",
+            console=console,
+            default=SourceSort.Order.ASC.value,
+            choices=[o.value for o in SourceSort.Order],
+        )
+        return SourceSort.Order(order), SourceSort.By(by)
+
+    @staticmethod
+    def _ask_export() -> tuple[str | None, str | None]:
+        """Ask where (and as what format) to export a listing; `(None, None)` to just print it."""
+        output = Prompt.ask("Export to file (blank to just print)", console=console, default="")
+        if not output.strip():
+            return None, None
+        storage = open_storage()
+        try:
+            default_format = SearchSettings.get_export_format(storage)
+        finally:
+            storage.close()
+        format_ = Prompt.ask(
+            "Export format",
+            console=console,
+            default=default_format,
+            choices=list(SearchSettings.EXPORT_FORMATS),
+        )
+        return output.strip(), format_
+
+    @staticmethod
     def _search_action() -> None:
         content = Prompt.ask("Search for", console=console).strip()
         if not content:
@@ -218,11 +255,31 @@ class InteractiveMenu:
             if choice == "0":
                 return
             if choice == "1":
-                InteractiveMenu._run_safely(source_list, target=None, detail=False)
+                sort, sort_by = InteractiveMenu._ask_sort()
+                export, format_ = InteractiveMenu._ask_export()
+                InteractiveMenu._run_safely(
+                    source_list,
+                    target=None,
+                    detail=False,
+                    export=export,
+                    format_=format_,
+                    sort=sort,
+                    sort_by=sort_by,
+                )
             elif choice == "2":
                 target = Prompt.ask("Source id or path to list the files of", console=console)
                 detail = Confirm.ask("Show detailed information?", console=console, default=False)
-                InteractiveMenu._run_safely(source_list, target=target.strip(), detail=detail)
+                sort, sort_by = InteractiveMenu._ask_sort()
+                export, format_ = InteractiveMenu._ask_export()
+                InteractiveMenu._run_safely(
+                    source_list,
+                    target=target.strip(),
+                    detail=detail,
+                    export=export,
+                    format_=format_,
+                    sort=sort,
+                    sort_by=sort_by,
+                )
             elif choice == "3":
                 path = Prompt.ask("File or folder to register", console=console)
                 InteractiveMenu._run_safely(source_add, path=path)

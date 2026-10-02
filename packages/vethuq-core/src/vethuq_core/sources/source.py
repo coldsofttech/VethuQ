@@ -54,6 +54,16 @@ class Source:
             removed_at=row["removed_at"],
         )
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "path": self.path,
+            "type": self.source_type,
+            "status": self.status,
+            "added_at": self.added_at,
+            "last_scanned_at": self.last_scanned_at,
+        }
+
 
 @dataclass(frozen=True)
 class PhaseTiming:

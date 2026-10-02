@@ -102,6 +102,30 @@ def test_sources_remove_unknown_raises_source_not_found_error(client: vethuq.Vet
         client.sources.remove(999)
 
 
+def test_sources_files_lists_files_under_a_source(client, docs_folder, tmp_path):
+    source = client.sources.add(docs_folder)
+    assert client.sources.files(source.id) == []
+
+    conn = sqlite3.connect(tmp_path / "data" / "db" / "vethuq.db")
+    doc_id = conn.execute("INSERT INTO documents (created_at) VALUES ('2026-01-01')").lastrowid
+    conn.execute(
+        "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+        "VALUES (?, ?, ?, 'pdf', 'pending')",
+        (source.id, doc_id, str(docs_folder / "a.pdf")),
+    )
+    conn.commit()
+    conn.close()
+
+    files = client.sources.files(docs_folder)
+    assert [(f.file_path, f.status) for f in files] == [(str(docs_folder / "a.pdf"), "pending")]
+    assert isinstance(files[0], vethuq.SourceFile)
+
+
+def test_sources_files_unknown_source_raises(client):
+    with pytest.raises(vethuq.SourceNotFoundError):
+        client.sources.files(999)
+
+
 def test_source_errors_share_a_base_class():
     for error in (
         vethuq.SourceAlreadyExistsError,

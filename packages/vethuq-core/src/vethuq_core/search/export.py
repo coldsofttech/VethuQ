@@ -1,4 +1,4 @@
-"""Export `search` results to a JSON or HTML file."""
+"""Export `search` results and `source list` output to a JSON or HTML file."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
+from vethuq_core.sources import Source, SourceFile
 
 
 class Export:
@@ -155,3 +156,180 @@ class Export:
             .replace("{{ROWS}}", "\n".join(rows))
         )
         output.write_text(document, encoding="utf-8")
+
+    @staticmethod
+    def _check_format(format_: str) -> None:
+        if format_ not in SearchSettings.EXPORT_FORMATS:
+            raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
+
+    @staticmethod
+    def _size(size: int | None) -> str:
+        if size is None:
+            return "-"
+        value = float(size)
+        for unit in ("B", "KB", "MB"):
+            if value < 1024:
+                return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{value:.1f} GB"
+
+    @staticmethod
+    def _write_table(
+        output: Path,
+        title: str,
+        headers: list[str],
+        rows: list[list[str]],
+        count_label: str,
+    ) -> None:
+        """Write an HTML table; each cell in `rows` is already-escaped HTML."""
+        head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
+        body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
+        document = (
+            Export.template("list_export.html")
+            .replace("{{PALETTE}}", Palette.css_variables())
+            .replace("{{STYLE}}", Export.template("export.css").rstrip("\n"))
+            .replace("{{APP_NAME}}", html.escape(APP_NAME))
+            .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
+            .replace("{{TITLE}}", html.escape(title))
+            .replace("{{COUNT}}", html.escape(count_label))
+            .replace("{{GENERATED_AT}}", html.escape(Export._generated_at()))
+            .replace("{{HEADERS}}", head)
+            .replace("{{ROWS}}", body)
+        )
+        output.write_text(document, encoding="utf-8")
+
+    @staticmethod
+    def sources(sources: list[Source], output: Path, format_: str) -> None:
+        """Write the registered `sources` (`vethuq source list`) to `output`."""
+        Export._check_format(format_)
+        if format_ == "json":
+            payload = {
+                "generated_at": Export._generated_at(),
+                "source_count": len(sources),
+                "sources": [source.to_dict() for source in sources],
+            }
+            output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            return
+        rows = [
+            [
+                str(s.id),
+                html.escape(s.source_type),
+                html.escape(s.status),
+                f'<a href="{html.escape(Export._file_uri(s.path))}">{html.escape(s.path)}</a>',
+                html.escape(s.added_at),
+                html.escape(s.last_scanned_at or "-"),
+            ]
+            for s in sources
+        ]
+        Export._write_table(
+            output,
+            "Sources",
+            ["ID", "Type", "Status", "Path", "Added", "Last Scanned"],
+            rows,
+            f"{len(sources)} source(s)",
+        )
+
+    @staticmethod
+    def _file_name(source: Source, file: SourceFile) -> str:
+        if source.source_type == "folder":
+            try:
+                return Path(file.file_path).relative_to(source.path).as_posix()
+            except ValueError:
+                pass
+        return Path(file.file_path).name
+
+    @staticmethod
+    def source_files(
+        source: Source, files: list[SourceFile], output: Path, format_: str, *, detail: bool
+    ) -> None:
+        """Write the `files` under `source` (`vethuq source list <source> [--detail]`)."""
+        from vethuq_core.ocr import Deepening  # imported here: ocr itself imports source
+
+        Export._check_format(format_)
+        phase_name = Deepening.PHASE_NAMES
+
+        if format_ == "json":
+            entries: list[dict[str, object]] = []
+            for file in files:
+                entry: dict[str, object] = {
+                    "id": file.id,
+                    "file_name": Export._file_name(source, file),
+                    "status": file.status,
+                }
+                if detail:
+                    full = file.to_dict()
+                    full.pop("id")
+                    full.pop("status")
+                    full["ocr_phase_name"] = phase_name.get(file.ocr_phase or 0)
+                    entry.update(full)
+                entries.append(entry)
+            payload = {
+                "generated_at": Export._generated_at(),
+                "source": source.to_dict(),
+                "file_count": len(files),
+                "detail": detail,
+                "files": entries,
+            }
+            output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            return
+
+        headers = ["ID", "File Name", "Status"]
+        if detail:
+            headers += [
+                "Type",
+                "Size",
+                "Pages",
+                "Started",
+                "Completed",
+                "Indexed",
+                "Duration",
+                "Confidence",
+                "OCR Phase",
+                "OCR Angles",
+                "Deeper Phases",
+                "Retries",
+                "Duplicate Of",
+                "Error",
+            ]
+        rows = []
+        for file in files:
+            row = [
+                str(file.id),
+                f'<a href="{html.escape(Export._file_uri(file.file_path))}">'
+                f"{html.escape(Export._file_name(source, file))}</a>",
+                html.escape(file.status),
+            ]
+            if detail:
+                phase = "-"
+                if file.ocr_phase is not None:
+                    phase = phase_name.get(file.ocr_phase, str(file.ocr_phase))
+                timings = "; ".join(
+                    f"{phase_name.get(t.phase, t.phase)}: {t.started_at} - "
+                    f"{t.completed_at or 'in progress'} ({t.duration_seconds:.1f}s)"
+                    for t in file.phase_timings
+                )
+                cells = [
+                    file.file_type,
+                    Export._size(file.file_size_bytes),
+                    str(file.pages) if file.pages else "-",
+                    file.started_at or "-",
+                    file.completed_at or "-",
+                    file.indexed_at or "-",
+                    f"{file.duration:.1f}s" if file.duration is not None else "-",
+                    f"{file.confidence:.0%}" if file.confidence is not None else "-",
+                    phase,
+                    ", ".join(str(a) for a in file.ocr_angles) or "-",
+                    timings or "-",
+                    str(file.retry_count),
+                    file.duplicate_of_path or "-",
+                    file.error_message or "-",
+                ]
+                row += [html.escape(c) for c in cells]
+            rows.append(row)
+        Export._write_table(
+            output,
+            f"Files in {source.path}",
+            headers,
+            rows,
+            f"{len(files)} file(s)",
+        )
