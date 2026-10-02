@@ -21,7 +21,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 25
+    SCHEMA_VERSION = 26
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS document_index (
     source_id INTEGER NOT NULL REFERENCES sources(id),
     document_id INTEGER NOT NULL REFERENCES documents(id),
     file_path TEXT NOT NULL UNIQUE,
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
     error_message TEXT,
@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS image_pages (
     ocr_angles TEXT NOT NULL DEFAULT '0'
 );
 
+-- One row per .eml message. `ocr_text` is the searchable text (headers followed by
+-- the body); the header columns hold the same fields separately for filtering.
+CREATE TABLE IF NOT EXISTS eml_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL REFERENCES document_index(id),
+    ocr_text TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    subject TEXT,
+    sender TEXT,
+    recipients_to TEXT,
+    recipients_cc TEXT,
+    recipients_bcc TEXT,
+    reply_to TEXT,
+    sent_at TEXT,
+    message_id TEXT
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -119,7 +136,7 @@ CREATE TABLE IF NOT EXISTS index_runs (
 
 CREATE TABLE IF NOT EXISTS processing_metrics (
     phase INTEGER NOT NULL DEFAULT 1,
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
     size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
     document_count INTEGER NOT NULL DEFAULT 0,
     avg_duration_seconds REAL NOT NULL DEFAULT 0,
@@ -144,7 +161,7 @@ CREATE TABLE IF NOT EXISTS document_phases (
 );
 
 CREATE TABLE IF NOT EXISTS confidence_metrics (
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
     process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
     page_count INTEGER NOT NULL DEFAULT 0,
     avg_confidence REAL NOT NULL DEFAULT 0,
@@ -205,6 +222,28 @@ CREATE TRIGGER IF NOT EXISTS image_pages_fts_au AFTER UPDATE ON image_pages BEGI
     INSERT INTO image_pages_fts(image_pages_fts, rowid, ocr_text)
         VALUES ('delete', old.id, old.ocr_text);
     INSERT INTO image_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS eml_pages_fts USING fts5(
+    ocr_text,
+    content='eml_pages',
+    content_rowid='id',
+    tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS eml_pages_fts_ai AFTER INSERT ON eml_pages BEGIN
+    INSERT INTO eml_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS eml_pages_fts_ad AFTER DELETE ON eml_pages BEGIN
+    INSERT INTO eml_pages_fts(eml_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS eml_pages_fts_au AFTER UPDATE ON eml_pages BEGIN
+    INSERT INTO eml_pages_fts(eml_pages_fts, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+    INSERT INTO eml_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
 """
 

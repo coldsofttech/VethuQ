@@ -480,3 +480,81 @@ class Migration:
             # even if an index was already populated.
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
             conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
+        if from_version < 26:
+            # Adds 'eml' to the file_type CHECK of the three tables carrying it
+            # (`eml_pages`/`eml_pages_fts` themselves came from `Db._SCHEMA`). SQLite can't
+            # widen a CHECK in place, so each is rebuilt like the earlier migrations do.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            rebuilds = {
+                "document_index": (
+                    """
+                    CREATE TABLE document_index_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        source_id INTEGER NOT NULL REFERENCES sources(id),
+                        document_id INTEGER NOT NULL REFERENCES documents(id),
+                        file_path TEXT NOT NULL UNIQUE,
+                        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
+                        status TEXT NOT NULL DEFAULT 'pending'
+                            CHECK (status IN
+                                ('pending', 'processing', 'indexed', 'error', 'removed')),
+                        error_message TEXT,
+                        indexed_at TEXT,
+                        started_at TEXT,
+                        completed_at TEXT,
+                        file_size_bytes INTEGER,
+                        sha256 TEXT,
+                        mtime REAL,
+                        created_at TEXT,
+                        modified_at TEXT,
+                        removed_at TEXT,
+                        retry_count INTEGER NOT NULL DEFAULT 0,
+                        peak_memory_mb REAL,
+                        cpu_percent REAL
+                    )
+                    """,
+                    "id, source_id, document_id, file_path, file_type, status, error_message, "
+                    "indexed_at, started_at, completed_at, file_size_bytes, sha256, mtime, "
+                    "created_at, modified_at, removed_at, retry_count, peak_memory_mb, cpu_percent",
+                ),
+                "processing_metrics": (
+                    """
+                    CREATE TABLE processing_metrics_new (
+                        phase INTEGER NOT NULL DEFAULT 1,
+                        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
+                        size_bucket TEXT NOT NULL
+                            CHECK (size_bucket IN ('small', 'medium', 'large')),
+                        document_count INTEGER NOT NULL DEFAULT 0,
+                        avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                        avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                        avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (phase, file_type, size_bucket)
+                    )
+                    """,
+                    "phase, file_type, size_bucket, document_count, avg_duration_seconds, "
+                    "avg_peak_memory_mb, avg_cpu_percent, updated_at",
+                ),
+                "confidence_metrics": (
+                    """
+                    CREATE TABLE confidence_metrics_new (
+                        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'eml')),
+                        process_type TEXT NOT NULL
+                            CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                        page_count INTEGER NOT NULL DEFAULT 0,
+                        avg_confidence REAL NOT NULL DEFAULT 0,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (file_type, process_type)
+                    )
+                    """,
+                    "file_type, process_type, page_count, avg_confidence, updated_at",
+                ),
+            }
+            for table, (create_sql, columns_sql) in rebuilds.items():
+                conn.execute(create_sql)
+                conn.execute(
+                    f"INSERT INTO {table}_new ({columns_sql}) SELECT {columns_sql} FROM {table}"
+                )
+                conn.execute(f"DROP TABLE {table}")
+                conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+            conn.execute("PRAGMA foreign_keys = ON")

@@ -6,6 +6,11 @@ import logging
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
+from email import policy
+from email.message import EmailMessage
+from email.parser import BytesParser
+from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,13 +32,17 @@ class PageResult:
     language: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    # Header fields of an .eml message, stored in their own columns so they can be
+    # filtered on later - only set by `EmlReader`.
+    email_headers: dict[str, str | None] | None = None
 
     def phase_columns(self) -> tuple[int, str]:
         """`(ocr_phase, ocr_angles)` to store for a page just read at 0 degrees.
 
-        A native-text page is read straight from the PDF's text layer, not by an
-        angle pass - so it's at phase 1 (quick) like any other page, with no angles
-        recorded. Deeper phases skip it by its `source`, not by its phase number.
+        A native-text page is read straight from the PDF's text layer (or, for an
+        .eml, the message itself), not by an angle pass - so it's at phase 1
+        (quick) like any other page, with no angles recorded. Deeper phases skip it by
+        its `source`, not by its phase number.
         """
         if self.source == "native":
             return 1, ""
@@ -216,6 +225,142 @@ class JpgReader(ImageReader):
     for JPEG-specific handling later."""
 
 
+class _HtmlText(HTMLParser):
+    """Collapses an HTML email body to plain text, skipping `<script>`/`<style>`."""
+
+    _BLOCK_TAGS = frozenset(
+        {"p", "div", "br", "tr", "li", "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6"}
+    )
+    _SKIPPED_TAGS = frozenset({"script", "style", "head", "title"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self._SKIPPED_TAGS:
+            self._skip_depth += 1
+        elif tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIPPED_TAGS:
+            self._skip_depth = max(0, self._skip_depth - 1)
+        elif tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        lines = (" ".join(line.split()) for line in "".join(self._parts).splitlines())
+        return "\n".join(line for line in lines if line)
+
+
+class EmlReader(Reader):
+    """An .eml (RFC 822) message: its headers and body, with attachments left out.
+
+    The text is read straight from the message, so no OCR runs: like a native-text
+    PDF page it has confidence 1.0 and source 'native'. Images embedded in the body
+    are ignored along with attachments.
+    """
+
+    file_type = "eml"
+
+    # (column name, header) in the order they appear in the searchable text.
+    ADDRESS_HEADERS = (
+        ("sender", "From"),
+        ("recipients_to", "To"),
+        ("recipients_cc", "Cc"),
+        ("recipients_bcc", "Bcc"),
+        ("reply_to", "Reply-To"),
+    )
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [EmlReader.read_file(file_path)]
+
+    @staticmethod
+    def header_value(message: EmailMessage, name: str) -> str | None:
+        try:
+            value = message[name]
+        except Exception:  # noqa: BLE001 - a malformed header shouldn't lose the whole email
+            return None
+        if value is None:
+            return None
+        text = " ".join(str(value).split())
+        return text or None
+
+    @staticmethod
+    def body_text(message: EmailMessage) -> str:
+        """The message body as plain text - the text/plain part if any, else the
+        text/html part with tags stripped. Attachments are never read."""
+        text = ""
+        for preference in (("plain",), ("html",)):
+            part = message.get_body(preferencelist=preference)
+            if part is None or part.is_attachment():
+                continue
+            try:
+                content = part.get_content()
+            except (LookupError, UnicodeError):
+                payload = part.get_payload(decode=True)
+                content = (
+                    payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else ""
+                )
+            if preference == ("html",):
+                parser = _HtmlText()
+                parser.feed(content)
+                content = parser.text()
+            text = content.strip()
+            if text:
+                break
+        return text
+
+    @staticmethod
+    def read_file(file_path: Path) -> PageResult:
+        with file_path.open("rb") as handle:
+            message = BytesParser(policy=policy.default).parse(handle)
+        assert isinstance(message, EmailMessage)
+
+        headers: dict[str, str | None] = {
+            column: EmlReader.header_value(message, header)
+            for column, header in EmlReader.ADDRESS_HEADERS
+        }
+        headers["subject"] = EmlReader.header_value(message, "Subject")
+        headers["message_id"] = EmlReader.header_value(message, "Message-ID")
+        sent = EmlReader.header_value(message, "Date")
+        sent_at = None
+        if sent is not None:
+            try:
+                sent_at = parsedate_to_datetime(sent).isoformat()
+            except (TypeError, ValueError):
+                sent_at = None
+        headers["sent_at"] = sent_at
+
+        lines = [
+            f"{label}: {headers[column]}"
+            for column, label in (
+                ("sender", "From"),
+                ("recipients_to", "To"),
+                ("recipients_cc", "Cc"),
+                ("recipients_bcc", "Bcc"),
+                ("reply_to", "Reply-To"),
+                ("subject", "Subject"),
+            )
+            if headers[column]
+        ]
+        if sent:
+            lines.append(f"Date: {sent}")
+        if headers["message_id"]:
+            lines.append(f"Message-ID: {headers['message_id']}")
+        body = EmlReader.body_text(message)
+        text = "\n".join(lines)
+        if body:
+            text = f"{text}\n\n{body}" if text else body
+        return PageResult(text=text, confidence=1.0, source="native", email_headers=headers)
+
+
 class Readers:
     """The registered readers, by file suffix."""
 
@@ -224,6 +369,7 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".eml": EmlReader(),
     }
 
     @staticmethod

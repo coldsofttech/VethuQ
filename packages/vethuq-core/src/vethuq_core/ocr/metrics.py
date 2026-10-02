@@ -120,7 +120,9 @@ class Metrics:
 
         by_process_type: dict[str, list[float]] = {}
         for page in pages:
-            process_type = page["source"] if file_type == "pdf" else "ocr"
+            process_type = (
+                page["source"] if file_type == "pdf" else "native" if file_type == "eml" else "ocr"
+            )
             by_process_type.setdefault(process_type, []).append(page["confidence"])
 
         now = datetime.now(UTC).isoformat()

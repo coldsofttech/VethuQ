@@ -320,6 +320,12 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
+        elif file_type == "eml":
+            page = pages[0]
+            DocumentQuery.delete_eml_pages(conn, document_id)
+            DocumentQuery.insert_eml_page(
+                conn, document_id, page.text, page.confidence, page.email_headers or {}
+            )
         else:
             page = pages[0]
             DocumentQuery.delete_image_pages(conn, document_id)

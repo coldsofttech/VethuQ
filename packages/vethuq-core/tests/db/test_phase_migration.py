@@ -122,3 +122,88 @@ class TestPhaseMigration:
             assert (row["phase"], row["document_count"], row["avg_duration_seconds"]) == (1, 4, 2.5)
         finally:
             migrated.close()
+
+
+class TestEmlMigration:
+    def test_v25_database_gains_eml_file_type_keeping_rows(self, tmp_path):
+        db_path = tmp_path / "v25.db"
+        old = sqlite3.connect(db_path)
+        # Rebuild a v25 database: the pre-'eml' CHECKs, a row in each affected table.
+        old.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (25);
+            CREATE TABLE sources (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+                added_at TEXT NOT NULL, last_scanned_at TEXT, is_active INTEGER NOT NULL DEFAULT 1,
+                removed_at TEXT);
+            CREATE TABLE documents (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
+                file_path TEXT);
+            CREATE TABLE document_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                error_message TEXT, indexed_at TEXT, started_at TEXT, completed_at TEXT,
+                file_size_bytes INTEGER, sha256 TEXT, mtime REAL, created_at TEXT,
+                modified_at TEXT, removed_at TEXT, retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL, cpu_percent REAL
+            );
+            CREATE TABLE processing_metrics (
+                phase INTEGER NOT NULL DEFAULT 1,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (phase, file_type, size_bucket)
+            );
+            CREATE TABLE confidence_metrics (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                page_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, process_type)
+            );
+            INSERT INTO sources (path, source_type, added_at) VALUES ('/s', 'folder', 'now');
+            INSERT INTO documents (created_at) VALUES ('now');
+            INSERT INTO document_index (source_id, document_id, file_path, file_type)
+                VALUES (1, 1, '/s/a.pdf', 'pdf');
+            INSERT INTO processing_metrics (file_type, size_bucket, document_count, updated_at)
+                VALUES ('image', 'small', 3, 'now');
+            INSERT INTO confidence_metrics (file_type, process_type, page_count, updated_at)
+                VALUES ('pdf', 'native', 2, 'now');
+            """
+        )
+        old.commit()
+        old.close()
+
+        migrated = Db.connect(db_path)
+        try:
+            assert (
+                migrated.execute("SELECT file_path FROM document_index").fetchone()[0] == "/s/a.pdf"
+            )
+            assert (
+                migrated.execute("SELECT document_count FROM processing_metrics").fetchone()[0] == 3
+            )
+            assert migrated.execute("SELECT page_count FROM confidence_metrics").fetchone()[0] == 2
+            migrated.execute(
+                "INSERT INTO document_index (source_id, document_id, file_path, file_type) "
+                "VALUES (1, 1, '/s/m.eml', 'eml')"
+            )
+            migrated.execute(
+                "INSERT INTO processing_metrics (file_type, size_bucket, updated_at) "
+                "VALUES ('eml', 'small', 'now')"
+            )
+            migrated.execute(
+                "INSERT INTO confidence_metrics (file_type, process_type, updated_at) "
+                "VALUES ('eml', 'native', 'now')"
+            )
+        finally:
+            migrated.close()

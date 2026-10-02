@@ -1,4 +1,4 @@
-"""SQL for the `documents`, `document_index`, `pdf_pages`, and `image_pages` tables."""
+"""SQL for the `documents`, `document_index`, `pdf_pages`, `image_pages`, and `eml_pages` tables."""
 
 from __future__ import annotations
 
@@ -42,6 +42,15 @@ class Document:
         )
 
     @staticmethod
+    def reassign_eml_pages(
+        conn: sqlite3.Connection, old_document_index_id: int, new_document_index_id: int
+    ) -> None:
+        conn.execute(
+            "UPDATE eml_pages SET document_id = ? WHERE document_id = ?",
+            (new_document_index_id, old_document_index_id),
+        )
+
+    @staticmethod
     def index_references_document(conn: sqlite3.Connection, document_id: int) -> bool:
         row = conn.execute(
             "SELECT 1 FROM document_index WHERE document_id = ? LIMIT 1", (document_id,)
@@ -79,6 +88,10 @@ class Document:
     @staticmethod
     def delete_image_pages(conn: sqlite3.Connection, document_index_id: int) -> None:
         conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_index_id,))
+
+    @staticmethod
+    def delete_eml_pages(conn: sqlite3.Connection, document_index_id: int) -> None:
+        conn.execute("DELETE FROM eml_pages WHERE document_id = ?", (document_index_id,))
 
     @staticmethod
     def delete_index_for_sources(conn: sqlite3.Connection, source_ids: list[int]) -> None:
@@ -261,7 +274,7 @@ class Document:
     def get_page_confidences(
         conn: sqlite3.Connection, file_type: str, document_id: int
     ) -> list[sqlite3.Row]:
-        table = "pdf_pages" if file_type == "pdf" else "image_pages"
+        table = {"pdf": "pdf_pages", "eml": "eml_pages"}.get(file_type, "image_pages")
         return conn.execute(
             f"SELECT confidence FROM {table} WHERE document_id = ?", (document_id,)
         ).fetchall()
@@ -334,6 +347,34 @@ class Document:
         )
 
     @staticmethod
+    def insert_eml_page(
+        conn: sqlite3.Connection,
+        document_id: int,
+        ocr_text: str,
+        confidence: float,
+        headers: dict[str, str | None],
+    ) -> None:
+        conn.execute(
+            "INSERT INTO eml_pages "
+            "(document_id, ocr_text, confidence, subject, sender, recipients_to, "
+            "recipients_cc, recipients_bcc, reply_to, sent_at, message_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                document_id,
+                ocr_text,
+                confidence,
+                headers.get("subject"),
+                headers.get("sender"),
+                headers.get("recipients_to"),
+                headers.get("recipients_cc"),
+                headers.get("recipients_bcc"),
+                headers.get("reply_to"),
+                headers.get("sent_at"),
+                headers.get("message_id"),
+            ),
+        )
+
+    @staticmethod
     def count_index_by_status(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
         """`(status, count)` of `source_id`'s `document_index` rows, one row per status."""
         return conn.execute(
@@ -359,14 +400,16 @@ class Document:
             "  (SELECT peer.id FROM document_index peer "
             "   WHERE peer.document_id = di.document_id AND ("
             "     EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-            "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id) "
+            "     OR EXISTS (SELECT 1 FROM eml_pages WHERE document_id = peer.id)"
             "   ) LIMIT 1), "
             "  di.id"
             ") AS canonical_id, "
             "(SELECT peer.file_path FROM document_index peer "
             " WHERE peer.document_id = di.document_id AND peer.id != di.id AND ("
             "   EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-            "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id) "
+            "   OR EXISTS (SELECT 1 FROM eml_pages WHERE document_id = peer.id)"
             " ) LIMIT 1) AS duplicate_of_path "
             "FROM document_index di "
             "WHERE di.source_id = ? ORDER BY di.file_path",
@@ -414,6 +457,24 @@ class Document:
             "JOIN sources s ON s.id = di.source_id "
             "WHERE image_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY di.file_path",
+            (like_pattern,),
+        ).fetchall()
+
+    @staticmethod
+    def search_indexed_eml_pages(conn: sqlite3.Connection, like_pattern: str) -> list[sqlite3.Row]:
+        """Like `search_indexed_pdf_pages`, but for `eml_pages`/`eml_pages_fts`."""
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, ep.ocr_text AS ocr_text, "
+            "NULL AS page_number, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM eml_pages_fts "
+            "JOIN eml_pages ep ON ep.id = eml_pages_fts.rowid "
+            "JOIN document_index carrier ON carrier.id = ep.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            "WHERE eml_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'eml' "
             "ORDER BY di.file_path",
             (like_pattern,),
         ).fetchall()
