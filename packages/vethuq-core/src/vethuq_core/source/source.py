@@ -181,6 +181,7 @@ class Sources:
         new_carrier_id = survivors[0]
         Document.reassign_pdf_pages(conn, document_index_id, new_carrier_id)
         Document.reassign_image_pages(conn, document_index_id, new_carrier_id)
+        Document.reassign_text_pages(conn, document_index_id, new_carrier_id)
 
     @staticmethod
     def prune_orphaned_documents(conn: sqlite3.Connection, document_ids: set[int]) -> None:
@@ -241,6 +242,7 @@ class Sources:
         for document_index_id in doomed_ids:
             Document.delete_pdf_pages(conn, document_index_id)
             Document.delete_image_pages(conn, document_index_id)
+            Document.delete_text_pages(conn, document_index_id)
         Document.delete_index_for_sources(conn, source_ids)
         SourceQuery.delete_by_ids(conn, source_ids)
         Sources.prune_orphaned_documents(conn, doomed_document_ids)
@@ -287,6 +289,7 @@ class Sources:
         for document_index_id in doomed_ids:
             Document.delete_pdf_pages(conn, document_index_id)
             Document.delete_image_pages(conn, document_index_id)
+            Document.delete_text_pages(conn, document_index_id)
         Document.delete_index_by_ids(conn, list(doomed_ids))
         Sources.prune_orphaned_documents(conn, doomed_document_ids)
         Sources.refresh_document_paths(conn, doomed_document_ids)

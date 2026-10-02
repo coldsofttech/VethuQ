@@ -16,6 +16,7 @@ from vethuq_core.ocr.reader import (
     PngReader,
     Reader,
     Readers,
+    TxtReader,
 )
 from vethuq_core.ocr.runner import Ocr
 from vethuq_core.ocr.scheduler import Scheduler
@@ -39,4 +40,5 @@ __all__ = [
     "Reader",
     "Readers",
     "Scheduler",
+    "TxtReader",
 ]

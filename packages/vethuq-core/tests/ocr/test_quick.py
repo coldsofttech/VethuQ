@@ -329,7 +329,7 @@ class TestQuick:
 
         folder = tmp_path / "docs"
         folder.mkdir()
-        (folder / "notes.txt").write_text("not ocr-able")
+        (folder / "notes.docx").write_text("not ocr-able")
         (folder / "scan.jpg").write_bytes(b"fake jpg bytes")
         source = Sources.add(conn, folder)
 

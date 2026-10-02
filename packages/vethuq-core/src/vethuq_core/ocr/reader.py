@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import logging
 import sqlite3
 from collections.abc import Iterator
@@ -27,6 +28,7 @@ class PageResult:
     language: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    encoding: str | None = None  # text files only: the character encoding decoded from
 
     def phase_columns(self) -> tuple[int, str]:
         """`(ocr_phase, ocr_angles)` to store for a page just read at 0 degrees.
@@ -206,6 +208,76 @@ class PdfReader(Reader):
             return [PdfReader.ocr_page(conn, page) for page in doc]
 
 
+class TxtReader(Reader):
+    """A plain-text `.txt` file, read straight from disk - no OCR involved.
+
+    The whole file is one "page" whose `source` is 'native' (the same label a PDF's
+    text layer gets), so it's stored in `text_pages` and counted under the 'native'
+    process type in the confidence stats. Only the character encoding has to be
+    worked out, since `.txt` files carry no declaration of it.
+    """
+
+    file_type = "txt"
+
+    # Byte-order marks, longest first so a UTF-32 LE BOM isn't mistaken for UTF-16 LE.
+    _BOMS: tuple[tuple[bytes, str], ...] = (
+        (codecs.BOM_UTF32_LE, "utf-32"),
+        (codecs.BOM_UTF32_BE, "utf-32"),
+        (codecs.BOM_UTF8, "utf-8-sig"),
+        (codecs.BOM_UTF16_LE, "utf-16"),
+        (codecs.BOM_UTF16_BE, "utf-16"),
+    )
+
+    # A last-resort single-byte decoding (any byte maps to something), used when the
+    # bytes look like text but no encoding could be detected confidently.
+    FALLBACK_ENCODING = "cp1252"
+    FALLBACK_CONFIDENCE = 0.5
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [TxtReader.read_file(file_path)]
+
+    @staticmethod
+    def decode(data: bytes) -> tuple[str, str, float]:
+        """Decode `data` to `(text, encoding, confidence)`.
+
+        A byte-order mark or a clean strict UTF-8 decode is exact (confidence 1.0).
+        Otherwise the encoding is detected with `charset-normalizer`, with its own
+        estimate of how well the bytes fit (`1 - chaos`) as the confidence. Raises
+        `ValueError` for data that's evidently binary rather than text.
+        """
+        for bom, encoding in TxtReader._BOMS:
+            if data.startswith(bom):
+                return data.decode(encoding), encoding, 1.0
+
+        try:
+            return data.decode("utf-8"), "utf-8", 1.0
+        except UnicodeDecodeError:
+            pass
+
+        from charset_normalizer import from_bytes
+
+        match = from_bytes(data).best()
+        if match is not None:
+            return str(match), match.encoding, max(0.0, 1.0 - match.chaos)
+
+        # Text in a single-byte encoding never contains NUL bytes; their presence (with
+        # no UTF-16/32 reading of them) means this is some binary format, not text.
+        if b"\x00" in data:
+            raise ValueError("file is not plain text (contains binary data)")
+        text = data.decode(TxtReader.FALLBACK_ENCODING, errors="replace")
+        return text, TxtReader.FALLBACK_ENCODING, TxtReader.FALLBACK_CONFIDENCE
+
+    @staticmethod
+    def read_file(file_path: Path) -> PageResult:
+        text, encoding, confidence = TxtReader.decode(file_path.read_bytes())
+        return PageResult(
+            text=text.strip(),
+            confidence=confidence,
+            source="native",
+            encoding=encoding,
+        )
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -224,6 +296,7 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".txt": TxtReader(),
     }
 
     @staticmethod

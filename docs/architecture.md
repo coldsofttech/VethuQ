@@ -89,7 +89,7 @@ without a full migration framework yet.
 (recursively for folders), runs PaddleOCR (`lang="en"`) on every
 supported file, and writes the extracted text to SQLite. Unsupported
 extensions are skipped silently. PDFs are rasterized page-by-page via
-PyMuPDF before OCR; PNG/JPEG files are OCR'd directly.
+PyMuPDF before OCR; PNG/JPEG files are OCR'd directly; `.txt` files are decoded as text (encoding auto-detected) with no OCR.
 
 Trigger model:
 - CLI: `add_source` only registers a source (`status='pending'`); a
@@ -106,6 +106,7 @@ Storage, alongside `sources`:
 | `documents` | One row per logical document, independent of any physical file path: just `id` and `created_at`. Exists so a document's identity survives renames, moves, and having more than one physical copy — see "Logical documents" below. |
 | `document_index` | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`processing`\|`indexed`\|`error`\|`removed` — set to `processing` once `started_at` is recorded, for a file actively being worked on), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time as a float epoch, used to cheaply rule out unchanged files before re-hashing), `sha256` (SHA-256 of file contents), `created_at`/`modified_at` (OS-level file creation/modification timestamps captured at scan time - `created_at` uses the platform's actual file-birth time where the OS exposes one, falling back to the modification time on platforms that don't, e.g. Linux), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
 | `pdf_pages` | One row per PDF page: `document_id` (this one's a `document_index.id`, not `documents.id` — see "Logical documents"), `page_number`, `ocr_text`, `confidence`. |
+| `text_pages` | One row per `.txt` file: `document_id` (a `document_index.id`), `ocr_text` (decoded text), `confidence` (1.0 for BOM/UTF-8, otherwise the detected encoding's fit), `source` (always `native`), `encoding`. |
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id` (a `document_index.id`), `ocr_text`, `confidence`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
 | `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal. |

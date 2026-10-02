@@ -15,6 +15,9 @@ dependencies = [
     "paddlepaddle>=3.0",
     "paddleocr>=3.0",
     "pymupdf>=1.24",
+    # Detects the character encoding of `.txt` files (see `vethuq_core.ocr.TxtReader`),
+    # which carry no declaration of it. Pure Python wheels, so no native-build risk.
+    "charset-normalizer>=3.0",
     # No explicit opencv dependency here on purpose: `paddleocr` pulls in
     # `paddlex`, which hard-pins an exact `opencv-contrib-python` version.
     # Also declaring our own `opencv-python-headless` installs a second,
