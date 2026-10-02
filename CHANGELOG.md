@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dialogs and right-click menus in the desktop app are now styled to match its Windows 11 theme.
 - A removed source is now fully deleted from the database (not just hidden) after it's been removed for a while — 7 days by default, configurable with `vethuq settings index removed-retention set/show`.
 - Indexed documents now record their file size.
+- VethuQ now refuses to open a database created by a newer version and tells you to upgrade, instead of risking damage to it.
 - VethuQ now tracks running averages of OCR duration per file type, and confidence per file type and text-source (native/OCR/mixed), so a document type's confidence isn't blended across very different sources.
 - `vethuq index status`'s ETA is now based on historical average OCR duration per file type, rather than this run's own pace, so it's available even before any file in the current run has finished.
 - Files with identical content to one already indexed are now detected as duplicates and linked to the original instead of being OCR'd again; both the CLI and the desktop app flag duplicates in search results and index status.

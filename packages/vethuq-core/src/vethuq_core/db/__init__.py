@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from vethuq_core.db.connection import (
     Db,
+    SchemaVersionError,
 )
 
 __all__ = [
     "Db",
+    "SchemaVersionError",
 ]

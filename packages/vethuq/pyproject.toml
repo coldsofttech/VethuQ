@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-vethuq = "vethuq._cli.main:app"
+vethuq = "vethuq._cli.main:Cli.run"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
