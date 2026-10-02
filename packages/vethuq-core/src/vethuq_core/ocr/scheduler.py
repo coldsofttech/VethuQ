@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from typing import TYPE_CHECKING
 
@@ -12,11 +11,12 @@ if TYPE_CHECKING:
     pass
 
 from vethuq_core.db.queries import Stats as StatsQuery
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import PendingFile
 from vethuq_core.settings import IndexSettings
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 class Scheduler:

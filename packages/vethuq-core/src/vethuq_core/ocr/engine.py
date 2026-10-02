@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
 import threading
@@ -20,9 +19,10 @@ os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
 if TYPE_CHECKING:
     from paddleocr import PaddleOCR
 
+from vethuq_core.logs import Logs
 from vethuq_core.settings import GpuSettings
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 class Engine:

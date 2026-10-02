@@ -111,6 +111,30 @@ first and force-terminates the process if it doesn't exit promptly.
 vethuq index stop
 ```
 
+## `logs [component]`
+
+List VethuQ's log files, or read one: `database`, `index`, `ui` or `cli` (see
+[Data layout](architecture.md#data-layout)). Shows the most recent entries of
+today's log — an entry is one log line plus any traceback under it.
+
+Options:
+
+- `--tail N` / `-n N` — how many entries to show (default 40)
+- `--follow` / `-f` — keep printing new entries as they're written; Ctrl+C stops
+- `--level LEVEL` — only entries at or above `debug`, `info`, `warning` or `error`
+- `--date YYYY-MM-DD` — read that day's rotated log instead of today's
+- `--export FILE` — write the selected entries to `FILE` instead of printing them
+
+`--follow` can't be combined with `--date` or `--export`.
+
+```bash
+vethuq logs
+vethuq logs index --tail 40
+vethuq logs index --level warning --date 2026-09-28
+vethuq logs cli -f
+vethuq logs database --tail 200 --export database-log.txt
+```
+
 ## `search <content>`
 
 Search indexed content for `content` (case-insensitive substring match)
@@ -215,6 +239,29 @@ schedule.
 ```bash
 vethuq settings index removed-retention set 60
 vethuq settings index removed-retention show
+```
+
+### `logs level set <level>|show`
+
+Configure how verbose VethuQ's log files (`database.log`, `index.log`, `ui.log`,
+`cli.log` in the `logs/` folder, see [Data layout](architecture.md#data-layout))
+are: `debug`, `info` (default), `warning` or `error`. It applies to processes
+started after the change.
+
+```bash
+vethuq settings logs level set debug
+vethuq settings logs level show
+```
+
+### `logs retention set <days>|show`
+
+Each log file starts a new file every day (`index.log.2026-09-28`, ...). This
+sets how many days of daily files are kept before they're deleted; defaults to
+15, minimum 1. It applies to processes started after the change.
+
+```bash
+vethuq settings logs retention set 30
+vethuq settings logs retention show
 ```
 
 ### `search snippet set <chars>|show`

@@ -5,9 +5,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from platformdirs import user_data_dir
-
 from vethuq_core.db.migration import Migration
+from vethuq_core.logs import Logs
+from vethuq_core.paths import Paths
+
+_logger = Logs.get_logger("database")
 
 
 class SchemaVersionError(Exception):
@@ -15,8 +17,8 @@ class SchemaVersionError(Exception):
 
 
 class Db:
-    APP_NAME = "VethuQ"
-    DB_FILENAME = "vethuq.db"
+    APP_NAME = Paths.APP_NAME
+    DB_FILENAME = Paths.DB_FILENAME
 
     # How long a writer waits on a lock held by another connection (WAL still
     # serializes writers against each other) before raising "database is locked" -
@@ -213,11 +215,25 @@ END;
 """
 
     @staticmethod
+    def _migrate_legacy_db(root: Path, db_dir: Path) -> None:
+        """Move a database left directly in the data root by an older version into `db/`."""
+        legacy = root / Db.DB_FILENAME
+        target = db_dir / Db.DB_FILENAME
+        if not legacy.exists() or target.exists():
+            return
+        for suffix in ("", "-wal", "-shm"):
+            src = root / (Db.DB_FILENAME + suffix)
+            if src.exists():
+                src.replace(db_dir / (Db.DB_FILENAME + suffix))
+
+    @staticmethod
     def default_db_path() -> Path:
-        """Return the per-user path where VethuQ's SQLite database lives."""
-        data_dir = Path(user_data_dir(Db.APP_NAME, appauthor=False))
-        data_dir.mkdir(parents=True, exist_ok=True)
-        return data_dir / Db.DB_FILENAME
+        """Return the per-user path where VethuQ's SQLite database lives (`<data root>/db/`)."""
+        root = Paths.default_data_root()
+        db_dir = root / Paths.DB_DIRNAME
+        db_dir.mkdir(parents=True, exist_ok=True)
+        Db._migrate_legacy_db(root, db_dir)
+        return db_dir / Db.DB_FILENAME
 
     @staticmethod
     def connect(
@@ -240,6 +256,7 @@ END;
         is locked" errors.
         """
         path = db_path or Db.default_db_path()
+        Logs.setup("database", path)
         conn = sqlite3.connect(path, check_same_thread=check_same_thread)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
@@ -254,8 +271,14 @@ END;
         from vethuq_core.db.integrity import IntegrityCheck
         from vethuq_core.source import Sources
 
-        Sources.purge_expired_sources(conn)
-        Sources.purge_expired_documents(conn)
+        purged_sources = Sources.purge_expired_sources(conn)
+        purged_documents = Sources.purge_expired_documents(conn)
+        if purged_sources or purged_documents:
+            _logger.info(
+                "Purged %d expired removed source(s) and %d expired removed document(s)",
+                purged_sources,
+                purged_documents,
+            )
         IntegrityCheck.maybe_run(conn)
         return conn
 
@@ -270,6 +293,7 @@ END;
         bad migration can be rolled back to this pre-migration copy.
         """
         backup_path = Path(f"{db_path}.bkp")
+        _logger.info("Backing up database to %s before migration", backup_path)
         backup_conn = sqlite3.connect(backup_path)
         try:
             conn.backup(backup_conn)
@@ -290,6 +314,11 @@ END;
             return
         row = conn.execute("SELECT MAX(version) AS version FROM schema_version").fetchone()
         if row["version"] is not None and row["version"] > Db.SCHEMA_VERSION:
+            _logger.error(
+                "Refusing to open database: schema v%d is newer than supported v%d",
+                row["version"],
+                Db.SCHEMA_VERSION,
+            )
             raise SchemaVersionError(
                 f"The database schema (version {row['version']}) is newer than this version "
                 f"of VethuQ supports (version {Db.SCHEMA_VERSION}). Upgrade VethuQ to open this "
@@ -302,8 +331,12 @@ END;
         conn.executescript(Db._SCHEMA)
         row = conn.execute("SELECT version FROM schema_version").fetchone()
         if row is None:
+            _logger.info("Created database schema v%d at %s", Db.SCHEMA_VERSION, db_path)
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (Db.SCHEMA_VERSION,))
         elif row["version"] < Db.SCHEMA_VERSION:
+            _logger.info(
+                "Migrating database schema from v%d to v%d", row["version"], Db.SCHEMA_VERSION
+            )
             Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
             conn.execute("UPDATE schema_version SET version = ?", (Db.SCHEMA_VERSION,))

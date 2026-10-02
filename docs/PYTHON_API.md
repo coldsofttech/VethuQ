@@ -90,6 +90,24 @@ for result in client.index.status(source.id):
 Stop the currently running background index and wait for confirmation.
 Raises `IndexRunnerError` if no run is currently active.
 
+## `client.logs`
+
+Read VethuQ's log files — mirrors `vethuq logs` in the CLI.
+
+### `tail(component, lines=40, *, level=None, day=None)`
+
+The most recent `lines` entries of a component's log, oldest first, as a list
+of strings. `component` is one of `LOG_COMPONENTS` (`"database"`, `"index"`,
+`"ui"`, `"cli"`). `level` keeps only entries at or above it (one of
+`LOG_LEVEL_VALUES`); `day` is a `datetime.date` for a past day's log instead of
+today's. Raises `LogNotFoundError` if there is no log for that day, and
+`ValueError` for an unknown component or level.
+
+```python
+for entry in client.logs.tail("index", 40, level="warning"):
+    print(entry)
+```
+
 ## `client.search`
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
@@ -163,6 +181,17 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 - `get()` — worker threads background indexing uses (`"0"`, disabled, by default)
 - `set(value)` — `value` must be `"0"`-`ThreadWorkersSettings.MAX` or
   `ThreadWorkersSettings.AUTO`; raises `InvalidSettingValueError` otherwise
+
+### `client.settings.logs.level`
+
+- `get()` — the log level (`"info"` by default)
+- `set(value)` — `value` must be one of `LOG_LEVEL_VALUES` (`"debug"`, `"info"`,
+  `"warning"`, `"error"`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.logs.retention`
+
+- `get()` — days of daily log files kept (`15` by default)
+- `set(days)` — `days` must be at least 1; raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 

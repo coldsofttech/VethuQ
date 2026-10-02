@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -13,9 +12,10 @@ if TYPE_CHECKING:
     import numpy as np
     import pymupdf
 
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.engine import Engine
 
-_logger = logging.getLogger(__name__)
+_logger = Logs.get_logger("index")
 
 
 @dataclass(frozen=True)

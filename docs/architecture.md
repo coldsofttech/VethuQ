@@ -27,18 +27,18 @@ locally, and `.github/workflows/release.yml` for the publish workflow.
 
 ## Planned package map
 
-| Package | Purpose | Introduced by tier |
-| --- | --- | --- |
-| `vethuq-core` | Document model, ingest, OCR (PaddleOCR), SQLite/FTS5 indexing, embeddings, search, source registration | Free |
-| `vethuq-cli` | CLI (Typer) | Free |
-| `vethuq-ui` | Desktop UI (Tkinter) | Free |
-| `vethuq-entitlements` | Tier/capability flags, license enforcement — cross-cutting, depended on by everything | Free (built early, per requirements §13) |
-| `vethuq-intelligence` | Classification, entities, relationships, similarity, tables, timelines | Basic/Lite/Pro |
-| `vethuq-security` | Auth, authz, tenant isolation, audit logging | Premium |
-| `vethuq-sdk` | Python SDK client | Pro |
-| `vethuq-api` | REST API (framework TBD — deferred) | Pro |
-| `vethuq-mcp` | MCP server, generic + domain SKILLS | Premium / V4 |
-| `vethuq-ai` | AI abstraction layer: provider-independent (Bedrock/local/hybrid), AI application services | V5 |
+| Package               | Purpose                                                                                                | Introduced by tier |
+| --------------------- | ------------------------------------------------------------------------------------------------------ | ------------------ |
+| `vethuq-core`         | Document model, ingest, OCR (PaddleOCR), SQLite/FTS5 indexing, embeddings, search, source registration | Free               |
+| `vethuq-cli`          | CLI (Typer)                                                                                            | Free               |
+| `vethuq-ui`           | Desktop UI (Tkinter)                                                                                   | Free               |
+| `vethuq-entitlements` | Tier/capability flags, license enforcement — cross-cutting, depended on by everything                  | Free               |
+| `vethuq-intelligence` | Classification, entities, relationships, similarity, tables, timelines                                 | Basic/Lite/Pro     |
+| `vethuq-security`     | Auth, authz, tenant isolation, audit logging                                                           | Premium            |
+| `vethuq-sdk`          | Python SDK client                                                                                      | Pro                |
+| `vethuq-api`          | REST API (framework TBD — deferred)                                                                    | Pro                |
+| `vethuq-mcp`          | MCP server, generic + domain SKILLS                                                                    | Premium / V4       |
+| `vethuq-ai`           | AI abstraction layer: provider-independent (Bedrock/local/hybrid), AI application services             | V5                 |
 
 Expected intra-workspace dependency direction (later packages depend on
 earlier ones, never the reverse):
@@ -67,18 +67,18 @@ rather than duplicating logic. Folders are always indexed recursively —
 there is no non-recursive mode.
 
 Storage: a per-user SQLite database at
-`platformdirs.user_data_dir("VethuQ")/vethuq.db` (e.g.
-`%APPDATA%\VethuQ\vethuq.db` on Windows), with a `sources` table:
+`platformdirs.user_data_dir("VethuQ")/db/vethuq.db` (e.g.
+`%APPDATA%\VethuQ\db\vethuq.db` on Windows), with a `sources` table:
 
-| Column | Notes |
-| --- | --- |
-| `id` | autoincrement primary key |
-| `path` | resolved absolute path, unique (dedupes relative vs. absolute) |
-| `source_type` | `file` \| `folder` |
-| `status` | `pending` \| `indexed` \| `error` \| `removed` — updated later by the indexing pipeline |
-| `added_at` | ISO-8601 UTC timestamp |
-| `last_scanned_at` | nullable, set by the indexing pipeline |
-| `is_active` | soft-delete flag; `remove_source` sets this to 0 rather than deleting the row |
+| Column            | Notes                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `id`              | autoincrement primary key                                                               |
+| `path`            | resolved absolute path, unique (dedupes relative vs. absolute)                          |
+| `source_type`     | `file` \| `folder`                                                                      |
+| `status`          | `pending` \| `indexed` \| `error` \| `removed` — updated later by the indexing pipeline |
+| `added_at`        | ISO-8601 UTC timestamp                                                                  |
+| `last_scanned_at` | nullable, set by the indexing pipeline                                                  |
+| `is_active`       | soft-delete flag; `remove_source` sets this to 0 rather than deleting the row           |
 
 A one-row `schema_version` table exists as a hook for future migrations,
 without a full migration framework yet.
@@ -101,14 +101,14 @@ Trigger model:
 
 Storage, alongside `sources`:
 
-| Table | Purpose |
-| --- | --- |
-| `documents` | One row per logical document, independent of any physical file path: just `id` and `created_at`. Exists so a document's identity survives renames, moves, and having more than one physical copy — see "Logical documents" below. |
-| `document_index` | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`processing`\|`indexed`\|`error`\|`removed` — set to `processing` once `started_at` is recorded, for a file actively being worked on), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time as a float epoch, used to cheaply rule out unchanged files before re-hashing), `sha256` (SHA-256 of file contents), `created_at`/`modified_at` (OS-level file creation/modification timestamps captured at scan time - `created_at` uses the platform's actual file-birth time where the OS exposes one, falling back to the modification time on platforms that don't, e.g. Linux), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
-| `pdf_pages` | One row per PDF page: `document_id` (this one's a `document_index.id`, not `documents.id` — see "Logical documents"), `page_number`, `ocr_text`, `confidence`. |
-| `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id` (a `document_index.id`), `ocr_text`, `confidence`. |
-| `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
-| `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal. |
+| Table                | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documents`          | One row per logical document, independent of any physical file path: just `id` and `created_at`. Exists so a document's identity survives renames, moves, and having more than one physical copy — see "Logical documents" below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `document_index`     | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`), `status` (`pending`\|`processing`\|`indexed`\|`error`\|`removed` — set to `processing` once `started_at` is recorded, for a file actively being worked on), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time as a float epoch, used to cheaply rule out unchanged files before re-hashing), `sha256` (SHA-256 of file contents), `created_at`/`modified_at` (OS-level file creation/modification timestamps captured at scan time - `created_at` uses the platform's actual file-birth time where the OS exposes one, falling back to the modification time on platforms that don't, e.g. Linux), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
+| `pdf_pages`          | One row per PDF page: `document_id` (this one's a `document_index.id`, not `documents.id` — see "Logical documents"), `page_number`, `ocr_text`, `confidence`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `image_pages`        | One row per PNG/JPEG file (no `page_number` — single image): `document_id` (a `document_index.id`), `ocr_text`, `confidence`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 A PaddleOCR engine instance is lazily created and reused per *thread*
 (`vethuq_core.ocr.Engine.get`, backed by `threading.local`) since model
@@ -149,6 +149,35 @@ Since worker threads share one sqlite connection (opened with
 `thread_workers` setting lookup on each re-resolution — is serialized
 through a single `threading.Lock` (`db_lock`); only the OCR inference
 itself runs unlocked, which is the actual point of the parallelism.
+
+### Data layout
+
+All per-user data lives under `platformdirs.user_data_dir("VethuQ")`
+(`%APPDATA%\VethuQ` on Windows), split by purpose (`vethuq_core.paths.Paths`):
+
+| Folder  | Contents                                                                      |
+| ------- | ----------------------------------------------------------------------------- |
+| `db/`   | `vethuq.db` and SQLite's `-wal` / `-shm` files                                |
+| `run/`  | runtime coordination files: `index.lock`, `index.control`, `index_state.json` |
+| `logs/` | `database.log`, `index.log`, `ui.log`, `cli.log` (see below)                  |
+
+`run/` and `logs/` sit next to the database's `db/` folder. A database left
+directly in the data root by an older version is moved into `db/` the first
+time the default path is resolved.
+
+Each log file has one owner (`vethuq_core.logs.Logs`):
+
+| File           | Logger            | Covers                                                                                                            |
+| -------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `database.log` | `vethuq.database` | schema creation and migrations, pre-migration backup, purges of removed sources/documents, integrity checks       |
+| `index.log`    | `vethuq.index`    | index runs (start/end/crash), every OCR worker thread (the thread name is on each line), stop/stale-lock handling |
+| `ui.log`       | `vethuq.ui`       | the desktop app                                                                                                   |
+| `cli.log`      | `vethuq.cli`      | each `vethuq` command invocation and CLI-level errors                                                             |
+
+Each log rolls over at midnight: the previous day becomes `<name>.log.YYYY-MM-DD`
+and the last `log_retention_days` (15 by default) days are kept, older files
+are deleted. Verbosity is the `log_level` setting. Both are read when a
+process first sets up a log; a change applies to processes started afterwards.
 
 ### Claiming a file for processing
 

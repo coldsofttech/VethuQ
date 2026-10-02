@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq logs <database|index|ui|cli>` shows the latest log entries, with `--tail`, `--follow`, `--level`, `--date` and `--export`; it's also in the interactive menu and `client.logs.tail` in the Python library.
+- VethuQ now writes separate daily log files for the database, indexing, desktop app and CLI. Choose how verbose they are and how many days are kept with `vethuq settings logs level|retention` (also `client.settings.logs` in the Python library).
+- VethuQ's data folder is now organised into `db/`, `run/` and `logs/`; an existing database is moved into `db/` automatically.
 - VethuQ now checks the database for corruption (once a day when it's opened, or on demand with `vethuq db integrity-check`) and logs the result; configure it with `vethuq settings db integrity-check`.
 - OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.

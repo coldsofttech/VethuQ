@@ -7,6 +7,7 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 `packages/vethuq/scripts/merge_sources.py` — not committed, not a public API.
 """
 
+from datetime import date
 from pathlib import Path
 
 from vethuq._core.db import Db as _Db
@@ -20,6 +21,8 @@ from vethuq._core.index import (
     StaleLockError,
 )
 from vethuq._core.index import IndexRunner as _IndexRunner
+from vethuq._core.logs import LogNotFoundError
+from vethuq._core.logs import Logs as _Logs
 from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.search import Export as _Export
@@ -32,6 +35,7 @@ from vethuq._core.settings import (
     InvalidSettingValueError,
     SettingsError,
 )
+from vethuq._core.settings import LogSettings as _LogSettings
 from vethuq._core.settings import OcrSettings as _OcrSettings
 from vethuq._core.settings import SearchSettings as _SearchSettings
 from vethuq._core.settings import SourceSettings as _SourceSettings
@@ -55,9 +59,13 @@ OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
+LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
+LOG_COMPONENTS = tuple(_Logs.COMPONENTS)
 
 __all__ = [
     "INTEGRITY_CHECK_VALUES",
+    "LOG_COMPONENTS",
+    "LOG_LEVEL_VALUES",
     "OCR_ENGINE_MODES",
     "SEARCH_EXPORT_FORMATS",
     "STALE_LOCK_VALUES",
@@ -77,6 +85,11 @@ __all__ = [
     "IntegrityCheckResult",
     "IntegrityCheckSettings",
     "InvalidSettingValueError",
+    "LogLevelSettings",
+    "LogNotFoundError",
+    "LogRetentionSettings",
+    "Logs",
+    "LogsSettings",
     "OcrEngineSettings",
     "OcrRetrySettings",
     "ProcessingMetric",
@@ -520,6 +533,63 @@ class IntegrityCheckSettings:
             conn.close()
 
 
+class LogLevelSettings:
+    """Verbosity of VethuQ's log files. Not instantiated directly — use
+    `Vethuq().settings.logs.level`."""
+
+    def get(self) -> str:
+        """The log level: 'debug', 'info' (the default), 'warning' or 'error'."""
+        conn = _Db.connect()
+        try:
+            return _LogSettings.get_level(conn)
+        finally:
+            conn.close()
+
+    def set(self, value: str) -> None:
+        """Set the log level.
+
+        `value` must be one of `LOG_LEVEL_VALUES`. Raises `InvalidSettingValueError`
+        otherwise.
+        """
+        conn = _Db.connect()
+        try:
+            _LogSettings.set_level(conn, value)
+        finally:
+            conn.close()
+
+
+class LogRetentionSettings:
+    """How many days of daily log files are kept. Not instantiated directly — use
+    `Vethuq().settings.logs.retention`."""
+
+    def get(self) -> int:
+        """Days of log files kept. 15 by default."""
+        conn = _Db.connect()
+        try:
+            return _LogSettings.get_retention_days(conn)
+        finally:
+            conn.close()
+
+    def set(self, days: int) -> None:
+        """Set the days of log files kept.
+
+        Raises `InvalidSettingValueError` if `days` is less than 1.
+        """
+        conn = _Db.connect()
+        try:
+            _LogSettings.set_retention_days(conn, days)
+        finally:
+            conn.close()
+
+
+class LogsSettings:
+    """Configure logging. Not instantiated directly — use `Vethuq().settings.logs`."""
+
+    def __init__(self) -> None:
+        self.level = LogLevelSettings()
+        self.retention = LogRetentionSettings()
+
+
 class DbSettings:
     """Configure database behavior. Not instantiated directly — use `Vethuq().settings.db`."""
 
@@ -546,6 +616,7 @@ class Settings:
         self.search = SearchSettings()
         self.index = IndexSettings()
         self.db = DbSettings()
+        self.logs = LogsSettings()
 
 
 class Stats:
@@ -623,6 +694,33 @@ class Search:
         return output_path
 
 
+class Logs:
+    """Read VethuQ's log files.
+
+    Not instantiated directly — use `Vethuq().logs`.
+    """
+
+    def tail(
+        self,
+        component: str,
+        lines: int = 40,
+        *,
+        level: str | None = None,
+        day: date | None = None,
+    ) -> list[str]:
+        """The most recent `lines` entries of a component's log, oldest first.
+
+        `component` is one of `LOG_COMPONENTS` (`"database"`, `"index"`, `"ui"`,
+        `"cli"`). `level` keeps only entries at or above it (one of
+        `LOG_LEVEL_VALUES`); `day` reads that day's rotated log instead of
+        today's. An entry is one log line plus any traceback lines under it.
+
+        Raises `LogNotFoundError` if there is no log for that day and
+        `ValueError` for an unknown component or level, or `lines` below 1.
+        """
+        return _Logs.tail(component, _Db.default_db_path(), lines=lines, level=level, day=day)
+
+
 class Db:
     """Database maintenance. Not instantiated directly — use `Vethuq().db`."""
 
@@ -660,4 +758,5 @@ class Vethuq:
         self.settings = Settings()
         self.stats = Stats()
         self.search = Search()
+        self.logs = Logs()
         self.db = Db()
