@@ -2,11 +2,13 @@
 
 `DocxParser` reads the Office Open XML package directly (it's a zip of XML parts), so
 it needs nothing beyond the standard library. `DocParser` reads the legacy binary
-format (an OLE compound file) through `olefile`.
+format (an OLE compound file) through `olefile`. `RtfParser` reads Rich Text Format through
+`striprtf` for the text and carves PNG/JPEG pictures out of its `\\pict` groups.
 """
 
 from __future__ import annotations
 
+import binascii
 import logging
 import re
 import struct
@@ -315,3 +317,86 @@ class DocParser:
             if not is_png and signature[:3] == b"\xff\xd8\xff":
                 return data_start, header + 8 + rec_len
         return None
+
+
+class RtfParser:
+    """Reads text and embedded PNG/JPEG pictures out of an `.rtf` file.
+
+    Text comes from `striprtf` (which drops pictures, fonts and other non-text
+    destinations). Pictures are carved from the `\\pict` groups' hex data; other picture
+    formats (WMF/EMF/DIB) and `\\bin` binary pictures are skipped.
+    """
+
+    MAX_FILE_BYTES = 256 * 1024 * 1024
+    MAX_IMAGE_BYTES = 64 * 1024 * 1024
+
+    _PICT = re.compile(rb"\\pict(?![a-z])")
+    _SKIP_GROUP = re.compile(rb"\{\\\*[^{}]*(?:\{[^{}]*\}[^{}]*)*\}")
+    _CONTROL = re.compile(rb"\\[a-zA-Z]+-?\d* ?|\\'[0-9a-fA-F]{2}|\\[^a-zA-Z]")
+    _SIGNATURES = {b"\\pngblip": b"\x89PNG\r\n\x1a\n", b"\\jpegblip": b"\xff\xd8\xff"}
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        from striprtf.striprtf import rtf_to_text
+
+        if file_path.stat().st_size > RtfParser.MAX_FILE_BYTES:
+            raise ValueError(f"{file_path.name} is too large to read")
+        raw = file_path.read_bytes()
+        if not raw.lstrip().startswith(b"{\\rtf"):
+            raise ValueError("not a valid .rtf file: missing {\\rtf header")
+        text = rtf_to_text(raw.decode("latin-1"), errors="ignore")
+        lines = (re.sub(r"[ \t]{2,}", " ", line).strip() for line in text.splitlines())
+        text = "\n".join(line for line in lines if line)
+        return text, RtfParser.pictures(raw)
+
+    @staticmethod
+    def pictures(raw: bytes) -> list[bytes]:
+        """The distinct PNG/JPEG pictures in `raw`'s `\\pict` groups, in document order."""
+        found: list[bytes] = []
+        seen: set[bytes] = set()
+        try:
+            for match in RtfParser._PICT.finditer(raw):
+                group = RtfParser._group(raw, match.start())
+                data = RtfParser._decode_picture(group) if group else None
+                if data is None or data in seen:
+                    continue
+                seen.add(data)
+                found.append(data)
+        except Exception:  # noqa: BLE001 - pictures are a bonus; never fail the text over them
+            _logger.warning("Could not read embedded RTF pictures", exc_info=True)
+        return found
+
+    @staticmethod
+    def _group(raw: bytes, start: int) -> bytes | None:
+        """The contents of the group holding the control word at `start` (up to its `}`)."""
+        depth = 1
+        position = start
+        size = len(raw)
+        while position < size:
+            char = raw[position]
+            if char == 0x5C:  # backslash: skip the escaped character (e.g. \{ or \})
+                position += 2
+                continue
+            if char == 0x7B:
+                depth += 1
+            elif char == 0x7D:
+                depth -= 1
+                if depth == 0:
+                    return raw[start:position]
+            position += 1
+        return None
+
+    @staticmethod
+    def _decode_picture(group: bytes) -> bytes | None:
+        kind = next((tag for tag in RtfParser._SIGNATURES if tag in group), None)
+        if kind is None or b"\\bin" in group:
+            return None
+        cleaned = RtfParser._SKIP_GROUP.sub(b"", group)
+        hex_data = re.sub(rb"[^0-9a-fA-F]", b"", RtfParser._CONTROL.sub(b"", cleaned))
+        if len(hex_data) % 2 or len(hex_data) // 2 > RtfParser.MAX_IMAGE_BYTES:
+            return None
+        try:
+            data = binascii.unhexlify(hex_data)
+        except binascii.Error:
+            return None
+        return data if data.startswith(RtfParser._SIGNATURES[kind]) else None

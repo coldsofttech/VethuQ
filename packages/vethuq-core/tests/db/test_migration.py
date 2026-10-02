@@ -737,7 +737,7 @@ class TestMigration:
         finally:
             conn.close()
 
-    def test_connect_migrates_file_type_checks_to_allow_word_documents(self, tmp_path):
+    def test_connect_migrates_file_type_checks_to_allow_word_and_rtf_documents(self, tmp_path):
         db_path = tmp_path / "vethuq.db"
 
         # A version-25 database: file_type CHECKs that only allow 'pdf'/'image'.
@@ -826,7 +826,7 @@ class TestMigration:
             ).fetchone()[:] == (3, 1.5)
             assert conn.execute("SELECT page_count FROM confidence_metrics").fetchone()[0] == 4
 
-            for file_type in ("doc", "docx"):
+            for file_type in ("doc", "docx", "rtf"):
                 conn.execute(
                     "INSERT INTO document_index (source_id, document_id, file_path, file_type) "
                     "VALUES (1, 1, ?, ?)",
@@ -853,6 +853,6 @@ class TestMigration:
             indexes = {row["name"] for row in conn.execute("PRAGMA index_list(document_index)")}
             assert "idx_document_index_sha256" in indexes
             version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
-            assert version == Db.SCHEMA_VERSION == 26
+            assert version == Db.SCHEMA_VERSION == 27
         finally:
             conn.close()

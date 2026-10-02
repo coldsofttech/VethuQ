@@ -320,7 +320,7 @@ class Document:
                     for page_number, page in enumerate(pages, start=1)
                 ],
             )
-        elif file_type in ("doc", "docx"):
+        elif file_type in ("doc", "docx", "rtf"):
             page = pages[0]
             DocumentQuery.delete_office_pages(conn, document_id)
             DocumentQuery.insert_office_page(

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
-from vethuq_core.ocr.office import DocParser, DocxParser
+from vethuq_core.ocr.office import DocParser, DocxParser, RtfParser
 
 _logger = logging.getLogger(__name__)
 
@@ -208,7 +208,7 @@ class PdfReader(Reader):
 
 
 class OfficeReader(Reader):
-    """Shared by Word readers: native text, plus OCR over the document's embedded images.
+    """Shared by the Word-processor readers (Word, RTF): native text, plus OCR over embedded images.
 
     A Word file has no fixed pages without laying it out, so it becomes a single
     `PageResult` - `native` if only its own text is used, `mixed` if embedded images added
@@ -291,6 +291,16 @@ class DocReader(OfficeReader):
         return DocParser.extract(file_path)
 
 
+class RtfReader(OfficeReader):
+    """An .rtf file: text read with `striprtf`, embedded PNG/JPEG pictures OCR'd (quick phase)."""
+
+    file_type = "rtf"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return RtfParser.extract(file_path)
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -311,6 +321,7 @@ class Readers:
         ".jpeg": JpgReader(),
         ".docx": DocxReader(),
         ".doc": DocReader(),
+        ".rtf": RtfReader(),
     }
 
     # Word's `~$name.docx` owner-lock files carry the extension but aren't documents.
