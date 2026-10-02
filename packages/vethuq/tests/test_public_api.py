@@ -283,7 +283,7 @@ def test_index_errors_share_a_base_class():
 @pytest.fixture
 def indexed_client(client: vethuq.Vethuq, tmp_path: Path) -> vethuq.Vethuq:
     """A client whose database already holds OCR'd pages (OCR itself isn't run here)."""
-    db_file = tmp_path / "data" / "vethuq.db"
+    db_file = tmp_path / "data" / "db" / "vethuq.db"
     client.sources.list()  # creates the database
     conn = sqlite3.connect(db_file)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -381,8 +381,8 @@ def test_cli_help_lists_commands():
         assert command in result.output
 
 
-def test_logs_tail_reads_a_component_log(client: vethuq.Vethuq):
-    log_dir = vethuq.DB_PATH.parent.parent / "logs"
+def test_logs_tail_reads_a_component_log(client: vethuq.Vethuq, tmp_path: Path):
+    log_dir = tmp_path / "data" / "logs"
     log_dir.mkdir(exist_ok=True)
     (log_dir / "index.log").write_text(
         "2026-10-01 10:00:00,000 INFO [MainThread] vethuq.index: from the log\n",
