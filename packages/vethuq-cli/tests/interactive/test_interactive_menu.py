@@ -60,6 +60,24 @@ class TestInteractiveMenu:
         assert result.exit_code == 0
         assert "No sources registered yet." in result.stdout
 
+    def test_sources_list_files_with_detail(self, use_temp_db, tmp_path):
+        use_temp_db()
+        runner.invoke(app, ["source", "add", str(tmp_path)])
+
+        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\ny\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "No files indexed yet for this source." in result.stdout
+
+    def test_sources_list_files_unknown_source_keeps_shell_alive(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="2\n2\n99\nn\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "No active source matches" in result.output
+        assert "Goodbye." in result.stdout
+
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()
 

@@ -518,6 +518,29 @@ their id, type (`file`/`folder`), and status (`pending`/`indexed`/`error`).
 vethuq source list
 ```
 
+### `list <id-or-path> [--detail]`
+
+List every file tracked under a source (by id or path): the file's id, its
+name (relative to the source, for a folder), and its index status
+(`pending`/`processing`/`indexed`/`error`).
+
+```bash
+vethuq source list 3
+vethuq source list ./path/to/folder
+```
+
+With `--detail`, each file also shows its type, size, page count,
+started/completed/indexed timestamps, duration, confidence, current OCR
+phase and the angles read so far, the timing of each deeper OCR phase (see
+[ocr-phases.md](ocr-phases.md)), retries, the original it duplicates, and
+any error. `--detail` requires a source id or path.
+
+```bash
+vethuq source list 3 --detail
+```
+
+Also available from the interactive menu under Sources > List Files.
+
 ### `remove <id-or-path>`
 
 Remove a registered source (soft-delete — the source stops being

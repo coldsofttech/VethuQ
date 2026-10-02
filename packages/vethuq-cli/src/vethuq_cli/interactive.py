@@ -206,16 +206,27 @@ class InteractiveMenu:
     def _sources_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Sources", [("1", "List"), ("2", "Add"), ("3", "Remove"), ("0", "Back")]
+                "Sources",
+                [
+                    ("1", "List"),
+                    ("2", "List Files"),
+                    ("3", "Add"),
+                    ("4", "Remove"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
             if choice == "1":
-                InteractiveMenu._run_safely(source_list)
+                InteractiveMenu._run_safely(source_list, target=None, detail=False)
             elif choice == "2":
+                target = Prompt.ask("Source id or path to list the files of", console=console)
+                detail = Confirm.ask("Show detailed information?", console=console, default=False)
+                InteractiveMenu._run_safely(source_list, target=target.strip(), detail=detail)
+            elif choice == "3":
                 path = Prompt.ask("File or folder to register", console=console)
                 InteractiveMenu._run_safely(source_add, path=path)
-            elif choice == "3":
+            elif choice == "4":
                 path_or_id = Prompt.ask("Source id or path to remove", console=console)
                 InteractiveMenu._run_safely(source_remove, path_or_id=path_or_id, force=False)
 

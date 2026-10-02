@@ -243,6 +243,15 @@ class _DocumentStoreMixin:
     def get_document_result_rows(self, source_id: int) -> list[sqlite3.Row]:
         return Document.get_result_rows(self._conn, source_id)
 
+    def list_source_file_rows(self, source_id: int) -> list[sqlite3.Row]:
+        return Document.list_source_file_rows(self._conn, source_id)
+
+    def list_page_ocr_state(self, file_type: str, document_id: int) -> list[sqlite3.Row]:
+        return Document.list_page_ocr_state(self._conn, file_type, document_id)
+
+    def list_phase_rows(self, logical_document_id: int) -> list[sqlite3.Row]:
+        return Document.list_phase_rows(self._conn, logical_document_id)
+
     def search_indexed_pdf_pages(self, like_pattern: str) -> list[sqlite3.Row]:
         return Document.search_indexed_pdf_pages(self._conn, like_pattern)
 

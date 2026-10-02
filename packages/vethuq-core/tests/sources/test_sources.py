@@ -140,6 +140,84 @@ class TestSources:
         assert len(Sources.list_all(storage)) == 1
 
 
+class TestListFiles:
+    def _seed(self, conn, storage, tmp_path):
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        source = Sources.add(storage, folder)
+        doc_a = _insert_document(
+            conn,
+            source_id=source.id,
+            file_path=str(folder / "a.pdf"),
+            file_type="pdf",
+            status="indexed",
+            file_size_bytes=2048,
+            started_at="2026-01-01T10:00:00+00:00",
+            completed_at="2026-01-01T10:00:04+00:00",
+            indexed_at="2026-01-01T10:00:04+00:00",
+        )
+        _insert_document(
+            conn,
+            source_id=source.id,
+            file_path=str(folder / "b.png"),
+            file_type="image",
+            status="error",
+            error_message="boom",
+            retry_count=2,
+        )
+        for page, phase, angles in ((1, 2, "0,90,180,270"), (2, 1, "0")):
+            conn.execute(
+                "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence, "
+                "ocr_phase, ocr_angles) VALUES (?, ?, 'x', 0.8, ?, ?)",
+                (doc_a, page, phase, angles),
+            )
+        document_id = conn.execute(
+            "SELECT document_id FROM document_index WHERE id = ?", (doc_a,)
+        ).fetchone()["document_id"]
+        conn.execute(
+            "INSERT INTO document_phases (document_id, phase, started_at, completed_at, "
+            "duration_seconds) VALUES (?, 2, '2026-01-01T11:00:00+00:00', "
+            "'2026-01-01T11:00:09+00:00', 9.0)",
+            (document_id,),
+        )
+        conn.commit()
+        return source, doc_a
+
+    def test_list_files_returns_each_file_ordered_by_path(self, conn, storage, tmp_path):
+        source, doc_a = self._seed(conn, storage, tmp_path)
+
+        files = Sources.list_files(storage, source.id)
+
+        assert [f.id for f in files][0] == doc_a
+        assert [f.status for f in files] == ["indexed", "error"]
+
+    def test_list_files_carries_detail(self, conn, storage, tmp_path):
+        source, _ = self._seed(conn, storage, tmp_path)
+
+        indexed, failed = Sources.list_files(storage, source.id)
+
+        assert indexed.file_size_bytes == 2048
+        assert indexed.duration == 4.0
+        assert indexed.pages == 2
+        assert indexed.ocr_phase == 1  # the least-processed page decides
+        assert indexed.ocr_angles == [0, 90, 180, 270]
+        assert indexed.confidence == pytest.approx(0.8)
+        assert [(t.phase, t.duration_seconds) for t in indexed.phase_timings] == [(2, 9.0)]
+        assert failed.error_message == "boom"
+        assert failed.retry_count == 2
+        assert failed.ocr_phase is None
+        assert failed.confidence is None
+
+    def test_list_files_accepts_a_path(self, conn, storage, tmp_path):
+        source, _ = self._seed(conn, storage, tmp_path)
+
+        assert len(Sources.list_files(storage, source.path)) == 2
+
+    def test_list_files_unknown_source_raises(self, conn, storage):
+        with pytest.raises(SourceNotFoundError):
+            Sources.list_files(storage, 999)
+
+
 class TestPurge:
     def test_purge_expired_removed_sources_deletes_stale_removed_rows(
         self, conn: sqlite3.Connection, storage: Storage, tmp_path
