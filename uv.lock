@@ -3005,6 +3005,7 @@ wheels = [
 name = "vethuq"
 source = { editable = "packages/vethuq" }
 dependencies = [
+    { name = "charset-normalizer" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "paddleocr" },
@@ -3018,6 +3019,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "paddleocr", specifier = ">=3.0" },
     { name = "paddlepaddle", specifier = ">=3.0" },
@@ -3050,6 +3052,7 @@ name = "vethuq-core"
 version = "0.1.0"
 source = { editable = "packages/vethuq-core" }
 dependencies = [
+    { name = "charset-normalizer" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "paddleocr" },
@@ -3061,6 +3064,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "paddleocr", specifier = ">=3.0" },
     { name = "paddlepaddle", specifier = ">=3.0" },

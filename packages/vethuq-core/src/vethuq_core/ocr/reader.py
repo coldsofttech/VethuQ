@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import codecs
+import csv
+import io
 import logging
 import sqlite3
 from collections.abc import Iterator
@@ -27,6 +30,10 @@ class PageResult:
     language: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    encoding: str | None = None  # text files only: the character encoding decoded from
+    delimiter: str | None = None  # CSV files only: the field delimiter parsed with
+    row_count: int | None = None  # CSV files only: non-empty rows, header included
+    column_count: int | None = None  # CSV files only: cells in the widest row
 
     def phase_columns(self) -> tuple[int, str]:
         """`(ocr_phase, ocr_angles)` to store for a page just read at 0 degrees.
@@ -206,6 +213,118 @@ class PdfReader(Reader):
             return [PdfReader.ocr_page(conn, page) for page in doc]
 
 
+class CsvReader(Reader):
+    """A `.csv` file, read straight from disk - no OCR involved.
+
+    The whole file is one "page" whose `source` is 'native' (the same label a PDF's
+    text layer gets), so it's stored in `csv_pages` and counted under the 'native'
+    process type in the confidence stats. Two things have to be worked out since a CSV
+    declares neither: the character encoding, and the dialect (delimiter/quoting) -
+    exports from spreadsheet tools in some locales use ';' or tabs rather than ','.
+
+    Indexed text is one line per non-empty row, with each row's non-empty cells joined
+    by ' | ' and whitespace (including newlines inside a quoted cell) collapsed - so a
+    search matches cell contents without the quoting/delimiter syntax getting in the way.
+    """
+
+    file_type = "csv"
+
+    _BOMS = (
+        (codecs.BOM_UTF8, "utf-8-sig"),
+        # UTF-32 LE's BOM starts with UTF-16 LE's, so it has to be tried first.
+        (codecs.BOM_UTF32_LE, "utf-32"),
+        (codecs.BOM_UTF32_BE, "utf-32"),
+        (codecs.BOM_UTF16_LE, "utf-16"),
+        (codecs.BOM_UTF16_BE, "utf-16"),
+    )
+    FALLBACK_ENCODING = "cp1252"
+    FALLBACK_CONFIDENCE = 0.5
+
+    DELIMITERS = ",;\t|"
+    SNIFF_SAMPLE_CHARS = 64 * 1024
+    # `csv` rejects any single cell over 128 KiB by default, which a legitimate export
+    # holding a long free-text column can exceed. Only ever raised, never lowered, since
+    # the limit is process-wide.
+    FIELD_SIZE_LIMIT = 16 * 1024 * 1024
+
+    def ocr(self, conn: sqlite3.Connection, file_path: Path) -> list[PageResult]:
+        return [CsvReader.read_file(file_path)]
+
+    @staticmethod
+    def decode(data: bytes) -> tuple[str, str, float]:
+        """Decode `data` to `(text, encoding, confidence)`.
+
+        UTF-8 (including a BOM'd or plain-ASCII file) and BOM-marked UTF-16/32 are exact,
+        so they score 1.0; anything else goes through charset detection and is scored by
+        how clean its best match was. Raises `ValueError` for data that's evidently
+        binary rather than text.
+        """
+        for bom, encoding in CsvReader._BOMS:
+            if data.startswith(bom):
+                return data.decode(encoding), encoding, 1.0
+
+        try:
+            return data.decode("utf-8"), "utf-8", 1.0
+        except UnicodeDecodeError:
+            pass
+
+        from charset_normalizer import from_bytes
+
+        match = from_bytes(data).best()
+        if match is not None:
+            return str(match), match.encoding, max(0.0, 1.0 - match.chaos)
+
+        # Text in a single-byte encoding never contains NUL bytes; their presence (with
+        # no UTF-16/32 reading of them) means this is some binary format, not text.
+        if b"\x00" in data:
+            raise ValueError("file is not a CSV (contains binary data)")
+        text = data.decode(CsvReader.FALLBACK_ENCODING, errors="replace")
+        return text, CsvReader.FALLBACK_ENCODING, CsvReader.FALLBACK_CONFIDENCE
+
+    @staticmethod
+    def sniff_dialect(text: str) -> type[csv.Dialect] | csv.Dialect:
+        """Guess `text`'s dialect from its leading sample, defaulting to Excel's (',')."""
+        sample = text[: CsvReader.SNIFF_SAMPLE_CHARS]
+        # Drop a trailing partial row, which would skew the sniffer's column-consistency check.
+        if len(text) > len(sample) and "\n" in sample:
+            sample = sample[: sample.rindex("\n")]
+        try:
+            return csv.Sniffer().sniff(sample, delimiters=CsvReader.DELIMITERS)
+        except csv.Error:
+            return csv.excel
+
+    @staticmethod
+    def flatten(text: str) -> tuple[str, str, int, int]:
+        """Parse `text` into `(searchable_text, delimiter, row_count, column_count)`."""
+        csv.field_size_limit(max(csv.field_size_limit(), CsvReader.FIELD_SIZE_LIMIT))
+        dialect = CsvReader.sniff_dialect(text)
+
+        lines: list[str] = []
+        column_count = 0
+        for row in csv.reader(io.StringIO(text, newline=""), dialect):
+            cells = [" ".join(cell.split()) for cell in row]
+            cells = [cell for cell in cells if cell]
+            if not cells:
+                continue
+            column_count = max(column_count, len(row))
+            lines.append(" | ".join(cells))
+        return "\n".join(lines), dialect.delimiter, len(lines), column_count
+
+    @staticmethod
+    def read_file(file_path: Path) -> PageResult:
+        text, encoding, confidence = CsvReader.decode(file_path.read_bytes())
+        content, delimiter, row_count, column_count = CsvReader.flatten(text)
+        return PageResult(
+            text=content,
+            confidence=confidence,
+            source="native",
+            encoding=encoding,
+            delimiter=delimiter,
+            row_count=row_count,
+            column_count=column_count,
+        )
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -224,6 +343,7 @@ class Readers:
         ".png": PngReader(),
         ".jpg": JpgReader(),
         ".jpeg": JpgReader(),
+        ".csv": CsvReader(),
     }
 
     @staticmethod

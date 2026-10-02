@@ -736,3 +736,44 @@ class TestMigration:
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
         finally:
             conn.close()
+
+
+class TestCsvFileTypeMigration:
+    def test_v25_database_gains_csv_file_type_and_keeps_rows(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+        conn = Db.connect(db_path)
+        # Rewind to what a v25 database looks like: file_type CHECKs without 'csv'
+        # and no csv_pages table.
+        conn.executescript(
+            """
+            DROP TABLE csv_pages_fts;
+            DROP TABLE csv_pages;
+            DROP TABLE confidence_metrics;
+            CREATE TABLE confidence_metrics (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                page_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, process_type)
+            );
+            INSERT INTO confidence_metrics VALUES ('pdf', 'native', 3, 0.9, 'now');
+            UPDATE schema_version SET version = 25;
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == (
+                Db.SCHEMA_VERSION
+            )
+            assert conn.execute("SELECT page_count FROM confidence_metrics").fetchone()[0] == 3
+            conn.execute("INSERT INTO confidence_metrics VALUES ('csv', 'native', 1, 1.0, 'now')")
+            conn.execute(
+                "INSERT INTO csv_pages (document_id, ocr_text, confidence) VALUES (1, 'x', 1)"
+            )
+            conn.commit()
+        finally:
+            conn.close()

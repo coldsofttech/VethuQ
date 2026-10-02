@@ -1,4 +1,4 @@
-"""SQL for the `documents`, `document_index`, `pdf_pages`, and `image_pages` tables."""
+"""SQL for the `documents`, `document_index`, and per-file-type `*_pages` tables."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import sqlite3
 
 
 class Document:
+    # The pages table a `document_index.file_type`'s text is stored in.
+    PAGE_TABLES = {"pdf": "pdf_pages", "image": "image_pages", "csv": "csv_pages"}
+
     @staticmethod
     def get_id_for_index_row(
         conn: sqlite3.Connection, document_index_id: int
@@ -38,6 +41,15 @@ class Document:
     ) -> None:
         conn.execute(
             "UPDATE image_pages SET document_id = ? WHERE document_id = ?",
+            (new_document_index_id, old_document_index_id),
+        )
+
+    @staticmethod
+    def reassign_csv_pages(
+        conn: sqlite3.Connection, old_document_index_id: int, new_document_index_id: int
+    ) -> None:
+        conn.execute(
+            "UPDATE csv_pages SET document_id = ? WHERE document_id = ?",
             (new_document_index_id, old_document_index_id),
         )
 
@@ -79,6 +91,10 @@ class Document:
     @staticmethod
     def delete_image_pages(conn: sqlite3.Connection, document_index_id: int) -> None:
         conn.execute("DELETE FROM image_pages WHERE document_id = ?", (document_index_id,))
+
+    @staticmethod
+    def delete_csv_pages(conn: sqlite3.Connection, document_index_id: int) -> None:
+        conn.execute("DELETE FROM csv_pages WHERE document_id = ?", (document_index_id,))
 
     @staticmethod
     def delete_index_for_sources(conn: sqlite3.Connection, source_ids: list[int]) -> None:
@@ -261,15 +277,19 @@ class Document:
     def get_page_confidences(
         conn: sqlite3.Connection, file_type: str, document_id: int
     ) -> list[sqlite3.Row]:
-        table = "pdf_pages" if file_type == "pdf" else "image_pages"
+        table = Document.PAGE_TABLES[file_type]
         return conn.execute(
             f"SELECT confidence FROM {table} WHERE document_id = ?", (document_id,)
         ).fetchall()
 
     @staticmethod
-    def get_pdf_page_sources(conn: sqlite3.Connection, document_id: int) -> list[sqlite3.Row]:
+    def get_page_sources(
+        conn: sqlite3.Connection, file_type: str, document_id: int
+    ) -> list[sqlite3.Row]:
+        """`(confidence, source)` per page, for file types whose pages record a `source`."""
+        table = Document.PAGE_TABLES[file_type]
         return conn.execute(
-            "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
+            f"SELECT confidence, source FROM {table} WHERE document_id = ?", (document_id,)
         ).fetchall()
 
     @staticmethod
@@ -334,6 +354,33 @@ class Document:
         )
 
     @staticmethod
+    def insert_csv_page(
+        conn: sqlite3.Connection,
+        document_id: int,
+        ocr_text: str,
+        confidence: float,
+        source: str,
+        encoding: str | None,
+        delimiter: str | None,
+        row_count: int,
+        column_count: int,
+    ) -> None:
+        conn.execute(
+            "INSERT INTO csv_pages (document_id, ocr_text, confidence, source, encoding, "
+            "delimiter, row_count, column_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                document_id,
+                ocr_text,
+                confidence,
+                source,
+                encoding,
+                delimiter,
+                row_count,
+                column_count,
+            ),
+        )
+
+    @staticmethod
     def count_index_by_status(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
         """`(status, count)` of `source_id`'s `document_index` rows, one row per status."""
         return conn.execute(
@@ -359,14 +406,16 @@ class Document:
             "  (SELECT peer.id FROM document_index peer "
             "   WHERE peer.document_id = di.document_id AND ("
             "     EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-            "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id) "
+            "     OR EXISTS (SELECT 1 FROM csv_pages WHERE document_id = peer.id)"
             "   ) LIMIT 1), "
             "  di.id"
             ") AS canonical_id, "
             "(SELECT peer.file_path FROM document_index peer "
             " WHERE peer.document_id = di.document_id AND peer.id != di.id AND ("
             "   EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
-            "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id) "
+            "   OR EXISTS (SELECT 1 FROM csv_pages WHERE document_id = peer.id)"
             " ) LIMIT 1) AS duplicate_of_path "
             "FROM document_index di "
             "WHERE di.source_id = ? ORDER BY di.file_path",
@@ -414,6 +463,24 @@ class Document:
             "JOIN sources s ON s.id = di.source_id "
             "WHERE image_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY di.file_path",
+            (like_pattern,),
+        ).fetchall()
+
+    @staticmethod
+    def search_indexed_csv_pages(conn: sqlite3.Connection, like_pattern: str) -> list[sqlite3.Row]:
+        """Like `search_indexed_pdf_pages`, but for `csv_pages`/`csv_pages_fts`."""
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, cp.ocr_text AS ocr_text, "
+            "NULL AS page_number, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM csv_pages_fts "
+            "JOIN csv_pages cp ON cp.id = csv_pages_fts.rowid "
+            "JOIN document_index carrier ON carrier.id = cp.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            "WHERE csv_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'csv' "
             "ORDER BY di.file_path",
             (like_pattern,),
         ).fetchall()

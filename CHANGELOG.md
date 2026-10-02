@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CSV files (`.csv`) are now indexed and searchable. Their contents are read directly rather than OCR'd, so they're fast and exact; the character encoding and delimiter (`,` `;` tab or `|`) are detected automatically, and each row is indexed as its cells joined together so a search matches the values themselves.
 - OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
 - The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.

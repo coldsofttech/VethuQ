@@ -89,7 +89,9 @@ without a full migration framework yet.
 (recursively for folders), runs PaddleOCR (`lang="en"`) on every
 supported file, and writes the extracted text to SQLite. Unsupported
 extensions are skipped silently. PDFs are rasterized page-by-page via
-PyMuPDF before OCR; PNG/JPEG files are OCR'd directly.
+PyMuPDF before OCR; PNG/JPEG files are OCR'd directly. CSV files skip OCR
+entirely: `CsvReader` decodes them (BOM check, then UTF-8, then `charset-normalizer`),
+sniffs the delimiter, and stores one flattened text row per file in `csv_pages`.
 
 Trigger model:
 - CLI: `add_source` only registers a source (`status='pending'`); a
