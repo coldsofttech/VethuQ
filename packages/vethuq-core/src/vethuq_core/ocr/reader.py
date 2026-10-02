@@ -14,7 +14,14 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
-from vethuq_core.ocr.office import DocParser, DocxParser, XlsParser, XlsxParser
+from vethuq_core.ocr.office import (
+    DocParser,
+    DocxParser,
+    PptParser,
+    PptxParser,
+    XlsParser,
+    XlsxParser,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -208,7 +215,7 @@ class PdfReader(Reader):
 
 
 class OfficeReader(Reader):
-    """Shared by Word and Excel readers: native text, plus OCR over embedded images.
+    """Shared by Word, Excel and PowerPoint readers: native text, plus OCR over embedded images.
 
     These files have no fixed pages without laying them out, so each becomes a single
     `PageResult` - `native` if only its own text is used, `mixed` if embedded images added
@@ -314,6 +321,30 @@ class XlsReader(OfficeReader):
         return XlsParser.extract(file_path)
 
 
+class PptxReader(OfficeReader):
+    """A .pptx file: slide, notes and comment text read straight from the package,
+    embedded images OCR'd."""
+
+    file_type = "pptx"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return PptxParser.extract(file_path)
+
+
+class PptReader(OfficeReader):
+    """A legacy .ppt file: slide text from its record stream, embedded PNG/JPEG pictures OCR'd.
+
+    The pictures are best effort - see `PptParser`.
+    """
+
+    file_type = "ppt"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return PptParser.extract(file_path)
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -336,6 +367,8 @@ class Readers:
         ".doc": DocReader(),
         ".xlsx": XlsxReader(),
         ".xls": XlsReader(),
+        ".pptx": PptxReader(),
+        ".ppt": PptReader(),
     }
 
     # Office's `~$name.docx`-style owner-lock files carry the extension but aren't documents.

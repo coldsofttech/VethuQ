@@ -4,6 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from office_fixtures import (
+    A_NS,
+    P_NS,
     W_NS,
     blip_record,
     build_doc_streams,
@@ -13,13 +15,38 @@ from office_fixtures import (
     jpg_bytes,
     paragraph,
     png_bytes,
+    ppt_container,
+    ppt_record,
+    ppt_text_bytes,
+    ppt_text_chars,
+    run_paragraph,
+    shape,
     sheet_xml,
+    slide_xml,
+    table,
     write_docx,
+    write_pptx,
     write_xls,
     write_xlsx,
 )
-from vethuq_core.ocr import DocReader, DocxReader, Readers, XlsReader, XlsxReader
-from vethuq_core.ocr.office import DocParser, DocxParser, Excel, XlsParser, XlsxParser
+from vethuq_core.ocr import (
+    DocReader,
+    DocxReader,
+    PptReader,
+    PptxReader,
+    Readers,
+    XlsReader,
+    XlsxReader,
+)
+from vethuq_core.ocr.office import (
+    DocParser,
+    DocxParser,
+    Excel,
+    PptParser,
+    PptxParser,
+    XlsParser,
+    XlsxParser,
+)
 from vethuq_core.ocr.reader import OfficeReader
 
 
@@ -467,18 +494,298 @@ class TestXlsParser:
             assert XlsParser.extract(path) == ("S\nkept", [])
 
 
+class TestPptxParser:
+    def test_reads_slides_in_presentation_order_with_tables_and_groups(self, tmp_path):
+        first = slide_xml(
+            shape(run_paragraph("Quarterly review"), placeholder="title"),
+            "<p:grpSp>" + shape(run_paragraph("grouped text")) + "</p:grpSp>",
+        )
+        second = slide_xml(
+            table([["Region", "Sales"], ["North", "42"]]), shape(run_paragraph("end"))
+        )
+        path = write_pptx(tmp_path / "a.pptx", [first, second], order=[2, 1])
+
+        text, images = PptxParser.extract(path)
+
+        assert text == "Region\tSales\nNorth\t42\nend\nQuarterly review\ngrouped text"
+        assert images == []
+
+    def test_runs_line_breaks_and_fields_inside_a_paragraph(self, tmp_path):
+        body = (
+            "<a:p><a:r><a:t>one</a:t></a:r><a:br/><a:r><a:t>two</a:t></a:r>"
+            '<a:fld type="slidenum"><a:t>7</a:t></a:fld>'
+            '<a:fld type="datetime1"><a:t>1/2/26</a:t></a:fld>'
+            "<a:endParaRPr/></a:p>"
+        )
+        path = write_pptx(tmp_path / "a.pptx", [slide_xml(shape(body))])
+        assert PptxParser.extract(path)[0] == "one\ntwo1/2/26"
+
+    def test_skips_alternate_content_fallback(self, tmp_path):
+        content = (
+            "<mc:AlternateContent><mc:Choice>" + shape(run_paragraph("once")) + "</mc:Choice>"
+            "<mc:Fallback>" + shape(run_paragraph("once")) + "</mc:Fallback></mc:AlternateContent>"
+        )
+        path = write_pptx(tmp_path / "a.pptx", [slide_xml(content)])
+        assert PptxParser.extract(path)[0] == "once"
+
+    def test_slides_missing_from_the_slide_list_follow_by_number(self, tmp_path):
+        slides = [slide_xml(shape(run_paragraph(f"s{n}"))) for n in range(1, 12)]
+        path = write_pptx(tmp_path / "a.pptx", slides, rels=False)
+        assert PptxParser.extract(path)[0].split("\n") == [f"s{n}" for n in range(1, 12)]
+
+    def test_notes_keep_only_the_body_placeholder_and_follow_the_slides(self, tmp_path):
+        notes = slide_xml(
+            shape(run_paragraph("thumbnail"), placeholder="sldImg"),
+            shape(run_paragraph("Remember the demo"), placeholder="body"),
+            shape(run_paragraph("3"), placeholder="sldNum"),
+        )
+        path = write_pptx(
+            tmp_path / "a.pptx",
+            [slide_xml(shape(run_paragraph("A"))), slide_xml(shape(run_paragraph("B")))],
+            slide_rels={1: [("rId1", "notesSlide", "../notesSlides/notesSlide1.xml")]},
+            parts={"ppt/notesSlides/notesSlide1.xml": notes},
+        )
+        assert PptxParser.extract(path)[0] == "A\nB\nRemember the demo"
+
+    def test_reads_legacy_and_modern_comments_and_smartart_text(self, tmp_path):
+        legacy = (
+            f'<p:cmLst xmlns:p="{P_NS}"><p:cm><p:pos x="0" y="0"/>'
+            "<p:text>  fix   this  </p:text></p:cm></p:cmLst>"
+        )
+        modern = (
+            f'<p188:cmLst xmlns:p188="urn:p188" xmlns:a="{A_NS}"><p188:cm><p188:txBody>'
+            + run_paragraph("modern note")
+            + "</p188:txBody><p188:replyLst><p188:reply><p188:txBody>"
+            + run_paragraph("a reply")
+            + "</p188:txBody></p188:reply></p188:replyLst></p188:cm></p188:cmLst>"
+        )
+        diagram = (
+            f'<dgm:dataModel xmlns:dgm="urn:dgm" xmlns:a="{A_NS}">'
+            f"<dgm:pt>{run_paragraph('Step one')}</dgm:pt></dgm:dataModel>"
+        )
+        path = write_pptx(
+            tmp_path / "a.pptx",
+            [slide_xml(shape(run_paragraph("body")))],
+            parts={
+                "ppt/comments/comment1.xml": legacy,
+                "ppt/comments/modernComment_1.xml": modern,
+                "ppt/diagrams/data1.xml": diagram,
+            },
+        )
+        assert PptxParser.extract(path)[0] == "body\nfix this\nmodern note\na reply\nStep one"
+
+    def test_masters_and_layouts_are_ignored(self, tmp_path):
+        path = write_pptx(
+            tmp_path / "a.pptx",
+            [slide_xml(shape(run_paragraph("slide")))],
+            parts={
+                "ppt/slideMasters/slideMaster1.xml": slide_xml(shape(run_paragraph("master"))),
+                "ppt/slideLayouts/slideLayout1.xml": slide_xml(shape(run_paragraph("layout"))),
+            },
+        )
+        assert PptxParser.extract(path)[0] == "slide"
+
+    def test_only_pictures_the_slides_use_are_returned_in_slide_order_and_deduped(self, tmp_path):
+        first, second = png_bytes(100, 60), jpg_bytes(90, 70)
+        path = write_pptx(
+            tmp_path / "a.pptx",
+            [slide_xml(shape(run_paragraph("a"))), slide_xml(shape(run_paragraph("b")))],
+            slide_rels={
+                1: [
+                    ("rId1", "image", "../media/image2.png"),
+                    ("rId2", "image", "../media/dup.png"),
+                    ("rId3", "image", "https://example.com/x.png"),
+                ],
+                2: [
+                    ("rId1", "image", "/ppt/media/image10.jpg"),
+                    ("rId2", "slideLayout", "../x.xml"),
+                ],
+            },
+            media={
+                "image2.png": first,
+                "dup.png": first,
+                "image10.jpg": second,
+                "logo.png": png_bytes(10, 10),  # only a master uses it
+            },
+        )
+        _, images = PptxParser.extract(path)
+        assert images == [first, second]
+
+    def test_rejects_non_presentations(self, tmp_path):
+        path = tmp_path / "a.pptx"
+        path.write_bytes(b"plain text")
+        with pytest.raises(ValueError, match="not a valid .pptx"):
+            PptxParser.extract(path)
+
+        docx = write_docx(tmp_path / "b.pptx", paragraph("hi"))
+        with pytest.raises(ValueError, match="ppt/presentation.xml is missing"):
+            PptxParser.extract(docx)
+
+    def test_an_ole_file_is_reported_as_protected_or_old(self, tmp_path):
+        path = tmp_path / "locked.pptx"
+        path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64)
+        with pytest.raises(ValueError, match="password-protected"):
+            PptxParser.extract(path)
+
+    def test_oversized_parts_are_refused(self, tmp_path, monkeypatch):
+        path = write_pptx(tmp_path / "a.pptx", [slide_xml(shape(run_paragraph("x")))])
+        monkeypatch.setattr(DocxParser, "MAX_XML_PART_BYTES", 10)
+        with pytest.raises(ValueError, match="too large"):
+            PptxParser.extract(path)
+
+
+class FakeOle:
+    """Stands in for `olefile.OleFileIO` over `{stream name: bytes}`."""
+
+    streams: dict[str, bytes] = {}
+
+    def __init__(self, _):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def exists(self, name):
+        return name in self.streams
+
+    def openstream(self, name):
+        import io
+
+        return io.BytesIO(self.streams[name])
+
+
+def _fake_ole(streams):
+    return type("Ole", (FakeOle,), {"streams": streams})
+
+
+class TestPptParser:
+    def test_reads_utf16_and_8bit_text_atoms_in_order(self):
+        stream = ppt_container(
+            0x03EE,
+            ppt_text_chars("Wörld€ title\r"),
+            ppt_text_bytes("Caf\xe9 menu\rsecond line"),
+        ) + ppt_container(0x03F0, ppt_text_chars("speaker notes"))
+        assert PptParser.text(stream) == "Wörld€ title\nCafé menu\nsecond line\nspeaker notes"
+
+    def test_slide_list_text_is_read_but_the_masters_are_not(self):
+        stream = ppt_container(
+            0x03E8,
+            ppt_container(0x0FF0, ppt_text_chars("slide text"), instance=0),
+            ppt_container(0x0FF0, ppt_text_chars("master prompt"), instance=1),
+            ppt_container(0x0FF0, ppt_text_chars("notes text"), instance=2),
+        ) + ppt_container(0x03F8, ppt_text_chars("Click to edit Master title style"))
+        assert PptParser.text(stream) == "slide text\nnotes text"
+
+    def test_soft_breaks_and_control_codes_are_cleaned(self):
+        stream = ppt_text_chars("a\x0bb\x01\r\r  c\t\r")
+        assert PptParser.text(stream) == "a\nb\nc"
+
+    def test_a_truncated_stream_keeps_the_text_read_so_far(self):
+        stream = ppt_text_chars("kept") + ppt_text_chars("lost")[:-3]
+        assert PptParser.text(stream) == "kept"
+        assert PptParser.text(b"\x00\x01") == ""
+
+    def test_runaway_nesting_is_cut_off(self):
+        stream = ppt_text_chars("deep")
+        for _ in range(PptParser._MAX_DEPTH + 5):
+            stream = ppt_container(0x03EE, stream)
+        assert PptParser.text(stream) == ""
+
+    def test_encrypted_presentations_are_reported(self):
+        with pytest.raises(ValueError, match="password-protected"):
+            PptParser.text(ppt_text_chars("x") + ppt_record(0x2F14, b"\x00" * 8, ver=0xF))
+
+    def test_extract_reads_streams_and_carves_pictures_through_olefile(self, tmp_path):
+        png = png_bytes()
+        streams = {
+            "PowerPoint Document": ppt_container(0x03EE, ppt_text_chars("Hello slides")),
+            "Pictures": b"\x00" * 4 + blip_record(png, png=True),
+        }
+        path = tmp_path / "a.ppt"
+        path.write_bytes(b"x")
+
+        with (
+            patch("olefile.isOleFile", return_value=True),
+            patch("olefile.OleFileIO", _fake_ole(streams)),
+        ):
+            assert PptParser.extract(path) == ("Hello slides", [png])
+
+    def test_extract_without_pictures_or_with_a_broken_pictures_stream_keeps_the_text(
+        self, tmp_path
+    ):
+        streams = {"PowerPoint Document": ppt_text_chars("text only")}
+        path = tmp_path / "a.ppt"
+        path.write_bytes(b"x")
+
+        with (
+            patch("olefile.isOleFile", return_value=True),
+            patch("olefile.OleFileIO", _fake_ole(streams)),
+        ):
+            assert PptParser.extract(path) == ("text only", [])
+            with patch.object(DocParser, "carve_pictures", side_effect=RuntimeError("boom")):
+                streams["Pictures"] = b"junk"
+                assert PptParser.extract(path) == ("text only", [])
+
+    def test_extract_rejects_other_files_and_protected_ones(self, tmp_path):
+        path = tmp_path / "a.ppt"
+        path.write_bytes(b"not ole")
+        with pytest.raises(ValueError, match="not an OLE compound file"):
+            PptParser.extract(path)
+
+        for streams, message in (
+            ({"WordDocument": b""}, "no PowerPoint Document stream"),
+            (
+                {"PowerPoint Document": b"", "EncryptedSummary": b""},
+                "password-protected",
+            ),
+        ):
+            with (
+                patch("olefile.isOleFile", return_value=True),
+                patch("olefile.OleFileIO", _fake_ole(streams)),
+                pytest.raises(ValueError, match=message),
+            ):
+                PptParser.extract(path)
+
+    def test_a_damaged_container_is_reported_as_invalid(self, tmp_path):
+        path = tmp_path / "a.ppt"
+        path.write_bytes(b"x")
+        with (
+            patch("olefile.isOleFile", return_value=True),
+            patch("olefile.OleFileIO", side_effect=OSError("bad header")),
+            pytest.raises(ValueError, match="not a valid .ppt file: bad header"),
+        ):
+            PptParser.extract(path)
+
+
 class TestOfficeReader:
     def test_registry_maps_office_suffixes_and_skips_lock_files(self, tmp_path):
         assert isinstance(Readers.for_path(tmp_path / "a.DOCX"), DocxReader)
         assert isinstance(Readers.for_path(tmp_path / "a.doc"), DocReader)
         assert isinstance(Readers.for_path(tmp_path / "a.XLSX"), XlsxReader)
         assert isinstance(Readers.for_path(tmp_path / "a.xls"), XlsReader)
+        assert isinstance(Readers.for_path(tmp_path / "a.PPTX"), PptxReader)
+        assert isinstance(Readers.for_path(tmp_path / "a.ppt"), PptReader)
         assert Readers.is_supported(tmp_path / "a.docx")
         assert not Readers.is_supported(tmp_path / "~$a.docx")
         assert not Readers.is_supported(tmp_path / "~$a.xlsx")
-        assert {"doc", "docx", "xls", "xlsx"} <= set(Readers.new_file_type_counts())
+        assert not Readers.is_supported(tmp_path / "~$a.pptx")
+        assert {"doc", "docx", "xls", "xlsx", "ppt", "pptx"} <= set(Readers.new_file_type_counts())
 
-        names = ("a.docx", "b.doc", "c.xlsx", "d.xls", "~$a.docx", "~$c.xlsx", "e.txt")
+        names = (
+            "a.docx",
+            "b.doc",
+            "c.xlsx",
+            "d.xls",
+            "e.pptx",
+            "f.ppt",
+            "~$a.docx",
+            "~$c.xlsx",
+            "~$e.pptx",
+            "g.txt",
+        )
         for name in names:
             (tmp_path / name).write_bytes(b"x")
         assert sorted(p.name for p in Readers.iter_files(tmp_path)) == [
@@ -486,6 +793,8 @@ class TestOfficeReader:
             "b.doc",
             "c.xlsx",
             "d.xls",
+            "e.pptx",
+            "f.ppt",
         ]
 
     def test_native_only_page_needs_no_ocr(self, conn):

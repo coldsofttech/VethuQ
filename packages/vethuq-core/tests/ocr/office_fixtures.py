@@ -263,3 +263,108 @@ def write_xls(path: Path, sheets: dict[str, list[list[object]]], **kwargs) -> Pa
     """Write a BIFF8 workbook that `xlrd` reads, without an OLE container around it."""
     path.write_bytes(build_xls_stream(sheets, **kwargs))
     return path
+
+
+# --- PowerPoint ----------------------------------------------------------------------
+
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def run_paragraph(text: str) -> str:
+    return f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
+
+
+def shape(*paragraphs: str, placeholder: str | None = None) -> str:
+    ph = f'<p:nvPr><p:ph type="{placeholder}"/></p:nvPr>' if placeholder else "<p:nvPr/>"
+    return (
+        f'<p:sp><p:nvSpPr><p:cNvPr id="1" name="s"/><p:cNvSpPr/>{ph}</p:nvSpPr><p:spPr/>'
+        f"<p:txBody>{''.join(paragraphs)}</p:txBody></p:sp>"
+    )
+
+
+def table(rows: list[list[str]]) -> str:
+    body = "".join(
+        "<a:tr>"
+        + "".join(f"<a:tc><a:txBody>{run_paragraph(c)}</a:txBody></a:tc>" for c in row)
+        + "</a:tr>"
+        for row in rows
+    )
+    return f"<p:graphicFrame><a:tbl>{body}</a:tbl></p:graphicFrame>"
+
+
+def slide_xml(*shapes: str) -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<p:sld xmlns:a="{A_NS}" xmlns:p="{P_NS}" xmlns:r="{REL_TYPE}" '
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        f"<p:cSld><p:spTree>{''.join(shapes)}</p:spTree></p:cSld></p:sld>"
+    )
+
+
+def relationships_xml(*entries: tuple[str, str, str]) -> str:
+    """`(id, type suffix, target)` entries, e.g. ("rId1", "slide", "slides/slide1.xml")."""
+    body = "".join(
+        f'<Relationship Id="{i}" Type="{REL_TYPE}/{kind}" Target="{target}"/>'
+        for i, kind, target in entries
+    )
+    return f'<Relationships xmlns="{PKG_REL_NS}">{body}</Relationships>'
+
+
+def write_pptx(
+    path: Path,
+    slides: list[str],
+    *,
+    order: list[int] | None = None,
+    slide_rels: dict[int, list[tuple[str, str, str]]] | None = None,
+    media: dict[str, bytes] | None = None,
+    parts: dict[str, str] | None = None,
+    rels: bool = True,
+) -> Path:
+    """`slides` are slide XML strings (see `slide_xml`), stored as slideN.xml. `order` lists
+    the 1-based slide numbers in presentation order; `slide_rels` maps a slide number to its
+    relationship entries (see `relationships_xml`, targets relative to `ppt/slides/`)."""
+    order = order or list(range(1, len(slides) + 1))
+    ids = "".join(f'<p:sldId id="{255 + n}" r:id="rId{n}"/>' for n in order)
+    presentation = (
+        f'<p:presentation xmlns:p="{P_NS}" xmlns:r="{REL_TYPE}">'
+        f"<p:sldIdLst>{ids}</p:sldIdLst></p:presentation>"
+    )
+    with zipfile.ZipFile(path, "w") as package:
+        package.writestr("ppt/presentation.xml", presentation)
+        if rels:
+            package.writestr(
+                "ppt/_rels/presentation.xml.rels",
+                relationships_xml(
+                    *(
+                        (f"rId{n}", "slide", f"slides/slide{n}.xml")
+                        for n in range(1, len(slides) + 1)
+                    )
+                ),
+            )
+        for n, xml in enumerate(slides, start=1):
+            package.writestr(f"ppt/slides/slide{n}.xml", xml)
+        for n, entries in (slide_rels or {}).items():
+            package.writestr(f"ppt/slides/_rels/slide{n}.xml.rels", relationships_xml(*entries))
+        for name, data in (media or {}).items():
+            package.writestr(f"ppt/media/{name}", data)
+        for name, xml in (parts or {}).items():
+            package.writestr(name, xml)
+    return path
+
+
+def ppt_record(rec_type: int, body: bytes = b"", *, ver: int = 0, instance: int = 0) -> bytes:
+    return struct.pack("<HHI", (instance << 4) | ver, rec_type, len(body)) + body
+
+
+def ppt_container(rec_type: int, *children: bytes, instance: int = 0) -> bytes:
+    return ppt_record(rec_type, b"".join(children), ver=0xF, instance=instance)
+
+
+def ppt_text_chars(text: str) -> bytes:
+    return ppt_record(0x0FA0, text.encode("utf-16-le"))
+
+
+def ppt_text_bytes(text: str) -> bytes:
+    return ppt_record(0x0FA8, text.encode("cp1252"))

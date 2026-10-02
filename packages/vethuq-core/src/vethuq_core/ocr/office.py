@@ -1,15 +1,19 @@
-"""Pulling text and embedded images out of Word and Excel files, with no OCR and no database.
+"""Pulling text and embedded images out of Word, Excel and PowerPoint files, with no OCR and
+no database.
 
-`DocxParser` and `XlsxParser` read the Office Open XML package directly (it's a zip of XML
-parts), so they need nothing beyond the standard library. `DocParser` reads the legacy
-Word binary format (an OLE compound file) through `olefile`; `XlsParser` reads the legacy
-Excel format through `xlrd`, and carves pictures out with `olefile` the way `DocParser` does.
+`DocxParser`, `XlsxParser` and `PptxParser` read the Office Open XML package directly (it's a
+zip of XML parts), so they need nothing beyond the standard library. `DocParser` reads the
+legacy Word binary format (an OLE compound file) through `olefile`; `XlsParser` reads the
+legacy Excel format through `xlrd`, and carves pictures out with `olefile` the way
+`DocParser` does; `PptParser` reads the legacy PowerPoint format's record stream through
+`olefile` and carves its pictures the same way.
 """
 
 from __future__ import annotations
 
 import io
 import logging
+import posixpath
 import re
 import struct
 import zipfile
@@ -74,6 +78,11 @@ class DocxParser:
             ),
             key=sort_key,
         )
+        return DocxParser.read_images(package, names)
+
+    @staticmethod
+    def read_images(package: zipfile.ZipFile, names: list[str]) -> list[bytes]:
+        """The raw bytes of the named package parts, skipping oversized and repeated ones."""
         images: list[bytes] = []
         seen: set[int] = set()
         for name in names:
@@ -729,3 +738,338 @@ class XlsParser:
             else:
                 in_group = False
         return b"".join(chunks)
+
+
+class PptxParser:
+    """Reads text (and embedded pictures) out of a PowerPoint `.pptx` presentation.
+
+    Slides come first in presentation order (titles, text boxes, grouped shapes, and tables
+    with one line per row, cells tab-separated), then each slide's speaker notes, then
+    comments and SmartArt text. Slide masters and layouts are boilerplate and are skipped,
+    along with the pictures only they use.
+    """
+
+    MAX_XML_PART_BYTES = DocxParser.MAX_XML_PART_BYTES
+
+    _SLIDE_PART = re.compile(r"^ppt/slides/slide\d+\.xml$")
+    _NOTES_PART = re.compile(r"^ppt/notesSlides/notesSlide\d+\.xml$")
+    _COMMENT_PART = re.compile(r"^ppt/comments/[^/]+\.xml$")
+    _DIAGRAM_PART = re.compile(r"^ppt/diagrams/data\d*\.xml$")
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        """Return `(text, images)`: the presentation's text, and its raster images' bytes."""
+        try:
+            with zipfile.ZipFile(file_path) as package:
+                names = set(package.namelist())
+                if "ppt/presentation.xml" not in names:
+                    raise ValueError(
+                        "not a PowerPoint presentation: ppt/presentation.xml is missing"
+                    )
+                blocks: list[str] = []
+                notes: list[str] = []
+                image_parts: list[str] = []
+                for slide in PptxParser._slides(package, names):
+                    blocks.append(
+                        "\n".join(PptxParser.paragraphs(DocxParser._read(package, slide)))
+                    )
+                    for kind, part in PptxParser._relationships(package, slide, names):
+                        if kind == "notesSlide" and part not in notes:
+                            notes.append(part)
+                        elif kind == "image":
+                            image_parts.append(part)
+                notes.extend(
+                    sorted(
+                        (n for n in names if PptxParser._NOTES_PART.match(n) and n not in notes),
+                        key=PptxParser._natural,
+                    )
+                )
+                for part in notes:
+                    blocks.append("\n".join(PptxParser.notes(DocxParser._read(package, part))))
+                    image_parts.extend(
+                        target
+                        for kind, target in PptxParser._relationships(package, part, names)
+                        if kind == "image"
+                    )
+                for name in sorted(names, key=PptxParser._natural):
+                    if PptxParser._COMMENT_PART.match(name):
+                        blocks.extend(PptxParser.comments(DocxParser._read(package, name)))
+                    elif PptxParser._DIAGRAM_PART.match(name):
+                        blocks.extend(PptxParser.paragraphs(DocxParser._read(package, name)))
+                images = DocxParser.read_images(package, list(dict.fromkeys(image_parts)))
+        except zipfile.BadZipFile as exc:
+            if XlsxParser._is_ole(file_path):
+                raise ValueError(
+                    "not a valid .pptx file: it is password-protected or in an older format"
+                ) from exc
+            raise ValueError(f"not a valid .pptx file: {exc}") from exc
+        return "\n".join(block for block in blocks if block).strip(), images
+
+    @staticmethod
+    def _natural(name: str) -> list[object]:
+        # slide2 before slide10
+        return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", name)]
+
+    @staticmethod
+    def _local(tag: str) -> str:
+        """An element's name without its namespace (the strict and transitional
+        presentation namespaces differ, the element names don't)."""
+        return tag.rsplit("}", 1)[-1]
+
+    @staticmethod
+    def _slides(package: zipfile.ZipFile, names: set[str]) -> list[str]:
+        """Slide parts in presentation order; any the slide list leaves out follow by number."""
+        ordered: list[str] = []
+        try:
+            targets = {
+                rel_id: part
+                for rel_id, _, part in PptxParser._relationship_entries(
+                    package, "ppt/presentation.xml", names
+                )
+            }
+            root = ElementTree.fromstring(DocxParser._read(package, "ppt/presentation.xml"))
+            for element in root.iter():
+                if PptxParser._local(element.tag) != "sldId":
+                    continue
+                rel_id = next(
+                    (v for k, v in element.attrib.items() if k.endswith("}id")),
+                    None,
+                )
+                part = targets.get(rel_id or "")
+                if part in names and PptxParser._SLIDE_PART.match(part) and part not in ordered:
+                    ordered.append(part)
+        except ElementTree.ParseError:
+            _logger.warning("Could not read the slide order; using file order", exc_info=True)
+        rest = (n for n in names if PptxParser._SLIDE_PART.match(n) and n not in ordered)
+        return ordered + sorted(rest, key=PptxParser._natural)
+
+    @staticmethod
+    def _relationship_entries(
+        package: zipfile.ZipFile, part: str, names: set[str]
+    ) -> list[tuple[str, str, str]]:
+        """`(id, type, target part)` for each internal relationship of `part`."""
+        directory, _, name = part.rpartition("/")
+        rels = f"{directory}/_rels/{name}.rels"
+        if rels not in names:
+            return []
+        try:
+            root = ElementTree.fromstring(DocxParser._read(package, rels))
+        except ElementTree.ParseError:
+            return []
+        entries: list[tuple[str, str, str]] = []
+        for rel in root:
+            target = rel.get("Target")
+            if not target or rel.get("TargetMode") == "External":
+                continue
+            resolved = (
+                target.lstrip("/")
+                if target.startswith("/")
+                else posixpath.normpath(posixpath.join(directory, target))
+            )
+            entries.append((rel.get("Id", ""), rel.get("Type", ""), resolved))
+        return entries
+
+    @staticmethod
+    def _relationships(
+        package: zipfile.ZipFile, part: str, names: set[str]
+    ) -> list[tuple[str, str]]:
+        """`(kind, target part)` for the notes and pictures `part` points to, where kind is
+        the last segment of the relationship type (`notesSlide`, `image`)."""
+        return [
+            (rel_type.rsplit("/", 1)[-1], target)
+            for _, rel_type, target in PptxParser._relationship_entries(package, part, names)
+            if target in names
+        ]
+
+    @staticmethod
+    def paragraphs(xml: bytes) -> list[str]:
+        """The non-empty paragraphs of a PresentationML part, in document order. A table
+        row is one line, its cells tab-separated."""
+        return PptxParser._paragraphs_in(ElementTree.fromstring(xml))
+
+    @staticmethod
+    def _paragraphs_in(root: ElementTree.Element) -> list[str]:
+        local = PptxParser._local
+        found: list[str] = []
+
+        def walk(element: ElementTree.Element) -> None:
+            tag = local(element.tag)
+            # An AlternateContent block holds the same content twice (a modern `Choice`
+            # and a legacy `Fallback`); reading both would double it.
+            if tag == "Fallback":
+                return
+            if tag == "p":
+                text = PptxParser._paragraph_text(element)
+                if text.strip():
+                    found.append(text)
+                return
+            if tag == "tbl":
+                for row in element:
+                    if local(row.tag) != "tr":
+                        continue
+                    cells = [
+                        " ".join(" ".join(PptxParser._paragraphs_in(cell)).split())
+                        for cell in row
+                        if local(cell.tag) == "tc"
+                    ]
+                    if any(cells):
+                        found.append("\t".join(cells))
+                return
+            for child in element:
+                walk(child)
+
+        walk(root)
+        return found
+
+    @staticmethod
+    def _paragraph_text(paragraph: ElementTree.Element) -> str:
+        local = PptxParser._local
+        pieces: list[str] = []
+
+        def walk(element: ElementTree.Element) -> None:
+            for child in element:
+                tag = local(child.tag)
+                if tag == "t":
+                    pieces.append(child.text or "")
+                elif tag == "br":
+                    pieces.append("\n")
+                elif tag == "fld" and (child.get("type") or "").startswith("slidenum"):
+                    continue  # the slide's own number, not content
+                elif tag in ("rPr", "pPr", "endParaRPr"):
+                    continue
+                else:
+                    walk(child)
+
+        walk(paragraph)
+        return "".join(pieces)
+
+    @staticmethod
+    def notes(xml: bytes) -> list[str]:
+        """The speaker-notes text of a notes slide: its body placeholder only, not the
+        slide thumbnail, slide number or header/footer placeholders."""
+        local = PptxParser._local
+        found: list[str] = []
+        for shape in ElementTree.fromstring(xml).iter():
+            if local(shape.tag) != "sp":
+                continue
+            placeholder = next((e for e in shape.iter() if local(e.tag) == "ph"), None)
+            if placeholder is not None and placeholder.get("type") == "body":
+                found.extend(PptxParser._paragraphs_in(shape))
+        return found
+
+    @staticmethod
+    def comments(xml: bytes) -> list[str]:
+        """Comment text from a legacy (`<p:text>`) or modern (`<p188:txBody>`, replies
+        included) comment part."""
+        local = PptxParser._local
+        found: list[str] = []
+        for comment in ElementTree.fromstring(xml).iter():
+            if local(comment.tag) != "cm":
+                continue
+            for child in comment:
+                if local(child.tag) == "text":
+                    text = " ".join((child.text or "").split())
+                    if text:
+                        found.append(text)
+            found.extend(PptxParser._paragraphs_in(comment))
+        return found
+
+
+class PptParser:
+    """Reads text (and any PNG/JPEG pictures) out of a legacy PowerPoint 97-2003 `.ppt` file.
+
+    Best effort: text comes from the text atoms (MS-PPT `TextCharsAtom`/`TextBytesAtom`) in
+    the `PowerPoint Document` stream's record tree, skipping slide masters; pictures are
+    carved out of the `Pictures` stream's OfficeArt BLIP records.
+    """
+
+    DOCUMENT_STREAM = "PowerPoint Document"
+    PICTURES_STREAM = "Pictures"
+    ENCRYPTED_STREAM = "EncryptedSummary"
+
+    # Record types (MS-PPT 2.13.24). A record header is recVer/recInstance (2 bytes),
+    # recType (2), recLen (4); recVer 0xF marks a container.
+    _TEXT_CHARS = 0x0FA0  # UTF-16LE
+    _TEXT_BYTES = 0x0FA8  # one byte per character
+    _MAIN_MASTER = 0x03F8
+    _HANDOUT = 0x0FC9
+    _SLIDE_LIST = 0x0FF0  # instance 1 is the masters' text
+    _CRYPT_SESSION = 0x2F14
+    _CONTAINER = 0x0F
+    _MAX_DEPTH = 32
+
+    _CONTROL = re.compile(r"[\x00-\x08\x0e-\x1f\x7f]")
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        import olefile
+
+        if not olefile.isOleFile(str(file_path)):
+            raise ValueError("not a valid .ppt file (not an OLE compound file)")
+        try:
+            with olefile.OleFileIO(str(file_path)) as ole:
+                if not ole.exists(PptParser.DOCUMENT_STREAM):
+                    raise ValueError("not a PowerPoint presentation: no PowerPoint Document stream")
+                if ole.exists(PptParser.ENCRYPTED_STREAM):
+                    raise ValueError("password-protected .ppt files are not supported")
+                stream = ole.openstream(PptParser.DOCUMENT_STREAM).read()
+                images = PptParser._pictures(ole)
+        except OSError as exc:
+            raise ValueError(f"not a valid .ppt file: {exc}") from exc
+        return PptParser.text(stream), images
+
+    @staticmethod
+    def text(stream: bytes) -> str:
+        """The text of every slide and notes page in a `PowerPoint Document` stream."""
+        blocks: list[str] = []
+        PptParser._walk(stream, 0, len(stream), blocks, depth=0)
+        return "\n".join(blocks).strip()
+
+    @staticmethod
+    def _walk(stream: bytes, start: int, end: int, blocks: list[str], depth: int) -> None:
+        position = start
+        while position + 8 <= end:
+            ver_inst, rec_type, length = struct.unpack_from("<HHI", stream, position)
+            body = position + 8
+            stop = body + length
+            if stop > end:
+                return  # truncated or corrupt: keep what was read so far
+            if rec_type == PptParser._CRYPT_SESSION and depth == 0:
+                raise ValueError("password-protected .ppt files are not supported")
+            if ver_inst & 0x0F == PptParser._CONTAINER:
+                masters_text = rec_type == PptParser._SLIDE_LIST and ver_inst >> 4 == 1
+                skipped = rec_type in (PptParser._MAIN_MASTER, PptParser._HANDOUT) or masters_text
+                if not skipped and depth < PptParser._MAX_DEPTH:
+                    PptParser._walk(stream, body, stop, blocks, depth + 1)
+            elif rec_type == PptParser._TEXT_CHARS:
+                data = stream[body : stop - length % 2]
+                PptParser._add(blocks, data.decode("utf-16-le", errors="replace"))
+            elif rec_type == PptParser._TEXT_BYTES:
+                PptParser._add(blocks, stream[body:stop].decode("cp1252", errors="replace"))
+            position = stop
+
+    @staticmethod
+    def _add(blocks: list[str], raw: str) -> None:
+        # \r ends a paragraph and \v is a soft line break; the other control codes are
+        # field and layout markers.
+        text = raw.replace("\r\n", "\n").replace("\r", "\n").replace("\x0b", "\n")
+        text = PptParser._CONTROL.sub("", text).replace("�", "")
+        lines = (line.strip(" \t") for line in text.split("\n"))
+        text = "\n".join(line for line in lines if line)
+        if text:
+            blocks.append(text)
+
+    @staticmethod
+    def _pictures(ole) -> list[bytes]:
+        pictures: list[bytes] = []
+        seen: set[int] = set()
+        try:
+            if ole.exists(PptParser.PICTURES_STREAM):
+                stream = ole.openstream(PptParser.PICTURES_STREAM).read()
+                for data in DocParser.carve_pictures(stream):
+                    if hash(data) not in seen:
+                        seen.add(hash(data))
+                        pictures.append(data)
+        except Exception:  # noqa: BLE001 - pictures are a bonus; never fail the text over them
+            _logger.warning("Could not read embedded pictures", exc_info=True)
+        return pictures

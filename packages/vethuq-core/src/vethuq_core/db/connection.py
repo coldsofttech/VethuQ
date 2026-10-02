@@ -21,7 +21,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 27
+    SCHEMA_VERSION = 28
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS document_index (
     source_id INTEGER NOT NULL REFERENCES sources(id),
     document_id INTEGER NOT NULL REFERENCES documents(id),
     file_path TEXT NOT NULL UNIQUE,
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx')),
+    file_type TEXT NOT NULL CHECK (
+        file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx')
+    ),
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
     error_message TEXT,
@@ -97,9 +99,10 @@ CREATE TABLE IF NOT EXISTS image_pages (
     ocr_angles TEXT NOT NULL DEFAULT '0'
 );
 
--- Office documents (Word .doc/.docx, Excel .xls/.xlsx): one row per document, holding its
--- native text plus the OCR text of its embedded images. There's no page layout to key on,
--- and nothing here is deepened (no ocr_phase/ocr_angles) - see `vethuq_core.ocr.DocxReader`.
+-- Office documents (Word .doc/.docx, Excel .xls/.xlsx, PowerPoint .ppt/.pptx): one row per
+-- document, holding its native text plus the OCR text of its embedded images. There's no
+-- page layout to key on, and nothing here is deepened (no ocr_phase/ocr_angles) - see
+-- `vethuq_core.ocr.DocxReader`.
 CREATE TABLE IF NOT EXISTS office_pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id INTEGER NOT NULL REFERENCES document_index(id),
@@ -134,7 +137,9 @@ CREATE TABLE IF NOT EXISTS index_runs (
 
 CREATE TABLE IF NOT EXISTS processing_metrics (
     phase INTEGER NOT NULL DEFAULT 1,
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx')),
+    file_type TEXT NOT NULL CHECK (
+        file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx')
+    ),
     size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
     document_count INTEGER NOT NULL DEFAULT 0,
     avg_duration_seconds REAL NOT NULL DEFAULT 0,
@@ -159,7 +164,9 @@ CREATE TABLE IF NOT EXISTS document_phases (
 );
 
 CREATE TABLE IF NOT EXISTS confidence_metrics (
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx')),
+    file_type TEXT NOT NULL CHECK (
+        file_type IN ('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx')
+    ),
     process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
     page_count INTEGER NOT NULL DEFAULT 0,
     avg_confidence REAL NOT NULL DEFAULT 0,

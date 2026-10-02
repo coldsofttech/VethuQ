@@ -577,3 +577,25 @@ class Migration:
                 conn.execute(f"DROP TABLE {table}")
                 conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
             conn.execute("PRAGMA foreign_keys = ON")
+        if from_version < 28:
+            # Adds 'ppt' and 'pptx' to the file_type CHECK constraints (PowerPoint support,
+            # stored in `office_pages` alongside Word and Excel). Same derived-DDL rebuild
+            # as v27: every column is carried over unchanged, only the CHECK list widens.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            for table in ("document_index", "processing_metrics", "confidence_metrics"):
+                row = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+                ).fetchone()
+                widened = row["sql"].replace(
+                    "('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx')",
+                    "('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx')",
+                )
+                widened = re.sub(
+                    rf'CREATE TABLE "?{table}"?', f"CREATE TABLE {table}_new", widened, count=1
+                )
+                conn.execute(widened)
+                conn.execute(f"INSERT INTO {table}_new SELECT * FROM {table}")
+                conn.execute(f"DROP TABLE {table}")
+                conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+            conn.execute("PRAGMA foreign_keys = ON")
