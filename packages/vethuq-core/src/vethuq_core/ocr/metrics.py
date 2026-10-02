@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.logs import Logs
+from vethuq_core.readers import Readers
 
 _logger = Logs.get_logger("index")
 
@@ -111,17 +112,11 @@ class Metrics:
         blending them into a single average would dilute the OCR/mixed signal -
         tracking each process_type separately keeps them meaningful.
         """
-        if file_type == "pdf":
-            pages = DocumentQuery.get_pdf_page_sources(conn, document_id)
-        else:
-            pages = DocumentQuery.get_page_confidences(conn, file_type, document_id)
-        if not pages:
+        by_process_type = Readers.for_file_type(file_type).storage.confidences_by_process_type(
+            conn, document_id
+        )
+        if not by_process_type:
             return
-
-        by_process_type: dict[str, list[float]] = {}
-        for page in pages:
-            process_type = page["source"] if file_type == "pdf" else "ocr"
-            by_process_type.setdefault(process_type, []).append(page["confidence"])
 
         now = datetime.now(UTC).isoformat()
         for process_type, confidences in by_process_type.items():

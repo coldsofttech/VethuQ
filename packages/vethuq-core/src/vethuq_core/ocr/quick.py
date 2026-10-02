@@ -21,9 +21,10 @@ from vethuq_core.db.queries.sources import Source as SourceQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
+from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
-from vethuq_core.ocr.reader import PageResult, Reader, Readers
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.readers import PageResult, Reader, Readers
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source
 
@@ -58,7 +59,7 @@ class Quick:
         while attempt < max_attempts and pages is None:
             attempt += 1
             try:
-                pages = reader.ocr(conn, file_path)
+                pages = PageOcr.ocr_document(conn, reader, file_path)
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
                 last_exc = exc
         return pages, attempt, last_exc

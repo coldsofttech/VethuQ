@@ -6,7 +6,8 @@ import sqlite3
 
 from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.index.runner import IndexRunner, IndexState
-from vethuq_core.ocr import Deepening, Pending, Readers
+from vethuq_core.ocr import Deepening, Pending
+from vethuq_core.readers import Readers
 from vethuq_core.source import SourceNotFoundError
 
 

@@ -14,6 +14,7 @@ from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import PendingFile
+from vethuq_core.readers import Readers
 from vethuq_core.settings import IndexSettings
 
 _logger = Logs.get_logger("index")
@@ -21,7 +22,6 @@ _logger = Logs.get_logger("index")
 
 class Scheduler:
     ENGINE_FOOTPRINT_MB = 700  # rough resident memory of one PaddleOCR CPU engine instance
-    PDF_WEIGHT = 1.5  # a pending set that's mostly PDFs costs more per worker than mostly images
     CPU_BUSY_THRESHOLD = 70.0
     MEMORY_BUSY_THRESHOLD = 80.0
 
@@ -52,8 +52,8 @@ class Scheduler:
         Each worker loads its own OCR engine (see `Engines.get`), so the ceiling
         is set by whichever is scarcer: free CPU capacity, or free memory divided
         by one engine's rough footprint (`Scheduler.ENGINE_FOOTPRINT_MB`). A pending set
-        that's mostly PDFs (multi-page, heavier to render/OCR than a single
-        image) scales the result down further. Already-busy CPU or memory (past
+        that's mostly heavier file types (e.g. multi-page PDFs, per each reader's
+        `processing_weight`) scales the result down further. Already-busy CPU or memory (past
         `Scheduler.CPU_BUSY_THRESHOLD`/`Scheduler.MEMORY_BUSY_THRESHOLD`) caps it at a single
         worker rather than trying to squeeze more out of an already-loaded
         machine.
@@ -75,8 +75,13 @@ class Scheduler:
             1, int(memory.available / (1024 * 1024) / Scheduler.ENGINE_FOOTPRINT_MB)
         )
 
-        pdf_share = pending_type_counts.get("pdf", 0) / total_pending
-        weight = 1 + pdf_share * (Scheduler.PDF_WEIGHT - 1)
+        weight = (
+            sum(
+                count * Readers.file_type_weight(file_type)
+                for file_type, count in pending_type_counts.items()
+            )
+            / total_pending
+        )
         workers = max(1, round(min(cpu_headroom, memory_headroom) / weight))
 
         return min(workers, IndexSettings.THREAD_WORKERS_MAX, total_pending)
