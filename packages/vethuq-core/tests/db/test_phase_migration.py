@@ -1,6 +1,7 @@
 import sqlite3
 
 from vethuq_core.db import Db
+from vethuq_core.db.integrity import IntegrityCheck
 from vethuq_core.source import Sources
 
 
@@ -55,6 +56,7 @@ class TestPhaseMigration:
             settings = {
                 row["key"]: row["value"]
                 for row in migrated.execute("SELECT key, value FROM settings")
+                if row["key"] != IntegrityCheck.LAST_RUN_AT_KEY
             }
         finally:
             migrated.close()

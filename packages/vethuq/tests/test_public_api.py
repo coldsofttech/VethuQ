@@ -123,6 +123,16 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.index.thread_workers.get() == "0"
     assert client.settings.index.stale_lock.get() == "auto"
     assert client.settings.index.engine.get() == "quick"
+    assert client.settings.db.integrity_check.get() == "auto"
+    assert client.settings.db.integrity_check.get_interval_minutes() == 24 * 60
+
+
+def test_db_integrity_check_passes_on_a_healthy_database(client: vethuq.Vethuq):
+    result = client.db.integrity_check()
+
+    assert isinstance(result, vethuq.IntegrityCheckResult)
+    assert result.ok is True
+    assert result.errors == []
 
 
 def test_settings_gpu_enable_and_disable(client: vethuq.Vethuq):
@@ -141,6 +151,8 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.index.thread_workers.set(vethuq.ThreadWorkersSettings.AUTO)
     client.settings.index.stale_lock.set("disable")
     client.settings.index.engine.set("deep")
+    client.settings.db.integrity_check.set("disable")
+    client.settings.db.integrity_check.set_interval_minutes(60)
 
     assert client.settings.search.snippet.get() == 120
     assert client.settings.search.export_format.get() == "html"
@@ -149,6 +161,8 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     assert client.settings.index.thread_workers.get() == vethuq.ThreadWorkersSettings.AUTO
     assert client.settings.index.stale_lock.get() == "disable"
     assert client.settings.index.engine.get() == "deep"
+    assert client.settings.db.integrity_check.get() == "disable"
+    assert client.settings.db.integrity_check.get_interval_minutes() == 60
 
 
 def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
@@ -158,6 +172,8 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         client.settings.index.stale_lock.set(value)
     for value in vethuq.OCR_ENGINE_MODES:
         client.settings.index.engine.set(value)
+    for value in vethuq.INTEGRITY_CHECK_VALUES:
+        client.settings.db.integrity_check.set(value)
     client.settings.index.thread_workers.set("0")
     client.settings.index.thread_workers.set(str(vethuq.ThreadWorkersSettings.MAX))
 
@@ -172,6 +188,8 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         lambda s: s.index.thread_workers.set("not-a-number"),
         lambda s: s.index.stale_lock.set("sometimes"),
         lambda s: s.index.engine.set("extreme"),
+        lambda s: s.db.integrity_check.set("sometimes"),
+        lambda s: s.db.integrity_check.set_interval_minutes(-1),
     ],
     ids=[
         "snippet",
@@ -181,6 +199,8 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         "thread_workers",
         "stale_lock",
         "engine",
+        "integrity_check",
+        "integrity_check_interval",
     ],
 )
 def test_settings_invalid_value_raises_invalid_setting_value_error(client: vethuq.Vethuq, call):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 
+from vethuq_cli.db import app as db_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.search import search as search_command
@@ -17,6 +18,7 @@ app.add_typer(source_app, name="source")
 app.add_typer(index_app, name="index")
 app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
+app.add_typer(db_app, name="db")
 app.command("search")(search_command)
 
 

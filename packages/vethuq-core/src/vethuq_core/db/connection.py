@@ -243,10 +243,12 @@ END;
         conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
         Db._ensure_schema(conn, path)
 
+        from vethuq_core.db.integrity import IntegrityCheck
         from vethuq_core.source import Sources
 
         Sources.purge_expired_sources(conn)
         Sources.purge_expired_documents(conn)
+        IntegrityCheck.maybe_run(conn)
         return conn
 
     @staticmethod

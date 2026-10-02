@@ -165,6 +165,60 @@ class TestStaleLock:
         assert result.exit_code == 1
 
 
+class TestIntegrityCheck:
+    def test_integrity_check_show_defaults_to_auto(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "db", "integrity-check", "show"])
+
+        assert result.exit_code == 0
+        assert "auto" in result.stdout
+
+    def test_integrity_check_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "db", "integrity-check", "set", "disable"])
+        assert set_result.exit_code == 0
+
+        show_result = runner.invoke(app, ["settings", "db", "integrity-check", "show"])
+        assert "disable" in show_result.stdout
+
+    def test_integrity_check_set_rejects_invalid_value(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "db", "integrity-check", "set", "sometimes"])
+
+        assert result.exit_code == 1
+
+    def test_integrity_check_interval_show_defaults_to_one_day(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "db", "integrity-check", "interval", "show"])
+
+        assert result.exit_code == 0
+        assert "1440" in result.stdout
+
+    def test_integrity_check_interval_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(
+            app, ["settings", "db", "integrity-check", "interval", "set", "60"]
+        )
+        assert set_result.exit_code == 0
+
+        show_result = runner.invoke(app, ["settings", "db", "integrity-check", "interval", "show"])
+        assert "60" in show_result.stdout
+
+    def test_integrity_check_interval_set_rejects_negative(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(
+            app, ["settings", "db", "integrity-check", "interval", "set", "--", "-1"]
+        )
+
+        assert result.exit_code == 1
+
+
 class TestEngine:
     def test_engine_show_defaults_to_quick(self, use_temp_db):
         use_temp_db()
