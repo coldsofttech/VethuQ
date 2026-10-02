@@ -57,7 +57,7 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-module = "paddleocr.*"
+module = ["paddleocr.*", "olefile", "xlrd"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

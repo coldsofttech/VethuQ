@@ -12,6 +12,8 @@ class Document:
         "image": "image_pages",
         "doc": "office_pages",
         "docx": "office_pages",
+        "xls": "office_pages",
+        "xlsx": "office_pages",
     }
 
     @staticmethod
@@ -495,7 +497,7 @@ class Document:
             "JOIN sources s ON s.id = di.source_id "
             "WHERE office_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 "
-            "AND di.file_type IN ('doc', 'docx') "
+            "AND di.file_type IN ('doc', 'docx', 'xls', 'xlsx') "
             "ORDER BY di.file_path",
             (like_pattern,),
         ).fetchall()

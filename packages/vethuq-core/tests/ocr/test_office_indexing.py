@@ -2,7 +2,17 @@ import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
-from office_fixtures import build_doc_streams, paragraph, png_bytes, write_docx
+from office_fixtures import (
+    build_doc_streams,
+    cell,
+    inline_cell,
+    paragraph,
+    png_bytes,
+    sheet_xml,
+    write_docx,
+    write_xls,
+    write_xlsx,
+)
 from vethuq_core.ocr import Quick
 from vethuq_core.search import Search
 from vethuq_core.source import Sources
@@ -146,6 +156,124 @@ class TestWordIndexing:
 
     def test_removing_the_source_purges_office_pages(self, conn, tmp_path):
         path = write_docx(tmp_path / "a.docx", paragraph("temporary"))
+        source = Sources.add(conn, path)
+        Quick.run(conn, source)
+        assert conn.execute("SELECT COUNT(*) FROM office_pages").fetchone()[0] == 1
+
+        Sources.remove(conn, source.path)
+        Sources.purge_expired_sources(conn, retention_minutes=0)
+
+        assert conn.execute("SELECT COUNT(*) FROM office_pages").fetchone()[0] == 0
+        assert Search.indexed_content(conn, "temporary") == []
+
+
+class TestExcelIndexing:
+    def test_xlsx_is_indexed_searchable_and_never_touches_ocr(
+        self, conn: sqlite3.Connection, tmp_path
+    ):
+        path = write_xlsx(
+            tmp_path / "ledger.xlsx",
+            {"Q3": sheet_xml([[inline_cell("A1", "Invoice"), cell("B1", 4711)]])},
+        )
+        source = Sources.add(conn, path)
+
+        with patch("vethuq_core.ocr.Engine.get") as get_engine:
+            Quick.run(conn, source)
+        get_engine.assert_not_called()
+
+        doc = _row(conn, path)
+        assert (doc["status"], doc["file_type"]) == ("indexed", "xlsx")
+        page = conn.execute(
+            "SELECT * FROM office_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert (page["ocr_text"], page["source"], page["confidence"]) == (
+            "Q3\nInvoice\t4711",
+            "native",
+            1.0,
+        )
+        assert [(m.file_name, m.page_number) for m in Search.indexed_content(conn, "invoice")] == [
+            ("ledger.xlsx", None)
+        ]
+        assert [m.matched for m in Search.indexed_content(conn, "4711")] == ["4711"]
+        assert conn.execute(
+            "SELECT page_count FROM confidence_metrics "
+            "WHERE file_type = 'xlsx' AND process_type = 'native'"
+        ).fetchone()
+        assert conn.execute(
+            "SELECT document_count FROM processing_metrics WHERE file_type = 'xlsx'"
+        ).fetchone()
+
+    @patch("vethuq_core.ocr.Engine.get")
+    def test_xlsx_with_a_picture_is_mixed_and_its_text_is_searchable(
+        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+    ):
+        engine = MagicMock()
+        engine.predict.return_value = _fake_ocr_result("receipt 0042", 0.8)
+        mock_get_engine.return_value = engine
+        path = write_xlsx(
+            tmp_path / "scan.xlsx",
+            {"S": sheet_xml([[inline_cell("A1", "Expenses")]])},
+            media={"image1.png": png_bytes()},
+        )
+        source = Sources.add(conn, path)
+
+        Quick.run(conn, source)
+
+        page = conn.execute(
+            "SELECT * FROM office_pages WHERE document_id = ?", (_row(conn, path)["id"],)
+        ).fetchone()
+        assert (page["source"], page["ocr_text"]) == ("mixed", "S\nExpenses\nreceipt 0042")
+        assert [m.matched for m in Search.indexed_content(conn, "0042")] == ["0042"]
+
+    def test_xls_is_indexed_through_xlrd(self, conn: sqlite3.Connection, tmp_path):
+        path = write_xls(tmp_path / "legacy.xls", {"Stock": [["bolts", 120], ["nuts", 80]]})
+        source = Sources.add(conn, path)
+
+        Quick.run(conn, source)
+
+        doc = _row(conn, path)
+        assert (doc["status"], doc["file_type"]) == ("indexed", "xls")
+        assert [m.matched for m in Search.indexed_content(conn, "nuts")] == ["nuts"]
+
+    def test_corrupt_workbooks_are_marked_error_without_pages(self, conn, tmp_path):
+        (tmp_path / "bad.xlsx").write_bytes(b"definitely not a zip")
+        (tmp_path / "bad.xls").write_bytes(b"definitely not biff")
+        source = Sources.add(conn, tmp_path)
+
+        Quick.run(conn, source)
+
+        rows = conn.execute("SELECT status, error_message FROM document_index").fetchall()
+        assert [r["status"] for r in rows] == ["error", "error"]
+        assert all("not a valid" in r["error_message"] for r in rows)
+        assert conn.execute("SELECT COUNT(*) FROM office_pages").fetchone()[0] == 0
+
+    def test_excel_lock_files_are_ignored(self, conn, tmp_path):
+        write_xlsx(tmp_path / "real.xlsx", {"S": sheet_xml([[inline_cell("A1", "content")]])})
+        (tmp_path / "~$real.xlsx").write_bytes(b"\x05lock")
+        source = Sources.add(conn, tmp_path)
+
+        Quick.run(conn, source)
+
+        paths = [r["file_path"] for r in conn.execute("SELECT file_path FROM document_index")]
+        assert [p.rsplit("/", 1)[-1] for p in paths] == ["real.xlsx"]
+
+    def test_duplicate_workbooks_reuse_the_original_pages(self, conn, tmp_path):
+        original = write_xlsx(
+            tmp_path / "a.xlsx", {"S": sheet_xml([[inline_cell("A1", "shared figures")]])}
+        )
+        (tmp_path / "b.xlsx").write_bytes(original.read_bytes())
+        source = Sources.add(conn, tmp_path)
+
+        Quick.run(conn, source)
+
+        assert conn.execute("SELECT COUNT(*) FROM office_pages").fetchone()[0] == 1
+        assert sorted(m.file_name for m in Search.indexed_content(conn, "figures")) == [
+            "a.xlsx",
+            "b.xlsx",
+        ]
+
+    def test_removing_the_source_purges_excel_pages(self, conn, tmp_path):
+        path = write_xlsx(tmp_path / "a.xlsx", {"S": sheet_xml([[inline_cell("A1", "temporary")]])})
         source = Sources.add(conn, path)
         Quick.run(conn, source)
         assert conn.execute("SELECT COUNT(*) FROM office_pages").fetchone()[0] == 1

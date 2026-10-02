@@ -7,13 +7,19 @@ from office_fixtures import (
     W_NS,
     blip_record,
     build_doc_streams,
+    build_xls_stream,
+    cell,
+    inline_cell,
     jpg_bytes,
     paragraph,
     png_bytes,
+    sheet_xml,
     write_docx,
+    write_xls,
+    write_xlsx,
 )
-from vethuq_core.ocr import DocReader, DocxReader, Readers
-from vethuq_core.ocr.office import DocParser, DocxParser
+from vethuq_core.ocr import DocReader, DocxReader, Readers, XlsReader, XlsxReader
+from vethuq_core.ocr.office import DocParser, DocxParser, Excel, XlsParser, XlsxParser
 from vethuq_core.ocr.reader import OfficeReader
 
 
@@ -202,17 +208,285 @@ class TestDocParser:
             DocParser.extract(path)
 
 
+class TestExcelValues:
+    @pytest.mark.parametrize(
+        ("raw", "shown"),
+        [("42", "42"), ("42.0", "42"), ("0.1", "0.1"), ("0.30000000000000004", "0.3"),
+         ("1E-3", "0.001"), ("-7", "-7"), ("text", "text")],
+    )  # fmt: skip
+    def test_number_matches_general_format(self, raw, shown):
+        assert Excel.number(raw) == shown
+
+    @pytest.mark.parametrize(
+        ("serial", "date1904", "shown"),
+        [(45000, False, "2023-03-15"), (45000.5, False, "2023-03-15 12:00:00"),
+         (0.75, False, "18:00:00"), (61, False, "1900-03-01"), (1, False, "1900-01-01"),
+         (1461, True, "1908-01-01"), (0.25, True, "06:00:00"),
+         (-3, False, "-3"), (1e12, False, "1000000000000")],
+    )  # fmt: skip
+    def test_date_serials(self, serial, date1904, shown):
+        assert Excel.date(serial, date1904=date1904) == shown
+
+    @pytest.mark.parametrize(
+        ("format_id", "code", "is_date"),
+        [(14, None, True), (22, None, True), (0, None, False), (9, None, False),
+         (164, "yyyy-mm-dd hh:mm", True), (165, '0" days"', False), (166, "[Red]0.00", False),
+         (167, "General", False), (168, "dd/mm/yy;@", True), (169, "0.00E+00", False)],
+    )  # fmt: skip
+    def test_is_date_format(self, format_id, code, is_date):
+        assert Excel.is_date_format(format_id, code) is is_date
+
+
+class TestXlsxParser:
+    def test_reads_sheets_in_workbook_order_with_names_rows_and_cells(self, tmp_path):
+        path = write_xlsx(
+            tmp_path / "a.xlsx",
+            {
+                "Budget": sheet_xml(
+                    [
+                        [cell("A1", 0, kind="s"), cell("B1", 1, kind="s")],
+                        [cell("A2", 2, kind="s"), cell("B2", 1250.5)],
+                        [],
+                        [cell("B4", 7)],
+                    ]
+                ),
+                "Notes": sheet_xml([[inline_cell("A1", "inline words")]]),
+                "Blank": sheet_xml([[]]),
+            },
+            shared=("Item", "Cost", "Coffee"),
+        )
+
+        text, images = XlsxParser.extract(path)
+
+        assert text == "Budget\nItem\tCost\nCoffee\t1250.5\n7\nNotes\ninline words"
+        assert images == []
+
+    def test_cell_kinds_booleans_errors_formula_results_and_empty_values(self, tmp_path):
+        row = [
+            cell("A1", 1, kind="b"),
+            cell("B1", 0, kind="b"),
+            cell("C1", "#N/A", kind="e"),
+            cell("D1", "formula text", kind="str"),
+            cell("E1", 99, kind="s"),  # out of range shared string index
+            '<c r="F1"><f>SUM(A1:A2)</f></c>',  # a formula nothing has calculated
+            cell("G1", "2024-02-29T00:00:00Z", kind="d"),
+        ]
+        path = write_xlsx(tmp_path / "a.xlsx", {"S": sheet_xml([row])})
+
+        text, _ = XlsxParser.extract(path)
+
+        assert text == "S\nTRUE\tFALSE\tformula text\t2024-02-29T00:00:00Z"
+
+    def test_dates_are_recognised_through_cell_styles(self, tmp_path):
+        row = [
+            cell("A1", 45000, style=1),  # built-in date
+            cell("B1", 45000.75, style=2),  # custom date-time
+            cell("C1", 45000, style=3),  # "0 days" is a number, not a date
+            cell("D1", 45000),
+        ]
+        path = write_xlsx(tmp_path / "a.xlsx", {"S": sheet_xml([row])})
+
+        text, _ = XlsxParser.extract(path)
+
+        assert text == "S\n2023-03-15\t2023-03-15 18:00:00\t45000\t45000"
+
+    def test_1904_date_system_is_honoured(self, tmp_path):
+        path = write_xlsx(
+            tmp_path / "a.xlsx", {"S": sheet_xml([[cell("A1", 1461, style=1)]])}, date1904=True
+        )
+        assert XlsxParser.extract(path)[0] == "S\n1908-01-01"
+
+    def test_rich_text_keeps_runs_and_drops_phonetic_hints(self, tmp_path):
+        rich = (
+            "<si><r><t>Hel</t></r><r><rPr/><t>lo</t></r>"
+            "<rPh sb='0' eb='1'><t>ハロー</t></rPh><phoneticPr fontId='1'/></si>"
+        )
+        path = write_xlsx(
+            tmp_path / "a.xlsx",
+            {"S": sheet_xml([[cell("A1", 0, kind="s")]])},
+            shared=(rich,),
+        )
+        assert XlsxParser.extract(path)[0] == "S\nHello"
+
+    def test_strict_namespace_and_missing_relationships_are_tolerated(self, tmp_path):
+        strict = "http://purl.oclc.org/ooxml/spreadsheetml/main"
+        path = write_xlsx(
+            tmp_path / "a.xlsx",
+            {"Ignored": sheet_xml([[inline_cell("A1", "found")]], ns=strict)},
+            rels=False,
+        )
+        # With no relationships the sheets are read in part order and numbered.
+        assert XlsxParser.extract(path)[0] == "Sheet1\nfound"
+
+    def test_comments_and_text_boxes_follow_the_sheets(self, tmp_path):
+        comments = (
+            '<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            "<commentList><comment ref='A1'><text><r><t>check  this</t></r></text></comment>"
+            "</commentList></comments>"
+        )
+        drawing = (
+            '<xdr:wsDr xmlns:xdr="x" xmlns:a="a"><xdr:sp><xdr:txBody><a:p><a:r><a:t>boxed</a:t>'
+            "</a:r></a:p></xdr:txBody></xdr:sp></xdr:wsDr>"
+        )
+        path = write_xlsx(
+            tmp_path / "a.xlsx",
+            {"S": sheet_xml([[inline_cell("A1", "cell")]])},
+            parts={"xl/comments1.xml": comments, "xl/drawings/drawing1.xml": drawing},
+        )
+        assert XlsxParser.extract(path)[0] == "S\ncell\ncheck this\nboxed"
+
+    def test_returns_images_in_natural_order_and_dedupes(self, tmp_path):
+        first, second = png_bytes(), jpg_bytes()
+        path = write_xlsx(
+            tmp_path / "a.xlsx",
+            {"S": sheet_xml([[inline_cell("A1", "x")]])},
+            media={"image10.png": second, "image2.png": first, "dup.png": first, "n.emf": b"vec"},
+        )
+        _, images = XlsxParser.extract(path)
+        assert images == [first, second]
+
+    def test_rejects_non_workbooks(self, tmp_path):
+        path = tmp_path / "a.xlsx"
+        path.write_bytes(b"plain text")
+        with pytest.raises(ValueError, match="not a valid .xlsx"):
+            XlsxParser.extract(path)
+
+        docx = write_docx(tmp_path / "b.xlsx", paragraph("hi"))
+        with pytest.raises(ValueError, match="xl/workbook.xml is missing"):
+            XlsxParser.extract(docx)
+
+    def test_an_ole_file_is_reported_as_protected_or_old(self, tmp_path):
+        path = tmp_path / "locked.xlsx"
+        path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 64)
+        with pytest.raises(ValueError, match="password-protected"):
+            XlsxParser.extract(path)
+
+    def test_oversized_parts_are_refused(self, tmp_path, monkeypatch):
+        path = write_xlsx(tmp_path / "a.xlsx", {"S": sheet_xml([[inline_cell("A1", "x")]])})
+        monkeypatch.setattr(XlsxParser, "MAX_XML_PART_BYTES", 10)
+        with pytest.raises(ValueError, match="too large"):
+            XlsxParser.extract(path)
+
+
+class TestXlsParser:
+    def test_reads_sheets_rows_and_typed_cells(self, tmp_path):
+        path = write_xls(
+            tmp_path / "a.xls",
+            {
+                "Data": [
+                    ["Name", "Qty", None, True, False],
+                    ["wörld €", 3, 4.5, ("date", 45000), ("date", 45000.5)],
+                ],
+                "Empty": [[]],
+                "More": [["tail"]],
+            },
+        )
+
+        assert XlsParser.text(path) == (
+            "Data\nName\tQty\tTRUE\tFALSE\nwörld €\t3\t4.5\t2023-03-15\t2023-03-15 12:00:00"
+            "\nMore\ntail"
+        )
+
+    def test_1904_workbooks_use_their_own_epoch(self, tmp_path):
+        path = write_xls(tmp_path / "a.xls", {"S": [[("date", 1461)]]}, date1904=True)
+        assert XlsParser.text(path) == "S\n1908-01-01"
+
+    def test_garbage_and_html_posing_as_xls_are_rejected(self, tmp_path):
+        path = tmp_path / "a.xls"
+        path.write_bytes(b"<html><table><tr><td>not excel</td></tr></table></html>")
+        with pytest.raises(ValueError, match="not a valid .xls"):
+            XlsParser.text(path)
+
+    def test_truncated_workbook_is_reported_as_corrupt(self, tmp_path):
+        path = tmp_path / "a.xls"
+        path.write_bytes(build_xls_stream({"S": [["text"]]})[:60])
+        with pytest.raises(ValueError, match="xls"):
+            XlsParser.text(path)
+
+    def test_encrypted_workbooks_are_reported(self, tmp_path):
+        import xlrd
+
+        path = write_xls(tmp_path / "a.xls", {"S": [["x"]]})
+        with (
+            patch("xlrd.open_workbook", side_effect=xlrd.XLRDError("Workbook is encrypted")),
+            pytest.raises(ValueError, match="password-protected"),
+        ):
+            XlsParser.text(path)
+
+    def test_drawing_group_rejoins_continue_records(self):
+        png = png_bytes(300, 300)  # large enough to straddle a CONTINUE boundary
+        assert len(png) > 0
+        group = b"\x00" * 8200 + blip_record(png, png=True) + b"\x00" * 30
+
+        stream = build_xls_stream({"S": [["x"]]}, drawing_group=group)
+
+        assert XlsParser.drawing_group(stream) == group
+        assert DocParser.carve_pictures(XlsParser.drawing_group(stream)) == [png]
+
+    def test_drawing_group_ignores_other_records_and_later_substreams(self):
+        stream = build_xls_stream({"S": [["x"]]})
+        assert XlsParser.drawing_group(stream) == b""
+
+    def test_extract_carves_pictures_through_olefile(self, tmp_path):
+        png = png_bytes()
+        stream = build_xls_stream(
+            {"S": [["x"]]}, drawing_group=b"\x00" * 5 + blip_record(png, png=True)
+        )
+        path = write_xls(tmp_path / "a.xls", {"S": [["x"]]})
+
+        class FakeOle:
+            def __init__(self, _):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def exists(self, name):
+                return name == "Workbook"
+
+            def openstream(self, name):
+                import io
+
+                return io.BytesIO(stream)
+
+        with (
+            patch("olefile.isOleFile", return_value=True),
+            patch("olefile.OleFileIO", FakeOle),
+        ):
+            text, images = XlsParser.extract(path)
+
+        assert text == "S\nx"
+        assert images == [png]
+
+    def test_a_picture_failure_never_loses_the_text(self, tmp_path):
+        path = write_xls(tmp_path / "a.xls", {"S": [["kept"]]})
+        with patch("olefile.isOleFile", side_effect=RuntimeError("boom")):
+            assert XlsParser.extract(path) == ("S\nkept", [])
+
+
 class TestOfficeReader:
-    def test_registry_maps_word_suffixes_and_skips_lock_files(self, tmp_path):
+    def test_registry_maps_office_suffixes_and_skips_lock_files(self, tmp_path):
         assert isinstance(Readers.for_path(tmp_path / "a.DOCX"), DocxReader)
         assert isinstance(Readers.for_path(tmp_path / "a.doc"), DocReader)
+        assert isinstance(Readers.for_path(tmp_path / "a.XLSX"), XlsxReader)
+        assert isinstance(Readers.for_path(tmp_path / "a.xls"), XlsReader)
         assert Readers.is_supported(tmp_path / "a.docx")
         assert not Readers.is_supported(tmp_path / "~$a.docx")
-        assert {"doc", "docx"} <= set(Readers.new_file_type_counts())
+        assert not Readers.is_supported(tmp_path / "~$a.xlsx")
+        assert {"doc", "docx", "xls", "xlsx"} <= set(Readers.new_file_type_counts())
 
-        for name in ("a.docx", "b.doc", "~$a.docx", "c.txt"):
+        names = ("a.docx", "b.doc", "c.xlsx", "d.xls", "~$a.docx", "~$c.xlsx", "e.txt")
+        for name in names:
             (tmp_path / name).write_bytes(b"x")
-        assert sorted(p.name for p in Readers.iter_files(tmp_path)) == ["a.docx", "b.doc"]
+        assert sorted(p.name for p in Readers.iter_files(tmp_path)) == [
+            "a.docx",
+            "b.doc",
+            "c.xlsx",
+            "d.xls",
+        ]
 
     def test_native_only_page_needs_no_ocr(self, conn):
         with patch("vethuq_core.ocr.Engine.get") as get_engine:

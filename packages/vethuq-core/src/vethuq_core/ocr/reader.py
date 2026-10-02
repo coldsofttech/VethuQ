@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import pymupdf
 
 from vethuq_core.ocr.engine import Engine
-from vethuq_core.ocr.office import DocParser, DocxParser
+from vethuq_core.ocr.office import DocParser, DocxParser, XlsParser, XlsxParser
 
 _logger = logging.getLogger(__name__)
 
@@ -208,9 +208,9 @@ class PdfReader(Reader):
 
 
 class OfficeReader(Reader):
-    """Shared by Word readers: native text, plus OCR over the document's embedded images.
+    """Shared by Word and Excel readers: native text, plus OCR over embedded images.
 
-    A Word file has no fixed pages without laying it out, so it becomes a single
+    These files have no fixed pages without laying them out, so each becomes a single
     `PageResult` - `native` if only its own text is used, `mixed` if embedded images added
     text of their own, `ocr` if the images are all there is.
     """
@@ -291,6 +291,29 @@ class DocReader(OfficeReader):
         return DocParser.extract(file_path)
 
 
+class XlsxReader(OfficeReader):
+    """A .xlsx file: cell text read straight from the package, embedded images OCR'd."""
+
+    file_type = "xlsx"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return XlsxParser.extract(file_path)
+
+
+class XlsReader(OfficeReader):
+    """A legacy .xls file: cell text through xlrd, embedded PNG/JPEG pictures OCR'd.
+
+    The pictures are best effort - see `XlsParser`.
+    """
+
+    file_type = "xls"
+
+    @staticmethod
+    def extract(file_path: Path) -> tuple[str, list[bytes]]:
+        return XlsParser.extract(file_path)
+
+
 class PngReader(ImageReader):
     """A .png file - identical to `ImageReader` today, split out as a hook for
     PNG-specific handling later (e.g. transparency)."""
@@ -311,9 +334,11 @@ class Readers:
         ".jpeg": JpgReader(),
         ".docx": DocxReader(),
         ".doc": DocReader(),
+        ".xlsx": XlsxReader(),
+        ".xls": XlsReader(),
     }
 
-    # Word's `~$name.docx` owner-lock files carry the extension but aren't documents.
+    # Office's `~$name.docx`-style owner-lock files carry the extension but aren't documents.
     _LOCK_FILE_PREFIX = "~$"
 
     @staticmethod

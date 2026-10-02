@@ -54,7 +54,7 @@ renamed or moved within the source is recognized by its unchanged content
 and simply relabeled, without re-running OCR on it; a file that's gone
 missing from the source is flagged and automatically cleaned up after a
 retention period (like a removed source — see `vethuq settings` below).
-Extracts text (English; PDF, PNG, JPEG, DOCX, and DOC files supported) and stores it
+Extracts text (English; PDF, PNG, JPEG, DOCX, DOC, XLSX, and XLS files supported) and stores it
 locally. PDF pages with a real text layer are read directly from it; OCR
 only runs on scanned pages/regions.
 

@@ -89,10 +89,14 @@ without a full migration framework yet.
 (recursively for folders), runs PaddleOCR (`lang="en"`) on every
 supported file, and writes the extracted text to SQLite. Unsupported
 extensions are skipped silently. PDFs are rasterized page-by-page via
-PyMuPDF before OCR; PNG/JPEG files are OCR'd directly. Word files are not
-rasterized: `.docx` text is read straight from the package (stdlib `zipfile`),
-`.doc` text from its piece table via `olefile`, and only their embedded
-images go through OCR (`vethuq_core.ocr.office`, `DocxReader`/`DocReader`).
+PyMuPDF before OCR; PNG/JPEG files are OCR'd directly. Word and Excel files are
+not rasterized: `.docx` text is read straight from the package (stdlib `zipfile`),
+`.doc` text from its piece table via `olefile`, `.xlsx` cells from the sheet XML
+(stdlib `zipfile` + streaming `ElementTree`; dates resolved through the workbook's
+styles), and `.xls` cells through `xlrd`. Only their embedded images go through OCR
+(`vethuq_core.ocr.office`, `DocxReader`/`DocReader`/`XlsxReader`/`XlsReader`).
+Legacy `.doc`/`.xls` pictures are carved from OfficeArt BLIP records, so they are
+best effort.
 
 Trigger model:
 - CLI: `add_source` only registers a source (`status='pending'`); a
@@ -107,10 +111,10 @@ Storage, alongside `sources`:
 | Table | Purpose |
 | --- | --- |
 | `documents` | One row per logical document, independent of any physical file path: just `id` and `created_at`. Exists so a document's identity survives renames, moves, and having more than one physical copy — see "Logical documents" below. |
-| `document_index` | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`\|`doc`\|`docx`), `status` (`pending`\|`processing`\|`indexed`\|`error`\|`removed` — set to `processing` once `started_at` is recorded, for a file actively being worked on), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time as a float epoch, used to cheaply rule out unchanged files before re-hashing), `sha256` (SHA-256 of file contents), `created_at`/`modified_at` (OS-level file creation/modification timestamps captured at scan time - `created_at` uses the platform's actual file-birth time where the OS exposes one, falling back to the modification time on platforms that don't, e.g. Linux), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
+| `document_index` | One row per OCR'd physical file: `source_id`, `document_id` (FK to `documents`; every row has one), `file_path` (unique), `file_type` (`pdf`\|`image`\|`doc`\|`docx`\|`xls`\|`xlsx`), `status` (`pending`\|`processing`\|`indexed`\|`error`\|`removed` — set to `processing` once `started_at` is recorded, for a file actively being worked on), `error_message`, `indexed_at`, `file_size_bytes`, `mtime` (file's last-modified time as a float epoch, used to cheaply rule out unchanged files before re-hashing), `sha256` (SHA-256 of file contents), `created_at`/`modified_at` (OS-level file creation/modification timestamps captured at scan time - `created_at` uses the platform's actual file-birth time where the OS exposes one, falling back to the modification time on platforms that don't, e.g. Linux), `removed_at` (set when the file goes missing from its still-active source; mirrors `sources.removed_at`). Central table joining the type-specific pages tables. |
 | `pdf_pages` | One row per PDF page: `document_id` (this one's a `document_index.id`, not `documents.id` — see "Logical documents"), `page_number`, `ocr_text`, `confidence`. |
 | `image_pages` | One row per PNG/JPEG file (no `page_number` — single image): `document_id` (a `document_index.id`), `ocr_text`, `confidence`. |
-| `office_pages` | One row per Word (`.doc`/`.docx`) file (no `page_number` — a Word file has no fixed pages): `document_id` (a `document_index.id`), `ocr_text` (the document's own text, followed by the OCR text of any embedded images), `confidence` (1.0 for text read directly; the average image-OCR confidence otherwise), `source` (`native`\|`mixed`\|`ocr`), plus `ocr_engine`/`language`. Not deepened, so no `ocr_phase`/`ocr_angles`. Searched through its own trigram FTS5 index, `office_pages_fts`. |
+| `office_pages` | One row per Word (`.doc`/`.docx`) or Excel (`.xls`/`.xlsx`) file (no `page_number` — these files have no fixed pages): `document_id` (a `document_index.id`), `ocr_text` (the document's own text — for a workbook, each sheet's name then its tab-separated rows — followed by the OCR text of any embedded images), `confidence` (1.0 for text read directly; the average image-OCR confidence otherwise), `source` (`native`\|`mixed`\|`ocr`), plus `ocr_engine`/`language`. Not deepened, so no `ocr_phase`/`ocr_angles`. Searched through its own trigram FTS5 index, `office_pages_fts`. |
 | `processing_metrics` | One row per `file_type`, holding running averages (`document_count`, `avg_duration_seconds`, `avg_peak_memory_mb`, `avg_cpu_percent`) folded in after each successfully indexed document. Feeds future ETA estimates for `vethuq index run`. |
 | `confidence_metrics` | One row per (`file_type`, `process_type`) pair (`process_type` is `native`\|`ocr`\|`mixed`), holding `page_count` and a running `avg_confidence` folded in per page after each successfully indexed document. Kept separate from `processing_metrics` so native pages' near-100% confidence doesn't dilute the OCR/mixed signal. |
 

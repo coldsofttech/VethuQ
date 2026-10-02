@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import UTC, datetime
 
@@ -551,4 +552,28 @@ class Migration:
             conn.execute("INSERT INTO confidence_metrics_new SELECT * FROM confidence_metrics")
             conn.execute("DROP TABLE confidence_metrics")
             conn.execute("ALTER TABLE confidence_metrics_new RENAME TO confidence_metrics")
+            conn.execute("PRAGMA foreign_keys = ON")
+        if from_version < 27:
+            # Adds 'xls' and 'xlsx' to the file_type CHECK constraints (Excel support,
+            # stored in `office_pages` alongside Word). Same rebuild-the-table pattern
+            # as v26, but the new DDL is derived from each table's stored one: every
+            # column is carried over unchanged, only the CHECK list widens.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            for table in ("document_index", "processing_metrics", "confidence_metrics"):
+                row = conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+                ).fetchone()
+                widened = row["sql"].replace(
+                    "('pdf', 'image', 'doc', 'docx')",
+                    "('pdf', 'image', 'doc', 'docx', 'xls', 'xlsx')",
+                )
+                # SQLite stores a renamed table's name quoted ("document_index").
+                widened = re.sub(
+                    rf'CREATE TABLE "?{table}"?', f"CREATE TABLE {table}_new", widened, count=1
+                )
+                conn.execute(widened)
+                conn.execute(f"INSERT INTO {table}_new SELECT * FROM {table}")
+                conn.execute(f"DROP TABLE {table}")
+                conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
             conn.execute("PRAGMA foreign_keys = ON")
