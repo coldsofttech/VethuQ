@@ -1,6 +1,7 @@
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+from conftest import PaddleStub
 from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
@@ -10,11 +11,11 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 
 class TestPurgeDocuments:
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_purge_promotes_duplicate_when_original_document_is_removed(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
         mock_get_engine.return_value = engine
 

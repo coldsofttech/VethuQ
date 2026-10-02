@@ -1,9 +1,10 @@
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import cv2
 import numpy as np
+from conftest import PaddleStub
 from vethuq_core.ocr import Deepening, Ocr
 from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Sources
@@ -27,9 +28,9 @@ def _image_page(conn: sqlite3.Connection, name: str) -> sqlite3.Row:
 
 
 class TestOcr:
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_quick_engine_reads_each_file_once(self, mock_get_engine, conn, tmp_path):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         folder = tmp_path / "src"
@@ -43,12 +44,12 @@ class TestOcr:
         page = _image_page(conn, "a.png")
         assert (page["ocr_phase"], page["ocr_angles"]) == (1, "0")
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_moderate_engine_adds_rotated_text_and_records_progress(
         self, mock_get_engine, conn, tmp_path
     ):
         # Quick read finds one line; every rotated read finds the same extra one.
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = lambda image: (
             _result("hello") if isinstance(image, str) else _result("DIRECTOR", "hello")
         )
@@ -66,11 +67,11 @@ class TestOcr:
         assert (page["ocr_phase"], page["ocr_angles"]) == (2, "0,90,180,270")
         assert engine.predict.call_count == 1 + len(Deepening.PHASE_ANGLES[2])
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_deep_engine_reads_every_angle_and_is_not_repeated(
         self, mock_get_engine, conn, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         OcrSettings.set_engine(conn, "deep")
@@ -87,11 +88,11 @@ class TestOcr:
         Ocr.run_phased(conn, lambda: [Sources.get(conn, source.id)])
         assert engine.predict.call_count == 360 // 15
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_raising_engine_setting_deepens_already_indexed_files(
         self, mock_get_engine, conn, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _result("hello")
         mock_get_engine.return_value = engine
         folder = tmp_path / "src"
@@ -108,7 +109,7 @@ class TestOcr:
         # Only the new angles were read - the quick pass wasn't redone.
         assert engine.predict.call_count == 1 + len(Deepening.PHASE_ANGLES[2])
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_new_file_gets_its_quick_pass_before_deeper_work_resumes(
         self, mock_get_engine, conn, tmp_path, monkeypatch
     ):
@@ -125,7 +126,7 @@ class TestOcr:
                 _write_png(folder / "b.png", width=50)
             return _result("hello")
 
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = predict
         mock_get_engine.return_value = engine
         OcrSettings.set_engine(conn, "moderate")
@@ -139,9 +140,9 @@ class TestOcr:
         assert _image_page(conn, "a.png")["ocr_angles"] == "0,90,180,270"
         assert _image_page(conn, "b.png")["ocr_angles"] == "0,90,180,270"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_failed_file_is_not_retried_by_later_rounds(self, mock_get_engine, conn, tmp_path):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("boom")
         mock_get_engine.return_value = engine
         folder = tmp_path / "src"

@@ -1,8 +1,9 @@
 import os
 import sqlite3
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from conftest import PaddleStub
 from vethuq_core.ocr import Quick
 from vethuq_core.source import Sources
 
@@ -12,9 +13,9 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 
 class TestQuick:
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_indexes_image_file(self, mock_get_engine, conn: sqlite3.Connection, tmp_path):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -44,7 +45,7 @@ class TestQuick:
         assert doc["created_at"] is not None
         assert doc["modified_at"] is not None
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_marks_document_processing_while_in_flight(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
@@ -61,7 +62,7 @@ class TestQuick:
             captured["started_at"] = row["started_at"]
             return _fake_ocr_result()
 
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = _predict
         mock_get_engine.return_value = engine
 
@@ -77,11 +78,11 @@ class TestQuick:
         ).fetchone()
         assert doc["status"] == "indexed"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_skips_file_already_claimed_by_another_run(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -114,11 +115,11 @@ class TestQuick:
         assert doc["status"] == "processing"
         assert doc["document_id"] == other_run_document_id
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -159,11 +160,11 @@ class TestQuick:
             == 0
         )
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_promotes_duplicate_when_original_is_modified(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
         mock_get_engine.return_value = engine
 
@@ -228,11 +229,11 @@ class TestQuick:
         ).fetchone()
         assert page2["ocr_text"] == "shared content"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_updates_processing_metrics_on_success(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result(score=0.8)
         mock_get_engine.return_value = engine
 
@@ -267,11 +268,11 @@ class TestQuick:
         assert confidence["page_count"] == 2
         assert confidence["avg_confidence"] == pytest.approx(0.7)
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_does_not_update_processing_metrics_on_error(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("ocr blew up")
         mock_get_engine.return_value = engine
 
@@ -283,7 +284,7 @@ class TestQuick:
         assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
 
     @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_rolls_back_pages_and_status_if_a_later_write_fails(
         self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
     ):
@@ -295,7 +296,7 @@ class TestQuick:
         stays 'processing' for a future run to retry, rather than ever being
         readable as 'indexed' with missing pages or metrics.
         """
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
         mock_update_confidence.side_effect = RuntimeError("boom")
@@ -319,11 +320,11 @@ class TestQuick:
         )
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_skips_unsupported_files(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -339,11 +340,11 @@ class TestQuick:
         assert len(docs) == 1
         assert docs[0]["file_path"].endswith("scan.jpg")
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_records_error_without_aborting(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("ocr blew up")
         mock_get_engine.return_value = engine
 
@@ -364,11 +365,11 @@ class TestQuick:
         ).fetchone()
         assert updated_source["status"] == "error"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_rerun_replaces_stale_page_rows(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("first pass")
         mock_get_engine.return_value = engine
 
@@ -389,11 +390,11 @@ class TestQuick:
         assert len(pages) == 1
         assert pages[0]["ocr_text"] == "second pass"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_skips_already_indexed(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("first file")
         mock_get_engine.return_value = engine
 
@@ -420,11 +421,11 @@ class TestQuick:
         assert docs[str((folder / "first.png").resolve())] == "indexed"
         assert docs[str((folder / "second.png").resolve())] == "indexed"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_reindexes_modified_file(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original content")
         mock_get_engine.return_value = engine
 
@@ -451,11 +452,11 @@ class TestQuick:
         ).fetchone()
         assert page["ocr_text"] == "updated content"
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original content")
         mock_get_engine.return_value = engine
 
@@ -471,11 +472,11 @@ class TestQuick:
 
         assert second_run == []
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_detects_plain_rename(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original text")
         mock_get_engine.return_value = engine
 
@@ -509,11 +510,11 @@ class TestQuick:
             == 0
         )
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_marks_missing_file_removed(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
@@ -539,11 +540,11 @@ class TestQuick:
         assert updated["status"] == "removed"
         assert updated["removed_at"] is not None
 
-    @patch("vethuq_core.ocr.Engine.get")
+    @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
         self, mock_get_engine, conn: sqlite3.Connection, tmp_path
     ):
-        engine = MagicMock()
+        engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
         mock_get_engine.return_value = engine
 

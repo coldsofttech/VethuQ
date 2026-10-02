@@ -49,7 +49,7 @@ class Scheduler:
     def auto_worker_count(pending_type_counts: dict[str, int], total_pending: int) -> int:
         """Pick a worker count that uses headroom without pushing CPU/memory to their limit.
 
-        Each worker loads its own OCR engine (see `Engine.get`), so the ceiling
+        Each worker loads its own OCR engine (see `Engines.get`), so the ceiling
         is set by whichever is scarcer: free CPU capacity, or free memory divided
         by one engine's rough footprint (`Scheduler.ENGINE_FOOTPRINT_MB`). A pending set
         that's mostly PDFs (multi-page, heavier to render/OCR than a single
