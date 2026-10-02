@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import typer
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
+from vethuq_core.db import SchemaVersionError
 
+from vethuq_cli.console import error_console
 from vethuq_cli.db import app as db_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
@@ -29,5 +31,16 @@ def main(ctx: typer.Context) -> None:
         InteractiveMenu.run()
 
 
+class Cli:
+    @staticmethod
+    def run() -> None:
+        """Console-script entry point: run `app`, reporting an unsupported database cleanly."""
+        try:
+            app()
+        except SchemaVersionError as exc:
+            error_console.print(f"Error: {exc}", style="bold red")
+            raise SystemExit(1) from None
+
+
 if __name__ == "__main__":
-    app()
+    Cli.run()

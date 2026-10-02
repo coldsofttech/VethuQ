@@ -10,6 +10,10 @@ from platformdirs import user_data_dir
 from vethuq_core.db.migration import Migration
 
 
+class SchemaVersionError(Exception):
+    """The database's schema is newer than this build of VethuQ supports."""
+
+
 class Db:
     APP_NAME = "VethuQ"
     DB_FILENAME = "vethuq.db"
@@ -241,7 +245,11 @@ END;
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
-        Db._ensure_schema(conn, path)
+        try:
+            Db._ensure_schema(conn, path)
+        except BaseException:
+            conn.close()
+            raise
 
         from vethuq_core.db.integrity import IntegrityCheck
         from vethuq_core.source import Sources
@@ -269,7 +277,28 @@ END;
             backup_conn.close()
 
     @staticmethod
+    def _check_schema_not_newer(conn: sqlite3.Connection) -> None:
+        """Refuse to run against a database written by a newer VethuQ.
+
+        Runs before `_SCHEMA` so an older build never touches (or creates tables
+        in) a database whose schema it doesn't fully understand.
+        """
+        has_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_version'"
+        ).fetchone()
+        if has_table is None:
+            return
+        row = conn.execute("SELECT MAX(version) AS version FROM schema_version").fetchone()
+        if row["version"] is not None and row["version"] > Db.SCHEMA_VERSION:
+            raise SchemaVersionError(
+                f"The database schema (version {row['version']}) is newer than this version "
+                f"of VethuQ supports (version {Db.SCHEMA_VERSION}). Upgrade VethuQ to open this "
+                "database."
+            )
+
+    @staticmethod
     def _ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
+        Db._check_schema_not_newer(conn)
         conn.executescript(Db._SCHEMA)
         row = conn.execute("SELECT version FROM schema_version").fetchone()
         if row is None:

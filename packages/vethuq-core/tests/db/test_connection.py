@@ -1,7 +1,8 @@
 import sqlite3
 from pathlib import Path
 
-from vethuq_core.db import Db
+import pytest
+from vethuq_core.db import Db, SchemaVersionError
 
 
 class TestConnection:
@@ -68,3 +69,32 @@ class TestConnection:
             assert version == Db.SCHEMA_VERSION
         finally:
             conn.close()
+
+    def test_connect_rejects_database_with_newer_schema_version(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        newer = sqlite3.connect(db_path)
+        newer.executescript(
+            f"""
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES ({Db.SCHEMA_VERSION + 1});
+            """
+        )
+        newer.commit()
+        newer.close()
+
+        with pytest.raises(SchemaVersionError, match="newer"):
+            Db.connect(db_path)
+
+        # Untouched: no tables added, version not downgraded.
+        check = sqlite3.connect(db_path)
+        try:
+            tables = {
+                r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            assert tables == {"schema_version"}
+            assert check.execute("SELECT version FROM schema_version").fetchone()[0] == (
+                Db.SCHEMA_VERSION + 1
+            )
+        finally:
+            check.close()
