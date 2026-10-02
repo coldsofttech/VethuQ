@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
-from vethuq_core.ocr.reader import Readers
+from vethuq_core.readers import Readers
 from vethuq_core.source import Source
 
 _logger = Logs.get_logger("index")

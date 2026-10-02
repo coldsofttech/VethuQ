@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.logs import Logs
-from vethuq_core.ocr.reader import PageResult
+from vethuq_core.readers import PageResult, Readers
 from vethuq_core.source import Source
 
 _logger = Logs.get_logger("index")
@@ -300,40 +300,7 @@ class Document:
         conn: sqlite3.Connection, document_id: int, file_type: str, pages: list[PageResult]
     ) -> None:
         """Replace a document's OCR pages with freshly (re)extracted `pages`."""
-        if file_type == "pdf":
-            DocumentQuery.delete_pdf_pages(conn, document_id)
-            DocumentQuery.insert_pdf_pages(
-                conn,
-                [
-                    (
-                        document_id,
-                        page_number,
-                        page.text,
-                        page.confidence,
-                        page.source,
-                        page.ocr_engine,
-                        page.language,
-                        page.image_width,
-                        page.image_height,
-                        *page.phase_columns(),
-                    )
-                    for page_number, page in enumerate(pages, start=1)
-                ],
-            )
-        else:
-            page = pages[0]
-            DocumentQuery.delete_image_pages(conn, document_id)
-            DocumentQuery.insert_image_page(
-                conn,
-                document_id,
-                page.text,
-                page.confidence,
-                page.ocr_engine,
-                page.language,
-                page.image_width,
-                page.image_height,
-                *page.phase_columns(),
-            )
+        Readers.for_file_type(file_type).storage.store(conn, document_id, pages)
 
     @staticmethod
     def get_results(conn: sqlite3.Connection, source_id: int) -> list[DocumentResult]:
@@ -356,12 +323,9 @@ class Document:
         for row in rows:
             confidence = None
             if row["status"] == "indexed":
-                scores = [
-                    page["confidence"]
-                    for page in DocumentQuery.get_page_confidences(
-                        conn, row["file_type"], row["canonical_id"]
-                    )
-                ]
+                scores = Readers.for_file_type(row["file_type"]).storage.page_confidences(
+                    conn, row["canonical_id"]
+                )
                 confidence = sum(scores) / len(scores) if scores else None
 
             duration = None

@@ -35,8 +35,9 @@ from vethuq_core.db import Db
 from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.db.queries import Index
 from vethuq_core.logs import Logs
-from vethuq_core.ocr import Ocr, Pending, Readers, Scheduler
+from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
+from vethuq_core.readers import Readers
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.source import Source, Sources
 

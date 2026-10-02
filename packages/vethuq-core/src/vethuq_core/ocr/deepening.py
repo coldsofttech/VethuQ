@@ -9,7 +9,7 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import psutil
 
@@ -20,8 +20,8 @@ from vethuq_core.db.queries import Ocr as OcrQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines import Engines
 from vethuq_core.ocr.metrics import Metrics
-from vethuq_core.ocr.reader import PdfReader, Readers
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.readers import Readers
 from vethuq_core.settings import OcrSettings
 from vethuq_core.source import Source
 
@@ -220,16 +220,12 @@ class Deepening:
         (for a mixed page, whose text layer is already read natively) just its image regions."""
         if unit.file_type == "image":
             return [Deepening.read_image_array(unit.file_path)]
-        import pymupdf
-
-        with pymupdf.open(unit.file_path) as doc:
-            page = doc[unit.page_number - 1]
+        reader = Readers.for_file_type(unit.file_type)
+        for page in reader.read(unit.file_path, unit.page_number):
             if unit.page_source == "mixed":
-                return [
-                    PdfReader.render_page_array(page, clip=bbox)
-                    for bbox in PdfReader.significant_image_blocks(page)
-                ]
-            return [PdfReader.render_page_array(page)]
+                return [cast("np.ndarray", page.render(region)) for region in page.image_regions]
+            return [cast("np.ndarray", page.render(None))]
+        raise ValueError(f"page {unit.page_number} not found: {unit.file_path}")
 
     @staticmethod
     def start_document_phase(conn: sqlite3.Connection, unit: DeepenUnit) -> None:
