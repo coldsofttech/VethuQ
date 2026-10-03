@@ -92,6 +92,7 @@ __all__ = [
     "Logs",
     "LogsSettings",
     "OcrEngineSettings",
+    "OcrSettings",
     "OcrRetrySettings",
     "ProcessingMetric",
     "RemovedRetentionSettings",
@@ -108,6 +109,7 @@ __all__ = [
     "SourcePathError",
     "Sources",
     "StaleLockError",
+    "StabilityCheckSettings",
     "StaleLockSettings",
     "Stats",
     "ThreadWorkersSettings",
@@ -368,7 +370,7 @@ class RemovedRetentionSettings:
 
 class OcrRetrySettings:
     """How many times to retry a file's OCR after a transient failure. Not instantiated
-    directly — use `Vethuq().settings.index.ocr_retry`."""
+    directly — use `Vethuq().settings.ocr.retry`."""
 
     def get(self) -> int:
         """How many times to retry a file's OCR after a transient failure. 3 by default."""
@@ -423,6 +425,31 @@ class ThreadWorkersSettings:
             storage.close()
 
 
+class StabilityCheckSettings:
+    """How long a file must stay unchanged before it's indexed. Not instantiated
+    directly — use `Vethuq().settings.index.stability_check`."""
+
+    def get(self) -> float:
+        """Seconds between the two checks that a file has stopped changing. 1 by
+        default; 0 disables the check."""
+        storage = _open_storage()
+        try:
+            return _OcrSettings.get_stability_check_seconds(storage)
+        finally:
+            storage.close()
+
+    def set(self, seconds: float) -> None:
+        """Set the seconds between the two checks that a file has stopped changing.
+
+        Raises `InvalidSettingValueError` if `seconds` is negative.
+        """
+        storage = _open_storage()
+        try:
+            _OcrSettings.set_stability_check_seconds(storage, seconds)
+        finally:
+            storage.close()
+
+
 class StaleLockSettings:
     """Whether a stale lock is auto-cleared on the next run. Not instantiated directly — use
     `Vethuq().settings.index.stale_lock`."""
@@ -456,7 +483,7 @@ class StaleLockSettings:
 
 class OcrEngineSettings:
     """How thoroughly OCR looks for rotated text. Not instantiated directly — use
-    `Vethuq().settings.index.engine`."""
+    `Vethuq().settings.ocr.engine`."""
 
     def get(self) -> str:
         """How thoroughly OCR looks for rotated text. 'quick' by default.
@@ -600,15 +627,22 @@ class DbSettings:
         self.integrity_check = IntegrityCheckSettings()
 
 
+class OcrSettings:
+    """Configure OCR behavior. Not instantiated directly — use `Vethuq().settings.ocr`."""
+
+    def __init__(self) -> None:
+        self.retry = OcrRetrySettings()
+        self.engine = OcrEngineSettings()
+
+
 class IndexSettings:
     """Configure indexing behavior. Not instantiated directly — use `Vethuq().settings.index`."""
 
     def __init__(self) -> None:
         self.removed_retention = RemovedRetentionSettings()
-        self.ocr_retry = OcrRetrySettings()
+        self.stability_check = StabilityCheckSettings()
         self.thread_workers = ThreadWorkersSettings()
         self.stale_lock = StaleLockSettings()
-        self.engine = OcrEngineSettings()
 
 
 class Settings:
@@ -618,6 +652,7 @@ class Settings:
         self.gpu = GPUSettings()
         self.search = SearchSettings()
         self.index = IndexSettings()
+        self.ocr = OcrSettings()
         self.db = DbSettings()
         self.logs = LogsSettings()
 

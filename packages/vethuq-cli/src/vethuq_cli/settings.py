@@ -27,8 +27,12 @@ index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
     help="Configure, in minutes, how long a removed source is kept before it's purged from the DB."
 )
-ocr_retry_app = typer.Typer(
+retry_app = typer.Typer(
     help="Configure how many times to retry a file's OCR after a transient failure."
+)
+ocr_app = typer.Typer(help="Configure OCR behavior.")
+stability_check_app = typer.Typer(
+    help="Configure, in seconds, how long a file must stay unchanged before it's indexed."
 )
 thread_workers_app = typer.Typer(help="Configure how many worker threads background indexing uses.")
 stale_lock_app = typer.Typer(
@@ -56,10 +60,12 @@ search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
-index_app.add_typer(ocr_retry_app, name="ocr-retry")
+index_app.add_typer(stability_check_app, name="stability-check")
 index_app.add_typer(thread_workers_app, name="thread-workers")
 index_app.add_typer(stale_lock_app, name="stale-lock")
-index_app.add_typer(engine_app, name="engine")
+app.add_typer(ocr_app, name="ocr")
+ocr_app.add_typer(retry_app, name="retry")
+ocr_app.add_typer(engine_app, name="engine")
 app.add_typer(db_app, name="db")
 db_app.add_typer(integrity_check_app, name="integrity-check")
 integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
@@ -222,8 +228,8 @@ def removed_retention_set(
         storage.close()
 
 
-@ocr_retry_app.command("show")
-def ocr_retry_show() -> None:
+@retry_app.command("show")
+def retry_show() -> None:
     """Show how many times a file's OCR is retried after a transient failure."""
     storage = open_storage()
     try:
@@ -236,8 +242,8 @@ def ocr_retry_show() -> None:
         storage.close()
 
 
-@ocr_retry_app.command("set")
-def ocr_retry_set(
+@retry_app.command("set")
+def retry_set(
     attempts: int = typer.Argument(
         ..., help="Times to retry a file's OCR after a transient failure."
     ),
@@ -252,6 +258,43 @@ def ocr_retry_set(
             raise typer.Exit(code=1) from exc
         console.print(
             Text.assemble("OCR retry attempts set to ", (str(attempts), Theme.VALUE), ".")
+        )
+    finally:
+        storage.close()
+
+
+@stability_check_app.command("show")
+def stability_check_show() -> None:
+    """Show how long a file must stay unchanged before it's indexed."""
+    storage = open_storage()
+    try:
+        console.print(
+            Text.assemble(
+                "Stability check: ",
+                (f"{OcrSettings.get_stability_check_seconds(storage):g}", Theme.VALUE),
+                " seconds",
+            )
+        )
+    finally:
+        storage.close()
+
+
+@stability_check_app.command("set")
+def stability_check_set(
+    seconds: float = typer.Argument(
+        ..., help="Seconds between the two checks that a file has stopped changing (0 disables)."
+    ),
+) -> None:
+    """Set how long a file must stay unchanged before it's indexed (0 disables)."""
+    storage = open_storage()
+    try:
+        try:
+            OcrSettings.set_stability_check_seconds(storage, seconds)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            Text.assemble("Stability check set to ", (f"{seconds:g}", Theme.VALUE), " seconds.")
         )
     finally:
         storage.close()

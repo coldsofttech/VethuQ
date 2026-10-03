@@ -4,6 +4,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.ocr.engines.paddle import PaddleOcrEngine
 from vethuq_core.paths import Paths
+from vethuq_core.settings import OcrSettings
 from vethuq_core.storage.sqlite import SqliteStorage
 
 
@@ -36,3 +37,9 @@ class PaddleStub(PaddleOcrEngine):
         self.predict = MagicMock()
         self._ocr = self
         self._name = "paddleocr test"
+
+
+@pytest.fixture(autouse=True)
+def _no_stability_wait(monkeypatch):
+    """Skip the pre-processing stability wait; tests of that check set their own interval."""
+    monkeypatch.setattr(OcrSettings, "get_stability_check_seconds", staticmethod(lambda storage: 0))

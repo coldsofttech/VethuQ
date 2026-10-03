@@ -772,3 +772,84 @@ class TestQuick:
         assert row["status"] == "error"
         assert "removed during indexing" in row["error_message"]
         assert row["retry_count"] == 0
+
+    def test_is_file_stable_detects_a_file_still_being_written(self, tmp_path):
+        path = tmp_path / "growing.png"
+        path.write_bytes(b"a")
+
+        def grow(_seconds):
+            path.write_bytes(b"abc")
+
+        with patch("vethuq_core.ocr.quick.time.sleep", side_effect=grow):
+            assert Quick.is_file_stable(path, 1.0) is False
+        with patch("vethuq_core.ocr.quick.time.sleep"):
+            assert Quick.is_file_stable(path, 1.0) is True
+        assert Quick.is_file_stable(path, 0) is True
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_defers_unstable_file_without_claiming_it(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        image = tmp_path / "scan.png"
+        image.write_bytes(b"partial")
+        source = Sources.add(storage, image)
+
+        with patch.object(Quick, "is_file_stable", return_value=False):
+            processed = Quick.run(storage, source)
+
+        assert processed == []
+        assert conn.execute("SELECT COUNT(*) FROM document_index").fetchone()[0] == 0
+        mock_get_engine.assert_not_called()
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_discards_result_and_errors_when_file_changes_during_processing(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        image = tmp_path / "scan.png"
+        image.write_bytes(b"original")
+        source = Sources.add(storage, image)
+
+        engine = PaddleStub()
+
+        def predict_and_modify(*_args, **_kwargs):
+            image.write_bytes(b"modified while reading")
+            return _fake_ocr_result()
+
+        engine.predict.side_effect = predict_and_modify
+        mock_get_engine.return_value = engine
+
+        with patch.object(OcrSettings, "get_retry_attempts", return_value=0):
+            Quick.run(storage, source)
+
+        doc = conn.execute("SELECT * FROM document_index").fetchone()
+        assert doc["status"] == "error"
+        assert "modified during processing" in doc["error_message"]
+        assert conn.execute("SELECT COUNT(*) FROM image_pages").fetchone()[0] == 0
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_retries_when_file_changes_then_settles(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        image = tmp_path / "scan.png"
+        image.write_bytes(b"original")
+        source = Sources.add(storage, image)
+
+        engine = PaddleStub()
+        calls = []
+
+        def predict(*_args, **_kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                image.write_bytes(b"modified while reading")
+            return _fake_ocr_result()
+
+        engine.predict.side_effect = predict
+        mock_get_engine.return_value = engine
+
+        with patch.object(OcrSettings, "get_retry_attempts", return_value=2):
+            Quick.run(storage, source)
+
+        doc = conn.execute("SELECT * FROM document_index").fetchone()
+        assert doc["status"] == "indexed"
+        assert len(calls) == 2
+        assert doc["sha256"] is not None

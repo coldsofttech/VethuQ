@@ -15,8 +15,8 @@ Angles are degrees counter-clockwise (`vethuq_core.ocr.Deepening.PHASE_ANGLES`):
 | 2 | 90, 180, 270 | `moderate`, `deep` |
 | 3 | every other multiple of 15 | `deep` |
 
-Modes are cumulative. The setting is `index_engine` (`vethuq settings index
-engine`, `client.settings.index.engine`) and is re-read each round, so changing
+Modes are cumulative. The setting is `index_engine` (`vethuq settings ocr
+engine`, `client.settings.ocr.engine`) and is re-read each round, so changing
 it mid-run takes effect without a restart.
 
 ## Scheduling

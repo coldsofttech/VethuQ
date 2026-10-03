@@ -223,7 +223,7 @@ class TestEngine:
     def test_engine_show_defaults_to_quick(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, ["settings", "index", "engine", "show"])
+        result = runner.invoke(app, ["settings", "ocr", "engine", "show"])
 
         assert result.exit_code == 0
         assert "quick" in result.stdout
@@ -231,16 +231,16 @@ class TestEngine:
     def test_engine_set_then_show(self, use_temp_db):
         use_temp_db()
 
-        set_result = runner.invoke(app, ["settings", "index", "engine", "set", "deep"])
+        set_result = runner.invoke(app, ["settings", "ocr", "engine", "set", "deep"])
         assert set_result.exit_code == 0
 
-        show_result = runner.invoke(app, ["settings", "index", "engine", "show"])
+        show_result = runner.invoke(app, ["settings", "ocr", "engine", "show"])
         assert "deep" in show_result.stdout
 
     def test_engine_set_rejects_invalid_value(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, ["settings", "index", "engine", "set", "thorough"])
+        result = runner.invoke(app, ["settings", "ocr", "engine", "set", "thorough"])
 
         assert result.exit_code == 1
 
@@ -291,5 +291,24 @@ class TestLogs:
         use_temp_db()
 
         result = runner.invoke(app, ["settings", "logs", "retention", "set", "0"])
+
+        assert result.exit_code == 1
+
+
+class TestStabilityCheck:
+    def test_stability_check_defaults_then_set(self, use_temp_db):
+        use_temp_db()
+
+        show = runner.invoke(app, ["settings", "index", "stability-check", "show"])
+        assert "Stability check" in show.stdout
+        set_result = runner.invoke(app, ["settings", "index", "stability-check", "set", "0.5"])
+        assert set_result.exit_code == 0
+        show = runner.invoke(app, ["settings", "index", "stability-check", "show"])
+        assert "0.5" in show.stdout
+
+    def test_stability_check_rejects_negative(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "index", "stability-check", "set", "--", "-1"])
 
         assert result.exit_code == 1

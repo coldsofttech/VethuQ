@@ -11,7 +11,7 @@ from collections.abc import Callable
 
 import typer
 from rich.panel import Panel
-from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.settings import (
@@ -49,12 +49,14 @@ from vethuq_cli.settings import (
     log_level_show,
     log_retention_set,
     log_retention_show,
-    ocr_retry_set,
-    ocr_retry_show,
     removed_retention_set,
     removed_retention_show,
+    retry_set,
+    retry_show,
     snippet_set,
     snippet_show,
+    stability_check_set,
+    stability_check_show,
     stale_lock_set,
     stale_lock_show,
     thread_workers_set,
@@ -279,22 +281,22 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(removed_retention_set, minutes=minutes)
 
     @staticmethod
-    def _settings_ocr_retry_menu() -> None:
+    def _settings_retry_menu() -> None:
         while True:
             console.print()
             InteractiveMenu._print_menu(
-                "Settings > Index > OCR Retry", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Ocr > Retry", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
             choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
-                InteractiveMenu._run_safely(ocr_retry_show)
+                InteractiveMenu._run_safely(retry_show)
             elif choice == "2":
                 attempts = IntPrompt.ask(
                     "Times to retry a file's OCR after a transient failure", console=console
                 )
-                InteractiveMenu._run_safely(ocr_retry_set, attempts=attempts)
+                InteractiveMenu._run_safely(retry_set, attempts=attempts)
 
     @staticmethod
     def _settings_thread_workers_menu() -> None:
@@ -387,7 +389,7 @@ class InteractiveMenu:
         while True:
             console.print()
             InteractiveMenu._print_menu(
-                "Settings > Index > OCR Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Ocr > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
             choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
@@ -403,6 +405,25 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(engine_set, value=value)
 
     @staticmethod
+    def _settings_stability_check_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Index > Stability Check", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(stability_check_show)
+            elif choice == "2":
+                seconds = FloatPrompt.ask(
+                    "Seconds a file must stay unchanged before it's indexed (0 disables)",
+                    console=console,
+                )
+                InteractiveMenu._run_safely(stability_check_set, seconds=seconds)
+
+    @staticmethod
     def _settings_index_menu() -> None:
         while True:
             console.print()
@@ -410,25 +431,37 @@ class InteractiveMenu:
                 "Settings > Index",
                 [
                     ("1", "Removed Retention"),
-                    ("2", "OCR Retry"),
-                    ("3", "Thread Workers"),
-                    ("4", "Stale Lock"),
-                    ("5", "OCR Engine"),
+                    ("2", "Thread Workers"),
+                    ("3", "Stale Lock"),
+                    ("4", "Stability Check"),
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
             if choice == "0":
                 return
             if choice == "1":
                 InteractiveMenu._settings_removed_retention_menu()
             elif choice == "2":
-                InteractiveMenu._settings_ocr_retry_menu()
-            elif choice == "3":
                 InteractiveMenu._settings_thread_workers_menu()
-            elif choice == "4":
+            elif choice == "3":
                 InteractiveMenu._settings_stale_lock_menu()
-            elif choice == "5":
+            elif choice == "4":
+                InteractiveMenu._settings_stability_check_menu()
+
+    @staticmethod
+    def _settings_ocr_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Ocr", [("1", "Retry"), ("2", "Engine"), ("0", "Back")]
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._settings_retry_menu()
+            elif choice == "2":
                 InteractiveMenu._settings_engine_menu()
 
     @staticmethod
@@ -516,12 +549,13 @@ class InteractiveMenu:
                     ("1", "GPU"),
                     ("2", "Search"),
                     ("3", "Index"),
-                    ("4", "Db"),
-                    ("5", "Logs"),
+                    ("4", "Ocr"),
+                    ("5", "Db"),
+                    ("6", "Logs"),
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -531,8 +565,10 @@ class InteractiveMenu:
             elif choice == "3":
                 InteractiveMenu._settings_index_menu()
             elif choice == "4":
-                InteractiveMenu._settings_db_menu()
+                InteractiveMenu._settings_ocr_menu()
             elif choice == "5":
+                InteractiveMenu._settings_db_menu()
+            elif choice == "6":
                 InteractiveMenu._settings_logs_menu()
 
     @staticmethod

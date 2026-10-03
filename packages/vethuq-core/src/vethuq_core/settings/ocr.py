@@ -9,6 +9,8 @@ from vethuq_core.storage import Storage
 class OcrSettings:
     RETRY_ATTEMPTS_KEY = "index_ocr_retry_attempts"
     DEFAULT_RETRY_ATTEMPTS = 3
+    STABILITY_CHECK_SECONDS_KEY = "stability_check_seconds"
+    DEFAULT_STABILITY_CHECK_SECONDS = 1.0
     ENGINE_KEY = "index_engine"
     DEFAULT_ENGINE = "quick"
     ENGINE_MODES = ("quick", "moderate", "deep")
@@ -24,6 +26,19 @@ class OcrSettings:
         if attempts < 0:
             raise InvalidSettingValueError("attempts must be non-negative")
         Settings.set(storage, OcrSettings.RETRY_ATTEMPTS_KEY, str(attempts))
+
+    @staticmethod
+    def get_stability_check_seconds(storage: Storage) -> float:
+        """Seconds between the two stats that confirm a file has stopped changing before
+        it's indexed. 1 by default; 0 disables the check."""
+        value = Settings.get(storage, OcrSettings.STABILITY_CHECK_SECONDS_KEY)
+        return float(value) if value is not None else OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS
+
+    @staticmethod
+    def set_stability_check_seconds(storage: Storage, seconds: float) -> None:
+        if seconds < 0:
+            raise InvalidSettingValueError("seconds must be non-negative")
+        Settings.set(storage, OcrSettings.STABILITY_CHECK_SECONDS_KEY, str(seconds))
 
     @staticmethod
     def get_engine(storage: Storage) -> str:
