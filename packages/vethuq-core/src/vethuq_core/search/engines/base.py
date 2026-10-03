@@ -28,6 +28,7 @@ class SearchMatch:
     truncated_before: bool
     truncated_after: bool
     duplicate_of_path: str | None
+    source: str = "ocr"  # 'native', 'ocr' or 'mixed' - how the page's text was obtained
 
 
 class SearchEngineUnavailable(Exception):

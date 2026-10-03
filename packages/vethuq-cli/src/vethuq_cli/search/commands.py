@@ -38,8 +38,9 @@ def search(
     Only successfully indexed documents are searched. Results open in a
     pager at the top - scroll (e.g. the down arrow) to reveal more, `e` to
     export what's been found and close the pager, `q` to close without
-    exporting. A file with several matching pages prints its `File:` line once,
-    followed by one `Page: X of Y` and boxed, highlighted snippet per match;
+    exporting. A file with several matching pages prints its file name as a
+    bold heading and its `File:` path line once, followed by one `Page: X of Y`
+    and boxed, highlighted snippet per match;
     consecutive files alternate accent colors to make them easier to tell
     apart. How much context the box shows is configurable via
     `vethuq settings search snippet`.
@@ -110,14 +111,16 @@ def search(
                     accent = ResultRenderer.ACCENT_STYLES[
                         file_index % len(ResultRenderer.ACCENT_STYLES)
                     ]
+                    console.print(Text(match.file_name, style=f"bold {accent}"))
                     file_line = f"File: {match.file_path}"
                     if match.duplicate_of_path is not None:
                         file_line += f"  (duplicate of {match.duplicate_of_path})"
                     console.print(Text(file_line, style=f"bold {accent}"))
+                label = Text(style=accent)
                 if match.page_number is not None:
-                    console.print(
-                        Text(f"Page: {match.page_number} of {match.total_pages}", style=accent)
-                    )
+                    label.append(f"Page: {match.page_number} of {match.total_pages} ")
+                label.append(f"[{match.source}]")
+                console.print(label)
                 console.print()
                 for line in ResultRenderer.render_box(match, width, accent):
                     console.print(line)

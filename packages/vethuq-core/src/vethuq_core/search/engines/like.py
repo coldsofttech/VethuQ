@@ -29,9 +29,10 @@ class LikeSearchEngine:
     @staticmethod
     def _indexed_pages(
         storage: Storage, query: str
-    ) -> list[tuple[int, str, str, int | None, int, str | None]]:
-        """Return rows of `(document_id, file_path, ocr_text, page_number, canonical_id,
-        duplicate_of_path)` for every indexed page whose `ocr_text` may contain `query`.
+    ) -> list[tuple[int, str, str, int | None, str, int, str | None]]:
+        """Return rows of `(document_id, file_path, ocr_text, page_number, source,
+        canonical_id, duplicate_of_path)` for every indexed page whose `ocr_text` may contain
+        `query`.
 
         Narrowed down via `pdf_pages_fts`/`image_pages_fts` - trigram-tokenized FTS5
         indexes kept in sync with `pdf_pages`/`image_pages` by triggers (see
@@ -58,6 +59,7 @@ class LikeSearchEngine:
                 row["file_path"],
                 row["ocr_text"],
                 row["page_number"],
+                row["source"],
                 row["canonical_id"],
                 row["duplicate_of_path"],
             )
@@ -98,6 +100,7 @@ class LikeSearchEngine:
             file_path,
             ocr_text,
             page_number,
+            source,
             canonical_id,
             duplicate_of_path,
         ) in LikeSearchEngine._indexed_pages(storage, query):
@@ -124,6 +127,7 @@ class LikeSearchEngine:
                         truncated_before=before_start > 0,
                         truncated_after=after_end < len(text),
                         duplicate_of_path=duplicate_of_path,
+                        source=source,
                     )
                 )
                 position = text_lower.find(query_lower, end)

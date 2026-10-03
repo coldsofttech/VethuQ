@@ -161,6 +161,52 @@ class Logs:
         return path.with_name(f"{path.name}.{day.isoformat()}")
 
     @staticmethod
+    def level_of(record: str) -> str:
+        """The lowercase level of a record (`"error"`, ...), or `""` if its format is unknown."""
+        match = Logs._RECORD_START.match(record)
+        return match.group(1).lower() if match else ""
+
+    @staticmethod
+    def validate_request(
+        component: str,
+        *,
+        level: str | None = None,
+        lines: int = 40,
+        day: str | None = None,
+        follow: bool = False,
+        export: str | None = None,
+    ) -> date | None:
+        """Check a log-reading request and return the parsed `day` (None for today).
+
+        Raises `ValueError` with a user-ready message for an unknown component or
+        level, `lines` below 1, a `day` that isn't `YYYY-MM-DD`, or `follow`
+        combined with `day` or `export`.
+        """
+        if component not in Logs.COMPONENTS:
+            raise ValueError(
+                f"unknown component {component!r}; choose one of: {', '.join(Logs.COMPONENTS)}"
+            )
+        if level is not None and level not in Logs.LEVELS:
+            raise ValueError(f"level must be one of: {', '.join(Logs.LEVELS)}")
+        if lines < 1:
+            raise ValueError("--tail must be at least 1")
+        selected_day: date | None = None
+        if day is not None:
+            try:
+                selected_day = datetime.strptime(day, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError("--date must be in YYYY-MM-DD format") from None
+        if follow and (selected_day is not None or export is not None):
+            raise ValueError("--follow can't be combined with --date or --export")
+        return selected_day
+
+    @staticmethod
+    def export(records: list[str], path: str | Path) -> int:
+        """Write `records` to `path`, one per line, and return how many were written."""
+        Path(path).write_text("\n".join(records) + ("\n" if records else ""), encoding="utf-8")
+        return len(records)
+
+    @staticmethod
     def _validate_level(level: str | None) -> None:
         if level is not None and level not in Logs.LEVELS:
             raise ValueError(f"level must be one of {Logs.LEVELS}")

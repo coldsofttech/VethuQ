@@ -398,7 +398,7 @@ class Document:
         """
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
-            "pp.page_number AS page_number, carrier.id AS canonical_id, "
+            "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
             "FROM pdf_pages_fts "
             "JOIN pdf_pages pp ON pp.id = pdf_pages_fts.rowid "
@@ -418,7 +418,7 @@ class Document:
         """Like `search_indexed_pdf_pages`, but for `image_pages`/`image_pages_fts`."""
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
-            "NULL AS page_number, carrier.id AS canonical_id, "
+            "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
             "FROM image_pages_fts "
             "JOIN image_pages ip ON ip.id = image_pages_fts.rowid "
