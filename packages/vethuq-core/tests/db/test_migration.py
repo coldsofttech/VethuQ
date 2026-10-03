@@ -807,3 +807,37 @@ class TestMigration:
             conn.commit()
         finally:
             conn.close()
+
+    def test_connect_adds_and_backfills_char_count(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        # Simulate a v26 database: pages tables without `char_count`.
+        Db.connect(db_path).close()
+        old_conn = sqlite3.connect(db_path)
+        old_conn.executescript(
+            """
+            INSERT INTO sources (id, path, source_type, status, added_at)
+                VALUES (1, '/docs', 'folder', 'indexed', '2024-01-01');
+            INSERT INTO documents (created_at) VALUES ('2024-01-01'), ('2024-01-01');
+            INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status)
+                VALUES (1, 1, 1, '/a.pdf', 'pdf', 'indexed'),
+                       (2, 1, 2, '/b.png', 'image', 'indexed');
+            INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence)
+                VALUES (1, 1, 'hello', 0.9);
+            INSERT INTO image_pages (document_id, ocr_text, confidence) VALUES (2, 'hi there', 0.9);
+            ALTER TABLE pdf_pages DROP COLUMN char_count;
+            ALTER TABLE image_pages DROP COLUMN char_count;
+            UPDATE schema_version SET version = 26;
+            """
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            assert conn.execute("SELECT char_count FROM pdf_pages").fetchone()["char_count"] == 5
+            assert conn.execute("SELECT char_count FROM image_pages").fetchone()["char_count"] == 8
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION
+        finally:
+            conn.close()

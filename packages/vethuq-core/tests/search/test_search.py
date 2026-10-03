@@ -154,6 +154,33 @@ class TestSearch:
         assert [m.page_number for m in matches] == [1, 3]
         assert [m.total_pages for m in matches] == [3, 3]
 
+    def test_search_returns_every_occurrence_within_a_page(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        source_id = _add_source(conn)
+        document_id = _add_document(conn, source_id, "/docs/report.pdf")
+        _add_pdf_page(conn, document_id, 1, "Budget up, budget down.\nBUDGET flat")
+        _add_pdf_page(conn, document_id, 2, "one budget")
+
+        matches = Search.indexed_content(storage, "budget", context_chars=4)
+
+        assert [(m.page_number, m.matched) for m in matches] == [
+            (1, "Budget"),
+            (1, "budget"),
+            (1, "BUDGET"),
+            (2, "budget"),
+        ]
+        assert matches[0].before == "" and matches[0].after == " up,"
+        assert matches[1].before == "up, " and matches[1].after == " dow"
+        assert matches[2].before == "wn. " and matches[2].after == " fla"
+
+    def test_search_occurrences_do_not_overlap(self, conn: sqlite3.Connection, storage: Storage):
+        source_id = _add_source(conn)
+        document_id = _add_document(conn, source_id, "/docs/a.pdf")
+        _add_pdf_page(conn, document_id, 1, "aaaa")
+
+        assert len(Search.indexed_content(storage, "aa")) == 2
+
     def test_search_ignores_non_indexed_documents(self, conn: sqlite3.Connection, storage: Storage):
         source_id = _add_source(conn)
         document_id = _add_document(conn, source_id, "/docs/pending.pdf", status="pending")

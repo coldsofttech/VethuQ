@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Search now returns every occurrence of a query within a page, not just the first.
+- Each indexed page now records its text's character count; existing databases are updated automatically.
 - Database access now goes through a storage interface, so the CLI, desktop app and Python library no longer handle raw database connections.
 - Search now runs behind a `SearchEngine` interface, so the current `LIKE`-based engine and future ones (e.g. FTS5) can be selected or chained as fallbacks.
 - `vethuq logs <database|index|ui|cli>` shows the latest log entries, with `--tail`, `--follow`, `--level`, `--date` and `--export`; it's also in the interactive menu and `client.logs.tail` in the Python library.

@@ -307,9 +307,9 @@ class Document:
     def insert_pdf_pages(conn: sqlite3.Connection, rows: list[tuple]) -> None:
         conn.executemany(
             "INSERT INTO pdf_pages "
-            "(document_id, page_number, ocr_text, confidence, source, "
+            "(document_id, page_number, ocr_text, char_count, confidence, source, "
             "ocr_engine, language, image_width, image_height, ocr_phase, ocr_angles) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
 
@@ -318,6 +318,7 @@ class Document:
         conn: sqlite3.Connection,
         document_id: int,
         ocr_text: str,
+        char_count: int,
         confidence: float,
         ocr_engine: str | None,
         language: str | None,
@@ -328,11 +329,13 @@ class Document:
     ) -> None:
         conn.execute(
             "INSERT INTO image_pages "
-            "(document_id, ocr_text, confidence, ocr_engine, language, "
-            "image_width, image_height, ocr_phase, ocr_angles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(document_id, ocr_text, char_count, confidence, ocr_engine, language, "
+            "image_width, image_height, ocr_phase, ocr_angles) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 document_id,
                 ocr_text,
+                char_count,
                 confidence,
                 ocr_engine,
                 language,

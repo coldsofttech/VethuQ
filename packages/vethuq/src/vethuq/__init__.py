@@ -703,8 +703,9 @@ class Search:
     def run(self, content: str, *, context_chars: int | None = None) -> list[SearchMatch]:
         """Search indexed OCR text for `content`, case-insensitively.
 
-        Returns one `SearchMatch` per matching page, ordered by file path
-        (pages of the same PDF stay in page order). Only successfully
+        Returns one `SearchMatch` per occurrence, ordered by file path
+        (pages of the same PDF stay in page order, occurrences within a
+        page in text order). Only successfully
         indexed documents are considered. `context_chars` defaults to
         `Vethuq().settings.search.snippet` if not given.
         """

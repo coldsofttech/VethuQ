@@ -42,6 +42,7 @@ class TestQuick:
             "SELECT * FROM image_pages WHERE document_id = ?", (doc["id"],)
         ).fetchone()
         assert page["ocr_text"] == "hello world"
+        assert page["char_count"] == len("hello world")
         assert page["confidence"] == pytest.approx(0.95)
 
         updated_source = conn.execute(

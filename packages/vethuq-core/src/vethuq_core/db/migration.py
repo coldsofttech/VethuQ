@@ -529,3 +529,15 @@ class Migration:
             conn.execute("DROP TABLE document_index")
             conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
             conn.execute("PRAGMA foreign_keys = ON")
+
+        if from_version < 27:
+            # `char_count` (len of `ocr_text`) is recorded at write time so it's
+            # queryable without re-reading the text; pages written before this
+            # version need a one-off backfill.
+            for table in ("pdf_pages", "image_pages"):
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if "char_count" not in columns:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0"
+                    )
+                conn.execute(f"UPDATE {table} SET char_count = LENGTH(ocr_text)")

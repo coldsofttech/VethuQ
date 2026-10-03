@@ -76,10 +76,10 @@ class LikeSearchEngine:
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query`, case-insensitively.
 
-        Returns one `SearchMatch` per matching page, ordered by file path (pages of
-        the same PDF stay in page order). Only successfully indexed documents are
-        considered. When a page contains `query` more than once, only its first
-        occurrence is used.
+        Returns one `SearchMatch` per occurrence of `query`, ordered by file path
+        (pages of the same PDF stay in page order, occurrences within a page in
+        text order). Only successfully indexed documents are considered.
+        Occurrences don't overlap.
         """
         if not query:
             return []
@@ -102,29 +102,31 @@ class LikeSearchEngine:
             duplicate_of_path,
         ) in LikeSearchEngine._indexed_pages(storage, query):
             text = ocr_text.replace("\n", " ")
-            position = text.lower().find(query_lower)
-            if position == -1:
-                continue
+            text_lower = text.lower()
+            total_pages = page_counts.get(canonical_id) if page_number is not None else None
 
-            end = position + len(query)
-            before_start = max(0, position - chars)
-            after_end = min(len(text), end + chars)
+            position = text_lower.find(query_lower)
+            while position != -1:
+                end = position + len(query)
+                before_start = max(0, position - chars)
+                after_end = min(len(text), end + chars)
 
-            matches.append(
-                SearchMatch(
-                    file_id=document_id,
-                    file_name=Path(file_path).name,
-                    file_path=file_path,
-                    page_number=page_number,
-                    total_pages=page_counts.get(canonical_id) if page_number is not None else None,
-                    before=text[before_start:position],
-                    matched=text[position:end],
-                    after=text[end:after_end],
-                    truncated_before=before_start > 0,
-                    truncated_after=after_end < len(text),
-                    duplicate_of_path=duplicate_of_path,
+                matches.append(
+                    SearchMatch(
+                        file_id=document_id,
+                        file_name=Path(file_path).name,
+                        file_path=file_path,
+                        page_number=page_number,
+                        total_pages=total_pages,
+                        before=text[before_start:position],
+                        matched=text[position:end],
+                        after=text[end:after_end],
+                        truncated_before=before_start > 0,
+                        truncated_after=after_end < len(text),
+                        duplicate_of_path=duplicate_of_path,
+                    )
                 )
-            )
+                position = text_lower.find(query_lower, end)
 
         matches.sort(key=lambda m: m.file_path)
         return matches

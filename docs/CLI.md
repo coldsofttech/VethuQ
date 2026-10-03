@@ -142,7 +142,7 @@ and print matching pages. Only documents with status `indexed` are
 searched. Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, and press `q` to close
 it. Each file with a match prints its path once, followed by a
-`Page: X of Y` and boxed, highlighted snippet for every matching page in
+`Page: X of Y` and boxed, highlighted snippet for every match in
 that file (PDFs only show `Page:` — an image is a single page). A
 duplicate file (identical content to another already-indexed file) is
 still shown as its own result, reusing the original's matched text, with
@@ -172,8 +172,8 @@ File: <next file's full path>
 ```
 
 Consecutive files alternate accent colors so results are easier to tell
-apart. When a page contains the search term more than once, only its
-first occurrence is used. The box's width and how much surrounding text
+apart. When a page contains the search term more than once, each
+occurrence gets its own box. The box's width and how much surrounding text
 it shows are controlled by `vethuq settings search snippet` (80
 characters by default).
 
