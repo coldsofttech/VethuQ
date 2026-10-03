@@ -223,7 +223,7 @@ class TestEngine:
     def test_engine_show_defaults_to_quick(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, ["settings", "index", "engine", "show"])
+        result = runner.invoke(app, ["settings", "ocr", "engine", "show"])
 
         assert result.exit_code == 0
         assert "quick" in result.stdout
@@ -231,16 +231,16 @@ class TestEngine:
     def test_engine_set_then_show(self, use_temp_db):
         use_temp_db()
 
-        set_result = runner.invoke(app, ["settings", "index", "engine", "set", "deep"])
+        set_result = runner.invoke(app, ["settings", "ocr", "engine", "set", "deep"])
         assert set_result.exit_code == 0
 
-        show_result = runner.invoke(app, ["settings", "index", "engine", "show"])
+        show_result = runner.invoke(app, ["settings", "ocr", "engine", "show"])
         assert "deep" in show_result.stdout
 
     def test_engine_set_rejects_invalid_value(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, ["settings", "index", "engine", "set", "thorough"])
+        result = runner.invoke(app, ["settings", "ocr", "engine", "set", "thorough"])
 
         assert result.exit_code == 1
 

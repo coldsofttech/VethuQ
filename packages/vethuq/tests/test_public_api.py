@@ -119,10 +119,11 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.search.snippet.get() == 80
     assert client.settings.search.export_format.get() == "json"
     assert client.settings.index.removed_retention.get() == 7 * 24 * 60
-    assert client.settings.index.ocr_retry.get() == 3
+    assert client.settings.ocr.retry.get() == 3
     assert client.settings.index.thread_workers.get() == "0"
+    assert client.settings.index.stability_check.get() == 1.0
     assert client.settings.index.stale_lock.get() == "auto"
-    assert client.settings.index.engine.get() == "quick"
+    assert client.settings.ocr.engine.get() == "quick"
     assert client.settings.db.integrity_check.get() == "auto"
     assert client.settings.db.integrity_check.get_interval_minutes() == 24 * 60
 
@@ -147,20 +148,22 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.search.snippet.set(120)
     client.settings.search.export_format.set("html")
     client.settings.index.removed_retention.set(30)
-    client.settings.index.ocr_retry.set(5)
+    client.settings.ocr.retry.set(5)
     client.settings.index.thread_workers.set(vethuq.ThreadWorkersSettings.AUTO)
+    client.settings.index.stability_check.set(0.5)
     client.settings.index.stale_lock.set("disable")
-    client.settings.index.engine.set("deep")
+    client.settings.ocr.engine.set("deep")
     client.settings.db.integrity_check.set("disable")
     client.settings.db.integrity_check.set_interval_minutes(60)
 
     assert client.settings.search.snippet.get() == 120
     assert client.settings.search.export_format.get() == "html"
     assert client.settings.index.removed_retention.get() == 30
-    assert client.settings.index.ocr_retry.get() == 5
+    assert client.settings.ocr.retry.get() == 5
     assert client.settings.index.thread_workers.get() == vethuq.ThreadWorkersSettings.AUTO
+    assert client.settings.index.stability_check.get() == 0.5
     assert client.settings.index.stale_lock.get() == "disable"
-    assert client.settings.index.engine.get() == "deep"
+    assert client.settings.ocr.engine.get() == "deep"
     assert client.settings.db.integrity_check.get() == "disable"
     assert client.settings.db.integrity_check.get_interval_minutes() == 60
 
@@ -171,7 +174,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
     for value in vethuq.STALE_LOCK_VALUES:
         client.settings.index.stale_lock.set(value)
     for value in vethuq.OCR_ENGINE_MODES:
-        client.settings.index.engine.set(value)
+        client.settings.ocr.engine.set(value)
     for value in vethuq.INTEGRITY_CHECK_VALUES:
         client.settings.db.integrity_check.set(value)
     client.settings.index.thread_workers.set("0")
@@ -184,10 +187,11 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         lambda s: s.search.snippet.set(-1),
         lambda s: s.search.export_format.set("pdf"),
         lambda s: s.index.removed_retention.set(-1),
-        lambda s: s.index.ocr_retry.set(-1),
+        lambda s: s.ocr.retry.set(-1),
         lambda s: s.index.thread_workers.set("not-a-number"),
+        lambda s: s.index.stability_check.set(-1),
         lambda s: s.index.stale_lock.set("sometimes"),
-        lambda s: s.index.engine.set("extreme"),
+        lambda s: s.ocr.engine.set("extreme"),
         lambda s: s.db.integrity_check.set("sometimes"),
         lambda s: s.db.integrity_check.set_interval_minutes(-1),
     ],
@@ -197,6 +201,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         "removed_retention",
         "ocr_retry",
         "thread_workers",
+        "stability_check",
         "stale_lock",
         "engine",
         "integrity_check",

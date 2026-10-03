@@ -153,22 +153,15 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 - `is_enabled()` — whether OCR should attempt to use the GPU (disabled by default)
 - `enable()` / `disable()`
 
-### `client.settings.index.engine`
-
-- `get()` — how thoroughly OCR looks for rotated text (`"quick"` by default)
-- `set(value)` — `value` must be one of `OCR_ENGINE_MODES` (`"quick"`, `"moderate"`,
-  `"deep"`); raises `InvalidSettingValueError` otherwise. Files are always indexed
-  quick first; moderate (90/180/270°) and deep (every 15°) then run in the background.
-
-### `client.settings.index.ocr_retry`
-
-- `get()` — times a file's OCR is retried after a transient failure (3 by default)
-- `set(attempts)` — raises `InvalidSettingValueError` if `attempts` is negative
-
 ### `client.settings.index.removed_retention`
 
 - `get()` — minutes a removed source is kept before it's purged (7 days by default)
 - `set(minutes)` — raises `InvalidSettingValueError` if `minutes` is negative
+
+### `client.settings.index.stability_check`
+
+- `get()` — seconds a file must stay unchanged, across two checks, before it's indexed (`1.0` by default; `0` disables the check)
+- `set(seconds)` — raises `InvalidSettingValueError` if `seconds` is negative
 
 ### `client.settings.index.stale_lock`
 
@@ -192,6 +185,18 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 
 - `get()` — days of daily log files kept (`15` by default)
 - `set(days)` — `days` must be at least 1; raises `InvalidSettingValueError` otherwise
+
+### `client.settings.ocr.engine`
+
+- `get()` — how thoroughly OCR looks for rotated text (`"quick"` by default)
+- `set(value)` — `value` must be one of `OCR_ENGINE_MODES` (`"quick"`, `"moderate"`,
+  `"deep"`); raises `InvalidSettingValueError` otherwise. Files are always indexed
+  quick first; moderate (90/180/270°) and deep (every 15°) then run in the background.
+
+### `client.settings.ocr.retry`
+
+- `get()` — times a file's OCR is retried after a transient failure (3 by default)
+- `set(attempts)` — raises `InvalidSettingValueError` if `attempts` is negative
 
 ### `client.settings.search.export_format`
 

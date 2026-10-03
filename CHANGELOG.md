@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - VethuQ now writes separate daily log files for the database, indexing, desktop app and CLI. Choose how verbose they are and how many days are kept with `vethuq settings logs level|retention` (also `client.settings.logs` in the Python library).
 - VethuQ's data folder is now organised into `db/`, `run/` and `logs/`; an existing database is moved into `db/` automatically.
 - VethuQ now checks the database for corruption (once a day when it's opened, or on demand with `vethuq db integrity-check`) and logs the result; configure it with `vethuq settings db integrity-check`.
-- OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings index engine set quick|moderate|deep` (also in the interactive menu and `client.settings.index.engine`).
-- Indexing now guards against files that are still being written or that change while being read: a file whose size/mtime isn't stable across two checks is skipped until the next scan, and one modified during processing has its result discarded and is retried (then marked as an error). `vethuq settings index stability-check set/show` controls the check interval (1 second by default, 0 disables it).
+- OCR can now find rotated text. Files are still indexed quickly first so they're searchable right away, then deeper passes keep adding text in the background — choose how thorough with `vethuq settings ocr engine set quick|moderate|deep` (also in the interactive menu and `client.settings.ocr.engine`).
+- Indexing now guards against files that are still being written or that change while being read: a file whose size/mtime isn't stable across two checks is skipped until the next scan, and one modified during processing has its result discarded and is retried (then marked as an error). `vethuq settings index stability-check set/show` (also `client.settings.index.stability_check`) controls the check interval (1 second by default, 0 disables it).
 - VethuQ is now installable via `pip install vethuq` (CLI and Python library, Windows and Linux), and ships as a Windows desktop installer via GitHub Releases.
 - The Windows desktop installer now also installs the `vethuq` CLI alongside the desktop app, with an option to add it to your PATH.
 - The Python library now offers a `vethuq.Vethuq()` client with `client.sources` (add/list/remove), `client.index` (run/restart/status/stop/pause/resume/history), `client.settings` (GPU, search snippet/export format, and indexing retention/retry/workers/stale-lock), `client.stats` (processing/confidence statistics), and `client.search` (search indexed content and export results) — no database connection to manage yourself.
@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Searching is now faster on large libraries, and still matches text anywhere within a word, case-insensitively.
 - Indexing now reports why a file couldn't be read — removed mid-run, password-protected, or corrupted — instead of a generic failure, and doesn't retry it.
 - Files VethuQ can't read, such as `.txt` or `.csv`, are now listed as "Unsupported file format" instead of being silently ignored.
+
+### Changed
+
+- OCR settings now live under their own group: `vethuq settings index ocr-retry` is now `vethuq settings ocr retry`, and `settings index engine` is now `settings ocr engine` (likewise `client.settings.ocr.retry` / `client.settings.ocr.engine`, and Settings > Ocr in the interactive menu).
 
 ### Fixed
 

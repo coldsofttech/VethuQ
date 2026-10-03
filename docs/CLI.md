@@ -212,22 +212,6 @@ vethuq settings gpu disable
 vethuq settings gpu status
 ```
 
-### `index engine`
-
-Configure how thoroughly OCR looks for rotated text. One of `quick` (the
-default — upright text only), `moderate` (also 90°, 180° and 270°), or `deep`
-(also every 15° in between). Each includes the ones before it. Files are
-always indexed `quick` first so they're searchable right away; the deeper
-passes then run in the background, moderate before deep, and any new or
-changed file gets its quick pass before deeper work continues. Raising the
-setting deepens already-indexed files the next time indexing runs; lowering
-it never removes text. `vethuq index status` shows the current phase.
-
-```bash
-vethuq settings index engine set moderate
-vethuq settings index engine show
-```
-
 ### `index removed-retention set <minutes>|show`
 
 Configure, in minutes, how long a removed source (and its indexed data)
@@ -239,6 +223,43 @@ schedule.
 ```bash
 vethuq settings index removed-retention set 60
 vethuq settings index removed-retention show
+```
+
+### `index stability-check set <seconds>|show`
+
+Before indexing a file, VethuQ checks that its size and modified time are
+unchanged across two checks this many seconds apart. A file still being
+copied or downloaded fails the check and is left for the next scan; a file
+that changes while it's being read has its result discarded and is retried
+(up to the `ocr retry` count) before being marked as an error. Defaults to 1
+second; `0` disables the check.
+
+```bash
+vethuq settings index stability-check set 2
+vethuq settings index stability-check show
+```
+
+### `index stale-lock set <value>|show`
+
+Configure whether a lock left behind by an indexing run that didn't exit
+cleanly (a crash, power loss) is cleared automatically on the next run. One
+of `auto` (the default — clears it), `enable` (clears it, an explicit opt-in
+with the same effect as `auto`), or `disable` (the next run needs `--force`).
+
+```bash
+vethuq settings index stale-lock set disable
+vethuq settings index stale-lock show
+```
+
+### `index thread-workers set <value>|show`
+
+Configure how many worker threads background indexing uses. `0` (the
+default) indexes one file at a time; `1`-`8` is a fixed worker count; `auto`
+sizes the pool to current CPU and memory headroom throughout the run.
+
+```bash
+vethuq settings index thread-workers set auto
+vethuq settings index thread-workers show
 ```
 
 ### `logs level set <level>|show`
@@ -262,6 +283,44 @@ sets how many days of daily files are kept before they're deleted; defaults to
 ```bash
 vethuq settings logs retention set 30
 vethuq settings logs retention show
+```
+
+### `ocr engine set <mode>|show`
+
+Configure how thoroughly OCR looks for rotated text. One of `quick` (the
+default — upright text only), `moderate` (also 90°, 180° and 270°), or `deep`
+(also every 15° in between). Each includes the ones before it. Files are
+always indexed `quick` first so they're searchable right away; the deeper
+passes then run in the background, moderate before deep, and any new or
+changed file gets its quick pass before deeper work continues. Raising the
+setting deepens already-indexed files the next time indexing runs; lowering
+it never removes text. `vethuq index status` shows the current phase.
+
+```bash
+vethuq settings ocr engine set moderate
+vethuq settings ocr engine show
+```
+
+### `ocr retry set <attempts>|show`
+
+Configure how many times a file's OCR is retried after a transient failure
+before the file is marked as an error. Defaults to 3; `0` disables retries.
+A file that's missing, password-protected or corrupted fails immediately
+without retrying.
+
+```bash
+vethuq settings ocr retry set 5
+vethuq settings ocr retry show
+```
+
+### `search export-format set <format>|show`
+
+Configure the default format `vethuq search --export` writes to when none is
+given: `json` (the default) or `html`.
+
+```bash
+vethuq settings search export-format set html
+vethuq settings search export-format show
 ```
 
 ### `search snippet set <chars>|show`
