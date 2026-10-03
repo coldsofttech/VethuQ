@@ -1,6 +1,7 @@
 """Compressed database backups, plus restore / reset / repair built on them.
 
-Backups live in `<db folder>/backups/` as `<name>.db.gz`. They are taken with
+Backups live in `<db folder>/backups/` (or the folder set with
+`vethuq settings location backups set`) as `<name>.db.gz`. They are taken with
 SQLite's own backup API (not a file copy), so they are consistent even while
 the database is open and part of it is still in the `-wal` file.
 
@@ -27,6 +28,7 @@ from pathlib import Path
 from vethuq_core.db.connection import Db
 from vethuq_core.db.integrity import IntegrityCheckResult
 from vethuq_core.logs import Logs
+from vethuq_core.paths import Paths
 from vethuq_core.settings import DbSettings, Settings
 from vethuq_core.storage import Storage
 
@@ -59,10 +61,8 @@ class Backup:
 
     @staticmethod
     def directory(db_path: Path) -> Path:
-        """The folder backups are kept in (next to the database); created on demand."""
-        path = db_path.parent / Backup.DIRNAME
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        """The folder backups are kept in (see `Paths.backups_dir`); created on demand."""
+        return Paths.backups_dir(db_path)
 
     @staticmethod
     def _timestamp() -> str:
@@ -98,15 +98,20 @@ class Backup:
             conn.close()
 
     @staticmethod
-    def _snapshot(db_path: Path, dest: Path) -> None:
-        """Write a consistent plain copy of the database at `db_path` to `dest`."""
-        source = sqlite3.connect(db_path)
+    def _snapshot(db_path: Path, dest: Path, conn: sqlite3.Connection | None = None) -> None:
+        """Write a consistent plain copy of the database to `dest`.
+
+        Copies from `conn` if given (a connection already open on the database, e.g.
+        mid-migration), otherwise from a fresh connection to `db_path`.
+        """
+        source = conn or sqlite3.connect(db_path)
         target = sqlite3.connect(dest)
         try:
             source.backup(target)
         finally:
             target.close()
-            source.close()
+            if conn is None:
+                source.close()
 
     @staticmethod
     def _compress(plain: Path, dest: Path) -> None:
@@ -117,7 +122,12 @@ class Backup:
 
     @staticmethod
     def create(
-        db_path: Path, name: str | None = None, *, prefix: str = "", require_ok: bool = True
+        db_path: Path,
+        name: str | None = None,
+        *,
+        prefix: str = "",
+        require_ok: bool = True,
+        conn: sqlite3.Connection | None = None,
     ) -> BackupInfo:
         """Take a compressed backup of the database now and return it.
 
@@ -145,7 +155,7 @@ class Backup:
             raise BackupError(f"A backup named '{final_name}' already exists.")
         plain = directory / f".{final_name}.tmp.db"
         try:
-            Backup._snapshot(db_path, plain)
+            Backup._snapshot(db_path, plain, conn)
             if require_ok:
                 messages = Backup._integrity_messages(plain)
                 if messages != ["ok"]:
@@ -176,7 +186,7 @@ class Backup:
     @staticmethod
     def entries(db_path: Path) -> list[BackupInfo]:
         """Every backup, newest first."""
-        directory = db_path.parent / Backup.DIRNAME
+        directory = Paths.backups_dir(db_path, create=False)
         if not directory.is_dir():
             return []
         infos = [
@@ -224,6 +234,39 @@ class Backup:
         return removed
 
     @staticmethod
+    def move_directory(db_path: Path, target: Path) -> int:
+        """Move every backup to `target` and use it from now on; returns how many moved.
+
+        Raises `BackupError` if `target` is the current folder or can't be written to.
+        Backups are copied first and only removed once all copies exist.
+        """
+        current = Backup.directory(db_path)
+        if target.resolve() == current.resolve():
+            raise BackupError("That is already the backups location.")
+        moved: list[Path] = []
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            for info in Backup.entries(db_path):
+                shutil.copy2(info.path, target / info.path.name)
+                moved.append(info.path)
+        except OSError as exc:
+            raise BackupError(f"Could not use '{target}' for backups: {exc}") from exc
+        Paths.save_backups_location(target)
+        for path in moved:
+            path.unlink(missing_ok=True)
+        _logger.info("Moved %d database backup(s) to %s", len(moved), target)
+        return len(moved)
+
+    @staticmethod
+    def reset_directory(db_path: Path) -> int:
+        """Move backups back to the default `db/backups` folder; returns how many moved."""
+        if Paths.configured_backups_location() is None:
+            return 0
+        moved = Backup.move_directory(db_path, db_path.parent / Paths.BACKUPS_DIRNAME)
+        Paths.clear_backups_location()
+        return moved
+
+    @staticmethod
     def maybe_run_auto(storage: Storage, db_path: Path) -> BackupInfo | None:
         """Take an automatic backup on connect if `db_backup` calls for one now.
 
@@ -264,6 +307,44 @@ class Backup:
             Path(f"{db_path}{suffix}").unlink(missing_ok=True)
 
     @staticmethod
+    def _overwrite_in_place(db_path: Path, source: sqlite3.Connection) -> None:
+        """Copy `source` over the live database with SQLite's backup API.
+
+        Used when the database files can't be swapped because another process (the
+        desktop app, another command) has them open - SQLite only needs a brief lock.
+        """
+        live = sqlite3.connect(db_path, timeout=5)
+        try:
+            source.backup(live)
+        except sqlite3.Error as exc:
+            raise BackupError(
+                f"The database is in use by another VethuQ process ({exc}). "
+                "Close the desktop app and any running VethuQ commands, then try again."
+            ) from exc
+        finally:
+            live.close()
+
+    @staticmethod
+    def _replace_db(db_path: Path, staged: Path | None) -> None:
+        """Make `staged` (or, if None, an empty database) the database at `db_path`.
+
+        Swaps the files when it can; if another process holds them open, overwrites the
+        live database in place instead.
+        """
+        try:
+            Backup._remove_db_files(db_path)
+            if staged is not None:
+                staged.replace(db_path)
+            return
+        except OSError:
+            _logger.warning("Database files are in use; overwriting the live database in place")
+        source = sqlite3.connect(staged if staged is not None else ":memory:")
+        try:
+            Backup._overwrite_in_place(db_path, source)
+        finally:
+            source.close()
+
+    @staticmethod
     def restore(db_path: Path, name_or_path: str) -> BackupInfo | None:
         """Replace the database with a backup. Returns the safety backup of what it replaced.
 
@@ -295,8 +376,7 @@ class Backup:
                     f"(schema {version}); upgrade VethuQ to restore it."
                 )
             safety = Backup._safety_snapshot(db_path)
-            Backup._remove_db_files(db_path)
-            staging.replace(db_path)
+            Backup._replace_db(db_path, staging)
         finally:
             staging.unlink(missing_ok=True)
         _logger.info("Restored database from %s", source)
@@ -310,7 +390,7 @@ class Backup:
         is active and nothing else has the database open.
         """
         safety = Backup._safety_snapshot(db_path)
-        Backup._remove_db_files(db_path)
+        Backup._replace_db(db_path, None)
         _logger.info("Reset the database (all data cleared)")
         return safety
 

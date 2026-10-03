@@ -1,5 +1,7 @@
 from typer.testing import CliRunner
 from vethuq_cli.main import app
+from vethuq_core.db.backup import Backup
+from vethuq_core.storage import open_storage
 
 runner = CliRunner()
 
@@ -455,3 +457,53 @@ class TestBackupSettings:
 
         for args in (["set", "auto"], ["interval", "set", "0"], ["retention", "set", "0"]):
             assert runner.invoke(app, ["settings", "db", "backup", *args]).exit_code == 1
+
+
+class TestBackupsLocation:
+    def test_show_defaults_to_next_to_the_database(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "location", "backups", "show"])
+
+        assert result.exit_code == 0
+        assert "backups" in result.stdout
+        assert "default" in result.stdout
+
+    def test_set_moves_backups_and_show_reflects_it(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        open_storage().close()
+        Backup.create(db_path, "keep")
+        target = tmp_path / "elsewhere"
+
+        set_result = runner.invoke(
+            app, ["settings", "location", "backups", "set", str(target), "--force"]
+        )
+        show_result = runner.invoke(app, ["settings", "location", "backups", "show"])
+
+        assert set_result.exit_code == 0
+        assert (target / "keep.db.gz").exists()
+        assert "elsewhere" in show_result.stdout
+
+    def test_set_asks_first(self, use_temp_db, tmp_path):
+        use_temp_db()
+        open_storage().close()
+
+        result = runner.invoke(
+            app, ["settings", "location", "backups", "set", str(tmp_path / "x")], input="n\n"
+        )
+
+        assert result.exit_code == 1
+        assert not (tmp_path / "x").exists()
+
+    def test_reset_returns_to_the_default(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        open_storage().close()
+        runner.invoke(
+            app,
+            ["settings", "location", "backups", "set", str(tmp_path / "elsewhere"), "--force"],
+        )
+
+        result = runner.invoke(app, ["settings", "location", "backups", "reset"])
+
+        assert result.exit_code == 0
+        assert Backup.directory(db_path) == db_path.parent / "backups"

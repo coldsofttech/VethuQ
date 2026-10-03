@@ -48,7 +48,7 @@ Delete the database and everything in it — registered sources, the search inde
 
 ### Automatic backups
 
-VethuQ takes a compressed backup automatically the first time it opens the database each day and keeps `auto-...` and `safety-...` backups for 7 days (always keeping the newest three). Backups live in a `backups` folder next to the database. If an index run has to recover from a crash or a forced stop, VethuQ checks the database first and stops with instructions if it is damaged. Tune this under `vethuq settings db backup`.
+VethuQ takes a compressed backup automatically the first time it opens the database each day and keeps `auto-...` and `safety-...` backups for 7 days (always keeping the newest three). Backups live in a `backups` folder next to the database (or wherever `vethuq settings location backups set` points). A schema upgrade also saves a `safety-premigration-...` backup first. If an index run has to recover from a crash or a forced stop, VethuQ checks the database first and stops with instructions if it is damaged. Tune this under `vethuq settings db backup`.
 
 ## `index`
 
@@ -401,6 +401,16 @@ vethuq settings db integrity-check set auto
 vethuq settings db integrity-check show
 vethuq settings db integrity-check interval set 60
 vethuq settings db integrity-check interval show
+```
+
+### `location backups show|set|reset`
+
+Backups are kept in a `backups` folder next to the database by default. `set <folder>` moves the existing backups to another folder (for example another drive) and keeps new ones there; it shows what will move and asks first (`--force` skips the question). `show` prints the current folder and `reset` moves everything back to the default. The folder is remembered in the same small `location.json` file as `vethuq settings location set`.
+
+```bash
+vethuq settings location backups set D:\VethuQ-backups
+vethuq settings location backups show
+vethuq settings location backups reset
 ```
 
 ### `db backup`

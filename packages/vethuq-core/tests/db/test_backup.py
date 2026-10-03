@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from vethuq_core.db import Db
 from vethuq_core.db.backup import Backup, BackupError
+from vethuq_core.paths import Paths
 from vethuq_core.settings import DbSettings, InvalidSettingValueError, Settings
 from vethuq_core.storage import open_storage
 
@@ -165,6 +166,42 @@ class TestRestore:
             Backup.restore(db_path, "nope")
 
 
+class TestDatabaseInUse:
+    @pytest.fixture
+    def locked_files(self, monkeypatch):
+        """Make deleting the database files fail, as on Windows when another process has them."""
+
+        def refuse(db_path):
+            raise PermissionError("in use")
+
+        monkeypatch.setattr(Backup, "_remove_db_files", staticmethod(refuse))
+
+    def test_restore_falls_back_to_overwriting_in_place(self, db_path, locked_files):
+        storage = open_storage(db_path)
+        DbSettings.set_backup_retention_days(storage, 3)
+        storage.commit()
+        storage.close()
+        Backup.create(db_path, "good")
+        storage = open_storage(db_path)
+        DbSettings.set_backup_retention_days(storage, 9)
+        storage.commit()
+        storage.close()
+
+        Backup.restore(db_path, "good")
+
+        storage = open_storage(db_path)
+        try:
+            assert DbSettings.get_backup_retention_days(storage) == 3
+        finally:
+            storage.close()
+
+    def test_reset_falls_back_to_emptying_in_place(self, db_path, locked_files):
+        Backup.reset(db_path)
+
+        assert db_path.exists()
+        open_storage(db_path).close()  # a fresh schema is created on next open
+
+
 class TestReset:
     def test_clears_the_database_after_a_safety_backup(self, db_path):
         safety = Backup.reset(db_path)
@@ -218,3 +255,48 @@ class TestSettings:
                 DbSettings.set_backup_retention_days(storage, 0)
         finally:
             storage.close()
+
+
+class TestBackupsLocation:
+    def test_defaults_to_backups_next_to_the_database(self, db_path):
+        assert Backup.directory(db_path) == db_path.parent / "backups"
+        assert Paths.configured_backups_location() is None
+
+    def test_move_directory_moves_existing_backups_and_is_used_from_then_on(
+        self, db_path, tmp_path
+    ):
+        Backup.create(db_path, "one")
+        target = tmp_path / "elsewhere"
+
+        moved = Backup.move_directory(db_path, target)
+
+        assert moved == 1
+        assert Paths.configured_backups_location() == target
+        assert (target / "one.db.gz").exists()
+        assert not (db_path.parent / "backups" / "one.db.gz").exists()
+        assert Backup.create(db_path, "two").path.parent == target
+        assert {b.name for b in Backup.entries(db_path)} == {"one", "two"}
+
+    def test_reset_directory_returns_to_the_default(self, db_path, tmp_path):
+        Backup.create(db_path, "one")
+        Backup.move_directory(db_path, tmp_path / "elsewhere")
+
+        moved = Backup.reset_directory(db_path)
+
+        assert moved == 1
+        assert Paths.configured_backups_location() is None
+        assert (db_path.parent / "backups" / "one.db.gz").exists()
+
+    def test_same_folder_is_rejected(self, db_path):
+        with pytest.raises(BackupError, match="already"):
+            Backup.move_directory(db_path, db_path.parent / "backups")
+
+    def test_location_file_keeps_both_keys(self, db_path, tmp_path):
+        Paths.save_location(tmp_path / "root")
+        Backup.move_directory(db_path, tmp_path / "elsewhere")
+
+        assert Paths.configured_location() == tmp_path / "root"
+        Paths.clear_location()
+        assert Paths.configured_backups_location() == tmp_path / "elsewhere"
+        Paths.clear_backups_location()
+        assert not Paths.location_file().exists()

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Automatic database backups: the first time VethuQ opens the database each day it saves a compressed copy, kept for 7 days. `vethuq db backup create|list|delete` manages them, and `vethuq settings db backup` adjusts how often they are taken and how long they are kept (also in the interactive menu and `client.db`).
+- `vethuq settings location backups set <folder>` keeps database backups somewhere else (another drive, say), moving the existing ones; `show` and `reset` complete it. Upgrading the database now saves its pre-upgrade backup the same way instead of a `.bkp` file.
 - `vethuq db restore <name-or-path>`, `vethuq db repair` and `vethuq db reset` recover a damaged database; each saves the current database as a backup first.
 - After recovering from an interrupted index run, VethuQ now checks the database for corruption and stops with a clear message if it's damaged.
 - Leftover temporary files from an interrupted index run are now cleaned up automatically when the next run starts.

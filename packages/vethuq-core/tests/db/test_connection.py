@@ -1,8 +1,9 @@
+import gzip
 import sqlite3
-from pathlib import Path
 
 import pytest
 from vethuq_core.db import Db, SchemaVersionError
+from vethuq_core.db.backup import Backup
 
 
 class TestConnection:
@@ -18,7 +19,7 @@ class TestConnection:
         db_path = tmp_path / "vethuq.db"
         conn = Db.connect(db_path)
         try:
-            assert not Path(f"{db_path}.bkp").exists()
+            assert not [b for b in Backup.entries(db_path) if "premigration" in b.name]
         finally:
             conn.close()
 
@@ -50,8 +51,10 @@ class TestConnection:
 
         conn = Db.connect(db_path)
         try:
-            backup_path = Path(f"{db_path}.bkp")
-            assert backup_path.exists()
+            backups = [b for b in Backup.entries(db_path) if "premigration" in b.name]
+            assert len(backups) == 1
+            backup_path = tmp_path / "pre-migration.db"
+            backup_path.write_bytes(gzip.decompress(backups[0].path.read_bytes()))
 
             # The backup is a snapshot of the database as it was *before*
             # migrating - not a copy of the now-migrated `db_path`.

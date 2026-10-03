@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 from rich.text import Text
+from vethuq_core.db.backup import Backup, BackupError
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.paths import Paths
 from vethuq_core.settings import (
@@ -18,7 +19,7 @@ from vethuq_core.settings import (
     SearchSettings,
     SourceSettings,
 )
-from vethuq_core.storage import open_storage
+from vethuq_core.storage import default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -82,8 +83,10 @@ logs_app = typer.Typer(help="Configure logging.")
 log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
 log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
 location_app = typer.Typer(help="Configure where VethuQ keeps its database, logs and run files.")
+backups_location_app = typer.Typer(help="Configure where database backups are kept.")
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(location_app, name="location")
+location_app.add_typer(backups_location_app, name="backups")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
@@ -1313,6 +1316,97 @@ def location_set(
                 ("Location set to ", "white"), (str(target), Theme.VALUE), (".", "white"), note
             ),
             "Location",
+            Theme.OK,
+        )
+    )
+
+
+@backups_location_app.command("show")
+def backups_location_show() -> None:
+    """Show where database backups are kept."""
+    folder = Paths.backups_dir(default_db_path(), create=False)
+    source = (
+        "set by 'vethuq settings location backups set'"
+        if Paths.configured_backups_location()
+        else "the default, next to the database"
+    )
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location: ", "white"),
+                (str(folder), Theme.VALUE),
+                (f"\n({source})", "white"),
+            ),
+            "Backups Location",
+            Theme.PRIMARY,
+        )
+    )
+
+
+@backups_location_app.command("set")
+def backups_location_set(
+    path: str = typer.Argument(..., help="Folder to keep database backups in."),
+    force: bool = typer.Option(False, "--force", help="Move the backups without asking first."),
+) -> None:
+    """Keep database backups in PATH from now on, moving the existing ones there.
+
+    Shows what will change and asks for confirmation unless --force is given.
+    """
+    db_path = default_db_path()
+    target = Path(path).expanduser().absolute()
+    current = Paths.backups_dir(db_path)
+    if not force:
+        count = len(Backup.entries(db_path))
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("This will move ", "white"),
+                    (f"{count} backup(s)", Theme.VALUE),
+                    (" from ", "white"),
+                    (str(current), Theme.VALUE),
+                    (" to ", "white"),
+                    (str(target), Theme.VALUE),
+                    (" and keep new backups there from now on.", "white"),
+                ),
+                "Change Backups Location",
+                Theme.WARNING,
+            )
+        )
+        if not typer.confirm("Continue?"):
+            raise typer.Exit(code=1)
+    try:
+        Backup.move_directory(db_path, target)
+    except BackupError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location set to ", "white"), (str(target), Theme.VALUE), (".", "white")
+            ),
+            "Backups Location",
+            Theme.OK,
+        )
+    )
+
+
+@backups_location_app.command("reset")
+def backups_location_reset() -> None:
+    """Go back to keeping database backups next to the database, moving them back."""
+    db_path = default_db_path()
+    try:
+        Backup.reset_directory(db_path)
+    except BackupError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location reset to ", "white"),
+                (str(Paths.backups_dir(db_path)), Theme.VALUE),
+                (".", "white"),
+            ),
+            "Backups Location",
             Theme.OK,
         )
     )

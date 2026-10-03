@@ -259,7 +259,9 @@ def reset(
 
 
 @app.command("repair")
-def repair() -> None:
+def repair(
+    force: bool = typer.Option(False, "--force", help="Repair without asking for confirmation."),
+) -> None:
     """Rebuild the database's indexes (REINDEX) and check it again.
 
     Fixes index-only corruption. If the check still fails, restore a backup
@@ -267,6 +269,14 @@ def repair() -> None:
     """
     db_path = default_db_path()
     DbCommands.require_idle(db_path)
+    DbCommands.confirm(
+        Text(
+            "Rebuild the database's indexes and check it again? "
+            "The current database is backed up first."
+        ),
+        "Repair",
+        force,
+    )
     try:
         result, safety = Backup.repair(db_path)
     except BackupError as exc:

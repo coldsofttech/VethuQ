@@ -112,10 +112,19 @@ class TestRestoreResetRepair:
         use_temp_db()
         open_storage().close()
 
-        result = runner.invoke(app, ["db", "repair"])
+        result = runner.invoke(app, ["db", "repair", "--force"])
 
         assert result.exit_code == 0
         assert "repaired" in result.stdout
+
+    def test_repair_asks_first_and_aborts_on_no(self, use_temp_db):
+        db_path = use_temp_db()
+        open_storage().close()
+
+        result = runner.invoke(app, ["db", "repair"], input="n\n")
+
+        assert "Aborted" in result.stdout
+        assert not any(b.kind == "safety" for b in Backup.entries(db_path))
 
     def test_repair_failure_points_to_restore_and_reset(self, use_temp_db, monkeypatch):
         use_temp_db()
@@ -126,7 +135,7 @@ class TestRestoreResetRepair:
             staticmethod(lambda p: (IntegrityCheckResult(ok=False, errors=["bad"]), None)),
         )
 
-        result = runner.invoke(app, ["db", "repair"])
+        result = runner.invoke(app, ["db", "repair", "--force"])
 
         assert result.exit_code == 1
         assert "db restore" in result.output
@@ -137,7 +146,7 @@ class TestRestoreResetRepair:
         open_storage().close()
         monkeypatch.setattr(IndexRunner, "is_running", staticmethod(lambda p: (True, 1)))
 
-        for args in (["restore", "x", "--force"], ["reset", "--force"], ["repair"]):
+        for args in (["restore", "x", "--force"], ["reset", "--force"], ["repair", "--force"]):
             result = runner.invoke(app, ["db", *args])
             assert result.exit_code == 1
             assert "index run is in progress" in result.output

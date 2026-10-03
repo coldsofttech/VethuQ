@@ -48,6 +48,9 @@ from vethuq_cli.settings import (
     backup_retention_show,
     backup_set,
     backup_show,
+    backups_location_reset,
+    backups_location_set,
+    backups_location_show,
     case_sensitive_disable,
     case_sensitive_enable,
     case_sensitive_show,
@@ -810,7 +813,8 @@ class InteractiveMenu:
     def _settings_location_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Location", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Location",
+                [("1", "Show"), ("2", "Set"), ("3", "Backups"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -819,6 +823,27 @@ class InteractiveMenu:
             elif choice == "2":
                 path = Prompt.ask("Folder to keep VethuQ's data in", console=console)
                 InteractiveMenu._run_safely(location_set, path=path.strip().strip('"'), force=False)
+            elif choice == "3":
+                InteractiveMenu._settings_backups_location_menu()
+
+    @staticmethod
+    def _settings_backups_location_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Location > Backups",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(backups_location_show)
+            elif choice == "2":
+                path = Prompt.ask("Folder to keep database backups in", console=console)
+                InteractiveMenu._run_safely(
+                    backups_location_set, path=path.strip().strip('"'), force=False
+                )
+            elif choice == "3":
+                InteractiveMenu._run_safely(backups_location_reset)
 
     @staticmethod
     def _settings_menu() -> None:
@@ -895,7 +920,7 @@ class InteractiveMenu:
                 source = Prompt.ask("Backup name or file path to restore", console=console)
                 InteractiveMenu._run_safely(db_restore, source=source, force=False)
             elif choice == "4":
-                InteractiveMenu._run_safely(db_repair)
+                InteractiveMenu._run_safely(db_repair, force=False)
             elif choice == "5":
                 InteractiveMenu._run_safely(db_reset, force=False)
 
