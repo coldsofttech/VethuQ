@@ -90,7 +90,8 @@ class Ocr:
         conn: sqlite3.Connection, document_index_id: int
     ) -> sqlite3.Row | None:
         return conn.execute(
-            "SELECT file_size_bytes FROM document_index WHERE id = ?", (document_index_id,)
+            "SELECT file_path, file_size_bytes FROM document_index WHERE id = ?",
+            (document_index_id,),
         ).fetchone()
 
     class Page:

@@ -330,8 +330,8 @@ class TestStatus:
         now = datetime.now(UTC).isoformat()
         conn.execute(
             "INSERT INTO processing_metrics "
-            "(file_type, size_bucket, document_count, avg_duration_seconds, updated_at) "
-            "VALUES ('image', 'medium', 3, 10.0, ?)",
+            "(file_type, extension, size_bucket, document_count, avg_duration_seconds, "
+            "updated_at) VALUES ('image', 'png', 'medium', 3, 10.0, ?)",
             (now,),
         )
         conn.commit()

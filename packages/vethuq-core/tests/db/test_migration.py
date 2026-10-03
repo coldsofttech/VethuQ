@@ -365,24 +365,21 @@ class TestMigration:
             assert "avg_confidence" not in columns
             assert "pages_native" not in columns
 
-            pdf_metrics = conn.execute(
-                "SELECT document_count, avg_duration_seconds, avg_peak_memory_mb, avg_cpu_percent "
-                "FROM processing_metrics WHERE file_type = 'pdf' AND size_bucket = 'medium'"
-            ).fetchone()
-            assert pdf_metrics["document_count"] == 1
-            assert pdf_metrics["avg_duration_seconds"] == 5.0
+            # Timings can't be recovered for documents that were never indexed, so the
+            # rebuilt table starts empty (see `test_stats_per_extension_migration.py`).
+            assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
 
             confidence_rows = {
-                (row["file_type"], row["process_type"]): (row["page_count"], row["avg_confidence"])
+                (row["extension"], row["process_type"]): (row["page_count"], row["avg_confidence"])
                 for row in conn.execute(
-                    "SELECT file_type, process_type, page_count, avg_confidence "
+                    "SELECT extension, process_type, page_count, avg_confidence "
                     "FROM confidence_metrics"
                 )
             }
             assert confidence_rows[("pdf", "native")] == (1, 1.0)
             assert confidence_rows[("pdf", "ocr")] == (1, 0.6)
             assert confidence_rows[("pdf", "mixed")] == (1, 0.8)
-            assert confidence_rows[("image", "ocr")] == (1, 0.7)
+            assert confidence_rows[("png", "ocr")] == (1, 0.7)
 
             version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
             assert version == Db.SCHEMA_VERSION

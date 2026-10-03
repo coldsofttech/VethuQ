@@ -25,7 +25,7 @@ class StatsRenderer:
                 box=box.SIMPLE, header_style=f"bold {Theme.PRIMARY}", border_style=Theme.PRIMARY
             )
             body.add_column("Phase")
-            body.add_column("File type")
+            body.add_column("Extension")
             body.add_column("Size")
             body.add_column("Documents", justify="right")
             body.add_column("Avg duration", justify="right")
@@ -34,7 +34,7 @@ class StatsRenderer:
             for m in metrics:
                 body.add_row(
                     Deepening.PHASE_NAMES.get(m.phase, str(m.phase)),
-                    m.file_type,
+                    m.extension,
                     m.size_bucket,
                     str(m.document_count),
                     f"{m.avg_duration_seconds:.1f}s",
@@ -55,13 +55,13 @@ class StatsRenderer:
             body = Table(
                 box=box.SIMPLE, header_style=f"bold {Theme.ACCENT}", border_style=Theme.ACCENT
             )
-            body.add_column("File type")
+            body.add_column("Extension")
             body.add_column("Process type")
             body.add_column("Pages", justify="right")
             body.add_column("Avg confidence", justify="right")
             for m in metrics:
                 body.add_row(
-                    m.file_type, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"
+                    m.extension, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"
                 )
         return Panel(
             body, title="Confidence", title_align="left", border_style=Theme.ACCENT, expand=True
