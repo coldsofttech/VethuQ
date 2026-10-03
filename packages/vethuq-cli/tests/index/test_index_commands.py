@@ -114,6 +114,57 @@ class TestRun:
         assert result.exit_code == 0
         assert "Background run ended before reporting any progress." in result.stdout
 
+    def test_run_wait_ctrl_c_stops_the_run(self, use_temp_db, tmp_path, monkeypatch):
+        db_path = use_temp_db()
+        _add_pending_source(db_path, tmp_path)
+        monkeypatch.setattr(
+            index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(555)
+        )
+
+        def interrupted_wait(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        stops = []
+        monkeypatch.setattr(IndexRunner, "wait", interrupted_wait)
+        monkeypatch.setattr(IndexRunner, "request_stop", lambda: stops.append(True))
+
+        result = runner.invoke(app, ["index", "run", "--wait"])
+
+        assert result.exit_code == 130
+        assert stops == [True]
+        assert "Interrupted" in _flatten(result.stdout)
+
+    def test_status_wait_ctrl_c_does_not_stop_the_run(self, use_temp_db, monkeypatch):
+        use_temp_db()
+        now = datetime.now(UTC).isoformat()
+        running_state = index_runner_module.IndexState(
+            run_id=1,
+            pid=556,
+            target=None,
+            mode="run",
+            status="running",
+            total_files=1,
+            processed_files=0,
+            failed_files=0,
+            thread_workers_setting="1",
+            workers=1,
+            current_files=["a.pdf"],
+            started_at=now,
+            updated_at=now,
+        )
+        monkeypatch.setattr(IndexRunner, "read_state", lambda db_path=None: running_state)
+
+        def interrupted_wait(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        stops = []
+        monkeypatch.setattr(IndexRunner, "wait", interrupted_wait)
+        monkeypatch.setattr(IndexRunner, "request_stop", lambda: stops.append(True))
+
+        runner.invoke(app, ["index", "status", "--wait"])
+
+        assert stops == []
+
     def test_run_reports_already_running(self, use_temp_db, tmp_path, monkeypatch):
         db_path = use_temp_db()
         _add_pending_source(db_path, tmp_path)
