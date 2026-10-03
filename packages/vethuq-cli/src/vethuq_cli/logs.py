@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
 from pathlib import Path
 
 import typer
@@ -20,8 +19,7 @@ class LogsCommand:
 
     @staticmethod
     def _style_for(record: str) -> str | None:
-        match = Logs._RECORD_START.match(record)
-        level = match.group(1).lower() if match else ""
+        level = Logs.level_of(record)
         if level == "error":
             return Theme.ERROR
         if level == "warning":
@@ -86,22 +84,12 @@ class LogsCommand:
         if component is None:
             LogsCommand._list_components(db_path)
             return
-        if component not in Logs.COMPONENTS:
-            raise LogsCommand._fail(
-                f"unknown component {component!r}; choose one of: {', '.join(Logs.COMPONENTS)}"
+        try:
+            selected_day = Logs.validate_request(
+                component, level=level, lines=tail, day=day, follow=follow, export=export
             )
-        if level is not None and level not in Logs.LEVELS:
-            raise LogsCommand._fail(f"level must be one of: {', '.join(Logs.LEVELS)}")
-        if tail < 1:
-            raise LogsCommand._fail("--tail must be at least 1")
-        selected_day: date | None = None
-        if day is not None:
-            try:
-                selected_day = datetime.strptime(day, "%Y-%m-%d").date()
-            except ValueError:
-                raise LogsCommand._fail("--date must be in YYYY-MM-DD format") from None
-        if follow and (selected_day is not None or export is not None):
-            raise LogsCommand._fail("--follow can't be combined with --date or --export")
+        except ValueError as exc:
+            raise LogsCommand._fail(str(exc)) from exc
 
         try:
             records = Logs.tail(component, db_path, lines=tail, level=level, day=selected_day)
@@ -111,13 +99,9 @@ class LogsCommand:
             records = []
 
         if export is not None:
-            Path(export).write_text(
-                "\n".join(records) + ("\n" if records else ""), encoding="utf-8"
-            )
+            written = Logs.export(records, export)
             console.print(
-                Text.assemble(
-                    "Wrote ", (str(len(records)), Theme.VALUE), " entries to ", export, "."
-                )
+                Text.assemble("Wrote ", (str(written), Theme.VALUE), " entries to ", export, ".")
             )
             return
 
