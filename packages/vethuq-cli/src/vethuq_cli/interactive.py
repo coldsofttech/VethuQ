@@ -12,6 +12,7 @@ from collections.abc import Callable
 import typer
 from rich.panel import Panel
 from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
+from rich.table import Table
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.settings import (
@@ -87,24 +88,53 @@ class _Quit(Exception):
 class InteractiveMenu:
     @staticmethod
     def _print_banner() -> None:
-        console.print(Panel(APP_TAGLINE, title=APP_NAME, style=Theme.BRAND, expand=False))
+        console.print(
+            Panel(
+                "",
+                title=Text(APP_NAME, style=Theme.BRAND),
+                title_align="left",
+                subtitle=Text(APP_TAGLINE, style="bright_black"),
+                subtitle_align="left",
+                border_style=Theme.PRIMARY,
+                expand=True,
+            )
+        )
 
     @staticmethod
-    def _print_menu(title: str, items: list[tuple[str, str]]) -> None:
-        console.print(Text(title, style="bold underline"))
+    def _menu_panel(title: str, items: list[tuple[str, str]]) -> Panel:
+        """A menu as a full-width panel: its title, then one numbered row per item.
+
+        Back (`0`) and Exit read dimmer than the real choices.
+        """
+        table = Table.grid(padding=(0, 2))
+        table.add_column(justify="right", style="bright_black", no_wrap=True)
+        table.add_column(no_wrap=False, overflow="fold")
         for key, label in items:
-            console.print(f"  {key}) {label}")
+            leaves = key == "0" or label == "Exit"
+            table.add_row(key, Text(label, style="bright_black" if leaves else "white"))
+        return Panel(
+            table,
+            title=Text(title, style="bold"),
+            title_align="left",
+            subtitle=Text("Enter a number - q to quit", style="bright_black"),
+            subtitle_align="left",
+            border_style="bright_black",
+            expand=True,
+        )
 
     @staticmethod
-    def _prompt_choice(choices: list[str]) -> str:
+    def _select(title: str, items: list[tuple[str, str]]) -> str:
+        """Show a menu and return the chosen key; `q` leaves the whole shell."""
+        console.print(InteractiveMenu._menu_panel(title, items))
+        keys = [key for key, _ in items]
         while True:
             raw = Prompt.ask("Select", console=console).strip().lower()
             if raw in ("q", "quit"):
                 raise _Quit
-            if raw in choices:
+            if raw in keys:
                 return raw
             console.print(
-                f"Invalid selection. Choose one of: {', '.join(choices)}, or q to quit.",
+                f"Invalid selection. Choose one of: {', '.join(keys)}, or q to quit.",
                 style=Theme.ERROR,
             )
 
@@ -175,11 +205,9 @@ class InteractiveMenu:
     @staticmethod
     def _sources_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Sources", [("1", "List"), ("2", "Add"), ("3", "Remove"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -194,8 +222,7 @@ class InteractiveMenu:
     @staticmethod
     def _index_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Index",
                 [
                     ("1", "Run"),
@@ -208,7 +235,6 @@ class InteractiveMenu:
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "7", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -251,12 +277,10 @@ class InteractiveMenu:
     @staticmethod
     def _settings_gpu_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > GPU",
                 [("1", "Enable"), ("2", "Disable"), ("3", "Status"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -269,11 +293,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_snippet_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search > Snippet", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -287,11 +309,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_export_format_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search > Export Format", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -305,11 +325,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_search_engine_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -321,12 +339,10 @@ class InteractiveMenu:
     @staticmethod
     def _settings_case_sensitive_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search > Case Sensitive",
                 [("1", "Show"), ("2", "Enable"), ("3", "Disable"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -339,12 +355,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_fuzzy_threshold_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
-                "Settings > Search > Fuzzy Threshold",
-                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            choice = InteractiveMenu._select(
+                "Settings > Search > Fuzzy Threshold", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -359,12 +372,10 @@ class InteractiveMenu:
     @staticmethod
     def _settings_proximity_distance_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search > Proximity Distance",
                 [("1", "Show"), ("2", "Set"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -380,8 +391,7 @@ class InteractiveMenu:
     @staticmethod
     def _settings_search_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Search",
                 [
                     ("1", "Snippet"),
@@ -393,7 +403,6 @@ class InteractiveMenu:
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -412,11 +421,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_removed_retention_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Index > Removed Retention", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -430,11 +437,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_retry_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Ocr > Retry", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -448,11 +453,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_thread_workers_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Index > Thread Workers", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -472,11 +475,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_stale_lock_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Index > Stale Lock", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -492,12 +493,10 @@ class InteractiveMenu:
     @staticmethod
     def _settings_integrity_check_interval_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Db > Integrity Check > Interval",
                 [("1", "Show"), ("2", "Set"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -511,12 +510,10 @@ class InteractiveMenu:
     @staticmethod
     def _settings_integrity_check_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Db > Integrity Check",
                 [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -534,11 +531,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_engine_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Ocr > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -554,11 +549,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_stability_check_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Index > Stability Check", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -573,8 +566,7 @@ class InteractiveMenu:
     @staticmethod
     def _settings_index_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Index",
                 [
                     ("1", "Removed Retention"),
@@ -584,7 +576,6 @@ class InteractiveMenu:
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -599,11 +590,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_ocr_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Ocr", [("1", "Retry"), ("2", "Engine"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -614,9 +603,9 @@ class InteractiveMenu:
     @staticmethod
     def _stats_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu("Stats", [("1", "Show"), ("2", "Reset"), ("0", "Back")])
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            choice = InteractiveMenu._select(
+                "Stats", [("1", "Show"), ("2", "Reset"), ("0", "Back")]
+            )
             if choice == "0":
                 return
             if choice == "1":
@@ -627,9 +616,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_db_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu("Settings > Db", [("1", "Integrity Check"), ("0", "Back")])
-            choice = InteractiveMenu._prompt_choice(["1", "0"])
+            choice = InteractiveMenu._select(
+                "Settings > Db", [("1", "Integrity Check"), ("0", "Back")]
+            )
             if choice == "0":
                 return
             if choice == "1":
@@ -638,11 +627,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_log_level_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Logs > Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -658,11 +645,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_log_retention_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Logs > Retention", [("1", "Show"), ("2", "Set"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -674,11 +659,9 @@ class InteractiveMenu:
     @staticmethod
     def _settings_logs_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings > Logs", [("1", "Level"), ("2", "Retention"), ("0", "Back")]
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -689,8 +672,7 @@ class InteractiveMenu:
     @staticmethod
     def _settings_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Settings",
                 [
                     ("1", "GPU"),
@@ -702,7 +684,6 @@ class InteractiveMenu:
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -721,9 +702,7 @@ class InteractiveMenu:
     @staticmethod
     def _db_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu("Db", [("1", "Integrity Check"), ("0", "Back")])
-            choice = InteractiveMenu._prompt_choice(["1", "0"])
+            choice = InteractiveMenu._select("Db", [("1", "Integrity Check"), ("0", "Back")])
             if choice == "0":
                 return
             if choice == "1":
@@ -732,12 +711,10 @@ class InteractiveMenu:
     @staticmethod
     def _logs_menu() -> None:
         while True:
-            console.print()
-            InteractiveMenu._print_menu(
+            choice = InteractiveMenu._select(
                 "Logs",
                 [("1", "Database"), ("2", "Index"), ("3", "Ui"), ("4", "Cli"), ("0", "Back")],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
             if choice == "0":
                 return
             component = ("database", "index", "ui", "cli")[int(choice) - 1]
@@ -762,8 +739,7 @@ class InteractiveMenu:
         InteractiveMenu._print_banner()
         try:
             while True:
-                console.print()
-                InteractiveMenu._print_menu(
+                choice = InteractiveMenu._select(
                     "Main Menu",
                     [
                         ("1", "Search"),
@@ -776,7 +752,6 @@ class InteractiveMenu:
                         ("8", "Exit"),
                     ],
                 )
-                choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "7", "8"])
                 if choice == "8":
                     break
                 if choice == "1":

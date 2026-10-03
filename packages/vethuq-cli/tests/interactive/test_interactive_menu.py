@@ -18,6 +18,40 @@ class TestInteractiveMenu:
         assert "Main Menu" in result.stdout
         assert "Goodbye." in result.stdout
 
+    def test_header_panel_shows_the_app_name_and_tagline(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="8\n")
+
+        assert "VethuQ" in result.stdout
+        assert "Document intelligence and evidence infrastructure." in result.stdout
+
+    def test_each_menu_is_a_panel_listing_its_numbered_items(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n1\n0\n0\n8\n")
+
+        assert "Main Menu" in result.stdout
+        assert "Settings > GPU" in result.stdout
+        assert "Enable" in result.stdout and "Back" in result.stdout
+        assert "Enter a number - q to quit" in result.stdout
+
+    def test_an_invalid_selection_asks_again(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="9\n8\n")
+
+        assert "Invalid selection" in result.output
+        assert "Goodbye." in result.stdout
+
+    def test_q_leaves_the_shell_from_any_menu(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\nq\n")
+
+        assert result.exit_code == 0
+        assert "Goodbye." in result.stdout
+
     def test_sources_list_then_back_then_exit(self, use_temp_db):
         use_temp_db()
 
