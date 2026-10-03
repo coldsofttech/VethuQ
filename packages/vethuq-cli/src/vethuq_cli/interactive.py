@@ -52,6 +52,8 @@ from vethuq_cli.settings import (
     integrity_check_interval_show,
     integrity_check_set,
     integrity_check_show,
+    location_set,
+    location_show,
     log_level_set,
     log_level_show,
     log_retention_set,
@@ -738,6 +740,20 @@ class InteractiveMenu:
                 InteractiveMenu._settings_log_retention_menu()
 
     @staticmethod
+    def _settings_location_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Location", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(location_show)
+            elif choice == "2":
+                path = Prompt.ask("Folder to keep VethuQ's data in", console=console)
+                InteractiveMenu._run_safely(location_set, path=path.strip().strip('"'), force=False)
+
+    @staticmethod
     def _settings_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -749,6 +765,7 @@ class InteractiveMenu:
                     ("4", "Ocr"),
                     ("5", "Db"),
                     ("6", "Logs"),
+                    ("7", "Location"),
                     ("0", "Back"),
                 ],
             )
@@ -766,6 +783,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_db_menu()
             elif choice == "6":
                 InteractiveMenu._settings_logs_menu()
+            elif choice == "7":
+                InteractiveMenu._settings_location_menu()
 
     @staticmethod
     def _db_menu() -> None:

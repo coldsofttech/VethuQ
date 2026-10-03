@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.panel import Panel
 from rich.text import Text
+from vethuq_core.index.runner import IndexRunner
+from vethuq_core.paths import Paths
 from vethuq_core.settings import (
     DbSettings,
     GpuSettings,
@@ -67,7 +71,9 @@ engine_app = typer.Typer(
 logs_app = typer.Typer(help="Configure logging.")
 log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
 log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
+location_app = typer.Typer(help="Configure where VethuQ keeps its database, logs and run files.")
 app.add_typer(gpu_app, name="gpu")
+app.add_typer(location_app, name="location")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
@@ -1068,3 +1074,86 @@ def log_retention_set(
         )
     finally:
         storage.close()
+
+
+@location_app.command("show")
+def location_show() -> None:
+    """Show where VethuQ keeps its data (database, logs and run files)."""
+    root = Paths.default_data_root()
+    if Paths.env_location():
+        source = f"set by the {Paths.ENV_VAR} environment variable"
+    elif Paths.configured_location():
+        source = "set by 'vethuq settings location set'"
+    else:
+        source = "the platform default"
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Location: ", "white"),
+                (str(root), Theme.VALUE),
+                (f"\n({source})", "white"),
+            ),
+            "Location",
+            Theme.PRIMARY,
+        )
+    )
+
+
+@location_app.command("set")
+def location_set(
+    path: str = typer.Argument(..., help="Folder to keep VethuQ's data in."),
+    force: bool = typer.Option(False, "--force", help="Move the data without asking first."),
+) -> None:
+    """Move the db/, run/ and logs/ folders to PATH and use it from now on.
+
+    Shows what will change and asks for confirmation unless --force is given.
+    """
+    source = Paths.default_data_root()
+    target = Path(path).expanduser().absolute()
+    try:
+        folders = Paths.plan_move(source, target)
+    except ValueError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    if IndexRunner.is_running()[0]:
+        error_console.print(
+            "Error: indexing is running. Stop it before changing the location.",
+            style=Theme.ERROR,
+        )
+        raise typer.Exit(code=1)
+    if not force:
+        names = ", ".join(f.name + "/" for f in folders) or "nothing yet"
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("This will move ", "white"),
+                    (names, Theme.VALUE),
+                    (" from ", "white"),
+                    (str(source), Theme.VALUE),
+                    (" to ", "white"),
+                    (str(target), Theme.VALUE),
+                    (" and use the new location from now on.", "white"),
+                ),
+                "Change Location",
+                Theme.WARNING,
+            )
+        )
+        if not typer.confirm("Continue?"):
+            raise typer.Exit(code=1)
+    try:
+        Paths.move_data(source, target)
+    except OSError as exc:
+        error_console.print(f"Error: could not move the data: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    note = ""
+    if Paths.env_location():
+        note = f"\nNote: {Paths.ENV_VAR} is set and still takes precedence over this."
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Location set to ", "white"), (str(target), Theme.VALUE), (".", "white"), note
+            ),
+            "Location",
+            Theme.OK,
+        )
+    )
