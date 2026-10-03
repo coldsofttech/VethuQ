@@ -15,6 +15,10 @@ from contextlib import AbstractContextManager
 from typing import Any, Protocol
 
 
+class SearchIndexRebuildError(Exception):
+    """Rebuilding one search index failed; the message is the database's own."""
+
+
 class Row(Protocol):
     """A result row, addressable by column name or position (like `sqlite3.Row`)."""
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -10,7 +9,7 @@ from pathlib import Path
 
 from vethuq_core.index.runner import AlreadyRunningError, IndexRunner
 from vethuq_core.logs import Logs
-from vethuq_core.storage import default_db_path, open_storage
+from vethuq_core.storage import SearchIndexRebuildError, default_db_path, open_storage
 
 
 @dataclass
@@ -57,7 +56,7 @@ class SearchIndexRebuild:
                 try:
                     with storage.transaction():
                         result.rebuilt[index] = storage.rebuild_search_index(index)
-                except sqlite3.Error as exc:
+                except SearchIndexRebuildError as exc:
                     result.failed[index] = str(exc)
                     log.error("Search index rebuild failed for %s: %s", index, exc)
                 else:
