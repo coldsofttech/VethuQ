@@ -9,6 +9,7 @@ import psutil
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import PendingFile
@@ -97,7 +98,7 @@ class Scheduler:
         never on the strength of a guess. Caller already holds `db_lock`.
         """
         try:
-            file_size_bytes = item.path.stat().st_size
+            file_size_bytes = FsPath.extended(item.path).stat().st_size
         except OSError:
             return False
 

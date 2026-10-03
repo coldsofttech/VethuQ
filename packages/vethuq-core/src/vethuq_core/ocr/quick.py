@@ -15,6 +15,7 @@ import psutil
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
@@ -24,6 +25,7 @@ from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.readers import (
     DocumentReader,
     FileRemovedError,
+    OutsideSourceError,
     PageResult,
     Readers,
     UnreadableFileError,
@@ -284,9 +286,9 @@ class Quick:
         """
         if interval_seconds <= 0:
             return True
-        before = file_path.stat()
+        before = FsPath.extended(file_path).stat()
         time.sleep(interval_seconds)
-        after = file_path.stat()
+        after = FsPath.extended(file_path).stat()
         return (before.st_mtime_ns, before.st_size) == (after.st_mtime_ns, after.st_size)
 
     @staticmethod
@@ -300,7 +302,7 @@ class Quick:
         row = storage.get_document_index_pending_check(str(file_path))
         if row is None:
             return False
-        stat = file_path.stat()
+        stat = FsPath.extended(file_path).stat()
         return stat.st_mtime != row["mtime"] or stat.st_size != row["file_size_bytes"]
 
     @staticmethod
@@ -390,7 +392,12 @@ class Quick:
         mem_before = process.memory_info().rss
 
         reader = Readers.for_path(file_path)
-        pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
+        if FsPath.is_within(file_path, source.path):
+            pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
+        else:
+            _logger.warning("File resolves outside its source, skipped: %s", file_path)
+            pages, attempts_used = None, 1
+            last_exc = OutsideSourceError(file_path, Path(source.path))
 
         changed = False
         if pages is not None:

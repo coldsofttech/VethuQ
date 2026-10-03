@@ -5,6 +5,7 @@ from __future__ import annotations
 from vethuq_core.readers.errors import (
     CorruptedFileError,
     FileRemovedError,
+    OutsideSourceError,
     PasswordProtectedError,
     UnreadableFileError,
 )
@@ -28,6 +29,7 @@ from vethuq_core.readers.storage import (
 __all__ = [
     "CorruptedFileError",
     "FileRemovedError",
+    "OutsideSourceError",
     "ImagePageStorage",
     "ImageReader",
     "JpgReader",

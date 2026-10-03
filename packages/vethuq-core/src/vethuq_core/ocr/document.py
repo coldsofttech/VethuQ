@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.readers import PageResult, Readers
 from vethuq_core.sources import Source
@@ -51,7 +52,7 @@ class Document:
     def compute_sha256(file_path: Path) -> str:
         """Return the SHA-256 hex digest of a file's contents, read in chunks."""
         digest = hashlib.sha256()
-        with file_path.open("rb") as handle:
+        with FsPath.extended(file_path).open("rb") as handle:
             for chunk in iter(lambda: handle.read(Document.CHECKSUM_CHUNK_BYTES), b""):
                 digest.update(chunk)
         return digest.hexdigest()
@@ -97,7 +98,7 @@ class Document:
         recomputed and compared, to confirm this is an actual content change
         rather than e.g. a touch that left the bytes alone.
         """
-        stat = file_path.stat()
+        stat = FsPath.extended(file_path).stat()
         if stat.st_mtime == existing["mtime"] and stat.st_size == existing["file_size_bytes"]:
             return False
         return Document.compute_sha256(file_path) != existing["sha256"]
@@ -139,7 +140,7 @@ class Document:
             return None
 
         started_at = datetime.now(UTC).isoformat()
-        stat = file_path.stat()
+        stat = FsPath.extended(file_path).stat()
         file_size_bytes = stat.st_size
         mtime = stat.st_mtime
         created_at, modified_at = Document.capture_timestamps(stat)
@@ -250,7 +251,7 @@ class Document:
                 if not matching_paths:
                     continue
                 for row, new_path in zip(rows, matching_paths, strict=False):
-                    stat = Path(new_path).stat()
+                    stat = FsPath.extended(new_path).stat()
                     created_at, modified_at = Document.capture_timestamps(stat)
                     storage.update_document_index_path(
                         row["id"],

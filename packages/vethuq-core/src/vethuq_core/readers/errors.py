@@ -38,3 +38,12 @@ class CorruptedFileError(UnreadableFileError):
     def __init__(self, file_path: Path, detail: str | None = None) -> None:
         message = f"File is corrupted or unreadable: {file_path}"
         super().__init__(f"{message} ({detail})" if detail else message)
+
+
+class OutsideSourceError(UnreadableFileError):
+    """The file resolves (through a symlink or junction) to somewhere outside its source."""
+
+    def __init__(self, file_path: Path, root: Path) -> None:
+        super().__init__(
+            f"File resolves outside its source and was not read: {file_path} (source: {root})"
+        )
