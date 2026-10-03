@@ -274,7 +274,8 @@ class IndexRunner:
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
-        tmp = path.with_name(path.name + ".tmp")
+        # Unique per writer: the heartbeat thread and the main thread can write at once.
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
 
