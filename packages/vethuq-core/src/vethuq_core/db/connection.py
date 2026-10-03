@@ -259,14 +259,20 @@ END;
         """
         path = db_path or Db.default_db_path()
         Logs.setup("database", path)
-        conn = sqlite3.connect(path, check_same_thread=check_same_thread)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
+        try:
+            conn = sqlite3.connect(path, check_same_thread=check_same_thread)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
+        except sqlite3.Error:
+            _logger.exception("Could not open database: path=%s", path)
+            raise
         try:
             Db._ensure_schema(conn, path)
-        except BaseException:
+        except BaseException as exc:
+            if isinstance(exc, sqlite3.Error):
+                _logger.exception("Could not prepare database schema: path=%s", path)
             conn.close()
             raise
 

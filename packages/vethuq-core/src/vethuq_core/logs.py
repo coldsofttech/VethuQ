@@ -167,6 +167,15 @@ class Logs:
         return match.group(1).lower() if match else ""
 
     @staticmethod
+    def loggable_command(argv: list[str]) -> str:
+        """A CLI invocation as it may appear in a log - without what a user searched for."""
+        if not argv:
+            return "(interactive)"
+        if argv[0] == "search":
+            return "search <query omitted>"
+        return " ".join(argv)
+
+    @staticmethod
     def validate_request(
         component: str,
         *,

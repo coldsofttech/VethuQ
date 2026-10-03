@@ -78,6 +78,15 @@ class Quick:
                 break
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
                 last_exc = exc
+                if attempt < max_attempts:
+                    _logger.warning(
+                        "Attempt %d/%d failed, retrying: file=%s error=%s: %s",
+                        attempt,
+                        max_attempts,
+                        file_path,
+                        type(exc).__name__,
+                        exc,
+                    )
         return pages, attempt, last_exc
 
     @staticmethod
@@ -110,18 +119,26 @@ class Quick:
 
         Returns whether the document was indexed successfully.
         """
-        with storage.transaction():
-            storage.update_document_index_retry_stats(
-                document_id, attempts_used - 1, peak_memory_mb, cpu_percent
+        try:
+            with storage.transaction():
+                storage.update_document_index_retry_stats(
+                    document_id, attempts_used - 1, peak_memory_mb, cpu_percent
+                )
+                if pages is None:
+                    Document.mark_error(storage, document_id, str(last_exc))
+                    return False
+                Document.store_pages(storage, document_id, file_type, pages)
+                Document.mark_indexed(storage, document_id)
+                Metrics.update_processing(storage, document_id, file_type)
+                Metrics.update_confidence(storage, document_id, file_type)
+                return True
+        except Exception:
+            _logger.exception(
+                "Database write failed, result rolled back: document_id=%d file_type=%s",
+                document_id,
+                file_type,
             )
-            if pages is None:
-                Document.mark_error(storage, document_id, str(last_exc))
-                return False
-            Document.store_pages(storage, document_id, file_type, pages)
-            Document.mark_indexed(storage, document_id)
-            Metrics.update_processing(storage, document_id, file_type)
-            Metrics.update_confidence(storage, document_id, file_type)
-            return True
+            raise
 
     @staticmethod
     def run(
@@ -175,7 +192,14 @@ class Quick:
         root = Path(source.path)
         had_error = False
         processed_paths: list[str] = []
+        _logger.info("Scanning source id=%d path=%s", source.id, source.path)
         disk_files = list(Readers.iter_files(root))
+        _logger.info(
+            "Scanned source id=%d path=%s: %d supported file(s) found",
+            source.id,
+            source.path,
+            len(disk_files),
+        )
         unsupported_files = [] if only_failed else list(Readers.iter_unsupported_files(root))
 
         renamed_paths: set[str] = set()
@@ -233,6 +257,13 @@ class Quick:
                 "error" if had_error else "indexed",
                 datetime.now(UTC).isoformat(),
             )
+        _logger.info(
+            "Source id=%d path=%s finished: %s, %d file(s) processed",
+            source.id,
+            source.path,
+            "error" if had_error else "indexed",
+            len(processed_paths),
+        )
         return processed_paths
 
     class FileChangedError(Exception):
@@ -346,6 +377,12 @@ class Quick:
         if duplicate_source_id is not None:
             with db_lock, storage.transaction():
                 Document.mark_duplicate(storage, document_id)
+            _logger.info(
+                "Duplicate content, OCR skipped: file=%s document_id=%d duplicate_of_source_id=%d",
+                file_path,
+                document_id,
+                duplicate_source_id,
+            )
             return True, False
 
         process = psutil.Process()
@@ -383,6 +420,27 @@ class Quick:
                 cpu_percent,
             )
 
+        if succeeded:
+            _logger.debug(
+                "Processed: file=%s document_id=%d type=%s pages=%d attempts=%d",
+                file_path,
+                document_id,
+                file_type,
+                len(pages or []),
+                attempts_used,
+            )
+        else:
+            _logger.error(
+                "Indexing failed: file=%s document_id=%d source_id=%d type=%s attempts=%d "
+                "error=%s: %s",
+                file_path,
+                document_id,
+                source.id,
+                file_type,
+                attempts_used,
+                type(last_exc).__name__,
+                last_exc,
+            )
         return succeeded, changed
 
     @staticmethod
@@ -565,6 +623,8 @@ class Quick:
                 source,
                 [path for path in unsupported_files if str(path) not in renamed_paths],
             )
+            _logger.info("Scanning source id=%d path=%s", source.id, source.path)
+            pending_before = len(pending)
             for file_path, file_type in Pending.iter_files(
                 storage,
                 source,
@@ -573,6 +633,12 @@ class Quick:
                 exclude_paths=exclude_paths,
             ):
                 pending.append(PendingFile(source, file_path, file_type))
+            _logger.info(
+                "Scanned source id=%d path=%s: %d file(s) to process",
+                source.id,
+                source.path,
+                len(pending) - pending_before,
+            )
 
         pending.sort(key=lambda item: (item.path.name, str(item.path)))
         if on_pending is not None:
@@ -636,5 +702,8 @@ class Quick:
                 if source.id in attempted_source_ids:
                     status = "error" if had_error_by_source[source.id] else "indexed"
                     storage.update_source_scan_status(source.id, status, now)
+                    _logger.info(
+                        "Source id=%d path=%s finished: %s", source.id, source.path, status
+                    )
 
         return processed_paths

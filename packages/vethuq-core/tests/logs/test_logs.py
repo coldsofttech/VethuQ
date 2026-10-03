@@ -184,3 +184,14 @@ class TestLogReading:
             return ticks["n"] > 6
 
         assert list(Logs.follow("index", db_path, stop=stop)) == [_entry("INFO", "after", 1)]
+
+
+class TestLoggableCommand:
+    def test_no_arguments_is_interactive(self):
+        assert Logs.loggable_command([]) == "(interactive)"
+
+    def test_search_query_is_omitted(self):
+        assert Logs.loggable_command(["search", "invoice 42"]) == "search <query omitted>"
+
+    def test_other_commands_are_logged_in_full(self):
+        assert Logs.loggable_command(["index", "run"]) == "index run"

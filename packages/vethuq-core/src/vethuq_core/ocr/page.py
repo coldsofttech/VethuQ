@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines import Engines, OcrResult
-from vethuq_core.readers import PageResult, Reader, ReadPage
+from vethuq_core.readers import PageResult, Reader, ReadPage, UnreadableFileError
 from vethuq_core.storage import Storage
+
+_logger = Logs.get_logger("index")
 
 
 class PageOcr:
@@ -70,4 +73,51 @@ class PageOcr:
 
     @staticmethod
     def ocr_document(storage: Storage, reader: Reader, file_path: Path) -> list[PageResult]:
-        return [PageOcr.ocr_page(storage, page) for page in reader.read(file_path)]
+        """Extract every page of `file_path`, logging what failed and where.
+
+        A failure while the reader produces a page (opening the file, its native
+        text layer, rendering) is logged as an extraction failure; one inside
+        `ocr_page` (the OCR engine) as an OCR failure, with the page and engine.
+        Both are re-raised unchanged for the retry/error handling above.
+        """
+        results: list[PageResult] = []
+        pages = iter(reader.read(file_path))
+        page_number = 0
+        while True:
+            try:
+                page = next(pages)
+            except StopIteration:
+                return results
+            except Exception as exc:
+                _logger.error(
+                    "Extraction failed: file=%s page=%d reader=%s error=%s: %s",
+                    file_path,
+                    page_number + 1,
+                    type(reader).__name__,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=not isinstance(exc, UnreadableFileError),
+                )
+                raise
+            page_number += 1
+            try:
+                results.append(PageOcr.ocr_page(storage, page))
+            except Exception as exc:
+                _logger.error(
+                    "OCR failed: file=%s page=%d engine=%s error=%s: %s",
+                    file_path,
+                    page_number,
+                    PageOcr.engine_name(storage),
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                )
+                raise
+
+    @staticmethod
+    def engine_name(storage: Storage) -> str:
+        """The calling thread's OCR engine label for log lines - never raises."""
+        try:
+            return Engines.get(storage).name
+        except Exception:  # noqa: BLE001 - only used to enrich a log line
+            return "unknown"

@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from vethuq_core.logs import Logs
 from vethuq_core.search.engines import SearchEngines, SearchMatch
 from vethuq_core.storage import Storage
+
+# Searches always follow opening the database, which sets up this log.
+_logger = Logs.get_logger("database")
 
 
 @dataclass(frozen=True)
@@ -37,7 +41,18 @@ class Search:
         (pages of the same PDF stay in page order, occurrences within a page in
         text order). Only successfully indexed documents are considered.
         """
-        return SearchEngines.get(storage, engine).search(query, context_chars=context_chars)
+        try:
+            return SearchEngines.get(storage, engine).search(query, context_chars=context_chars)
+        except Exception as exc:
+            _logger.error(
+                "Search failed: engine=%s query_length=%d error=%s: %s",
+                engine or "default",
+                len(query),
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise
 
     @staticmethod
     def files(storage: Storage, query: str, *, context_chars: int | None = None) -> list[FileMatch]:
