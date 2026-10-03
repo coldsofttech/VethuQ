@@ -150,6 +150,7 @@ class DocumentStore(Protocol):
         self,
         document_id: int,
         ocr_text: str,
+        char_count: int,
         confidence: float,
         ocr_engine: str | None,
         language: str | None,

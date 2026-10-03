@@ -27,7 +27,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 26
+    SCHEMA_VERSION = 27
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     document_id INTEGER NOT NULL REFERENCES document_index(id),
     page_number INTEGER NOT NULL,
     ocr_text TEXT NOT NULL,
+    char_count INTEGER NOT NULL DEFAULT 0,
     confidence REAL NOT NULL,
     source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed')),
     ocr_engine TEXT,
@@ -94,6 +95,7 @@ CREATE TABLE IF NOT EXISTS image_pages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id INTEGER NOT NULL REFERENCES document_index(id),
     ocr_text TEXT NOT NULL,
+    char_count INTEGER NOT NULL DEFAULT 0,
     confidence REAL NOT NULL,
     ocr_engine TEXT,
     language TEXT,

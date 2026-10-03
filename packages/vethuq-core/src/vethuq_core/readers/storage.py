@@ -76,6 +76,7 @@ class PdfPageStorage(PageStorage):
                     document_id,
                     page_number,
                     page.text,
+                    len(page.text),
                     page.confidence,
                     page.source,
                     page.ocr_engine,
@@ -109,6 +110,7 @@ class ImagePageStorage(PageStorage):
         storage.insert_image_page(
             document_id,
             page.text,
+            len(page.text),
             page.confidence,
             page.ocr_engine,
             page.language,

@@ -127,9 +127,9 @@ client.search.export(matches, "invoice", "results.html", "html")
 ### `run(content, *, context_chars=None)`
 
 Search indexed OCR text for `content`, case-insensitively. Returns one
-`SearchMatch` per matching page, ordered by file path (pages of the same
-PDF stay in page order). Only successfully indexed documents are
-considered. `context_chars` defaults to `client.settings.search.snippet`
+`SearchMatch` per occurrence, ordered by file path (pages of the same
+PDF stay in page order, occurrences within a page in text order). Only
+successfully indexed documents are considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
 ```python
@@ -324,7 +324,7 @@ The outcome of a database integrity check, returned by `client.db.integrity_chec
 
 ## `SearchMatch`
 
-One matching page, returned by `client.search.run`:
+One occurrence of the query on a page, returned by `client.search.run`:
 
 - `file_id`, `file_name`, `file_path`
 - `page_number`, `total_pages` (both `None` for a non-paginated file, e.g. an image)

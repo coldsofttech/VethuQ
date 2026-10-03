@@ -15,7 +15,7 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class SearchMatch:
-    """One matching page, split around its first match so a caller can highlight it."""
+    """One occurrence of a query on a page, split around the match so a caller can highlight it."""
 
     file_id: int
     file_name: str
@@ -50,7 +50,7 @@ class SearchEngine(Protocol):
         ...
 
     def search(self, query: str, *, context_chars: int | None = None) -> list[SearchMatch]:
-        """Return one `SearchMatch` per matching page, ordered by file path.
+        """Return one `SearchMatch` per occurrence of `query`, ordered by file path.
 
         `context_chars` is the snippet context either side of the match;
         None means the user's setting. An empty `query` matches nothing.

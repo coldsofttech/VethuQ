@@ -33,10 +33,9 @@ class Search:
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query` using the named (default: `like`) engine.
 
-        Returns one `SearchMatch` per matching page, ordered by file path (pages of
-        the same PDF stay in page order). Only successfully indexed documents are
-        considered. When a page contains `query` more than once, only its first
-        occurrence is used.
+        Returns one `SearchMatch` per occurrence of `query`, ordered by file path
+        (pages of the same PDF stay in page order, occurrences within a page in
+        text order). Only successfully indexed documents are considered.
         """
         return SearchEngines.get(storage, engine).search(query, context_chars=context_chars)
 
