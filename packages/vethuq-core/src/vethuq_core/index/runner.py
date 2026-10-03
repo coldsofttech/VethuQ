@@ -280,6 +280,18 @@ class IndexRunner:
         os.replace(tmp, path)
 
     @staticmethod
+    def _sweep_stale_temp(db_path: Path) -> None:
+        """Delete `.tmp` files left by writers that died before their rename."""
+        for tmp in Paths.run_dir(db_path).glob("*.*.*.tmp"):
+            pid_text = tmp.name.rsplit(".", 3)[1]
+            if not pid_text.isdigit() or IndexRunner._is_pid_running(int(pid_text)):
+                continue
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                IndexRunner._logger.warning("Could not remove stale temp file %s", tmp)
+
+    @staticmethod
     def _is_pid_running(pid: int) -> bool:
         if sys.platform == "win32":
             # A direct WinAPI call, not a `tasklist` subprocess: spawning a new
@@ -707,6 +719,7 @@ class IndexRunner:
         # to worker threads when `workers` > 1 - every use of it is already
         # serialized through `db_lock` there.
         storage = open_storage(db_path, check_same_thread=False)
+        IndexRunner._sweep_stale_temp(db_path)
         pid = os.getpid()
         started_at = datetime.now(UTC).isoformat()
         run_id: int | None = None

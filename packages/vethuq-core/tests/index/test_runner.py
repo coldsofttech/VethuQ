@@ -1,5 +1,6 @@
 import faulthandler
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -13,6 +14,7 @@ from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending
+from vethuq_core.paths import Paths
 from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import Storage
 
@@ -931,3 +933,24 @@ class TestIndexState:
         state = _state(1, status)
 
         assert (state.is_active, state.is_paused, state.is_finished) == (active, paused, finished)
+
+
+class TestSweepStaleTemp:
+    def test_removes_temp_from_dead_writer_and_keeps_live_one(self, db_path):
+        run_dir = Paths.run_dir(db_path)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        dead = run_dir / "index_state.json.99999999.1.tmp"
+        live = run_dir / f"index_state.json.{os.getpid()}.1.tmp"
+        other = run_dir / "notes.txt"
+        for file in (dead, live, other):
+            file.write_text("x")
+
+        with patch.object(IndexRunner, "_is_pid_running", side_effect=lambda pid: pid != 99999999):
+            IndexRunner._sweep_stale_temp(db_path)
+
+        assert not dead.exists()
+        assert live.exists()
+        assert other.exists()
+
+    def test_missing_run_dir_is_a_no_op(self, tmp_path):
+        IndexRunner._sweep_stale_temp(tmp_path / "nowhere" / "vethuq.db")
