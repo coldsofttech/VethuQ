@@ -40,12 +40,15 @@ class Pending:
 
         Mirrors the skip logic in `Quick.run` so callers (e.g. progress/ETA
         reporting) can size a run before starting it. `exclude_paths` are files
-        to leave out regardless - e.g. ones this run already attempted, so a file
-        that failed isn't picked up again as "still pending".
+        to leave out - e.g. ones this run already attempted, so a file that failed
+        isn't picked up again as "still pending" - unless the file was indexed and
+        has since been modified, which is new work the run must not overlook.
         """
         root = Path(source.path)
         for file_path in Readers.iter_files(root):
-            if str(file_path) in exclude_paths:
+            if str(file_path) in exclude_paths and not Pending._modified_since_indexed(
+                storage, file_path
+            ):
                 continue
             existing = None
             if only_new_files or only_failed:
@@ -62,6 +65,16 @@ class Pending:
                 continue
             file_type = Readers.for_path(file_path).file_type
             yield file_path, file_type
+
+    @staticmethod
+    def _modified_since_indexed(storage: Storage, file_path: Path) -> bool:
+        """Whether `file_path` has a successfully indexed row whose content has since changed."""
+        existing = storage.get_document_index_pending_check(str(file_path))
+        return (
+            existing is not None
+            and existing["status"] == "indexed"
+            and Document.has_content_changed(file_path, existing)
+        )
 
     @staticmethod
     def file_count(
