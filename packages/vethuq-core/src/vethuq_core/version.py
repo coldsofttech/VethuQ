@@ -6,7 +6,7 @@ import platform
 from dataclasses import dataclass
 from importlib import metadata
 
-from vethuq_core.db.connection import Db
+from vethuq_core.storage import schema_version
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class VersionInfo:
             vethuq=VersionInfo.vethuq_version(),
             python=platform.python_version(),
             platform=platform.platform(),
-            db_schema=Db.SCHEMA_VERSION,
+            db_schema=schema_version(),
         )
 
     @staticmethod
