@@ -170,6 +170,8 @@ class IndexRunner:
     # a native OCR call holds the interpreter for a while) belongs to a worker that is hung.
     HEARTBEAT_SECONDS = 5.0
     STALE_HEARTBEAT_SECONDS = 120.0
+    FILE_RETRIES = 20
+    FILE_RETRY_SECONDS = 0.01
     # Bundled next to the desktop/CLI exes by the installer build. A frozen exe
     # can't be asked to run `-m vethuq_core.index.runner` (it would just start
     # the app again), so frozen builds spawn this dedicated worker exe instead.
@@ -287,7 +289,15 @@ class IndexRunner:
         # Unique per writer: the heartbeat thread and the main thread can write at once.
         tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
+        # On Windows the swap fails while a reader has the file open; retry briefly.
+        for attempt in range(IndexRunner.FILE_RETRIES):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if attempt == IndexRunner.FILE_RETRIES - 1:
+                    raise
+                time.sleep(IndexRunner.FILE_RETRY_SECONDS)
 
     @staticmethod
     def _sweep_stale_temp(db_path: Path) -> None:
@@ -345,6 +355,21 @@ class IndexRunner:
             pass
 
     @staticmethod
+    def _read_text_retrying(path: Path) -> str | None:
+        """The file's text, or None if absent. A writer swapping the file in can make a read
+        fail momentarily on Windows (PermissionError), so that is retried briefly."""
+        for attempt in range(IndexRunner.FILE_RETRIES):
+            try:
+                return path.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return None
+            except PermissionError:
+                if attempt == IndexRunner.FILE_RETRIES - 1:
+                    raise
+                time.sleep(IndexRunner.FILE_RETRY_SECONDS)
+        return None
+
+    @staticmethod
     def read_state(db_path: Path | None = None, *, raw: bool = False) -> IndexState | None:
         """Return the most recent run's live/last-known state, if one exists.
 
@@ -362,10 +387,11 @@ class IndexRunner:
         """
         db_path = db_path or default_db_path()
         path = IndexRunner._state_path(db_path)
-        if not path.exists():
+        text = IndexRunner._read_text_retrying(path)
+        if text is None:
             return None
         try:
-            state = IndexState.from_json(path.read_text(encoding="utf-8"))
+            state = IndexState.from_json(text)
         except (json.JSONDecodeError, TypeError, KeyError):
             return None
         if not raw and state.is_active and not IndexRunner._worker_alive(db_path, state):
