@@ -1,7 +1,13 @@
 import sqlite3
 from datetime import UTC, datetime
 
+import pytest
 from vethuq_core.search import Search
+from vethuq_core.search.engines import (
+    FallbackSearchEngine,
+    SearchEngines,
+    SearchEngineUnavailable,
+)
 from vethuq_core.settings import SearchSettings
 
 
@@ -232,3 +238,21 @@ class TestSearch:
 
         assert matches[0].before == "x" * 5
         assert matches[0].after == "y" * 5
+
+
+class TestSearchEngines:
+    def test_registry_default_and_unknown(self, conn: sqlite3.Connection):
+        assert SearchEngines.get(conn).name == "like"
+        with pytest.raises(ValueError, match="Unknown search engine"):
+            SearchEngines.get(conn, "nope")
+
+    def test_fallback_engine_uses_fallback_when_primary_unavailable(self, conn: sqlite3.Connection):
+        class Broken:
+            name = "broken"
+
+            def search(self, query, *, context_chars=None):
+                raise SearchEngineUnavailable
+
+        engine = FallbackSearchEngine(Broken(), SearchEngines.get(conn))
+        assert engine.name == "broken->like"
+        assert engine.search("") == []

@@ -378,7 +378,7 @@ class Document:
         """Return indexed `pdf_pages` rows whose `ocr_text` matches `like_pattern`.
 
         `like_pattern` is a caller-escaped `LIKE` pattern (see
-        `vethuq_core.search.Search._like_pattern`), matched against `pdf_pages_fts` -
+        `LikeSearchEngine._like_pattern`), matched against `pdf_pages_fts` -
         a trigram-tokenized FTS5 index kept in sync with `pdf_pages` by triggers
         (see `vethuq_core.db.connection`) - rather than `pdf_pages` itself, so the
         match is resolved through the trigram index instead of a full table scan.
