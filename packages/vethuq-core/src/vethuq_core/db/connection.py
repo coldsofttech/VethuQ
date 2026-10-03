@@ -27,7 +27,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 25
+    SCHEMA_VERSION = 26
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS document_index (
     source_id INTEGER NOT NULL REFERENCES sources(id),
     document_id INTEGER NOT NULL REFERENCES documents(id),
     file_path TEXT NOT NULL UNIQUE,
-    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'unsupported')),
     status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+        CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed', 'unsupported')),
     error_message TEXT,
     indexed_at TEXT,
     started_at TEXT,

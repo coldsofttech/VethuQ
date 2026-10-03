@@ -14,6 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vethuq_core.readers.errors import (
+    CorruptedFileError,
+    FileRemovedError,
+    PasswordProtectedError,
+)
 from vethuq_core.readers.storage import ImagePageStorage, PageStorage, PdfPageStorage
 
 # numpy/pymupdf/cv2 are imported lazily inside the methods that use them (not
@@ -80,14 +85,29 @@ class PdfReader(Reader):
     def read(self, file_path: Path, page_number: int | None = None) -> Iterator[ReadPage]:
         import pymupdf
 
-        with pymupdf.open(file_path) as doc:
-            pages = doc if page_number is None else [doc[page_number - 1]]
-            for page in pages:
-                yield ReadPage(
-                    native_text=page.get_text(),
-                    image_regions=PdfReader.significant_image_blocks(page),
-                    render=PdfReader.renderer(page),
-                )
+        try:
+            doc = pymupdf.open(file_path)
+        except (FileNotFoundError, pymupdf.FileNotFoundError) as exc:
+            raise FileRemovedError(file_path) from exc
+        except Exception as exc:  # noqa: BLE001 - pymupdf raises several types for a bad file
+            raise CorruptedFileError(file_path, str(exc)) from exc
+
+        with doc:
+            if doc.needs_pass:
+                raise PasswordProtectedError(file_path)
+            try:
+                indexes = range(doc.page_count) if page_number is None else [page_number - 1]
+                for index in indexes:
+                    page = doc[index]
+                    yield ReadPage(
+                        native_text=page.get_text(),
+                        image_regions=PdfReader.significant_image_blocks(page),
+                        render=PdfReader.renderer(page),
+                    )
+            except FileNotFoundError as exc:
+                raise FileRemovedError(file_path) from exc
+            except (pymupdf.FileDataError, pymupdf.mupdf.FzErrorFormat) as exc:
+                raise CorruptedFileError(file_path, str(exc)) from exc
 
     @staticmethod
     def render_page_array(page: pymupdf.Page, clip: Region | None = None) -> np.ndarray:

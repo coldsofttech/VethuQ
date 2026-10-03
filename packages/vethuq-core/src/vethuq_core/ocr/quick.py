@@ -21,7 +21,13 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
-from vethuq_core.readers import PageResult, Reader, Readers
+from vethuq_core.readers import (
+    FileRemovedError,
+    PageResult,
+    Reader,
+    Readers,
+    UnreadableFileError,
+)
 from vethuq_core.settings import IndexSettings, OcrSettings
 from vethuq_core.sources import Source
 from vethuq_core.storage import Storage
@@ -48,7 +54,10 @@ class Quick:
         Kept separate from committing a result so a run of failed OCR attempts
         never touches the database until there's something final to record -
         see `Quick.finalize_result`. Returns `(pages, attempts_used,
-        last_exception)`; `pages` is None if every attempt failed.
+        last_exception)`; `pages` is None if every attempt failed. A file that
+        vanished, is password-protected, or is corrupted (`UnreadableFileError`,
+        or a bare `FileNotFoundError`) fails immediately without further attempts,
+        since retrying can't change the outcome.
         """
         max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
         attempt = 0
@@ -58,6 +67,15 @@ class Quick:
             attempt += 1
             try:
                 pages = PageOcr.ocr_document(storage, reader, file_path)
+            except UnreadableFileError as exc:
+                # Vanished, password-protected, or corrupted - the same on every
+                # attempt, so retrying would only repeat the failure.
+                last_exc = exc
+                break
+            except FileNotFoundError as exc:
+                last_exc = FileRemovedError(file_path)
+                last_exc.__cause__ = exc
+                break
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
                 last_exc = exc
         return pages, attempt, last_exc
@@ -117,7 +135,8 @@ class Quick:
     ) -> list[str]:
         """Run OCR over supported files under `source` and index the results.
 
-        Unsupported files are silently skipped. Per-file OCR failures are recorded
+        Unsupported files are never OCR'd but are recorded as 'unsupported' rows (see
+        `Document.record_unsupported`). Per-file OCR failures are recorded
         on that file's `document_index` row (status='error') without aborting the
         rest of the source; `sources.status` reflects the overall outcome.
 
@@ -157,15 +176,22 @@ class Quick:
         had_error = False
         processed_paths: list[str] = []
         disk_files = list(Readers.iter_files(root))
+        unsupported_files = [] if only_failed else list(Readers.iter_unsupported_files(root))
 
         renamed_paths: set[str] = set()
         if only_new_files and not only_failed:
             with storage.transaction():
-                renamed_paths = Document.reconcile_renamed_and_removed(storage, source, disk_files)
+                renamed_paths = Document.reconcile_renamed_and_removed(
+                    storage, source, disk_files + unsupported_files
+                )
             for new_path in sorted(renamed_paths):
                 processed_paths.append(new_path)
                 if on_file_done is not None:
                     on_file_done(new_path)
+
+        Document.record_unsupported(
+            storage, source, [path for path in unsupported_files if str(path) not in renamed_paths]
+        )
 
         for file_path in disk_files:
             if should_stop is not None and should_stop():
@@ -188,8 +214,14 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            with storage.transaction():
-                claim = Document.upsert(storage, source.id, file_path, file_type)
+            try:
+                with storage.transaction():
+                    claim = Document.upsert(storage, source.id, file_path, file_type)
+            except FileNotFoundError:
+                # Vanished between discovery and claiming, so there's nothing to
+                # index; the next run's reconcile marks any tracked row 'removed'.
+                _logger.warning("File removed before indexing, skipped: %s", file_path)
+                continue
             if claim is None:
                 # Already claimed by another concurrently-running index run -
                 # leave it alone, that run owns finishing it.
@@ -260,8 +292,14 @@ class Quick:
         sqlite read/write around it is serialized through `db_lock` since a
         single connection isn't safe for unsynchronized concurrent use.
         """
-        with db_lock, storage.transaction():
-            claim = Document.upsert(storage, source.id, file_path, file_type)
+        try:
+            with db_lock, storage.transaction():
+                claim = Document.upsert(storage, source.id, file_path, file_type)
+        except FileNotFoundError:
+            # Vanished between discovery and claiming - leave it for the next
+            # run's reconcile rather than aborting the batch.
+            _logger.warning("File removed before indexing, skipped: %s", file_path)
+            return None
 
         if claim is None:
             return None
@@ -455,15 +493,24 @@ class Quick:
         pending: list[PendingFile] = []
         for source in sources:
             only_new_files = source.status != "pending"
+            renamed_paths: set[str] = set()
+            unsupported_files = (
+                [] if only_failed else list(Readers.iter_unsupported_files(Path(source.path)))
+            )
             if only_new_files and not only_failed:
                 disk_files = list(Readers.iter_files(Path(source.path)))
                 with storage.transaction():
                     renamed_paths = Document.reconcile_renamed_and_removed(
-                        storage, source, disk_files
+                        storage, source, disk_files + unsupported_files
                     )
                 for renamed_path in sorted(renamed_paths):
                     if on_file_done is not None:
                         on_file_done(renamed_path, True)
+            Document.record_unsupported(
+                storage,
+                source,
+                [path for path in unsupported_files if str(path) not in renamed_paths],
+            )
             for file_path, file_type in Pending.iter_files(
                 storage,
                 source,

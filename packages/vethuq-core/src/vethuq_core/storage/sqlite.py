@@ -181,6 +181,9 @@ class _DocumentStoreMixin:
     def mark_document_index_error(self, document_id: int, message: str, now: str) -> None:
         return Document.mark_error(self._conn, document_id, message, now)
 
+    def mark_document_index_unsupported(self, document_id: int, message: str, now: str) -> None:
+        return Document.mark_unsupported(self._conn, document_id, message, now)
+
     def get_document_index_metrics_stats(self, document_id: int) -> sqlite3.Row:
         return Document.get_index_metrics_stats(self._conn, document_id)
 

@@ -480,3 +480,52 @@ class Migration:
             # even if an index was already populated.
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
             conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
+
+        if from_version < 26:
+            # Adds 'unsupported' to the file_type and status CHECK constraints, so files with no
+            # registered reader (.txt, .csv, ...) can be recorded with an error
+            # instead of being invisible. Same rebuild-the-table pattern as above,
+            # since SQLite can't widen a CHECK constraint in place.
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute(
+                """
+                CREATE TABLE document_index_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_id INTEGER NOT NULL REFERENCES sources(id),
+                    document_id INTEGER NOT NULL REFERENCES documents(id),
+                    file_path TEXT NOT NULL UNIQUE,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image', 'unsupported')),
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN (
+                            'pending', 'processing', 'indexed', 'error', 'removed', 'unsupported'
+                        )),
+                    error_message TEXT,
+                    indexed_at TEXT,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    file_size_bytes INTEGER,
+                    sha256 TEXT,
+                    mtime REAL,
+                    created_at TEXT,
+                    modified_at TEXT,
+                    removed_at TEXT,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    peak_memory_mb REAL,
+                    cpu_percent REAL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO document_index_new "
+                "(id, source_id, document_id, file_path, file_type, status, error_message, "
+                "indexed_at, started_at, completed_at, file_size_bytes, sha256, mtime, "
+                "created_at, modified_at, removed_at, retry_count, peak_memory_mb, cpu_percent) "
+                "SELECT id, source_id, document_id, file_path, file_type, status, error_message, "
+                "indexed_at, started_at, completed_at, file_size_bytes, sha256, mtime, "
+                "created_at, modified_at, removed_at, retry_count, peak_memory_mb, cpu_percent "
+                "FROM document_index"
+            )
+            conn.execute("DROP TABLE document_index")
+            conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
+            conn.execute("PRAGMA foreign_keys = ON")

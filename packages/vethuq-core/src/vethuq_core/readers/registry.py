@@ -15,6 +15,13 @@ class Readers:
 
     _BY_SUFFIX: dict[str, Reader] = {}
 
+    # `document_index.file_type` of a file no reader handles.
+    UNSUPPORTED_FILE_TYPE = "unsupported"
+
+    # OS bookkeeping files that aren't really the user's documents.
+    _JUNK_FILE_NAMES = frozenset({"thumbs.db", "ehthumbs.db", "desktop.ini"})
+    _WINDOWS_HIDDEN_ATTRIBUTE = 0x2
+
     @staticmethod
     def register(extensions: str | tuple[str, ...], reader: Reader) -> None:
         """Handle files with the given extension(s) (e.g. `".tiff"`) using `reader`."""
@@ -51,6 +58,35 @@ class Readers:
             return
         for candidate in path.rglob("*"):
             if candidate.is_file() and Readers.is_supported(candidate):
+                yield candidate
+
+    @staticmethod
+    def is_hidden(file_path: Path, root: Path) -> bool:
+        """Whether `file_path` is a hidden/system file (or sits in a hidden folder under `root`)."""
+        try:
+            relative_parts = file_path.relative_to(root).parts or (file_path.name,)
+        except ValueError:
+            relative_parts = (file_path.name,)
+        if any(part.startswith(".") for part in relative_parts):
+            return True
+        if file_path.name.lower() in Readers._JUNK_FILE_NAMES:
+            return True
+        attributes = getattr(file_path.stat(), "st_file_attributes", 0)
+        return bool(attributes & Readers._WINDOWS_HIDDEN_ATTRIBUTE)
+
+    @staticmethod
+    def iter_unsupported_files(path: Path) -> Iterator[Path]:
+        """Yield `path` (if it's an unsupported, non-hidden file) or every such file beneath it."""
+        if path.is_file():
+            if not Readers.is_supported(path) and not Readers.is_hidden(path, path.parent):
+                yield path
+            return
+        for candidate in path.rglob("*"):
+            if (
+                candidate.is_file()
+                and not Readers.is_supported(candidate)
+                and not Readers.is_hidden(candidate, path)
+            ):
                 yield candidate
 
     @staticmethod
