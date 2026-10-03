@@ -6,11 +6,15 @@ import sys
 import time
 
 import typer
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.logs import Logs
 from vethuq_core.storage import SchemaVersionError, default_db_path
+from vethuq_core.version import VersionInfo
 
-from vethuq_cli.console import error_console
+from vethuq_cli.console import console, error_console
 from vethuq_cli.db import app as db_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
@@ -33,8 +37,30 @@ app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
 
+def _show_version(value: bool) -> None:
+    if value:
+        table = Table.grid(padding=(0, 2))
+        for label, text in VersionInfo.rows():
+            table.add_row(Text(label, style="bold"), Text(text, style="white"))
+        console.print(
+            Panel(
+                table, title=Text("Version"), title_align="left", border_style="cyan", expand=True
+            )
+        )
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_show_version,
+        is_eager=True,
+        help="Show the version and exit.",
+    ),
+) -> None:
     """Run a subcommand, or launch the interactive console when none is given."""
     Logs.setup("cli", default_db_path())
     _logger.info("Started: vethuq %s", Logs.loggable_command(sys.argv[1:]))

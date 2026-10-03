@@ -25,6 +25,11 @@ def default_db_path() -> Path:
     return Db.default_db_path()
 
 
+def schema_version() -> int:
+    """The database schema version this build supports."""
+    return Db.SCHEMA_VERSION
+
+
 def open_storage(db_path: Path | None = None, *, check_same_thread: bool = True) -> Storage:
     """Open the VethuQ database (default location if `db_path` is None) as a `Storage`."""
     return SqliteStorage.open(db_path, check_same_thread=check_same_thread)
@@ -45,4 +50,5 @@ __all__ = [
     "Storage",
     "default_db_path",
     "open_storage",
+    "schema_version",
 ]

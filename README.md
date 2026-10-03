@@ -55,6 +55,8 @@ Text that's rotated or sideways (labels on a drawing, a photographed page, a sta
 
 VethuQ backs up its database for you: the first time it opens each day it saves a compressed copy (kept for 7 days) in a `backups` folder next to the database. If something ever goes wrong, `vethuq db backup list` shows what is there, `vethuq db restore <name>` brings one back, `vethuq db repair` fixes a damaged index, and `vethuq db reset` starts over. If an indexing run is cut short and VethuQ finds the database damaged afterwards, it stops and tells you which of these to use. `vethuq db backup create <name>` saves a snapshot you name yourself.
 
+`vethuq --version` shows which VethuQ you're running, along with your Python version, platform and database schema version — handy when asking for support.
+
 By default VethuQ keeps its database and logs in your user data folder (`%APPDATA%\VethuQ` on Windows). To keep them somewhere else, run `vethuq settings location set <folder>` — it shows what will move and asks before doing it (add `--force` to skip the question). `vethuq settings location show` tells you where they are now. Backups can live somewhere else (another drive, say) with `vethuq settings location backups set <folder>`.
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.

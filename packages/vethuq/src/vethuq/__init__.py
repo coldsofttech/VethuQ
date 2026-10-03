@@ -65,6 +65,8 @@ from vethuq._core.stats import Processing as _Processing
 from vethuq._core.stats import Stats as _Stats
 from vethuq._core.storage import default_db_path as _default_db_path
 from vethuq._core.storage import open_storage as _open_storage
+from vethuq._core.version import VersionDetails
+from vethuq._core.version import VersionInfo as _VersionInfo
 
 DB_PATH = _default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
@@ -88,6 +90,7 @@ engine_badge = _Ranking.engine_badge
 hit_badge = _Ranking.hit_badge
 
 __all__ = [
+    "VersionDetails",
     "BACKUP_VALUES",
     "ENGINE_BADGES",
     "ENGINE_MEANINGS",
@@ -1250,6 +1253,7 @@ class Vethuq:
     client.settings.gpu.enable()
     client.stats.processing()
     client.search.run("invoice")
+    client.version.python
     ```
     """
 
@@ -1261,3 +1265,8 @@ class Vethuq:
         self.search = Search()
         self.logs = Logs()
         self.db = Db()
+
+    @property
+    def version(self) -> VersionDetails:
+        """The VethuQ version, Python version, platform and database schema in use."""
+        return _VersionInfo.details()
