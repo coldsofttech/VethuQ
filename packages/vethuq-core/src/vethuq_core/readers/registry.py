@@ -6,8 +6,9 @@ import os
 from collections.abc import Iterator
 from pathlib import Path
 
+from vethuq_core.filetypes import FileType, FileTypes
 from vethuq_core.fspath import FsPath
-from vethuq_core.readers.reader import DocumentReader, JpgReader, PdfReader, PngReader
+from vethuq_core.readers.reader import DocumentReader
 
 
 class Readers:
@@ -16,6 +17,9 @@ class Readers:
     `DocumentReader` abstraction, keyed off `file_type`."""
 
     _BY_SUFFIX: dict[str, DocumentReader] = {}
+    # The enabled file types' readers register on first use, not at import: a reader module
+    # imports `vethuq_core.readers`, so registering while this module loads would be circular.
+    _loaded = False
 
     # `document_index.file_type` of a file no reader handles.
     UNSUPPORTED_FILE_TYPE = "unsupported"
@@ -25,15 +29,25 @@ class Readers:
     _WINDOWS_HIDDEN_ATTRIBUTE = 0x2
 
     @staticmethod
+    def _readers() -> dict[str, DocumentReader]:
+        if not Readers._loaded:
+            Readers._loaded = True
+            for file_type in FileTypes.enabled():
+                for extension in file_type.extensions:
+                    Readers._BY_SUFFIX.setdefault(extension, file_type.load_reader())
+        return Readers._BY_SUFFIX
+
+    @staticmethod
     def register(extensions: str | tuple[str, ...], reader: DocumentReader) -> None:
         """Handle files with the given extension(s) (e.g. `".tiff"`) using `reader`."""
+        readers = Readers._readers()
         for extension in (extensions,) if isinstance(extensions, str) else extensions:
-            Readers._BY_SUFFIX[extension.lower()] = reader
+            readers[extension.lower()] = reader
 
     @staticmethod
     def for_path(file_path: Path) -> DocumentReader:
         """The reader registered for `file_path`'s extension (KeyError if none)."""
-        return Readers._BY_SUFFIX[file_path.suffix.lower()]
+        return Readers._readers()[file_path.suffix.lower()]
 
     @staticmethod
     def for_file_type(file_type: str) -> DocumentReader:
@@ -42,14 +56,29 @@ class Readers:
         Readers sharing a `file_type` share its storage and weight, so any one of
         them stands in for the type as a whole.
         """
-        for reader in Readers._BY_SUFFIX.values():
+        for reader in Readers._readers().values():
             if reader.file_type == file_type:
                 return reader
         raise KeyError(file_type)
 
     @staticmethod
     def is_supported(file_path: Path) -> bool:
-        return file_path.suffix.lower() in Readers._BY_SUFFIX
+        return file_path.suffix.lower() in Readers._readers()
+
+    @staticmethod
+    def unavailable_type(file_path: Path) -> FileType | None:
+        """The known file type `file_path` belongs to when it is not installed or enabled."""
+        file_type = FileTypes.for_extension(file_path.suffix)
+        if file_type is None or Readers.is_supported(file_path):
+            return None
+        return file_type
+
+    @staticmethod
+    def unsupported_reason(file_path: Path) -> str:
+        """Why `file_path` is not indexed, for its 'unsupported' `document_index` row."""
+        file_type = Readers.unavailable_type(file_path)
+        reason = FileTypes.unavailable_reason(file_type) if file_type is not None else None
+        return reason or f"Unsupported file format: {file_path.suffix or file_path.name}"
 
     @staticmethod
     def iter_files(path: Path) -> Iterator[Path]:
@@ -101,7 +130,7 @@ class Readers:
     @staticmethod
     def new_file_type_counts() -> dict[str, int]:
         """A zeroed `{file_type: count}` for every file type registered readers handle."""
-        return dict.fromkeys((reader.file_type for reader in Readers._BY_SUFFIX.values()), 0)
+        return dict.fromkeys((reader.file_type for reader in Readers._readers().values()), 0)
 
     @staticmethod
     def file_type_weight(file_type: str) -> float:
@@ -110,8 +139,3 @@ class Readers:
             return Readers.for_file_type(file_type).processing_weight
         except KeyError:
             return 1.0
-
-
-Readers.register(".pdf", PdfReader())
-Readers.register(".png", PngReader())
-Readers.register((".jpg", ".jpeg"), JpgReader())

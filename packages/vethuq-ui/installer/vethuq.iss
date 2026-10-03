@@ -92,6 +92,9 @@ Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" fro
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Components: app
 
 [Code]
+{ Generated from the file types' type.json files: FileTypeCount, FileTypeId/Label/Default. }
+#include "filetypes.iss"
+
 const
   EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
 
@@ -152,10 +155,80 @@ begin
     RefreshEnvironment;
 end;
 
+var
+  TypesPage: TInputOptionWizardPage;
+
+function TypesFile: string;
+begin
+  { Where VethuQ looks for the selection (the platform default data folder). }
+  Result := ExpandConstant('{localappdata}\VethuQ\file_types.json');
+end;
+
+function TypesParam: string;
+begin
+  Result := ExpandConstant('{param:TYPES|}');
+end;
+
+function TypeWasSelected(const Id: string): Boolean;
+var
+  Previous: AnsiString;
+begin
+  { /TYPES=eml,docx wins; else the previous install's choice; else the defaults. }
+  if TypesParam <> '' then
+    Result := Pos(',' + Id + ',', ',' + Lowercase(TypesParam) + ',') > 0
+  else if LoadStringFromFile(TypesFile, Previous) then
+    Result := Pos('"' + Id + '"', Previous) > 0
+  else
+    Result := False;
+end;
+
+procedure InitializeWizard;
+var
+  I: Integer;
+  Chosen: Boolean;
+begin
+  TypesPage := CreateInputOptionPage(
+    wpSelectComponents, 'File types',
+    'Which file types should VethuQ read?',
+    'Types that are not selected are not scanned or indexed. ' +
+    'Run this installer again to add more later.',
+    False, False
+  );
+  for I := 0 to FileTypeCount - 1 do
+  begin
+    TypesPage.Add(FileTypeLabel(I));
+    Chosen := TypeWasSelected(FileTypeId(I));
+    if (TypesParam = '') and (not FileExists(TypesFile)) then
+      Chosen := FileTypeDefault(I);
+    TypesPage.Values[I] := Chosen;
+  end;
+end;
+
+procedure SaveTypeSelection;
+var
+  I: Integer;
+  Json: string;
+begin
+  Json := '';
+  for I := 0 to FileTypeCount - 1 do
+    if TypesPage.Values[I] then
+    begin
+      if Json <> '' then
+        Json := Json + ', ';
+      Json := Json + '"' + FileTypeId(I) + '"';
+    end;
+  ForceDirectories(ExtractFilePath(TypesFile));
+  SaveStringToFile(TypesFile, '{ "enabled": [' + Json + '] }', False);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if (CurStep = ssPostInstall) and WizardIsTaskSelected('addtopath') then
-    EnvAddPath(ExpandConstant('{app}'));
+  if CurStep = ssPostInstall then
+  begin
+    SaveTypeSelection;
+    if WizardIsTaskSelected('addtopath') then
+      EnvAddPath(ExpandConstant('{app}'));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

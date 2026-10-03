@@ -14,7 +14,7 @@ problem (10-15). See [docs/troubleshooting.md](troubleshooting.md).
 
 ## `--version`
 
-Show the VethuQ version, Python version, platform and database schema version in a panel, then exit. Handy to include when asking for support.
+Show the VethuQ version, Python version, platform, database schema version and the installed file type packages (`type-pdf`, ...) in a panel, then exit. The installed file types are also saved in the database. Handy to include when asking for support.
 
 ```
 vethuq --version
@@ -759,4 +759,17 @@ Processing figures also feed `vethuq index run`'s ETA estimate.
 
 ```bash
 vethuq stats show
+```
+
+## `types`
+
+File types are installed as extras: `pip install vethuq[type-pdf]` (PDF is always included), `vethuq[type-png]`, `vethuq[type-jpg]`. The Windows installer has a page to pick them, and `/TYPES=pdf,png` does the same silently. A type counts as installed when its dependencies import, so there is nothing to switch on or off in the CLI: to add or remove a type, install or reinstall the package (or re-run the installer). Files of a type that is not installed or enabled are not scanned or indexed; they are listed as unsupported with the command to add the type.
+
+### `list [--all]`
+
+List the installed file types with their extensions and package name. `--all` also lists the types that are not installed, with the `pip install` command for each.
+
+```bash
+vethuq types list
+vethuq types list --all
 ```

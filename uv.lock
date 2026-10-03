@@ -3016,6 +3016,11 @@ dependencies = [
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+type-pdf = [
+    { name = "pymupdf" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
@@ -3024,9 +3029,11 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pymupdf", specifier = ">=1.24" },
+    { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
     { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
 ]
+provides-extras = ["type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-cli"
@@ -3059,6 +3066,11 @@ dependencies = [
     { name = "pymupdf" },
 ]
 
+[package.optional-dependencies]
+type-pdf = [
+    { name = "pymupdf" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
@@ -3067,7 +3079,9 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pymupdf", specifier = ">=1.24" },
+    { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
 ]
+provides-extras = ["type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-ui"

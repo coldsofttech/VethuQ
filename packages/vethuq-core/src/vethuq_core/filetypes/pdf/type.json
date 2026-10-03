@@ -1,0 +1,11 @@
+{
+  "id": "pdf",
+  "label": "PDF",
+  "extensions": [".pdf"],
+  "extra": "type-pdf",
+  "requires": ["pymupdf>=1.24"],
+  "modules": ["pymupdf"],
+  "approx_size_mb": 25,
+  "default": true,
+  "reader": "vethuq_core.filetypes.pdf.reader:PdfReader"
+}

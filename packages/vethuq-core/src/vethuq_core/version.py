@@ -6,6 +6,7 @@ import platform
 from dataclasses import dataclass
 from importlib import metadata
 
+from vethuq_core.filetypes import FileTypes
 from vethuq_core.storage import schema_version
 
 
@@ -17,6 +18,7 @@ class VersionDetails:
     python: str
     platform: str
     db_schema: int
+    file_types: tuple[str, ...] = ()
 
 
 class VersionInfo:
@@ -39,6 +41,7 @@ class VersionInfo:
             python=platform.python_version(),
             platform=platform.platform(),
             db_schema=schema_version(),
+            file_types=tuple(t.extra for t in FileTypes.installed()),
         )
 
     @staticmethod
@@ -49,4 +52,5 @@ class VersionInfo:
             ("Python", d.python),
             ("Platform", d.platform),
             ("Database schema", str(d.db_schema)),
+            ("File types", ", ".join(d.file_types) or "none"),
         ]

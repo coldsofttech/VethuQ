@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.
+- `vethuq --version` lists the installed `type-*` packages and records them in the database.
 - The app now rescans your sources every few seconds while it is open, picking up new files and sources automatically.
 - Identical files always resolve to the same document and the same original, whatever the scan order, worker count or re-indexing; now covered by tests.
 - `vethuq --version` shows the CLI version, Python version, platform and database schema version. Also available as `client.version`.
