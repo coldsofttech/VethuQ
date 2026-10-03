@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 import tkinter as tk
 from tkinter import ttk
 
 from vethuq_core.search import Search
+from vethuq_core.storage import Storage
 
 from vethuq_ui.icons import get_file_icon
 from vethuq_ui.tooltip import TreeviewTooltip
@@ -18,9 +18,9 @@ class SearchView(ttk.Frame):
     RESULT_LIST_WIDTH_FRACTION = 0.35
     MAX_DISPLAYED_NAME_CHARS = 35
 
-    def __init__(self, parent: tk.Misc, conn: sqlite3.Connection) -> None:
+    def __init__(self, parent: tk.Misc, storage: Storage) -> None:
         super().__init__(parent)
-        self._conn = conn
+        self._storage = storage
         self.full_names: dict[str, str] = {}
 
         search_bar = ttk.Frame(self)
@@ -100,7 +100,7 @@ class SearchView(ttk.Frame):
         if not query or query == self.PLACEHOLDER:
             return
 
-        for file in Search.files(self._conn, query):
+        for file in Search.files(self._storage, query):
             iid = str(file.file_id)
             display_name = f"{file.file_name} (duplicate)" if file.is_duplicate else file.file_name
             if len(display_name) > self.MAX_DISPLAYED_NAME_CHARS:

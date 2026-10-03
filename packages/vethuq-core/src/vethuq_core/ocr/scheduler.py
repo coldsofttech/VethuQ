@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import TYPE_CHECKING
 
 import psutil
@@ -10,12 +9,12 @@ import psutil
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import PendingFile
 from vethuq_core.readers import Readers
 from vethuq_core.settings import IndexSettings
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -26,7 +25,7 @@ class Scheduler:
     MEMORY_BUSY_THRESHOLD = 80.0
 
     @staticmethod
-    def resolve_workers(conn: sqlite3.Connection, pending_type_counts: dict[str, int]) -> int:
+    def resolve_workers(storage: Storage, pending_type_counts: dict[str, int]) -> int:
         """Resolve the effective worker count for a run from the `thread_workers` setting.
 
         '0' disables concurrency entirely - the caller should process its file
@@ -37,7 +36,7 @@ class Scheduler:
         starting more workers than there is work to hand them doesn't help.
         """
         total_pending = sum(pending_type_counts.values())
-        setting = IndexSettings.get_thread_workers(conn)
+        setting = IndexSettings.get_thread_workers(storage)
         workers = (
             Scheduler.auto_worker_count(pending_type_counts, total_pending)
             if setting == IndexSettings.THREAD_WORKERS_AUTO
@@ -87,7 +86,7 @@ class Scheduler:
         return min(workers, IndexSettings.THREAD_WORKERS_MAX, total_pending)
 
     @staticmethod
-    def would_exceed_budget(conn: sqlite3.Connection, item: PendingFile) -> bool:
+    def would_exceed_budget(storage: Storage, item: PendingFile) -> bool:
         """Whether starting `item` right now would push CPU/memory past the busy thresholds.
 
         Projects live system usage (`psutil`, not just this run's own workers -
@@ -102,8 +101,8 @@ class Scheduler:
         except OSError:
             return False
 
-        row = StatsQuery.get_processing_metrics_budget_row(
-            conn, 1, item.file_type, Metrics.size_bucket(file_size_bytes)
+        row = storage.get_processing_metrics_budget_row(
+            1, item.file_type, Metrics.size_bucket(file_size_bytes)
         )
         if row is None:
             return False
@@ -122,9 +121,9 @@ class Scheduler:
         )
 
     @staticmethod
-    def batch_workers(conn: sqlite3.Connection, initial: int, *, first: bool) -> int:
+    def batch_workers(storage: Storage, initial: int, *, first: bool) -> int:
         """Worker count for a quick-pass batch: `initial` for the run's first, then the setting."""
         if first:
             return initial
-        setting = IndexSettings.get_thread_workers(conn)
+        setting = IndexSettings.get_thread_workers(storage)
         return 1 if setting == IndexSettings.THREAD_WORKERS_AUTO else int(setting)

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vethuq_core.db import Db
 from vethuq_core.logs import Logs
+from vethuq_core.storage import default_db_path
 
 
 class UiLogging:
@@ -18,4 +18,4 @@ class UiLogging:
         console no one is watching (Tk swallows exceptions raised inside
         `command=` callbacks). The verbosity follows the `log_level` setting.
         """
-        Logs.setup("ui", db_path or Db.default_db_path())
+        Logs.setup("ui", db_path or default_db_path())

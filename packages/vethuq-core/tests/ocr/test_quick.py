@@ -1,11 +1,15 @@
 import os
 import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
+
+FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "pdf"
 
 
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
@@ -14,16 +18,18 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 
 class TestQuick:
     @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_indexes_image_file(self, mock_get_engine, conn: sqlite3.Connection, tmp_path):
+    def test_run_ocr_indexes_image_file(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
         mock_get_engine.return_value = engine
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -47,7 +53,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_marks_document_processing_while_in_flight(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
@@ -66,9 +72,9 @@ class TestQuick:
         engine.predict.side_effect = _predict
         mock_get_engine.return_value = engine
 
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         assert captured["status"] == "processing"
         assert captured["started_at"] is not None
@@ -80,7 +86,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_skips_file_already_claimed_by_another_run(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -88,7 +94,7 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
         # Simulate another concurrently-running index run having already claimed
         # this file - its document_index row is mid-processing.
@@ -104,7 +110,7 @@ class TestQuick:
         )
         conn.commit()
 
-        processed = Quick.run(conn, source)
+        processed = Quick.run(storage, source)
 
         assert processed == []
         engine.predict.assert_not_called()
@@ -117,7 +123,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_links_duplicate_content_without_rerunning_ocr(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -127,9 +133,9 @@ class TestQuick:
         folder.mkdir()
         (folder / "a.png").write_bytes(b"identical bytes")
         (folder / "b.png").write_bytes(b"identical bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         assert engine.predict.call_count == 1
 
@@ -162,7 +168,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_promotes_duplicate_when_original_is_modified(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
@@ -174,9 +180,9 @@ class TestQuick:
         file2 = folder / "b.png"
         file1.write_bytes(b"identical bytes")
         file2.write_bytes(b"identical bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc1 = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(file1.resolve()),)
@@ -200,7 +206,7 @@ class TestQuick:
         os.utime(file1, (new_mtime, new_mtime))
         engine.predict.return_value = _fake_ocr_result("new content for file1")
 
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         # Only file1 needed reprocessing - file2's own bytes never changed.
         assert second_run == [str(file1.resolve())]
@@ -231,7 +237,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_updates_processing_metrics_on_success(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result(score=0.8)
@@ -239,7 +245,7 @@ class TestQuick:
 
         first = tmp_path / "first.png"
         first.write_bytes(b"fake png bytes")
-        Quick.run(conn, Sources.add(conn, first))
+        Quick.run(storage, Sources.add(storage, first))
 
         metrics = conn.execute(
             "SELECT * FROM processing_metrics WHERE file_type = 'image'"
@@ -255,7 +261,7 @@ class TestQuick:
         engine.predict.return_value = _fake_ocr_result(score=0.6)
         second = tmp_path / "second.png"
         second.write_bytes(b"more fake png bytes")
-        Quick.run(conn, Sources.add(conn, second))
+        Quick.run(storage, Sources.add(storage, second))
 
         metrics = conn.execute(
             "SELECT * FROM processing_metrics WHERE file_type = 'image'"
@@ -270,7 +276,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_does_not_update_processing_metrics_on_error(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("ocr blew up")
@@ -278,7 +284,7 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        Quick.run(conn, Sources.add(conn, image_path))
+        Quick.run(storage, Sources.add(storage, image_path))
 
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
         assert conn.execute("SELECT * FROM confidence_metrics").fetchone() is None
@@ -286,7 +292,12 @@ class TestQuick:
     @patch("vethuq_core.ocr.quick.Metrics.update_confidence")
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_rolls_back_pages_and_status_if_a_later_write_fails(
-        self, mock_get_engine, mock_update_confidence, conn: sqlite3.Connection, tmp_path
+        self,
+        mock_get_engine,
+        mock_update_confidence,
+        conn: sqlite3.Connection,
+        storage: Storage,
+        tmp_path,
     ):
         """A document's pages, status, and metrics are one atomic transaction.
 
@@ -303,10 +314,10 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
         with pytest.raises(RuntimeError, match="boom"):
-            Quick.run(conn, source)
+            Quick.run(storage, source)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -322,7 +333,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_skips_unsupported_files(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -332,9 +343,9 @@ class TestQuick:
         folder.mkdir()
         (folder / "notes.txt").write_text("not ocr-able")
         (folder / "scan.jpg").write_bytes(b"fake jpg bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         docs = conn.execute("SELECT file_path FROM document_index").fetchall()
         assert len(docs) == 1
@@ -342,7 +353,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_records_error_without_aborting(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.side_effect = RuntimeError("ocr blew up")
@@ -350,9 +361,9 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -367,7 +378,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_rerun_replaces_stale_page_rows(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("first pass")
@@ -375,11 +386,11 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, image_path)
-        Quick.run(conn, source)
+        source = Sources.add(storage, image_path)
+        Quick.run(storage, source)
 
         engine.predict.return_value = _fake_ocr_result("second pass")
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
@@ -392,7 +403,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_skips_already_indexed(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("first file")
@@ -401,16 +412,16 @@ class TestQuick:
         folder = tmp_path / "docs"
         folder.mkdir()
         (folder / "first.png").write_bytes(b"fake png bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        first_run = Quick.run(conn, source)
+        first_run = Quick.run(storage, source)
         assert first_run == [str((folder / "first.png").resolve())]
 
         # A new file shows up in the folder after the source is already indexed.
         (folder / "second.png").write_bytes(b"fake png bytes")
         engine.predict.return_value = _fake_ocr_result("second file")
 
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         assert second_run == [str((folder / "second.png").resolve())]
 
@@ -423,7 +434,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_reindexes_modified_file(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original content")
@@ -431,9 +442,9 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"original bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
         doc = conn.execute(
             "SELECT id FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
         ).fetchone()
@@ -444,7 +455,7 @@ class TestQuick:
         os.utime(image_path, (new_mtime, new_mtime))
         engine.predict.return_value = _fake_ocr_result("updated content")
 
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         assert second_run == [str(image_path.resolve())]
         page = conn.execute(
@@ -454,7 +465,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_skips_unchanged_file_without_rehashing(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original content")
@@ -462,19 +473,19 @@ class TestQuick:
 
         image_path = tmp_path / "scan.png"
         image_path.write_bytes(b"original bytes")
-        source = Sources.add(conn, image_path)
+        source = Sources.add(storage, image_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         with patch("vethuq_core.ocr.Document.compute_sha256") as mock_checksum:
-            second_run = Quick.run(conn, source, only_new_files=True)
+            second_run = Quick.run(storage, source, only_new_files=True)
             mock_checksum.assert_not_called()
 
         assert second_run == []
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_detects_plain_rename(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("original text")
@@ -484,9 +495,9 @@ class TestQuick:
         folder.mkdir()
         old_path = folder / "scan.png"
         old_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(old_path.resolve()),)
         ).fetchone()
@@ -494,7 +505,7 @@ class TestQuick:
         new_path = folder / "renamed.png"
         old_path.rename(new_path)
 
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         assert engine.predict.call_count == 1  # no re-OCR for a plain rename
         assert second_run == [str(new_path.resolve())]
@@ -512,7 +523,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_only_new_files_marks_missing_file_removed(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result()
@@ -522,16 +533,16 @@ class TestQuick:
         folder.mkdir()
         image_path = folder / "scan.png"
         image_path.write_bytes(b"fake png bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(image_path.resolve()),)
         ).fetchone()
         assert doc["status"] == "indexed"
 
         image_path.unlink()
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         assert second_run == []
         updated = conn.execute(
@@ -542,7 +553,7 @@ class TestQuick:
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_handles_duplicate_original_deleted_and_duplicate_renamed(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
@@ -554,9 +565,9 @@ class TestQuick:
         file_b = folder / "b.png"
         file_a.write_bytes(b"identical bytes")
         file_b.write_bytes(b"identical bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc_a = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(file_a.resolve()),)
@@ -578,7 +589,7 @@ class TestQuick:
         file_a.unlink()
         file_b.rename(file_c)
 
-        second_run = Quick.run(conn, source, only_new_files=True)
+        second_run = Quick.run(storage, source, only_new_files=True)
 
         # No OCR needed - the content at file_c already matches an indexed row.
         assert engine.predict.call_count == 1
@@ -603,3 +614,80 @@ class TestQuick:
             "SELECT ocr_text FROM image_pages WHERE document_id = ?", (survivor["id"],)
         ).fetchone()
         assert page["ocr_text"] == "shared content"
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_digital_pdf_skips_engine_entirely(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        pdf_path = tmp_path / "digital.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
+        source = Sources.add(storage, pdf_path)
+
+        Quick.run(storage, source)
+
+        mock_get_engine.assert_not_called()
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        assert doc["status"] == "indexed"
+
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "native"
+        assert page["confidence"] == pytest.approx(1.0)
+        assert len(page["ocr_text"]) > 0
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_scanned_pdf_runs_full_page_ocr(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        engine = PaddleStub()
+        engine.predict.return_value = _fake_ocr_result("scanned page text")
+        mock_get_engine.return_value = engine
+
+        pdf_path = tmp_path / "scanned.pdf"
+        pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
+        source = Sources.add(storage, pdf_path)
+
+        Quick.run(storage, source)
+
+        engine.predict.assert_called_once()
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "ocr"
+        assert page["ocr_text"] == "scanned page text"
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        engine = PaddleStub()
+        engine.predict.return_value = _fake_ocr_result("banner region text")
+        mock_get_engine.return_value = engine
+
+        pdf_path = tmp_path / "mixed.pdf"
+        pdf_path.write_bytes(
+            (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
+        )
+        source = Sources.add(storage, pdf_path)
+
+        Quick.run(storage, source)
+
+        engine.predict.assert_called_once()
+
+        doc = conn.execute(
+            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
+        ).fetchone()
+        page = conn.execute(
+            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+        ).fetchone()
+        assert page["source"] == "mixed"
+        assert "Discover Andhra Pradesh" in page["ocr_text"]
+        assert "banner region text" in page["ocr_text"]

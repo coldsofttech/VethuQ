@@ -7,11 +7,10 @@ aggregated.
 
 from __future__ import annotations
 
-import sqlite3
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from vethuq_core.db.queries import Document as DocumentQuery
+from vethuq_core.storage import Storage
 
 
 @dataclass(frozen=True)
@@ -46,15 +45,15 @@ class PageStorage(ABC):
     DEFAULT_PROCESS_TYPE = "ocr"
 
     @abstractmethod
-    def store(self, conn: sqlite3.Connection, document_id: int, pages: list[PageResult]) -> None:
+    def store(self, storage: Storage, document_id: int, pages: list[PageResult]) -> None:
         """Replace a document's stored pages with freshly (re)extracted `pages`."""
 
     @abstractmethod
-    def page_confidences(self, conn: sqlite3.Connection, document_id: int) -> list[float]:
+    def page_confidences(self, storage: Storage, document_id: int) -> list[float]:
         """Return the confidence of each page stored for `document_id`."""
 
     def confidences_by_process_type(
-        self, conn: sqlite3.Connection, document_id: int
+        self, storage: Storage, document_id: int
     ) -> dict[str, list[float]]:
         """Group stored page confidences by how each page was produced.
 
@@ -62,17 +61,16 @@ class PageStorage(ABC):
         `confidence_metrics` tracks each `process_type` separately. Storages whose
         pages are all produced the same way can keep this default.
         """
-        confidences = self.page_confidences(conn, document_id)
+        confidences = self.page_confidences(storage, document_id)
         return {PageStorage.DEFAULT_PROCESS_TYPE: confidences} if confidences else {}
 
 
 class PdfPageStorage(PageStorage):
     """Multi-page documents: one `pdf_pages` row per page."""
 
-    def store(self, conn: sqlite3.Connection, document_id: int, pages: list[PageResult]) -> None:
-        DocumentQuery.delete_pdf_pages(conn, document_id)
-        DocumentQuery.insert_pdf_pages(
-            conn,
+    def store(self, storage: Storage, document_id: int, pages: list[PageResult]) -> None:
+        storage.delete_pdf_pages_for_document(document_id)
+        storage.insert_pdf_pages(
             [
                 (
                     document_id,
@@ -90,17 +88,14 @@ class PdfPageStorage(PageStorage):
             ],
         )
 
-    def page_confidences(self, conn: sqlite3.Connection, document_id: int) -> list[float]:
-        return [
-            row["confidence"]
-            for row in DocumentQuery.get_page_confidences(conn, "pdf", document_id)
-        ]
+    def page_confidences(self, storage: Storage, document_id: int) -> list[float]:
+        return [row["confidence"] for row in storage.get_page_confidences("pdf", document_id)]
 
     def confidences_by_process_type(
-        self, conn: sqlite3.Connection, document_id: int
+        self, storage: Storage, document_id: int
     ) -> dict[str, list[float]]:
         grouped: dict[str, list[float]] = {}
-        for row in DocumentQuery.get_pdf_page_sources(conn, document_id):
+        for row in storage.get_pdf_page_sources(document_id):
             grouped.setdefault(row["source"], []).append(row["confidence"])
         return grouped
 
@@ -108,11 +103,10 @@ class PdfPageStorage(PageStorage):
 class ImagePageStorage(PageStorage):
     """Single-image documents: one `image_pages` row per file."""
 
-    def store(self, conn: sqlite3.Connection, document_id: int, pages: list[PageResult]) -> None:
+    def store(self, storage: Storage, document_id: int, pages: list[PageResult]) -> None:
         page = pages[0]
-        DocumentQuery.delete_image_pages(conn, document_id)
-        DocumentQuery.insert_image_page(
-            conn,
+        storage.delete_image_pages_for_document(document_id)
+        storage.insert_image_page(
             document_id,
             page.text,
             page.confidence,
@@ -123,8 +117,5 @@ class ImagePageStorage(PageStorage):
             *page.phase_columns(),
         )
 
-    def page_confidences(self, conn: sqlite3.Connection, document_id: int) -> list[float]:
-        return [
-            row["confidence"]
-            for row in DocumentQuery.get_page_confidences(conn, "image", document_id)
-        ]
+    def page_confidences(self, storage: Storage, document_id: int) -> list[float]:
+        return [row["confidence"] for row in storage.get_page_confidences("image", document_id)]

@@ -10,7 +10,6 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 from datetime import date
 from pathlib import Path
 
-from vethuq._core.db import Db as _Db
 from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
 from vethuq._core.db.integrity import IntegrityCheckResult
 from vethuq._core.index import (
@@ -39,20 +38,22 @@ from vethuq._core.settings import LogSettings as _LogSettings
 from vethuq._core.settings import OcrSettings as _OcrSettings
 from vethuq._core.settings import SearchSettings as _SearchSettings
 from vethuq._core.settings import SourceSettings as _SourceSettings
-from vethuq._core.source import (
+from vethuq._core.sources import (
     Source,
     SourceAlreadyExistsError,
     SourceError,
     SourceNotFoundError,
     SourcePathError,
 )
-from vethuq._core.source import Sources as _Sources
+from vethuq._core.sources import Sources as _Sources
 from vethuq._core.stats import Confidence as _Confidence
 from vethuq._core.stats import ConfidenceMetric, ProcessingMetric
 from vethuq._core.stats import Processing as _Processing
 from vethuq._core.stats import Stats as _Stats
+from vethuq._core.storage import default_db_path as _default_db_path
+from vethuq._core.storage import open_storage as _open_storage
 
-DB_PATH = _Db.default_db_path()
+DB_PATH = _default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
 
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
@@ -127,27 +128,27 @@ class Sources:
         of failing. Raises `SourcePathError` if `path` doesn't exist, and
         `SourceAlreadyExistsError` if it's already an active source.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Sources.add(conn, path)
+            return _Sources.add(storage, path)
         finally:
-            conn.close()
+            storage.close()
 
     def list(self, include_inactive: bool = False) -> list[Source]:
         """Return registered sources, most recently added first."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Sources.list_all(conn, include_inactive)
+            return _Sources.list_all(storage, include_inactive)
         finally:
-            conn.close()
+            storage.close()
 
     def remove(self, path_or_id: str | Path | int) -> Source:
         """Unregister a source by id or path. Raises `SourceNotFoundError` if it doesn't exist."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Sources.remove(conn, path_or_id)
+            return _Sources.remove(storage, path_or_id)
         finally:
-            conn.close()
+            storage.close()
 
 
 class Index:
@@ -198,12 +199,12 @@ class Index:
         if target is None:
             return _IndexRunner.read_state()
 
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            source = _Sources.get(conn, _Sources.coerce(target))
-            return _Document.get_results(conn, source.id)
+            source = _Sources.get(storage, _Sources.coerce(target))
+            return _Document.get_results(storage, source.id)
         finally:
-            conn.close()
+            storage.close()
 
     def stop(self) -> None:
         """Stop the currently running background index and wait for confirmation.
@@ -233,13 +234,15 @@ class Index:
         just `target`. Raises `SourceNotFoundError` if `target` doesn't
         match a registered source.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
             if target is not None:
-                _Sources.get(conn, _Sources.coerce(target))
-            return _IndexRunner.list_runs(conn, str(target) if target is not None else None, limit)
+                _Sources.get(storage, _Sources.coerce(target))
+            return _IndexRunner.list_runs(
+                storage, str(target) if target is not None else None, limit
+            )
         finally:
-            conn.close()
+            storage.close()
 
 
 class GPUSettings:
@@ -250,11 +253,11 @@ class GPUSettings:
 
     def is_enabled(self) -> bool:
         """Whether OCR should attempt to use the GPU. Disabled by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _GpuSettings.is_enabled(conn)
+            return _GpuSettings.is_enabled(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def enable(self) -> None:
         """Enable GPU use for OCR.
@@ -263,19 +266,19 @@ class GPUSettings:
         visible GPU is actually installed - otherwise OCR silently falls
         back to CPU.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _GpuSettings.set_enabled(conn, True)
+            _GpuSettings.set_enabled(storage, True)
         finally:
-            conn.close()
+            storage.close()
 
     def disable(self) -> None:
         """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _GpuSettings.set_enabled(conn, False)
+            _GpuSettings.set_enabled(storage, False)
         finally:
-            conn.close()
+            storage.close()
 
 
 class SnippetSettings:
@@ -286,22 +289,22 @@ class SnippetSettings:
 
     def get(self) -> int:
         """How many characters of context `search` shows around a match. 80 by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _SearchSettings.get_snippet_context_chars(conn)
+            return _SearchSettings.get_snippet_context_chars(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, chars: int) -> None:
         """Set how many characters of context `search` shows around a match.
 
         Raises `InvalidSettingValueError` if `chars` is negative.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _SearchSettings.set_snippet_context_chars(conn, chars)
+            _SearchSettings.set_snippet_context_chars(storage, chars)
         finally:
-            conn.close()
+            storage.close()
 
 
 class ExportFormatSettings:
@@ -312,11 +315,11 @@ class ExportFormatSettings:
 
     def get(self) -> str:
         """Default format `search --export` writes to when none is given. 'json' by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _SearchSettings.get_export_format(conn)
+            return _SearchSettings.get_export_format(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, format_: str) -> None:
         """Set the default format `search --export` writes to when none is given.
@@ -324,11 +327,11 @@ class ExportFormatSettings:
         `format_` must be one of `SEARCH_EXPORT_FORMATS`. Raises
         `InvalidSettingValueError` otherwise.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _SearchSettings.set_export_format(conn, format_)
+            _SearchSettings.set_export_format(storage, format_)
         finally:
-            conn.close()
+            storage.close()
 
 
 class SearchSettings:
@@ -345,22 +348,22 @@ class RemovedRetentionSettings:
 
     def get(self) -> int:
         """Minutes a removed source is kept before it's purged from the DB. 7 days by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _SourceSettings.get_removed_retention_minutes(conn)
+            return _SourceSettings.get_removed_retention_minutes(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, minutes: int) -> None:
         """Set, in minutes, how long a removed source is kept before it's purged from the DB.
 
         Raises `InvalidSettingValueError` if `minutes` is negative.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _SourceSettings.set_removed_retention_minutes(conn, minutes)
+            _SourceSettings.set_removed_retention_minutes(storage, minutes)
         finally:
-            conn.close()
+            storage.close()
 
 
 class OcrRetrySettings:
@@ -369,22 +372,22 @@ class OcrRetrySettings:
 
     def get(self) -> int:
         """How many times to retry a file's OCR after a transient failure. 3 by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _OcrSettings.get_retry_attempts(conn)
+            return _OcrSettings.get_retry_attempts(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, attempts: int) -> None:
         """Set how many times to retry a file's OCR after a transient failure.
 
         Raises `InvalidSettingValueError` if `attempts` is negative.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _OcrSettings.set_retry_attempts(conn, attempts)
+            _OcrSettings.set_retry_attempts(storage, attempts)
         finally:
-            conn.close()
+            storage.close()
 
 
 class ThreadWorkersSettings:
@@ -401,11 +404,11 @@ class ThreadWorkersSettings:
         '1'-`MAX` (a fixed worker count), or `AUTO` (sized at run time from
         current CPU/memory headroom).
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _IndexSettings.get_thread_workers(conn)
+            return _IndexSettings.get_thread_workers(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, value: str) -> None:
         """Set how many worker threads background indexing uses.
@@ -413,11 +416,11 @@ class ThreadWorkersSettings:
         `value` must be '0'-`MAX` or `AUTO`. Raises `InvalidSettingValueError`
         otherwise.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _IndexSettings.set_thread_workers(conn, value)
+            _IndexSettings.set_thread_workers(storage, value)
         finally:
-            conn.close()
+            storage.close()
 
 
 class StaleLockSettings:
@@ -432,11 +435,11 @@ class StaleLockSettings:
         explicit opt-in with the same effect as 'auto'), or 'disable'
         (require `force=True` on `Index.run`/`Index.restart`, as before).
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _IndexSettings.get_stale_lock(conn)
+            return _IndexSettings.get_stale_lock(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, value: str) -> None:
         """Set whether a stale lock is auto-cleared on the next run.
@@ -444,11 +447,11 @@ class StaleLockSettings:
         `value` must be one of `STALE_LOCK_VALUES`. Raises
         `InvalidSettingValueError` otherwise.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _IndexSettings.set_stale_lock(conn, value)
+            _IndexSettings.set_stale_lock(storage, value)
         finally:
-            conn.close()
+            storage.close()
 
 
 class OcrEngineSettings:
@@ -464,11 +467,11 @@ class OcrEngineSettings:
         'quick' first so they're searchable right away; the deeper passes
         then run in the background while indexing continues.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _OcrSettings.get_engine(conn)
+            return _OcrSettings.get_engine(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, value: str) -> None:
         """Set how thoroughly OCR looks for rotated text.
@@ -477,11 +480,11 @@ class OcrEngineSettings:
         `InvalidSettingValueError` otherwise. Files already indexed are
         brought up to the new level the next time indexing runs.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _OcrSettings.set_engine(conn, value)
+            _OcrSettings.set_engine(storage, value)
         finally:
-            conn.close()
+            storage.close()
 
 
 class IntegrityCheckSettings:
@@ -495,11 +498,11 @@ class IntegrityCheckSettings:
         default), 'enable' (run on every connection), or 'disable' (never
         run automatically - only via `Db.integrity_check`).
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _DbSettings.get_integrity_check(conn)
+            return _DbSettings.get_integrity_check(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, value: str) -> None:
         """Set whether the check runs automatically when the database is opened.
@@ -507,30 +510,30 @@ class IntegrityCheckSettings:
         `value` must be one of `INTEGRITY_CHECK_VALUES`. Raises
         `InvalidSettingValueError` otherwise.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _DbSettings.set_integrity_check(conn, value)
+            _DbSettings.set_integrity_check(storage, value)
         finally:
-            conn.close()
+            storage.close()
 
     def get_interval_minutes(self) -> int:
         """Minutes between automatic integrity checks when `get()` is 'auto'. 1 day by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _DbSettings.get_integrity_check_interval_minutes(conn)
+            return _DbSettings.get_integrity_check_interval_minutes(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set_interval_minutes(self, minutes: int) -> None:
         """Set, in minutes, how often automatic integrity checks run when `get()` is 'auto'.
 
         Raises `InvalidSettingValueError` if `minutes` is negative.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _DbSettings.set_integrity_check_interval_minutes(conn, minutes)
+            _DbSettings.set_integrity_check_interval_minutes(storage, minutes)
         finally:
-            conn.close()
+            storage.close()
 
 
 class LogLevelSettings:
@@ -539,11 +542,11 @@ class LogLevelSettings:
 
     def get(self) -> str:
         """The log level: 'debug', 'info' (the default), 'warning' or 'error'."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _LogSettings.get_level(conn)
+            return _LogSettings.get_level(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, value: str) -> None:
         """Set the log level.
@@ -551,11 +554,11 @@ class LogLevelSettings:
         `value` must be one of `LOG_LEVEL_VALUES`. Raises `InvalidSettingValueError`
         otherwise.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _LogSettings.set_level(conn, value)
+            _LogSettings.set_level(storage, value)
         finally:
-            conn.close()
+            storage.close()
 
 
 class LogRetentionSettings:
@@ -564,22 +567,22 @@ class LogRetentionSettings:
 
     def get(self) -> int:
         """Days of log files kept. 15 by default."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _LogSettings.get_retention_days(conn)
+            return _LogSettings.get_retention_days(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def set(self, days: int) -> None:
         """Set the days of log files kept.
 
         Raises `InvalidSettingValueError` if `days` is less than 1.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _LogSettings.set_retention_days(conn, days)
+            _LogSettings.set_retention_days(storage, days)
         finally:
-            conn.close()
+            storage.close()
 
 
 class LogsSettings:
@@ -627,19 +630,19 @@ class Stats:
 
     def processing(self) -> list[ProcessingMetric]:
         """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Processing.get_metrics(conn)
+            return _Processing.get_metrics(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def confidence(self) -> list[ConfidenceMetric]:
         """Return per-(file_type, process_type) running averages of OCR confidence."""
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Confidence.get_metrics(conn)
+            return _Confidence.get_metrics(storage)
         finally:
-            conn.close()
+            storage.close()
 
     def reset(self) -> None:
         """Clear processing and confidence statistics.
@@ -649,11 +652,11 @@ class Stats:
         are unavailable again until enough files have been (re)indexed to
         rebuild them.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            _Stats.reset(conn)
+            _Stats.reset(storage)
         finally:
-            conn.close()
+            storage.close()
 
 
 class Search:
@@ -670,11 +673,11 @@ class Search:
         indexed documents are considered. `context_chars` defaults to
         `Vethuq().settings.search.snippet` if not given.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _Search.indexed_content(conn, content, context_chars=context_chars)
+            return _Search.indexed_content(storage, content, context_chars=context_chars)
         finally:
-            conn.close()
+            storage.close()
 
     def export(
         self, matches: list[SearchMatch], query: str, output: str | Path, format_: str | None = None
@@ -684,11 +687,11 @@ class Search:
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            resolved_format = _SearchSettings.resolve_export_format(conn, format_)
+            resolved_format = _SearchSettings.resolve_export_format(storage, format_)
         finally:
-            conn.close()
+            storage.close()
         output_path = Path(output)
         _Export.search_results(matches, query, output_path, resolved_format)
         return output_path
@@ -718,7 +721,7 @@ class Logs:
         Raises `LogNotFoundError` if there is no log for that day and
         `ValueError` for an unknown component or level, or `lines` below 1.
         """
-        return _Logs.tail(component, _Db.default_db_path(), lines=lines, level=level, day=day)
+        return _Logs.tail(component, _default_db_path(), lines=lines, level=level, day=day)
 
 
 class Db:
@@ -732,11 +735,11 @@ class Db:
         `Vethuq().settings.db.integrity_check` to control whether this
         also runs automatically when the database is opened.
         """
-        conn = _Db.connect()
+        storage = _open_storage()
         try:
-            return _IntegrityCheck.run(conn)
+            return _IntegrityCheck.run(storage)
         finally:
-            conn.close()
+            storage.close()
 
 
 class Vethuq:

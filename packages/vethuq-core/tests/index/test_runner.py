@@ -9,7 +9,8 @@ from vethuq_core.db import Db
 from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner
 from vethuq_core.ocr import Ocr, Pending
-from vethuq_core.source import SourceNotFoundError, Sources
+from vethuq_core.sources import SourceNotFoundError, Sources
+from vethuq_core.storage import Storage
 
 
 @pytest.fixture
@@ -31,14 +32,14 @@ class _FakeProcess:
         self.pid = pid
 
 
-def _register_source(conn: sqlite3.Connection, tmp_path: Path) -> None:
+def _register_source(storage: Storage, tmp_path: Path) -> None:
     folder = tmp_path / "docs"
     folder.mkdir()
-    Sources.add(conn, folder)
+    Sources.add(storage, folder)
 
 
 def _fake_run_ocr_phased(
-    conn,
+    storage,
     resolve_sources,
     *,
     only_failed=False,
@@ -136,8 +137,8 @@ class TestReadState:
 
 
 class TestRunWorker:
-    def test_run_worker_completes(self, db_path, conn, tmp_path):
-        _register_source(conn, tmp_path)
+    def test_run_worker_completes(self, db_path, conn, storage: Storage, tmp_path):
+        _register_source(storage, tmp_path)
         conn.close()
 
         with (
@@ -160,9 +161,9 @@ class TestRunWorker:
         assert row["processed_files"] == 3
 
     def test_run_worker_crash_resets_stuck_processing_document_index_row(
-        self, db_path, conn, tmp_path
+        self, db_path, conn, storage: Storage, tmp_path
     ):
-        _register_source(conn, tmp_path)
+        _register_source(storage, tmp_path)
         _insert_processing_row(conn, "/docs/stuck.pdf")
         conn.close()
 
@@ -179,12 +180,12 @@ class TestRunWorker:
         assert row["status"] == "error"
         assert row["error_message"] is not None
 
-    def test_run_worker_stops_when_requested(self, db_path, conn, tmp_path):
-        _register_source(conn, tmp_path)
+    def test_run_worker_stops_when_requested(self, db_path, conn, storage: Storage, tmp_path):
+        _register_source(storage, tmp_path)
         conn.close()
 
         def fake_run_ocr_phased(
-            conn,
+            storage,
             resolve_sources,
             *,
             only_failed=False,
@@ -219,8 +220,10 @@ class TestRunWorker:
         assert state.status == "stopped"
         assert state.processed_files == 2
 
-    def test_run_worker_pauses_then_resumes(self, db_path, conn, tmp_path, monkeypatch):
-        _register_source(conn, tmp_path)
+    def test_run_worker_pauses_then_resumes(
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        _register_source(storage, tmp_path)
         conn.close()
 
         calls = {"n": 0}
@@ -232,7 +235,7 @@ class TestRunWorker:
         monkeypatch.setattr(index_runner.time, "sleep", fake_sleep)
 
         def fake_run_ocr_phased(
-            conn,
+            storage,
             resolve_sources,
             *,
             only_failed=False,
@@ -259,14 +262,14 @@ class TestRunWorker:
         assert state is not None
         assert state.status == "completed"
 
-    def test_run_worker_restart_passes_only_failed(self, db_path, conn, tmp_path):
-        _register_source(conn, tmp_path)
+    def test_run_worker_restart_passes_only_failed(self, db_path, conn, storage: Storage, tmp_path):
+        _register_source(storage, tmp_path)
         conn.close()
 
         seen = {}
 
         def fake_run_ocr_phased(
-            conn,
+            storage,
             resolve_sources,
             *,
             only_failed=False,
@@ -337,20 +340,22 @@ class TestStartRun:
         with pytest.raises(index_runner.AlreadyRunningError):
             IndexRunner.start_run(None, db_path=db_path)
 
-    def test_start_run_raises_on_stale_lock_when_disabled(self, db_path, conn, monkeypatch):
+    def test_start_run_raises_on_stale_lock_when_disabled(
+        self, db_path, storage: Storage, monkeypatch
+    ):
         from vethuq_core.settings import IndexSettings
 
-        IndexSettings.set_stale_lock(conn, "disable")
+        IndexSettings.set_stale_lock(storage, "disable")
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
         IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
 
         with pytest.raises(index_runner.StaleLockError):
             IndexRunner.start_run(None, db_path=db_path)
 
-    def test_start_run_force_clears_stale_lock(self, db_path, conn, monkeypatch):
+    def test_start_run_force_clears_stale_lock(self, db_path, storage: Storage, monkeypatch):
         from vethuq_core.settings import IndexSettings
 
-        IndexSettings.set_stale_lock(conn, "disable")
+        IndexSettings.set_stale_lock(storage, "disable")
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
         IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
         monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
@@ -403,9 +408,9 @@ class TestStartRun:
         assert IndexRunner.read_state(db_path).status == "failed"
 
     def test_start_run_reconciles_stuck_processing_document_index_row(
-        self, db_path, conn, tmp_path, monkeypatch
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
     ):
-        _register_source(conn, tmp_path)
+        _register_source(storage, tmp_path)
         _insert_processing_row(conn, "/docs/stuck.pdf")
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
         IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
@@ -448,8 +453,10 @@ class TestControl:
         # that's the worker's job once it actually exits.
         assert IndexRunner._lock_path(db_path).exists()
 
-    def test_request_stop_honors_custom_timeout(self, db_path, conn, tmp_path, monkeypatch):
-        _register_source(conn, tmp_path)
+    def test_request_stop_honors_custom_timeout(
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        _register_source(storage, tmp_path)
         started_at = datetime.now(UTC).isoformat()
         cursor = conn.execute(
             "INSERT INTO index_runs (target, status, pid, total_files, started_at) "
@@ -480,7 +487,7 @@ class TestControl:
 
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
         monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
-        force_kill_calls = []
+        force_kill_calls: list[int] = []
         monkeypatch.setattr(IndexRunner, "_force_kill", force_kill_calls.append)
 
         clock = {"now": 0.0}
@@ -500,9 +507,9 @@ class TestControl:
         assert clock["now"] < IndexRunner._STOP_TIMEOUT_SECONDS
 
     def test_request_stop_force_kill_resets_stuck_processing_document_index_row(
-        self, db_path, conn, tmp_path, monkeypatch
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
     ):
-        _register_source(conn, tmp_path)
+        _register_source(storage, tmp_path)
         _insert_processing_row(conn, "/docs/stuck.pdf")
         _write_running_state(db_path, conn, 7777)
         conn.close()
@@ -510,7 +517,7 @@ class TestControl:
         # Never reports as stopped on its own - forces the force-kill branch.
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
         monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
-        force_kill_calls = []
+        force_kill_calls: list[int] = []
         monkeypatch.setattr(IndexRunner, "_force_kill", force_kill_calls.append)
 
         clock = {"now": 0.0}
@@ -531,9 +538,9 @@ class TestControl:
         assert row["error_message"] is not None
 
     def test_request_stop_graceful_leaves_processing_rows_untouched(
-        self, db_path, conn, tmp_path, monkeypatch
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
     ):
-        _register_source(conn, tmp_path)
+        _register_source(storage, tmp_path)
         _insert_processing_row(conn, "/docs/still-processing.pdf")
         _write_running_state(db_path, conn, 8888)
         conn.close()
@@ -546,7 +553,7 @@ class TestControl:
 
         monkeypatch.setattr(IndexRunner, "_is_pid_running", fake_alive)
         monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
-        force_kill_calls = []
+        force_kill_calls: list[int] = []
         monkeypatch.setattr(IndexRunner, "_force_kill", force_kill_calls.append)
 
         IndexRunner.request_stop(db_path=db_path)
@@ -565,8 +572,10 @@ class TestControl:
         with pytest.raises(index_runner.IndexRunnerError):
             IndexRunner.request_resume(db_path=db_path)
 
-    def test_request_stop_marks_state_and_history(self, db_path, conn, tmp_path, monkeypatch):
-        _register_source(conn, tmp_path)
+    def test_request_stop_marks_state_and_history(
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        _register_source(storage, tmp_path)
         started_at = datetime.now(UTC).isoformat()
         cursor = conn.execute(
             "INSERT INTO index_runs (target, status, pid, total_files, started_at) "

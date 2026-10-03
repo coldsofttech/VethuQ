@@ -6,10 +6,10 @@ lives behind the `SearchEngine` interface so implementations can be swapped or c
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 
 from vethuq_core.search.engines import SearchEngines, SearchMatch
+from vethuq_core.storage import Storage
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class FileMatch:
 class Search:
     @staticmethod
     def indexed_content(
-        conn: sqlite3.Connection,
+        storage: Storage,
         query: str,
         *,
         context_chars: int | None = None,
@@ -38,18 +38,16 @@ class Search:
         considered. When a page contains `query` more than once, only its first
         occurrence is used.
         """
-        return SearchEngines.get(conn, engine).search(query, context_chars=context_chars)
+        return SearchEngines.get(storage, engine).search(query, context_chars=context_chars)
 
     @staticmethod
-    def files(
-        conn: sqlite3.Connection, query: str, *, context_chars: int | None = None
-    ) -> list[FileMatch]:
+    def files(storage: Storage, query: str, *, context_chars: int | None = None) -> list[FileMatch]:
         """Search like `indexed_content`, but return one `FileMatch` per matching file.
 
         Files keep the order of their first matching page (so, by file path).
         """
         files: dict[int, FileMatch] = {}
-        for match in Search.indexed_content(conn, query, context_chars=context_chars):
+        for match in Search.indexed_content(storage, query, context_chars=context_chars):
             files.setdefault(
                 match.file_id,
                 FileMatch(

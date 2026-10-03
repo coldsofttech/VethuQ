@@ -8,8 +8,8 @@ from pathlib import Path
 import typer
 from rich.table import Table
 from rich.text import Text
-from vethuq_core.db import Db
 from vethuq_core.logs import LogNotFoundError, Logs
+from vethuq_core.storage import default_db_path
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -82,7 +82,7 @@ class LogsCommand:
         ),
     ) -> None:
         """Show the most recent entries of VethuQ's log files (database, index, ui, cli)."""
-        db_path = Db.default_db_path()
+        db_path = default_db_path()
         if component is None:
             LogsCommand._list_components(db_path)
             return

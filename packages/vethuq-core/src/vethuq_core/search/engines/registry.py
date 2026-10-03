@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Callable
 
 from vethuq_core.search.engines.base import SearchEngine
+from vethuq_core.storage import Storage
 
 # Builds an engine bound to a connection.
-EngineFactory = Callable[[sqlite3.Connection], SearchEngine]
+EngineFactory = Callable[[Storage], SearchEngine]
 
 
 class SearchEngines:
@@ -22,8 +22,8 @@ class SearchEngines:
         SearchEngines._factories[name] = factory
 
     @staticmethod
-    def get(conn: sqlite3.Connection, name: str | None = None) -> SearchEngine:
-        """Build the engine registered as `name` (default `SearchEngines.DEFAULT`) on `conn`."""
+    def get(storage: Storage, name: str | None = None) -> SearchEngine:
+        """Build the engine registered as `name` (default `SearchEngines.DEFAULT`) on `storage`."""
         key = name or SearchEngines.DEFAULT
         try:
             factory = SearchEngines._factories[key]
@@ -31,13 +31,13 @@ class SearchEngines:
             raise ValueError(
                 f"Unknown search engine {key!r}; available: {sorted(SearchEngines._factories)}"
             ) from None
-        return factory(conn)
+        return factory(storage)
 
     @staticmethod
-    def _like_factory(conn: sqlite3.Connection) -> SearchEngine:
+    def _like_factory(storage: Storage) -> SearchEngine:
         from vethuq_core.search.engines.like import LikeSearchEngine
 
-        return LikeSearchEngine(conn)
+        return LikeSearchEngine(storage)
 
 
 SearchEngines.register("like", SearchEngines._like_factory)

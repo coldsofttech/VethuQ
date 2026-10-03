@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,10 +13,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.db.queries import Document as DocumentQuery
 from vethuq_core.logs import Logs
 from vethuq_core.readers import PageResult, Readers
-from vethuq_core.source import Source
+from vethuq_core.sources import Source
+from vethuq_core.storage import Row, Storage
 
 _logger = Logs.get_logger("index")
 
@@ -78,7 +77,7 @@ class Document:
         return created_at, modified_at
 
     @staticmethod
-    def find_duplicate(conn: sqlite3.Connection, sha256: str, row_id: int) -> sqlite3.Row | None:
+    def find_duplicate(storage: Storage, sha256: str, row_id: int) -> Row | None:
         """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`.
 
         Excludes `row_id` itself. Used to link a (re)indexed row to an existing
@@ -86,10 +85,10 @@ class Document:
         creating a new one - the earliest-indexed match is used so a whole
         duplicate group always converges on a single `documents` row.
         """
-        return DocumentQuery.find_duplicate_index(conn, sha256, row_id)
+        return storage.find_duplicate_document_index(sha256, row_id)
 
     @staticmethod
-    def has_content_changed(file_path: Path, existing: sqlite3.Row) -> bool:
+    def has_content_changed(file_path: Path, existing: Row) -> bool:
         """Return whether `file_path`'s content differs from its `document_index` row.
 
         A file's mtime and size are checked first - if neither moved since it was
@@ -105,7 +104,7 @@ class Document:
 
     @staticmethod
     def upsert(
-        conn: sqlite3.Connection, source_id: int, file_path: Path, file_type: str
+        storage: Storage, source_id: int, file_path: Path, file_type: str
     ) -> tuple[int, int | None] | None:
         """Claim and insert/reset a document's `document_index` row, linking it to its
         logical document.
@@ -120,7 +119,7 @@ class Document:
         Returns None instead - rather than a tuple - if `file_path`'s row is
         already claimed ('processing') by another concurrently-running index run
         (an overlapping `index run`, or one that hasn't been reconciled yet after
-        a crash - see `DocumentQuery.upsert_index` and `IndexRunner._run_worker`).
+        a crash - see `Storage.upsert_document_index` and `IndexRunner._run_worker`).
         The caller must leave the file alone in that case: whichever run holds
         the claim owns processing it, and touching it here would mean the same
         file gets OCR'd twice at once.
@@ -133,9 +132,9 @@ class Document:
         this row moves on to different content. If that leaves the old logical
         document with no other physical row referencing it, it's pruned.
         """
-        from vethuq_core.source import Sources
+        from vethuq_core.sources import Sources
 
-        existing = DocumentQuery.get_index_by_path(conn, str(file_path))
+        existing = storage.get_document_index_by_path(str(file_path))
         if existing is not None and existing["status"] == "processing":
             return None
 
@@ -147,10 +146,10 @@ class Document:
         sha256 = Document.compute_sha256(file_path)
 
         if existing is not None and existing["sha256"] != sha256:
-            Sources.promote_surviving_duplicate(conn, existing["id"], set())
+            Sources.promote_surviving_duplicate(storage, existing["id"], set())
 
         existing_id = existing["id"] if existing is not None else -1
-        duplicate_source = Document.find_duplicate(conn, sha256, existing_id)
+        duplicate_source = Document.find_duplicate(storage, sha256, existing_id)
 
         old_document_id = existing["document_id"] if existing is not None else None
         is_new_document = False
@@ -159,11 +158,10 @@ class Document:
         elif existing is not None and existing["sha256"] == sha256:
             document_id = old_document_id
         else:
-            document_id = DocumentQuery.insert(conn, started_at)
+            document_id = storage.insert_document(started_at)
             is_new_document = True
 
-        claimed = DocumentQuery.upsert_index(
-            conn,
+        claimed = storage.upsert_document_index(
             source_id,
             document_id,
             str(file_path),
@@ -181,25 +179,25 @@ class Document:
             # row created just now for this attempt, so drop it rather than
             # leaving it orphaned.
             if is_new_document:
-                DocumentQuery.delete(conn, document_id)
+                storage.delete_document(document_id)
             return None
 
         if duplicate_source is None:
             # Re-indexing starts the document over from its quick pass. Only done
             # once the claim is won, so a lost race never wipes the other run's phases.
-            DocumentQuery.delete_phases(conn, document_id)
+            storage.delete_document_phases(document_id)
         if old_document_id is not None and old_document_id != document_id:
-            Sources.prune_orphaned_documents(conn, {old_document_id})
-        Sources.refresh_document_paths(conn, {document_id, old_document_id} - {None})
+            Sources.prune_orphaned_documents(storage, {old_document_id})
+        Sources.refresh_document_paths(storage, {document_id, old_document_id} - {None})
 
-        row = DocumentQuery.get_index_id_by_path(conn, str(file_path))
+        row = storage.get_document_index_id_by_path(str(file_path))
         assert row is not None
         row_id = row["id"]
         return row_id, (duplicate_source["id"] if duplicate_source is not None else None)
 
     @staticmethod
     def reconcile_renamed_and_removed(
-        conn: sqlite3.Connection, source: Source, disk_files: list[Path]
+        storage: Storage, source: Source, disk_files: list[Path]
     ) -> set[str]:
         """Detect files renamed/moved within `source`, and files missing from it.
 
@@ -229,7 +227,7 @@ class Document:
         so the caller can skip (re-)indexing them.
         """
         disk_path_strs = {str(path) for path in disk_files}
-        tracked = DocumentQuery.list_tracked_index_rows(conn, source.id)
+        tracked = storage.list_tracked_document_index_rows(source.id)
         tracked_paths = {row["file_path"] for row in tracked}
 
         missing_rows = [row for row in tracked if row["file_path"] not in disk_path_strs]
@@ -240,7 +238,7 @@ class Document:
 
         if missing_rows and new_paths:
             new_sha256s = {path: Document.compute_sha256(Path(path)) for path in new_paths}
-            missing_by_sha256: dict[str, list[sqlite3.Row]] = {}
+            missing_by_sha256: dict[str, list[Row]] = {}
             for row in sorted(missing_rows, key=lambda r: r["id"]):
                 missing_by_sha256.setdefault(row["sha256"], []).append(row)
             new_by_sha256: dict[str, list[str]] = {}
@@ -254,8 +252,7 @@ class Document:
                 for row, new_path in zip(rows, matching_paths, strict=False):
                     stat = Path(new_path).stat()
                     created_at, modified_at = Document.capture_timestamps(stat)
-                    DocumentQuery.update_index_path(
-                        conn,
+                    storage.update_document_index_path(
                         row["id"],
                         new_path,
                         stat.st_mtime,
@@ -270,40 +267,40 @@ class Document:
         for row in missing_rows:
             if row["id"] in claimed_row_ids:
                 continue
-            DocumentQuery.mark_index_removed(conn, row["id"], removed_at)
+            storage.mark_document_index_removed(row["id"], removed_at)
 
-        from vethuq_core.source import Sources
+        from vethuq_core.sources import Sources
 
-        Sources.refresh_document_paths(conn, {row["document_id"] for row in missing_rows})
+        Sources.refresh_document_paths(storage, {row["document_id"] for row in missing_rows})
         return claimed_paths
 
     @staticmethod
-    def mark_indexed(conn: sqlite3.Connection, document_id: int) -> None:
-        DocumentQuery.mark_indexed(conn, document_id, datetime.now(UTC).isoformat())
+    def mark_indexed(storage: Storage, document_id: int) -> None:
+        storage.mark_document_index_indexed(document_id, datetime.now(UTC).isoformat())
 
     @staticmethod
-    def mark_duplicate(conn: sqlite3.Connection, document_id: int) -> None:
+    def mark_duplicate(storage: Storage, document_id: int) -> None:
         """Mark a document as indexed via a checksum match instead of running OCR on it.
 
         Its `document_id` (the logical document it shares with the matched
         content) was already set by `Document.upsert`, so there's nothing left
         to link here beyond the status itself.
         """
-        DocumentQuery.mark_indexed(conn, document_id, datetime.now(UTC).isoformat())
+        storage.mark_document_index_indexed(document_id, datetime.now(UTC).isoformat())
 
     @staticmethod
-    def mark_error(conn: sqlite3.Connection, document_id: int, message: str) -> None:
-        DocumentQuery.mark_error(conn, document_id, message, datetime.now(UTC).isoformat())
+    def mark_error(storage: Storage, document_id: int, message: str) -> None:
+        storage.mark_document_index_error(document_id, message, datetime.now(UTC).isoformat())
 
     @staticmethod
     def store_pages(
-        conn: sqlite3.Connection, document_id: int, file_type: str, pages: list[PageResult]
+        storage: Storage, document_id: int, file_type: str, pages: list[PageResult]
     ) -> None:
         """Replace a document's OCR pages with freshly (re)extracted `pages`."""
-        Readers.for_file_type(file_type).storage.store(conn, document_id, pages)
+        Readers.for_file_type(file_type).storage.store(storage, document_id, pages)
 
     @staticmethod
-    def get_results(conn: sqlite3.Connection, source_id: int) -> list[DocumentResult]:
+    def get_results(storage: Storage, source_id: int) -> list[DocumentResult]:
         """Return one result per document indexed under `source_id`, most recent first.
 
         `confidence` is the average across a document's pages (there's only one for
@@ -317,14 +314,14 @@ class Document:
         # `document_id` actually carries OCR pages of its own (itself, if it does)
         # - duplicates are detected globally, so that carrier may belong to a
         # different source than `source_id`.
-        rows = DocumentQuery.get_result_rows(conn, source_id)
+        rows = storage.get_document_result_rows(source_id)
 
         results = []
         for row in rows:
             confidence = None
             if row["status"] == "indexed":
                 scores = Readers.for_file_type(row["file_type"]).storage.page_confidences(
-                    conn, row["canonical_id"]
+                    storage, row["canonical_id"]
                 )
                 confidence = sum(scores) / len(scores) if scores else None
 

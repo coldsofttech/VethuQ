@@ -269,17 +269,19 @@ END;
             raise
 
         from vethuq_core.db.integrity import IntegrityCheck
-        from vethuq_core.source import Sources
+        from vethuq_core.sources import Sources
+        from vethuq_core.storage.sqlite import SqliteStorage
 
-        purged_sources = Sources.purge_expired_sources(conn)
-        purged_documents = Sources.purge_expired_documents(conn)
+        storage = SqliteStorage(conn)
+        purged_sources = Sources.purge_expired_sources(storage)
+        purged_documents = Sources.purge_expired_documents(storage)
         if purged_sources or purged_documents:
             _logger.info(
                 "Purged %d expired removed source(s) and %d expired removed document(s)",
                 purged_sources,
                 purged_documents,
             )
-        IntegrityCheck.maybe_run(conn)
+        IntegrityCheck.maybe_run(storage)
         return conn
 
     @staticmethod

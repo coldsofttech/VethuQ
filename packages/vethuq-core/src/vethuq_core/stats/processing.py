@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 from dataclasses import dataclass
 
-from vethuq_core.db.queries import Stats as StatsQuery
+from vethuq_core.storage import Storage
 
 
 @dataclass(frozen=True)
@@ -34,11 +33,11 @@ class ProcessingMetric:
 
 class Processing:
     @staticmethod
-    def get_metrics(conn: sqlite3.Connection) -> list[ProcessingMetric]:
+    def get_metrics(storage: Storage) -> list[ProcessingMetric]:
         """Return `processing_metrics`' per-(phase, file_type, size_bucket) running averages."""
-        return [ProcessingMetric(**dict(row)) for row in StatsQuery.list_processing_metrics(conn)]
+        return [ProcessingMetric(**dict(row)) for row in storage.list_processing_metrics()]
 
     @staticmethod
-    def clear(conn: sqlite3.Connection) -> None:
+    def clear(storage: Storage) -> None:
         """Clear `processing_metrics` (without committing)."""
-        StatsQuery.clear_processing_metrics(conn)
+        storage.clear_processing_metrics()

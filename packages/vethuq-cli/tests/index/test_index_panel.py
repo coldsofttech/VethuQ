@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 import vethuq_core.db as db_module
 from vethuq_cli.index.panel import StatePanel
 from vethuq_core.index import runner as index_runner_module
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 class TestStatePanel:
@@ -15,7 +16,7 @@ class TestStatePanel:
         conn = db_module.Db.connect(db_path)
         folder = tmp_path / "src"
         folder.mkdir()
-        source = Sources.add(conn, folder)
+        source = Sources.add(SqliteStorage(conn), folder)
         for index, phase in enumerate((1, 2, 3), start=1):
             document_id = conn.execute(
                 "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
@@ -32,7 +33,7 @@ class TestStatePanel:
                 (index, phase),
             )
         conn.commit()
-        OcrSettings.set_engine(conn, "deep")
+        OcrSettings.set_engine(SqliteStorage(conn), "deep")
         now = datetime.now(UTC).isoformat()
         state = index_runner_module.IndexState(
             run_id=1,
@@ -52,7 +53,7 @@ class TestStatePanel:
         )
 
         console = Console(width=100, record=True)
-        console.print(StatePanel.build(conn, state, animated=False))
+        console.print(StatePanel.build(SqliteStorage(conn), state, animated=False))
         text = console.export_text()
         conn.close()
 

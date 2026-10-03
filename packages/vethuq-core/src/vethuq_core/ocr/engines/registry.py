@@ -7,12 +7,12 @@ never construct one at all), and `vethuq_core.ocr` never imports one directly.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from collections.abc import Callable
 
 from vethuq_core.ocr.engines.base import OcrEngine
 from vethuq_core.settings import GpuSettings
+from vethuq_core.storage import Storage
 
 # Builds an engine; the flag is the user's GPU setting (engines that can't use
 # a GPU ignore it).
@@ -43,7 +43,7 @@ class Engines:
         return PaddleOcrEngine(use_gpu=use_gpu)
 
     @staticmethod
-    def get(conn: sqlite3.Connection) -> OcrEngine:
+    def get(storage: Storage) -> OcrEngine:
         """Return the calling thread's engine, constructing it on first use.
 
         Engine choice is fixed to `DEFAULT` for now - selecting between
@@ -55,7 +55,7 @@ class Engines:
         engine = engines.get(Engines.DEFAULT)
         if engine is None:
             engine = engines[Engines.DEFAULT] = Engines._factories[Engines.DEFAULT](
-                GpuSettings.is_enabled(conn)
+                GpuSettings.is_enabled(storage)
             )
         return engine
 

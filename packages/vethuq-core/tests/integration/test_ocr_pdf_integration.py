@@ -5,7 +5,8 @@ from unittest.mock import patch
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
 
@@ -113,13 +114,13 @@ class TestPdfIntegration:
     @pytest.mark.integration
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_digital_pdf_skips_engine_entirely(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         pdf_path = tmp_path / "digital.pdf"
         pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
-        source = Sources.add(conn, pdf_path)
+        source = Sources.add(storage, pdf_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         mock_get_engine.assert_not_called()
 
@@ -138,7 +139,7 @@ class TestPdfIntegration:
     @pytest.mark.integration
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_scanned_pdf_runs_full_page_ocr(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("scanned page text")
@@ -146,9 +147,9 @@ class TestPdfIntegration:
 
         pdf_path = tmp_path / "scanned.pdf"
         pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
-        source = Sources.add(conn, pdf_path)
+        source = Sources.add(storage, pdf_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         engine.predict.assert_called_once()
 
@@ -164,7 +165,7 @@ class TestPdfIntegration:
     @pytest.mark.integration
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("banner region text")
@@ -174,9 +175,9 @@ class TestPdfIntegration:
         pdf_path.write_bytes(
             (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
         )
-        source = Sources.add(conn, pdf_path)
+        source = Sources.add(storage, pdf_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         engine.predict.assert_called_once()
 
@@ -206,6 +207,7 @@ class TestPdfIntegration:
         engine_calls,
         expected_text,
         conn: sqlite3.Connection,
+        storage: Storage,
         tmp_path,
     ):
         engine = PaddleStub()
@@ -214,9 +216,9 @@ class TestPdfIntegration:
 
         pdf_path = tmp_path / "doc.pdf"
         pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-        source = Sources.add(conn, pdf_path)
+        source = Sources.add(storage, pdf_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
@@ -245,13 +247,13 @@ class TestPdfIntegration:
     )
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_unreadable_pdf_records_error_without_aborting(
-        self, mock_get_engine, fixture_name, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, fixture_name, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         pdf_path = tmp_path / "doc.pdf"
         pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-        source = Sources.add(conn, pdf_path)
+        source = Sources.add(storage, pdf_path)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         mock_get_engine.return_value.predict.assert_not_called()
 

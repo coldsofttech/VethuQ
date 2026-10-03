@@ -53,6 +53,8 @@ select = ["E", "F", "I", "UP", "B"]
 platform = "linux"
 # Each package has its own tests/conftest.py; mypy rejects the duplicate module name.
 exclude = ["conftest\\.py$"]
+# Tests import helpers from vethuq-core's conftest; resolve `conftest` to that one.
+mypy_path = ["packages/vethuq-core/tests"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 

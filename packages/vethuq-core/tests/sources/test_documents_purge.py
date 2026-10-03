@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
@@ -13,7 +14,7 @@ def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
 class TestPurgeDocuments:
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_purge_promotes_duplicate_when_original_document_is_removed(
-        self, mock_get_engine, conn: sqlite3.Connection, tmp_path
+        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
         engine.predict.return_value = _fake_ocr_result("shared content")
@@ -25,9 +26,9 @@ class TestPurgeDocuments:
         file_b = folder / "b.png"
         file_a.write_bytes(b"identical bytes")
         file_b.write_bytes(b"identical bytes")
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
 
-        Quick.run(conn, source)
+        Quick.run(storage, source)
 
         doc_a = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(file_a.resolve()),)
@@ -39,7 +40,7 @@ class TestPurgeDocuments:
 
         # file_a (the original) is deleted outright, with nothing to rename it to.
         file_a.unlink()
-        Quick.run(conn, source, only_new_files=True)
+        Quick.run(storage, source, only_new_files=True)
 
         removed = conn.execute(
             "SELECT status, removed_at FROM document_index WHERE id = ?", (doc_a["id"],)
@@ -47,7 +48,7 @@ class TestPurgeDocuments:
         assert removed["status"] == "removed"
         assert removed["removed_at"] is not None
 
-        Sources.purge_expired_documents(conn, retention_minutes=-1)
+        Sources.purge_expired_documents(storage, retention_minutes=-1)
 
         survivor = conn.execute(
             "SELECT * FROM document_index WHERE id = ?", (doc_b["id"],)

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 from vethuq_core.ocr.engines import Engines, OcrResult
 from vethuq_core.readers import PageResult, Reader, ReadPage
+from vethuq_core.storage import Storage
 
 
 class PageOcr:
@@ -37,7 +37,7 @@ class PageOcr:
         )
 
     @staticmethod
-    def ocr_page(conn: sqlite3.Connection, page: ReadPage) -> PageResult:
+    def ocr_page(storage: Storage, page: ReadPage) -> PageResult:
         """Classify a page as native, scanned, or mixed and extract accordingly.
 
         Native text is taken directly from the page's text layer with no OCR at all.
@@ -51,7 +51,7 @@ class PageOcr:
             return PageResult(text=native_text.strip(), confidence=1.0, source="native")
 
         if PageOcr.is_native_text(native_text) and image_regions:
-            engine = Engines.get(conn)
+            engine = Engines.get(storage)
             regions = [engine.recognize(page.render(region)) for region in image_regions]
             combined_text = "\n".join([native_text.strip(), *(region.text for region in regions)])
             combined_confidence = sum(region.confidence for region in regions) / len(regions)
@@ -66,8 +66,8 @@ class PageOcr:
                 image_height=last.image_height,
             )
 
-        return PageOcr.page_result(Engines.get(conn).recognize(page.render(None)))
+        return PageOcr.page_result(Engines.get(storage).recognize(page.render(None)))
 
     @staticmethod
-    def ocr_document(conn: sqlite3.Connection, reader: Reader, file_path: Path) -> list[PageResult]:
-        return [PageOcr.ocr_page(conn, page) for page in reader.read(file_path)]
+    def ocr_document(storage: Storage, reader: Reader, file_path: Path) -> list[PageResult]:
+        return [PageOcr.ocr_page(storage, page) for page in reader.read(file_path)]

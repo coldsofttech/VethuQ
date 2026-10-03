@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 from rich.live import Live
@@ -18,7 +17,8 @@ from vethuq_core.index import (
 )
 from vethuq_core.ocr import Deepening
 from vethuq_core.settings import IndexSettings
-from vethuq_core.source import SourceNotFoundError
+from vethuq_core.sources import SourceNotFoundError
+from vethuq_core.storage import Storage
 
 from vethuq_cli.console import console
 from vethuq_cli.theme import Theme
@@ -62,7 +62,7 @@ class StatePanel:
         return f"{done}/{total} ({percent:.0f}%)"
 
     @staticmethod
-    def build(conn: sqlite3.Connection, state: IndexState, *, animated: bool) -> Panel:
+    def build(storage: Storage, state: IndexState, *, animated: bool) -> Panel:
         status_style = StatePanel.RUN_STATUS_STYLES.get(state.status, "default")
 
         table = Table.grid(padding=(0, 1))
@@ -74,7 +74,7 @@ class StatePanel:
         table.add_row("Target", state.target or "all sources")
 
         phase_name = Deepening.PHASE_NAMES.get(state.phase, str(state.phase))
-        max_phase = Deepening.max_phase(conn)
+        max_phase = Deepening.max_phase(storage)
         if max_phase > 1:
             table.add_row("Phase", Text(f"{phase_name} ({state.phase}/{max_phase})", style="bold"))
             # Quick counts files; the deeper phases count pages - each shows how much of
@@ -85,7 +85,7 @@ class StatePanel:
             )
             try:
                 progress = Deepening.progress(
-                    conn, IndexRunner.resolve_targets(conn, state.target), max_phase
+                    storage, IndexRunner.resolve_targets(storage, state.target), max_phase
                 )
             except SourceNotFoundError:
                 progress = {}
@@ -118,7 +118,7 @@ class StatePanel:
             table.add_row(label, files_text)
 
         if state.status == "running":
-            by_phase = Eta.phase_seconds(conn, state)
+            by_phase = Eta.phase_seconds(storage, state)
             if by_phase:
                 eta = Text(f"~{StatePanel.format_duration(sum(by_phase.values()))}")
                 if len(by_phase) > 1:
@@ -133,15 +133,15 @@ class StatePanel:
         return Panel(table, title="Index Run", border_style=border_style, expand=False)
 
     @staticmethod
-    def print_state(conn: sqlite3.Connection, state: IndexState) -> None:
-        console.print(StatePanel.build(conn, state, animated=False))
+    def print_state(storage: Storage, state: IndexState) -> None:
+        console.print(StatePanel.build(storage, state, animated=False))
 
     @staticmethod
-    def live_wait(conn: sqlite3.Connection, pid: int) -> None:
+    def live_wait(storage: Storage, pid: int) -> None:
         """Live-refresh the state panel until the run owned by `pid` reaches a terminal state."""
         with Live(console=console, refresh_per_second=4) as live:
             final = IndexRunner.wait(
-                pid, lambda state: live.update(StatePanel.build(conn, state, animated=True))
+                pid, lambda state: live.update(StatePanel.build(storage, state, animated=True))
             )
         if final is None or final.pid != pid:
             console.print(

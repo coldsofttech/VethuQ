@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from collections.abc import Callable, Collection
@@ -16,8 +15,6 @@ import psutil
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.db.queries import Document as DocumentQuery
-from vethuq_core.db.queries.sources import Source as SourceQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
@@ -26,7 +23,8 @@ from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.readers import PageResult, Reader, Readers
 from vethuq_core.settings import IndexSettings, OcrSettings
-from vethuq_core.source import Source
+from vethuq_core.sources import Source
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -43,7 +41,7 @@ class Quick:
 
     @staticmethod
     def run_with_retries(
-        conn: sqlite3.Connection, reader: Reader, file_path: Path
+        storage: Storage, reader: Reader, file_path: Path
     ) -> tuple[list[PageResult] | None, int, Exception | None]:
         """Retry OCR itself (no DB writes) up to the configured attempt count.
 
@@ -52,21 +50,21 @@ class Quick:
         see `Quick.finalize_result`. Returns `(pages, attempts_used,
         last_exception)`; `pages` is None if every attempt failed.
         """
-        max_attempts = 1 + OcrSettings.get_retry_attempts(conn)
+        max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
         attempt = 0
         last_exc: Exception | None = None
         pages: list[PageResult] | None = None
         while attempt < max_attempts and pages is None:
             attempt += 1
             try:
-                pages = PageOcr.ocr_document(conn, reader, file_path)
+                pages = PageOcr.ocr_document(storage, reader, file_path)
             except Exception as exc:  # noqa: BLE001 - one bad file shouldn't abort the batch
                 last_exc = exc
         return pages, attempt, last_exc
 
     @staticmethod
     def finalize_result(
-        conn: sqlite3.Connection,
+        storage: Storage,
         document_id: int,
         file_type: str,
         pages: list[PageResult] | None,
@@ -83,33 +81,33 @@ class Quick:
         previous run's pages (if any) are left untouched rather than cleared
         ahead of a retry that might not succeed.
 
-        Using `conn` as a context manager (sqlite3's own transaction protocol)
-        means any exception raised while writing this - not just an OCR failure,
-        which is handled by `pages`/`last_exc` before this is even called, but a
-        DB error partway through the writes themselves - rolls back everything
-        written since entry rather than leaving a partial result committed later
-        alongside whatever this connection writes next. The row is left claimed
+        Wrapping the writes in `storage.transaction()` means any exception raised
+        while writing this - not just an OCR failure, which is handled by
+        `pages`/`last_exc` before this is even called, but a DB error partway
+        through the writes themselves - rolls back everything written since entry
+        rather than leaving a partial result committed later alongside whatever
+        this connection writes next. The row is left claimed
         ('processing') in that case, for a future run to retry rather than ever
         being readable as 'indexed' with missing pages/metrics.
 
         Returns whether the document was indexed successfully.
         """
-        with conn:
-            DocumentQuery.update_index_retry_stats(
-                conn, document_id, attempts_used - 1, peak_memory_mb, cpu_percent
+        with storage.transaction():
+            storage.update_document_index_retry_stats(
+                document_id, attempts_used - 1, peak_memory_mb, cpu_percent
             )
             if pages is None:
-                Document.mark_error(conn, document_id, str(last_exc))
+                Document.mark_error(storage, document_id, str(last_exc))
                 return False
-            Document.store_pages(conn, document_id, file_type, pages)
-            Document.mark_indexed(conn, document_id)
-            Metrics.update_processing(conn, document_id, file_type)
-            Metrics.update_confidence(conn, document_id, file_type)
+            Document.store_pages(storage, document_id, file_type, pages)
+            Document.mark_indexed(storage, document_id)
+            Metrics.update_processing(storage, document_id, file_type)
+            Metrics.update_confidence(storage, document_id, file_type)
             return True
 
     @staticmethod
     def run(
-        conn: sqlite3.Connection,
+        storage: Storage,
         source: Source,
         *,
         only_new_files: bool = False,
@@ -162,8 +160,8 @@ class Quick:
 
         renamed_paths: set[str] = set()
         if only_new_files and not only_failed:
-            with conn:
-                renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
+            with storage.transaction():
+                renamed_paths = Document.reconcile_renamed_and_removed(storage, source, disk_files)
             for new_path in sorted(renamed_paths):
                 processed_paths.append(new_path)
                 if on_file_done is not None:
@@ -177,7 +175,7 @@ class Quick:
 
             existing = None
             if only_new_files or only_failed:
-                existing = DocumentQuery.get_index_pending_check(conn, str(file_path))
+                existing = storage.get_document_index_pending_check(str(file_path))
             if only_failed:
                 if existing is None or existing["status"] != "error":
                     continue
@@ -190,8 +188,8 @@ class Quick:
                 continue
 
             file_type = Readers.for_path(file_path).file_type
-            with conn:
-                claim = Document.upsert(conn, source.id, file_path, file_type)
+            with storage.transaction():
+                claim = Document.upsert(storage, source.id, file_path, file_type)
             if claim is None:
                 # Already claimed by another concurrently-running index run -
                 # leave it alone, that run owns finishing it.
@@ -202,8 +200,8 @@ class Quick:
             if duplicate_source_id is not None:
                 # Identical content already indexed under the same logical document -
                 # skip OCR entirely rather than redoing the same work.
-                with conn:
-                    Document.mark_duplicate(conn, document_id)
+                with storage.transaction():
+                    Document.mark_duplicate(storage, document_id)
                 if on_file_done is not None:
                     on_file_done(str(file_path))
                 continue
@@ -213,12 +211,12 @@ class Quick:
             mem_before = process.memory_info().rss
 
             reader = Readers.for_path(file_path)
-            pages, attempts_used, last_exc = Quick.run_with_retries(conn, reader, file_path)
+            pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
 
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
             succeeded = Quick.finalize_result(
-                conn,
+                storage,
                 document_id,
                 file_type,
                 pages,
@@ -233,9 +231,8 @@ class Quick:
             if on_file_done is not None:
                 on_file_done(str(file_path))
 
-        with conn:
-            SourceQuery.update_scan_status(
-                conn,
+        with storage.transaction():
+            storage.update_source_scan_status(
                 source.id,
                 "error" if had_error else "indexed",
                 datetime.now(UTC).isoformat(),
@@ -244,7 +241,7 @@ class Quick:
 
     @staticmethod
     def process_file(
-        conn: sqlite3.Connection,
+        storage: Storage,
         source: Source,
         file_path: Path,
         file_type: str,
@@ -263,16 +260,16 @@ class Quick:
         sqlite read/write around it is serialized through `db_lock` since a
         single connection isn't safe for unsynchronized concurrent use.
         """
-        with db_lock, conn:
-            claim = Document.upsert(conn, source.id, file_path, file_type)
+        with db_lock, storage.transaction():
+            claim = Document.upsert(storage, source.id, file_path, file_type)
 
         if claim is None:
             return None
         document_id, duplicate_source_id = claim
 
         if duplicate_source_id is not None:
-            with db_lock, conn:
-                Document.mark_duplicate(conn, document_id)
+            with db_lock, storage.transaction():
+                Document.mark_duplicate(storage, document_id)
             return True
 
         process = psutil.Process()
@@ -280,13 +277,13 @@ class Quick:
         mem_before = process.memory_info().rss
 
         reader = Readers.for_path(file_path)
-        pages, attempts_used, last_exc = Quick.run_with_retries(conn, reader, file_path)
+        pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
 
         with db_lock:
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
             return Quick.finalize_result(
-                conn,
+                storage,
                 document_id,
                 file_type,
                 pages,
@@ -298,7 +295,7 @@ class Quick:
 
     @staticmethod
     def run_auto_elastic(
-        conn: sqlite3.Connection,
+        storage: Storage,
         pending: list[PendingFile],
         initial_workers: int,
         handle_one: Callable[[PendingFile], None],
@@ -348,7 +345,7 @@ class Quick:
                 # head of the queue is never skipped, just held).
                 if in_flight > 0:
                     with db_lock:
-                        if Scheduler.would_exceed_budget(conn, item):
+                        if Scheduler.would_exceed_budget(storage, item):
                             return _WAIT
                 next_index += 1
                 in_flight += 1
@@ -362,11 +359,11 @@ class Quick:
                 remaining_counts[file_type] -= 1
                 if sum(remaining_counts.values()) > 0:
                     # `db_lock`, not just `coord_lock`: `Scheduler.resolve_workers`
-                    # reads `conn` (the `thread_workers` setting), and every use
+                    # reads `storage` (the `thread_workers` setting), and every use
                     # of this connection across worker threads is serialized
                     # through `db_lock` - see `Quick.process_file`.
                     with db_lock:
-                        resolved = Scheduler.resolve_workers(conn, remaining_counts)
+                        resolved = Scheduler.resolve_workers(storage, remaining_counts)
                     new_active_workers = max(1, min(resolved, max_slots))
                     if new_active_workers != active_workers:
                         active_workers = new_active_workers
@@ -395,7 +392,7 @@ class Quick:
 
     @staticmethod
     def run_batch(
-        conn: sqlite3.Connection,
+        storage: Storage,
         sources: list[Source],
         *,
         only_failed: bool = False,
@@ -460,13 +457,15 @@ class Quick:
             only_new_files = source.status != "pending"
             if only_new_files and not only_failed:
                 disk_files = list(Readers.iter_files(Path(source.path)))
-                with conn:
-                    renamed_paths = Document.reconcile_renamed_and_removed(conn, source, disk_files)
+                with storage.transaction():
+                    renamed_paths = Document.reconcile_renamed_and_removed(
+                        storage, source, disk_files
+                    )
                 for renamed_path in sorted(renamed_paths):
                     if on_file_done is not None:
                         on_file_done(renamed_path, True)
             for file_path, file_type in Pending.iter_files(
-                conn,
+                storage,
                 source,
                 only_new_files=only_new_files,
                 only_failed=only_failed,
@@ -489,7 +488,7 @@ class Quick:
             if on_file_start is not None:
                 on_file_start(path_str)
             succeeded = Quick.process_file(
-                conn, item.source, item.path, item.file_type, db_lock=db_lock
+                storage, item.source, item.path, item.file_type, db_lock=db_lock
             )
             if succeeded is not None:
                 # None means the file was already claimed by another
@@ -505,9 +504,15 @@ class Quick:
             if on_file_done is not None:
                 on_file_done(path_str, succeeded)
 
-        if IndexSettings.get_thread_workers(conn) == IndexSettings.THREAD_WORKERS_AUTO:
+        if IndexSettings.get_thread_workers(storage) == IndexSettings.THREAD_WORKERS_AUTO:
             Quick.run_auto_elastic(
-                conn, pending, workers, handle_one, should_stop, on_workers_changed, db_lock=db_lock
+                storage,
+                pending,
+                workers,
+                handle_one,
+                should_stop,
+                on_workers_changed,
+                db_lock=db_lock,
             )
         elif workers <= 1:
             for item in pending:
@@ -525,10 +530,10 @@ class Quick:
                     future.result()
 
         now = datetime.now(UTC).isoformat()
-        with conn:
+        with storage.transaction():
             for source in sources:
                 if source.id in attempted_source_ids:
                     status = "error" if had_error_by_source[source.id] else "indexed"
-                    SourceQuery.update_scan_status(conn, source.id, status, now)
+                    storage.update_source_scan_status(source.id, status, now)
 
         return processed_paths

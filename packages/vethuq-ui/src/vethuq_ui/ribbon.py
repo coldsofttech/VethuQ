@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import sqlite3
 import tkinter as tk
 from collections.abc import Callable
 from dataclasses import dataclass
 from tkinter import ttk
 
 from vethuq_core.settings import GpuSettings
+from vethuq_core.storage import Storage
 
 from vethuq_ui.icons import get_icon
 from vethuq_ui.widgets import Widgets
@@ -28,12 +28,12 @@ class RibbonActions:
 
 
 class Ribbon(ttk.Notebook):
-    def __init__(self, parent: tk.Misc, conn: sqlite3.Connection, actions: RibbonActions) -> None:
+    def __init__(self, parent: tk.Misc, storage: Storage, actions: RibbonActions) -> None:
         # A native tk.Menu can't be restyled by sv_ttk (it isn't a ttk
         # widget), so instead of a dropdown menu this is a ribbon-style
         # tabbed toolbar built entirely from themed ttk widgets.
         super().__init__(parent)
-        self._conn = conn
+        self._storage = storage
 
         home_tab = ttk.Frame(self)
         self.add(home_tab, text="Home")
@@ -85,7 +85,7 @@ class Ribbon(ttk.Notebook):
         self.add(settings_tab, text="Settings")
 
         ocr_group = self._build_group(settings_tab, "GPU")
-        self.gpu_var = tk.BooleanVar(value=GpuSettings.is_enabled(self._conn))
+        self.gpu_var = tk.BooleanVar(value=GpuSettings.is_enabled(self._storage))
         self.gpu_button = ttk.Checkbutton(
             ocr_group,
             variable=self.gpu_var,
@@ -113,7 +113,7 @@ class Ribbon(ttk.Notebook):
         return "gpu" if self.gpu_var.get() else "gpu-disable"
 
     def on_toggle_gpu(self) -> None:
-        GpuSettings.set_enabled(self._conn, self.gpu_var.get())
+        GpuSettings.set_enabled(self._storage, self.gpu_var.get())
         icon = get_icon(self.gpu_icon_name())
         if icon is not None:
             self.gpu_button.configure(image=icon)

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 
-from vethuq_core.db.queries import Stats as StatsQuery
+from vethuq_core.storage import Storage
 
 
 @dataclass(frozen=True)
@@ -19,11 +18,11 @@ class ConfidenceMetric:
 
 class Confidence:
     @staticmethod
-    def get_metrics(conn: sqlite3.Connection) -> list[ConfidenceMetric]:
+    def get_metrics(storage: Storage) -> list[ConfidenceMetric]:
         """Return `confidence_metrics`' per-(file_type, process_type) running averages."""
-        return [ConfidenceMetric(**dict(row)) for row in StatsQuery.list_confidence_metrics(conn)]
+        return [ConfidenceMetric(**dict(row)) for row in storage.list_confidence_metrics()]
 
     @staticmethod
-    def clear(conn: sqlite3.Connection) -> None:
+    def clear(storage: Storage) -> None:
         """Clear `confidence_metrics` (without committing)."""
-        StatsQuery.clear_confidence_metrics(conn)
+        storage.clear_confidence_metrics()

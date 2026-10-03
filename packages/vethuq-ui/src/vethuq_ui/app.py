@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 import tkinter as tk
 from pathlib import Path
 from typing import Any
 
 import sv_ttk
-from vethuq_core.db import Db
+from vethuq_core.storage import Storage, open_storage
 
 from vethuq_ui.index_controls import IndexControls
 from vethuq_ui.logging_setup import UiLogging
@@ -21,10 +20,10 @@ _logger = UiLogging.logger
 
 
 class MainWindow(tk.Tk):
-    def __init__(self, conn: sqlite3.Connection | None = None, db_path: Path | None = None) -> None:
+    def __init__(self, storage: Storage | None = None, db_path: Path | None = None) -> None:
         UiLogging.configure(db_path)
         super().__init__()
-        self.conn = conn or Db.connect(db_path)
+        self.storage = storage or open_storage(db_path)
         self._db_path = db_path
         _logger.info("VethuQ UI started")
 
@@ -41,7 +40,7 @@ class MainWindow(tk.Tk):
         # below look the views up lazily, so they can be defined before the views exist.
         self.ribbon = Ribbon(
             self,
-            self.conn,
+            self.storage,
             RibbonActions(
                 show_search=self.on_show_search,
                 add_folder=lambda: self.sources.on_add_folder(),
@@ -55,10 +54,10 @@ class MainWindow(tk.Tk):
         self.ribbon.pack(side=tk.TOP, fill=tk.X)
         self.status_bar = StatusBar(self)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.search = SearchView(self, self.conn)
+        self.search = SearchView(self, self.storage)
         self.sources = SourceListView(
             self,
-            self.conn,
+            self.storage,
             db_path,
             on_index=lambda source_id, restart: self.index_controls.start_targeted_run(
                 source_id, restart=restart

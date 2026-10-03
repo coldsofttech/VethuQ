@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import typer
 from rich.text import Text
-from vethuq_core.db import Db
 from vethuq_core.settings import (
     DbSettings,
     GpuSettings,
@@ -14,6 +13,7 @@ from vethuq_core.settings import (
     SearchSettings,
     SourceSettings,
 )
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -75,58 +75,58 @@ def gpu_enable() -> None:
     Only takes effect if a CUDA-capable PaddlePaddle build with a visible GPU
     is actually installed - otherwise OCR silently falls back to CPU.
     """
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        GpuSettings.set_enabled(conn, True)
+        GpuSettings.set_enabled(storage, True)
         console.print(
             "GPU enabled. It will be used next time OCR runs, if a CUDA-capable "
             "PaddleOCR build is installed; otherwise CPU is used.",
             style=Theme.OK,
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @gpu_app.command("disable")
 def gpu_disable() -> None:
     """Disable GPU use for OCR (the default) - OCR always runs on CPU."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        GpuSettings.set_enabled(conn, False)
+        GpuSettings.set_enabled(storage, False)
         console.print("GPU disabled. OCR will run on CPU.", style="bright_black")
     finally:
-        conn.close()
+        storage.close()
 
 
 @gpu_app.command("status")
 def gpu_status() -> None:
     """Show whether GPU use is currently enabled."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        enabled = GpuSettings.is_enabled(conn)
+        enabled = GpuSettings.is_enabled(storage)
         line = Text("GPU: ")
         line.append(
             "enabled" if enabled else "disabled", style="green" if enabled else "bright_black"
         )
         console.print(line)
     finally:
-        conn.close()
+        storage.close()
 
 
 @snippet_app.command("show")
 def snippet_show() -> None:
     """Show how many characters of context `search` shows around a match."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
             Text.assemble(
                 "Search snippet context: ",
-                (str(SearchSettings.get_snippet_context_chars(conn)), Theme.VALUE),
+                (str(SearchSettings.get_snippet_context_chars(storage)), Theme.VALUE),
                 " characters",
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @snippet_app.command("set")
@@ -134,10 +134,10 @@ def snippet_set(
     chars: int = typer.Argument(..., help="Characters of context to show on each side of a match."),
 ) -> None:
     """Set how many characters of context `search` shows around a match."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            SearchSettings.set_snippet_context_chars(conn, chars)
+            SearchSettings.set_snippet_context_chars(storage, chars)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
@@ -147,21 +147,21 @@ def snippet_set(
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @export_format_app.command("show")
 def export_format_show() -> None:
     """Show the default format `search --export` writes to when none is given."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
             Text.assemble(
-                "Search export format: ", (SearchSettings.get_export_format(conn), Theme.VALUE)
+                "Search export format: ", (SearchSettings.get_export_format(storage), Theme.VALUE)
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @export_format_app.command("set")
@@ -171,32 +171,32 @@ def export_format_set(
     ),
 ) -> None:
     """Set the default format `search --export` writes to when none is given."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            SearchSettings.set_export_format(conn, format_)
+            SearchSettings.set_export_format(storage, format_)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Search export format set to ", (format_, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @removed_retention_app.command("show")
 def removed_retention_show() -> None:
     """Show, in minutes, how long a removed source is kept before it's purged from the DB."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
             Text.assemble(
                 "Removed source retention: ",
-                (str(SourceSettings.get_removed_retention_minutes(conn)), Theme.VALUE),
+                (str(SourceSettings.get_removed_retention_minutes(storage)), Theme.VALUE),
                 " minutes",
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @removed_retention_app.command("set")
@@ -206,10 +206,10 @@ def removed_retention_set(
     ),
 ) -> None:
     """Set, in minutes, how long a removed source is kept before it's purged from the DB."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            SourceSettings.set_removed_retention_minutes(conn, minutes)
+            SourceSettings.set_removed_retention_minutes(storage, minutes)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
@@ -219,21 +219,21 @@ def removed_retention_set(
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @ocr_retry_app.command("show")
 def ocr_retry_show() -> None:
     """Show how many times a file's OCR is retried after a transient failure."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
             Text.assemble(
-                "OCR retry attempts: ", (str(OcrSettings.get_retry_attempts(conn)), Theme.VALUE)
+                "OCR retry attempts: ", (str(OcrSettings.get_retry_attempts(storage)), Theme.VALUE)
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @ocr_retry_app.command("set")
@@ -243,10 +243,10 @@ def ocr_retry_set(
     ),
 ) -> None:
     """Set how many times a file's OCR is retried after a transient failure."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            OcrSettings.set_retry_attempts(conn, attempts)
+            OcrSettings.set_retry_attempts(storage, attempts)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
@@ -254,19 +254,19 @@ def ocr_retry_set(
             Text.assemble("OCR retry attempts set to ", (str(attempts), Theme.VALUE), ".")
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @thread_workers_app.command("show")
 def thread_workers_show() -> None:
     """Show how many worker threads background indexing uses."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        value = IndexSettings.get_thread_workers(conn)
+        value = IndexSettings.get_thread_workers(storage)
         label = "disabled (sequential)" if value == "0" else value
         console.print(Text.assemble("Thread workers: ", (label, Theme.VALUE)))
     finally:
-        conn.close()
+        storage.close()
 
 
 @thread_workers_app.command("set")
@@ -281,29 +281,29 @@ def thread_workers_set(
     ),
 ) -> None:
     """Set how many worker threads background indexing uses."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            IndexSettings.set_thread_workers(conn, value)
+            IndexSettings.set_thread_workers(storage, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         label = "disabled (sequential)" if value == "0" else value
         console.print(Text.assemble("Thread workers set to ", (label, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @stale_lock_app.command("show")
 def stale_lock_show() -> None:
     """Show whether a stale lock is auto-cleared on the next run."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
-            Text.assemble("Stale lock: ", (IndexSettings.get_stale_lock(conn), Theme.VALUE))
+            Text.assemble("Stale lock: ", (IndexSettings.get_stale_lock(storage), Theme.VALUE))
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @stale_lock_app.command("set")
@@ -313,28 +313,30 @@ def stale_lock_set(
     ),
 ) -> None:
     """Set whether a stale lock is auto-cleared on the next run."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            IndexSettings.set_stale_lock(conn, value)
+            IndexSettings.set_stale_lock(storage, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Stale lock set to ", (value, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @integrity_check_app.command("show")
 def integrity_check_show() -> None:
     """Show whether 'PRAGMA integrity_check' runs automatically when the database is opened."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
-            Text.assemble("Integrity check: ", (DbSettings.get_integrity_check(conn), Theme.VALUE))
+            Text.assemble(
+                "Integrity check: ", (DbSettings.get_integrity_check(storage), Theme.VALUE)
+            )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @integrity_check_app.command("set")
@@ -344,29 +346,29 @@ def integrity_check_set(
     ),
 ) -> None:
     """Set whether 'PRAGMA integrity_check' runs automatically when the database is opened."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            DbSettings.set_integrity_check(conn, value)
+            DbSettings.set_integrity_check(storage, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Integrity check set to ", (value, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @integrity_check_interval_app.command("show")
 def integrity_check_interval_show() -> None:
     """Show, in minutes, how often automatic integrity checks run when 'auto'."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        minutes = DbSettings.get_integrity_check_interval_minutes(conn)
+        minutes = DbSettings.get_integrity_check_interval_minutes(storage)
         console.print(
             Text.assemble("Integrity check interval: ", (str(minutes), Theme.VALUE), " minutes")
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @integrity_check_interval_app.command("set")
@@ -376,10 +378,10 @@ def integrity_check_interval_set(
     ),
 ) -> None:
     """Set, in minutes, how often automatic integrity checks run when 'auto'."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            DbSettings.set_integrity_check_interval_minutes(conn, minutes)
+            DbSettings.set_integrity_check_interval_minutes(storage, minutes)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
@@ -389,17 +391,17 @@ def integrity_check_interval_set(
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @engine_app.command("show")
 def engine_show() -> None:
     """Show how thoroughly OCR looks for rotated text."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        console.print(Text.assemble("OCR engine: ", (OcrSettings.get_engine(conn), Theme.VALUE)))
+        console.print(Text.assemble("OCR engine: ", (OcrSettings.get_engine(storage), Theme.VALUE)))
     finally:
-        conn.close()
+        storage.close()
 
 
 @engine_app.command("set")
@@ -422,26 +424,26 @@ def engine_set(
     Files already indexed are brought up to the new level the next time
     indexing runs.
     """
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            OcrSettings.set_engine(conn, value)
+            OcrSettings.set_engine(storage, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("OCR engine set to ", (value, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @log_level_app.command("show")
 def log_level_show() -> None:
     """Show the current log level."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
-        console.print(Text.assemble("Log level: ", (LogSettings.get_level(conn), Theme.VALUE)))
+        console.print(Text.assemble("Log level: ", (LogSettings.get_level(storage), Theme.VALUE)))
     finally:
-        conn.close()
+        storage.close()
 
 
 @log_level_app.command("set")
@@ -451,30 +453,30 @@ def log_level_set(
     ),
 ) -> None:
     """Set the log level used for VethuQ's log files (in the logs/ folder)."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            LogSettings.set_level(conn, value)
+            LogSettings.set_level(storage, value)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Log level set to ", (value, Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()
 
 
 @log_retention_app.command("show")
 def log_retention_show() -> None:
     """Show how many days of log files are kept."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         console.print(
             Text.assemble(
-                "Log retention: ", (f"{LogSettings.get_retention_days(conn)} days", Theme.VALUE)
+                "Log retention: ", (f"{LogSettings.get_retention_days(storage)} days", Theme.VALUE)
             )
         )
     finally:
-        conn.close()
+        storage.close()
 
 
 @log_retention_app.command("set")
@@ -482,13 +484,13 @@ def log_retention_set(
     days: int = typer.Argument(..., help="Days of daily log files to keep (at least 1)."),
 ) -> None:
     """Set how many days of daily log files are kept (older ones are deleted)."""
-    conn = Db.connect()
+    storage = open_storage()
     try:
         try:
-            LogSettings.set_retention_days(conn, days)
+            LogSettings.set_retention_days(storage, days)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Log retention set to ", (f"{days} days", Theme.VALUE), "."))
     finally:
-        conn.close()
+        storage.close()

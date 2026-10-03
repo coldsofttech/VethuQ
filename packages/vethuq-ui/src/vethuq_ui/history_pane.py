@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
 
 from vethuq_core.index import IndexRunner
+from vethuq_core.storage import Storage
 
 
 class HistoryPane(ttk.Frame):
@@ -16,15 +16,15 @@ class HistoryPane(ttk.Frame):
     It adds itself to (and removes itself from) its parent paned window.
     """
 
-    def __init__(self, paned: ttk.Panedwindow, conn: sqlite3.Connection) -> None:
+    def __init__(self, paned: ttk.Panedwindow, storage: Storage) -> None:
         super().__init__(paned, relief=tk.SUNKEN, borderwidth=1)
         self._paned = paned
-        self._conn = conn
+        self._storage = storage
 
     def show(self, source_id: str, path: str) -> None:
         # A run over "all sources" (target IS NULL) would have covered this
         # source too, so it's included alongside runs targeted at just it.
-        runs = IndexRunner.list_runs(self._conn, source_id, limit=20)
+        runs = IndexRunner.list_runs(self._storage, source_id, limit=20)
 
         for child in self.winfo_children():
             child.destroy()

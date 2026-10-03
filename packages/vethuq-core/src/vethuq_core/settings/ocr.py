@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 from vethuq_core.settings.settings import InvalidSettingValueError, Settings
+from vethuq_core.storage import Storage
 
 
 class OcrSettings:
@@ -15,19 +14,19 @@ class OcrSettings:
     ENGINE_MODES = ("quick", "moderate", "deep")
 
     @staticmethod
-    def get_retry_attempts(conn: sqlite3.Connection) -> int:
+    def get_retry_attempts(storage: Storage) -> int:
         """How many times to retry a file's OCR after a transient failure. 3 by default."""
-        value = Settings.get(conn, OcrSettings.RETRY_ATTEMPTS_KEY)
+        value = Settings.get(storage, OcrSettings.RETRY_ATTEMPTS_KEY)
         return int(value) if value is not None else OcrSettings.DEFAULT_RETRY_ATTEMPTS
 
     @staticmethod
-    def set_retry_attempts(conn: sqlite3.Connection, attempts: int) -> None:
+    def set_retry_attempts(storage: Storage, attempts: int) -> None:
         if attempts < 0:
             raise InvalidSettingValueError("attempts must be non-negative")
-        Settings.set(conn, OcrSettings.RETRY_ATTEMPTS_KEY, str(attempts))
+        Settings.set(storage, OcrSettings.RETRY_ATTEMPTS_KEY, str(attempts))
 
     @staticmethod
-    def get_engine(conn: sqlite3.Connection) -> str:
+    def get_engine(storage: Storage) -> str:
         """How thoroughly OCR looks for rotated text. 'quick' by default.
 
         One of 'quick' (upright text only - the fastest), 'moderate' (also 90/180/
@@ -36,11 +35,11 @@ class OcrSettings:
         searchable right away, then the deeper passes run in the background - see
         `vethuq_core.ocr.Deepening.PHASE_ANGLES`.
         """
-        value = Settings.get(conn, OcrSettings.ENGINE_KEY)
+        value = Settings.get(storage, OcrSettings.ENGINE_KEY)
         return value if value is not None else OcrSettings.DEFAULT_ENGINE
 
     @staticmethod
-    def set_engine(conn: sqlite3.Connection, value: str) -> None:
+    def set_engine(storage: Storage, value: str) -> None:
         if value not in OcrSettings.ENGINE_MODES:
             raise InvalidSettingValueError(f"value must be one of {OcrSettings.ENGINE_MODES}")
-        Settings.set(conn, OcrSettings.ENGINE_KEY, value)
+        Settings.set(storage, OcrSettings.ENGINE_KEY, value)

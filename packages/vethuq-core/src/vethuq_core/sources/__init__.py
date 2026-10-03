@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq_core.source.source import (
+from vethuq_core.sources.source import (
     Source,
     SourceAlreadyExistsError,
     SourceError,

@@ -1,27 +1,23 @@
-import sqlite3
 from unittest.mock import MagicMock, patch
 
 from vethuq_core.ocr import Scheduler
 from vethuq_core.settings import IndexSettings
+from vethuq_core.storage import Storage
 
 
 class TestScheduler:
-    def test_resolve_thread_workers_disabled_by_default(self, conn: sqlite3.Connection):
-        assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 5}) == 0
+    def test_resolve_thread_workers_disabled_by_default(self, storage: Storage):
+        assert Scheduler.resolve_workers(storage, {"pdf": 0, "image": 5}) == 0
 
-    def test_resolve_thread_workers_fixed_value_capped_to_pending_count(
-        self, conn: sqlite3.Connection
-    ):
-        IndexSettings.set_thread_workers(conn, "8")
+    def test_resolve_thread_workers_fixed_value_capped_to_pending_count(self, storage: Storage):
+        IndexSettings.set_thread_workers(storage, "8")
 
-        assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 3}) == 3
+        assert Scheduler.resolve_workers(storage, {"pdf": 0, "image": 3}) == 3
 
-    def test_resolve_thread_workers_fixed_value_unaffected_by_zero_pending(
-        self, conn: sqlite3.Connection
-    ):
-        IndexSettings.set_thread_workers(conn, "4")
+    def test_resolve_thread_workers_fixed_value_unaffected_by_zero_pending(self, storage: Storage):
+        IndexSettings.set_thread_workers(storage, "4")
 
-        assert Scheduler.resolve_workers(conn, {"pdf": 0, "image": 0}) == 4
+        assert Scheduler.resolve_workers(storage, {"pdf": 0, "image": 0}) == 4
 
     @patch("vethuq_core.ocr.scheduler.psutil.virtual_memory")
     @patch("vethuq_core.ocr.scheduler.psutil.cpu_percent")

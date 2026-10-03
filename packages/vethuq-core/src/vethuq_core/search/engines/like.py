@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
-from vethuq_core.db.queries import Document
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.settings import SearchSettings
+from vethuq_core.storage import Storage
 
 
 class LikeSearchEngine:
@@ -15,11 +14,11 @@ class LikeSearchEngine:
 
     name = "like"
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
+    def __init__(self, storage: Storage) -> None:
+        self._storage = storage
 
     def search(self, query: str, *, context_chars: int | None = None) -> list[SearchMatch]:
-        return LikeSearchEngine._search_pages(self._conn, query, context_chars=context_chars)
+        return LikeSearchEngine._search_pages(self._storage, query, context_chars=context_chars)
 
     @staticmethod
     def _like_pattern(query: str) -> str:
@@ -29,7 +28,7 @@ class LikeSearchEngine:
 
     @staticmethod
     def _indexed_pages(
-        conn: sqlite3.Connection, query: str
+        storage: Storage, query: str
     ) -> list[tuple[int, str, str, int | None, int, str | None]]:
         """Return rows of `(document_id, file_path, ocr_text, page_number, canonical_id,
         duplicate_of_path)` for every indexed page whose `ocr_text` may contain `query`.
@@ -51,8 +50,8 @@ class LikeSearchEngine:
         surfaces as its own search result.
         """
         like_pattern = LikeSearchEngine._like_pattern(query)
-        pdf_rows = Document.search_indexed_pdf_pages(conn, like_pattern)
-        image_rows = Document.search_indexed_image_pages(conn, like_pattern)
+        pdf_rows = storage.search_indexed_pdf_pages(like_pattern)
+        image_rows = storage.search_indexed_image_pages(like_pattern)
         return [
             (
                 row["document_id"],
@@ -66,12 +65,14 @@ class LikeSearchEngine:
         ]
 
     @staticmethod
-    def _pdf_page_counts(conn: sqlite3.Connection) -> dict[int, int]:
-        return {row["document_id"]: row["total"] for row in Document.get_pdf_page_counts(conn)}
+    def _pdf_page_counts(storage: Storage) -> dict[int, int]:
+        return {
+            row["document_id"]: row["total"] for row in storage.get_pdf_page_counts_by_document()
+        }
 
     @staticmethod
     def _search_pages(
-        conn: sqlite3.Connection, query: str, *, context_chars: int | None = None
+        storage: Storage, query: str, *, context_chars: int | None = None
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query`, case-insensitively.
 
@@ -86,10 +87,10 @@ class LikeSearchEngine:
         chars = (
             context_chars
             if context_chars is not None
-            else SearchSettings.get_snippet_context_chars(conn)
+            else SearchSettings.get_snippet_context_chars(storage)
         )
         query_lower = query.lower()
-        page_counts = LikeSearchEngine._pdf_page_counts(conn)
+        page_counts = LikeSearchEngine._pdf_page_counts(storage)
 
         matches: list[SearchMatch] = []
         for (
@@ -99,7 +100,7 @@ class LikeSearchEngine:
             page_number,
             canonical_id,
             duplicate_of_path,
-        ) in LikeSearchEngine._indexed_pages(conn, query):
+        ) in LikeSearchEngine._indexed_pages(storage, query):
             text = ocr_text.replace("\n", " ")
             position = text.lower().find(query_lower)
             if position == -1:

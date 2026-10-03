@@ -13,7 +13,7 @@ from vethuq_core.index import (
     IndexState,
     StaleLockError,
 )
-from vethuq_core.source import SourceNotFoundError
+from vethuq_core.sources import SourceNotFoundError
 
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import get_icon

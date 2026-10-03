@@ -5,7 +5,8 @@ from typer.testing import CliRunner
 from vethuq_cli.main import app
 from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner_module
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage.sqlite import SqliteStorage
 
 runner = CliRunner()
 
@@ -18,7 +19,7 @@ class _FakeProcess:
 def _add_pending_source(db_path, tmp_path):
     conn = db_module.Db.connect(db_path)
     try:
-        Sources.add(conn, tmp_path)
+        Sources.add(SqliteStorage(conn), tmp_path)
     finally:
         conn.close()
 
@@ -249,7 +250,7 @@ class TestStatus:
         (folder / "b.png").write_bytes(b"fake png bytes")
 
         conn = db_module.Db.connect(db_path)
-        Sources.add(conn, folder)
+        Sources.add(SqliteStorage(conn), folder)
         now = datetime.now(UTC).isoformat()
         conn.execute(
             "INSERT INTO processing_metrics "
@@ -289,7 +290,7 @@ class TestStatus:
         folder = tmp_path / "docs"
         folder.mkdir()
         conn = db_module.Db.connect(db_path)
-        Sources.add(conn, folder)
+        Sources.add(SqliteStorage(conn), folder)
         conn.close()
 
         result = runner.invoke(app, ["index", "status", str(folder)])

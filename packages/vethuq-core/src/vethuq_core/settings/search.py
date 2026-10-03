@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 from vethuq_core.settings.settings import InvalidSettingValueError, Settings
+from vethuq_core.storage import Storage
 
 
 class SearchSettings:
@@ -15,30 +14,30 @@ class SearchSettings:
     EXPORT_FORMATS = ("json", "html")
 
     @staticmethod
-    def get_snippet_context_chars(conn: sqlite3.Connection) -> int:
+    def get_snippet_context_chars(storage: Storage) -> int:
         """How many characters of context `search` shows around a match. 80 by default."""
-        value = Settings.get(conn, SearchSettings.SNIPPET_CONTEXT_CHARS_KEY)
+        value = Settings.get(storage, SearchSettings.SNIPPET_CONTEXT_CHARS_KEY)
         return int(value) if value is not None else SearchSettings.DEFAULT_SNIPPET_CONTEXT_CHARS
 
     @staticmethod
-    def set_snippet_context_chars(conn: sqlite3.Connection, chars: int) -> None:
+    def set_snippet_context_chars(storage: Storage, chars: int) -> None:
         if chars < 0:
             raise InvalidSettingValueError("chars must be non-negative")
-        Settings.set(conn, SearchSettings.SNIPPET_CONTEXT_CHARS_KEY, str(chars))
+        Settings.set(storage, SearchSettings.SNIPPET_CONTEXT_CHARS_KEY, str(chars))
 
     @staticmethod
-    def get_export_format(conn: sqlite3.Connection) -> str:
+    def get_export_format(storage: Storage) -> str:
         """Default format `search --export` writes to when none is given. 'json' by default."""
-        value = Settings.get(conn, SearchSettings.EXPORT_FORMAT_KEY)
+        value = Settings.get(storage, SearchSettings.EXPORT_FORMAT_KEY)
         return value if value is not None else SearchSettings.DEFAULT_EXPORT_FORMAT
 
     @staticmethod
-    def resolve_export_format(conn: sqlite3.Connection, format_: str | None = None) -> str:
+    def resolve_export_format(storage: Storage, format_: str | None = None) -> str:
         """`format_` if given (validated), else the configured default export format.
 
         Raises `InvalidSettingValueError` for a format that isn't supported.
         """
-        resolved = format_ if format_ is not None else SearchSettings.get_export_format(conn)
+        resolved = format_ if format_ is not None else SearchSettings.get_export_format(storage)
         if resolved not in SearchSettings.EXPORT_FORMATS:
             raise InvalidSettingValueError(
                 f"unsupported export format '{resolved}'. "
@@ -47,7 +46,7 @@ class SearchSettings:
         return resolved
 
     @staticmethod
-    def set_export_format(conn: sqlite3.Connection, format_: str) -> None:
+    def set_export_format(storage: Storage, format_: str) -> None:
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise InvalidSettingValueError(f"format must be one of {SearchSettings.EXPORT_FORMATS}")
-        Settings.set(conn, SearchSettings.EXPORT_FORMAT_KEY, format_)
+        Settings.set(storage, SearchSettings.EXPORT_FORMAT_KEY, format_)

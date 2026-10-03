@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import tkinter as tk
 import tkinter.font as tkfont
 from collections.abc import Callable
@@ -11,7 +10,8 @@ from tkinter import filedialog, ttk
 from typing import Any
 
 from vethuq_core.index import IndexRunner
-from vethuq_core.source import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
+from vethuq_core.sources import SourceAlreadyExistsError, SourceError, SourceNotFoundError, Sources
+from vethuq_core.storage import Storage
 
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.history_pane import HistoryPane
@@ -24,7 +24,7 @@ class SourceListView(ttk.Frame):
     def __init__(
         self,
         parent: tk.Misc,
-        conn: sqlite3.Connection,
+        storage: Storage,
         db_path: Path | None,
         *,
         on_index: Callable[[str, bool], None],
@@ -35,7 +35,7 @@ class SourceListView(ttk.Frame):
         fires after a source is registered; `on_selection_changed(has_selection)` fires
         whenever the selection (or the list) changes."""
         super().__init__(parent)
-        self._conn = conn
+        self._storage = storage
         self._db_path = db_path
         self._on_index = on_index
         self._on_source_added = on_source_added
@@ -44,7 +44,7 @@ class SourceListView(ttk.Frame):
         self.paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
         self.paned.pack(fill=tk.BOTH, expand=True)
         self._list_pane = ttk.Frame(self.paned)
-        self.history = HistoryPane(self.paned, conn)
+        self.history = HistoryPane(self.paned, storage)
         self.paned.add(self._list_pane, weight=1)
 
         Widgets.flush_left_tree_style(self, "Sources.Treeview")
@@ -79,7 +79,7 @@ class SourceListView(ttk.Frame):
 
     def add_source(self, path: str) -> None:
         try:
-            Sources.add(self._conn, path)
+            Sources.add(self._storage, path)
         except SourceAlreadyExistsError:
             show_warning(self.winfo_toplevel(), "Already added", f"{path} is already registered.")
         except SourceError as exc:
@@ -97,7 +97,7 @@ class SourceListView(ttk.Frame):
         if not ask_yes_no(self.winfo_toplevel(), "Remove source", f"Remove {path} from VethuQ?"):
             return
         try:
-            Sources.remove(self._conn, source_id)
+            Sources.remove(self._storage, source_id)
         except SourceNotFoundError as exc:
             show_error(self.winfo_toplevel(), "Could not remove source", str(exc))
         else:
@@ -107,8 +107,8 @@ class SourceListView(ttk.Frame):
 
     def refresh(self) -> None:
         self.tree.delete(*self.tree.get_children())
-        for source in Sources.list_all(self._conn):
-            done, total = Sources.progress(self._conn, source.id)
+        for source in Sources.list_all(self._storage):
+            done, total = Sources.progress(self._storage, source.id)
             noun = "file" if total == 1 else "files"
             icon_kwargs: dict[str, Any] = {}
             icon = get_icon(source.source_type, 16)

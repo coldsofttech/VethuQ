@@ -2,14 +2,17 @@ from datetime import UTC, datetime
 
 from vethuq_core.index import Eta, IndexState
 from vethuq_core.settings import OcrSettings
-from vethuq_core.source import Sources
+from vethuq_core.sources import Sources
+from vethuq_core.storage import Storage
 
 
 class TestEta:
-    def test_phase_seconds_estimated_per_phase_from_each_phases_own_history(self, conn, tmp_path):
+    def test_phase_seconds_estimated_per_phase_from_each_phases_own_history(
+        self, conn, storage: Storage, tmp_path
+    ):
         folder = tmp_path / "src"
         folder.mkdir()
-        source = Sources.add(conn, folder)
+        source = Sources.add(storage, folder)
         conn.execute("UPDATE sources SET status = 'indexed' WHERE id = ?", (source.id,))
         # Two indexed image documents, both still waiting on moderate and deep.
         for index in (1, 2):
@@ -35,7 +38,7 @@ class TestEta:
             "INSERT INTO processing_metrics VALUES (2, 'image', 'small', 5, 30.0, 10, 5, 'now')"
         )
         conn.commit()
-        OcrSettings.set_engine(conn, "deep")
+        OcrSettings.set_engine(storage, "deep")
         now = datetime.now(UTC).isoformat()
         state = IndexState(
             run_id=1,
@@ -53,7 +56,7 @@ class TestEta:
             updated_at=now,
         )
 
-        by_phase = Eta.phase_seconds(conn, state)
+        by_phase = Eta.phase_seconds(storage, state)
 
         # 2 documents x 30s for moderate; nothing for quick (no files pending) or deep (no history).
         assert by_phase == {2: 60.0}

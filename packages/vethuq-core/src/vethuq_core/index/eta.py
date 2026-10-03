@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import sqlite3
-
-from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.index.runner import IndexRunner, IndexState
 from vethuq_core.ocr import Deepening, Pending
 from vethuq_core.readers import Readers
-from vethuq_core.source import SourceNotFoundError
+from vethuq_core.sources import SourceNotFoundError
+from vethuq_core.storage import Storage
 
 
 class Eta:
     @staticmethod
-    def average_durations(conn: sqlite3.Connection, phase: int) -> dict[str, float]:
+    def average_durations(storage: Storage, phase: int) -> dict[str, float]:
         """Average document duration per file_type for `phase`, across all past runs.
 
         `processing_metrics` has one row per (phase, file_type, size_bucket) - each
@@ -22,11 +20,11 @@ class Eta:
         """
         return {
             row["file_type"]: row["avg_duration_seconds"]
-            for row in StatsQuery.get_processing_metrics_avg_duration_by_file_type(conn, phase)
+            for row in storage.get_processing_metrics_avg_duration_by_file_type(phase)
         }
 
     @staticmethod
-    def phase_seconds(conn: sqlite3.Connection, state: IndexState) -> dict[int, float]:
+    def phase_seconds(storage: Storage, state: IndexState) -> dict[int, float]:
         """Estimate the seconds left in each OCR phase, from that phase's own history.
 
         Each phase is sized by the documents it still has to cover, split by
@@ -38,14 +36,14 @@ class Eta:
         setting reaches, and that still have work, appear in the result.
         """
         try:
-            sources = IndexRunner.resolve_targets(conn, state.target)
+            sources = IndexRunner.resolve_targets(storage, state.target)
         except SourceNotFoundError:
             return {}
 
         quick_remaining = Readers.new_file_type_counts()
         for source in sources:
             counts = Pending.file_type_counts(
-                conn,
+                storage,
                 source,
                 only_new_files=source.status != "pending",
                 only_failed=state.mode == "restart",
@@ -54,14 +52,14 @@ class Eta:
                 quick_remaining[file_type] += count
 
         remaining_by_phase = {1: quick_remaining}
-        for phase in range(2, Deepening.max_phase(conn) + 1):
-            remaining_by_phase[phase] = Deepening.pending_documents(conn, sources, phase)
+        for phase in range(2, Deepening.max_phase(storage) + 1):
+            remaining_by_phase[phase] = Deepening.pending_documents(storage, sources, phase)
 
         seconds_by_phase: dict[int, float] = {}
         for phase, remaining in remaining_by_phase.items():
             if not any(remaining.values()):
                 continue
-            averages = Eta.average_durations(conn, phase)
+            averages = Eta.average_durations(storage, phase)
             seconds_left = sum(
                 count * averages[file_type]
                 for file_type, count in remaining.items()
@@ -72,6 +70,6 @@ class Eta:
         return seconds_by_phase
 
     @staticmethod
-    def total_seconds(conn: sqlite3.Connection, state: IndexState) -> float:
+    def total_seconds(storage: Storage, state: IndexState) -> float:
         """Total time left across every phase still to run (0 if it can't be estimated)."""
-        return sum(Eta.phase_seconds(conn, state).values())
+        return sum(Eta.phase_seconds(storage, state).values())

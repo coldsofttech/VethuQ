@@ -7,13 +7,11 @@ the actual scanning/OCR/indexing pipeline consumes it separately.
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from vethuq_core.db.queries import Document
-from vethuq_core.db.queries.sources import Source as SourceQuery
+from vethuq_core.storage import Row, Storage
 
 
 class SourceError(Exception):
@@ -44,7 +42,7 @@ class Source:
     removed_at: str | None
 
     @classmethod
-    def _from_row(cls, row: sqlite3.Row) -> Source:
+    def _from_row(cls, row: Row) -> Source:
         return cls(
             id=row["id"],
             path=row["path"],
@@ -69,7 +67,7 @@ class Sources:
         return path_or_id
 
     @staticmethod
-    def add(conn: sqlite3.Connection, path: str | Path) -> Source:
+    def add(storage: Storage, path: str | Path) -> Source:
         """Register a file or folder as a source. Folders are indexed recursively.
 
         Re-adding a path that was previously removed reactivates that source
@@ -90,40 +88,40 @@ class Sources:
             raise SourcePathError(f"Path is neither a file nor a folder: {resolved}")
 
         added_at = datetime.now(UTC).isoformat()
-        existing = SourceQuery.get_by_path(conn, str(resolved))
+        existing = storage.get_source_by_path(str(resolved))
 
         if existing is not None:
             if existing["is_active"]:
                 raise SourceAlreadyExistsError(f"Path is already registered: {resolved}")
-            SourceQuery.reactivate(conn, existing["id"], source_type, added_at)
-            conn.commit()
-            row = SourceQuery.get_by_id(conn, existing["id"])
+            storage.reactivate_source(existing["id"], source_type, added_at)
+            storage.commit()
+            row = storage.get_source_by_id(existing["id"])
             assert row is not None
             return Source._from_row(row)
 
-        new_id = SourceQuery.insert(conn, str(resolved), source_type, added_at)
-        conn.commit()
+        new_id = storage.insert_source(str(resolved), source_type, added_at)
+        storage.commit()
 
-        row = SourceQuery.get_by_id(conn, new_id)
+        row = storage.get_source_by_id(new_id)
         assert row is not None
         return Source._from_row(row)
 
     @staticmethod
-    def list_all(conn: sqlite3.Connection, include_inactive: bool = False) -> list[Source]:
+    def list_all(storage: Storage, include_inactive: bool = False) -> list[Source]:
         """List registered sources, most recently added first."""
-        return [Source._from_row(row) for row in SourceQuery.list_rows(conn, include_inactive)]
+        return [Source._from_row(row) for row in storage.list_source_rows(include_inactive)]
 
     @staticmethod
-    def get(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
+    def get(storage: Storage, path_or_id: str | Path | int) -> Source:
         """Look up an active registered source by id or path.
 
         Raises SourceNotFoundError if no active source matches.
         """
         if isinstance(path_or_id, int):
-            row = SourceQuery.get_active_by_id(conn, path_or_id)
+            row = storage.get_active_source_by_id(path_or_id)
         else:
             resolved = str(Path(path_or_id).expanduser().resolve())
-            row = SourceQuery.get_active_by_path(conn, resolved)
+            row = storage.get_active_source_by_path(resolved)
 
         if row is None:
             raise SourceNotFoundError(f"No active source matches: {path_or_id}")
@@ -131,32 +129,32 @@ class Sources:
         return Source._from_row(row)
 
     @staticmethod
-    def progress(conn: sqlite3.Connection, source_id: int) -> tuple[int, int]:
+    def progress(storage: Storage, source_id: int) -> tuple[int, int]:
         """`(indexed, total)` count of the files tracked under `source_id`."""
         counts = {
-            row["status"]: row["count"] for row in Document.count_index_by_status(conn, source_id)
+            row["status"]: row["count"] for row in storage.count_document_index_by_status(source_id)
         }
         return counts.get("indexed", 0), sum(counts.values())
 
     @staticmethod
-    def remove(conn: sqlite3.Connection, path_or_id: str | Path | int) -> Source:
+    def remove(storage: Storage, path_or_id: str | Path | int) -> Source:
         """Soft-delete a registered source by id or path.
 
         Raises SourceNotFoundError if no active source matches.
         """
-        source = Sources.get(conn, path_or_id)
+        source = Sources.get(storage, path_or_id)
         removed_at = datetime.now(UTC).isoformat()
 
-        SourceQuery.soft_delete(conn, source.id, removed_at)
-        conn.commit()
+        storage.soft_delete_source(source.id, removed_at)
+        storage.commit()
 
-        updated = SourceQuery.get_by_id(conn, source.id)
+        updated = storage.get_source_by_id(source.id)
         assert updated is not None
         return Source._from_row(updated)
 
     @staticmethod
     def promote_surviving_duplicate(
-        conn: sqlite3.Connection, document_index_id: int, doomed_ids: set[int]
+        storage: Storage, document_index_id: int, doomed_ids: set[int]
     ) -> None:
         """Before `document_index_id`'s content moves on, hand off its OCR pages if it holds any.
 
@@ -169,21 +167,21 @@ class Sources:
         doomed too, or `document_index_id` never held any pages of its own (it
         was already just a checksum link), there's nothing to hand off.
         """
-        row = Document.get_id_for_index_row(conn, document_index_id)
+        row = storage.get_document_id_for_index_row(document_index_id)
         if row is None:
             return
 
-        peers = Document.list_index_peers(conn, row["document_id"], document_index_id)
+        peers = storage.list_document_index_peers(row["document_id"], document_index_id)
         survivors = [peer["id"] for peer in peers if peer["id"] not in doomed_ids]
         if not survivors:
             return
 
         new_carrier_id = survivors[0]
-        Document.reassign_pdf_pages(conn, document_index_id, new_carrier_id)
-        Document.reassign_image_pages(conn, document_index_id, new_carrier_id)
+        storage.reassign_pdf_pages_document(document_index_id, new_carrier_id)
+        storage.reassign_image_pages_document(document_index_id, new_carrier_id)
 
     @staticmethod
-    def prune_orphaned_documents(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    def prune_orphaned_documents(storage: Storage, document_ids: set[int]) -> None:
         """Delete any `documents` row in `document_ids` no `document_index` row references anymore.
 
         Every `document_index` row is required to carry a `document_id` (its
@@ -193,11 +191,11 @@ class Sources:
         itself is deleted.
         """
         for document_id in document_ids:
-            if not Document.index_references_document(conn, document_id):
-                Document.delete(conn, document_id)
+            if not storage.document_index_references_document(document_id):
+                storage.delete_document(document_id)
 
     @staticmethod
-    def refresh_document_paths(conn: sqlite3.Connection, document_ids: set[int]) -> None:
+    def refresh_document_paths(storage: Storage, document_ids: set[int]) -> None:
         """Point each `documents` row's `file_path` at its earliest non-'removed' copy.
 
         A logical document can live at several paths (one `document_index` row per
@@ -206,12 +204,10 @@ class Sources:
         path or status, changes.
         """
         for document_id in document_ids:
-            Document.refresh_file_path(conn, document_id)
+            storage.refresh_document_file_path(document_id)
 
     @staticmethod
-    def purge_expired_sources(
-        conn: sqlite3.Connection, retention_minutes: int | None = None
-    ) -> int:
+    def purge_expired_sources(storage: Storage, retention_minutes: int | None = None) -> int:
         """Permanently delete removed sources (and their indexed data) past their retention window.
 
         Returns the number of sources purged.
@@ -219,10 +215,10 @@ class Sources:
         from vethuq_core.settings import SourceSettings
 
         if retention_minutes is None:
-            retention_minutes = SourceSettings.get_removed_retention_minutes(conn)
+            retention_minutes = SourceSettings.get_removed_retention_minutes(storage)
 
         cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
-        expired = SourceQuery.list_expired_removed(conn, cutoff)
+        expired = storage.list_expired_removed_sources(cutoff)
 
         if not expired:
             return 0
@@ -232,29 +228,27 @@ class Sources:
         # the caller typed into index_runs.target - once the source is gone,
         # either form is a dangling reference, so both are cleared.
         stale_targets = [str(row["id"]) for row in expired] + [row["path"] for row in expired]
-        doomed_rows = Document.list_index_rows_for_sources(conn, source_ids)
+        doomed_rows = storage.list_document_index_rows_for_sources(source_ids)
         doomed_ids = {row["id"] for row in doomed_rows}
         doomed_document_ids = {row["document_id"] for row in doomed_rows}
         for document_index_id in doomed_ids:
-            Sources.promote_surviving_duplicate(conn, document_index_id, doomed_ids)
+            Sources.promote_surviving_duplicate(storage, document_index_id, doomed_ids)
 
         for document_index_id in doomed_ids:
-            Document.delete_pdf_pages(conn, document_index_id)
-            Document.delete_image_pages(conn, document_index_id)
-        Document.delete_index_for_sources(conn, source_ids)
-        SourceQuery.delete_by_ids(conn, source_ids)
-        Sources.prune_orphaned_documents(conn, doomed_document_ids)
-        Sources.refresh_document_paths(conn, doomed_document_ids)
+            storage.delete_pdf_pages_for_document(document_index_id)
+            storage.delete_image_pages_for_document(document_index_id)
+        storage.delete_document_index_for_sources(source_ids)
+        storage.delete_sources_by_ids(source_ids)
+        Sources.prune_orphaned_documents(storage, doomed_document_ids)
+        Sources.refresh_document_paths(storage, doomed_document_ids)
 
-        SourceQuery.clear_index_run_targets(conn, stale_targets)
+        storage.clear_index_run_targets(stale_targets)
 
-        conn.commit()
+        storage.commit()
         return len(expired)
 
     @staticmethod
-    def purge_expired_documents(
-        conn: sqlite3.Connection, retention_minutes: int | None = None
-    ) -> int:
+    def purge_expired_documents(storage: Storage, retention_minutes: int | None = None) -> int:
         """Permanently delete individual documents marked 'removed' past their retention window.
 
         A document is marked 'removed' (rather than deleted outright) when its
@@ -269,27 +263,27 @@ class Sources:
         from vethuq_core.settings import SourceSettings
 
         if retention_minutes is None:
-            retention_minutes = SourceSettings.get_removed_retention_minutes(conn)
+            retention_minutes = SourceSettings.get_removed_retention_minutes(storage)
 
         cutoff = (datetime.now(UTC) - timedelta(minutes=retention_minutes)).isoformat()
-        expired = Document.list_expired_removed_index_rows(conn, cutoff)
+        expired = storage.list_expired_removed_document_index_rows(cutoff)
 
         if not expired:
             return 0
 
         doomed_ids = {row["id"] for row in expired}
         doomed_document_ids = {
-            row["document_id"] for row in Document.list_index_rows_by_ids(conn, list(doomed_ids))
+            row["document_id"] for row in storage.list_document_index_rows_by_ids(list(doomed_ids))
         }
         for document_index_id in doomed_ids:
-            Sources.promote_surviving_duplicate(conn, document_index_id, doomed_ids)
+            Sources.promote_surviving_duplicate(storage, document_index_id, doomed_ids)
 
         for document_index_id in doomed_ids:
-            Document.delete_pdf_pages(conn, document_index_id)
-            Document.delete_image_pages(conn, document_index_id)
-        Document.delete_index_by_ids(conn, list(doomed_ids))
-        Sources.prune_orphaned_documents(conn, doomed_document_ids)
-        Sources.refresh_document_paths(conn, doomed_document_ids)
+            storage.delete_pdf_pages_for_document(document_index_id)
+            storage.delete_image_pages_for_document(document_index_id)
+        storage.delete_document_index_by_ids(list(doomed_ids))
+        Sources.prune_orphaned_documents(storage, doomed_document_ids)
+        Sources.refresh_document_paths(storage, doomed_document_ids)
 
-        conn.commit()
+        storage.commit()
         return len(doomed_ids)

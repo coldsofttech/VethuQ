@@ -1,4 +1,4 @@
-from vethuq_core.source import (
+from vethuq_core.sources import (
     Source,
     SourceAlreadyExistsError,
     SourceError,

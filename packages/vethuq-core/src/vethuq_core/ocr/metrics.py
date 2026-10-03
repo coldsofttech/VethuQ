@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.db.queries import Document as DocumentQuery
-from vethuq_core.db.queries import Stats as StatsQuery
 from vethuq_core.logs import Logs
 from vethuq_core.readers import Readers
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -33,7 +31,7 @@ class Metrics:
         return "large"
 
     @staticmethod
-    def update_processing(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
+    def update_processing(storage: Storage, document_id: int, file_type: str) -> None:
         """Fold one freshly-indexed document's quick-pass (phase 1) duration/memory/cpu into
         `processing_metrics`'s running averages.
 
@@ -41,12 +39,12 @@ class Metrics:
         duration that doesn't reflect a full OCR pass, so it would skew the
         averages `vethuq index run` uses to estimate ETAs.
         """
-        doc = DocumentQuery.get_index_metrics_stats(conn, document_id)
+        doc = storage.get_document_index_metrics_stats(document_id)
         duration = (
             datetime.fromisoformat(doc["completed_at"]) - datetime.fromisoformat(doc["started_at"])
         ).total_seconds()
         Metrics.fold_processing(
-            conn,
+            storage,
             phase=1,
             file_type=file_type,
             file_size_bytes=doc["file_size_bytes"] or 0,
@@ -57,7 +55,7 @@ class Metrics:
 
     @staticmethod
     def fold_processing(
-        conn: sqlite3.Connection,
+        storage: Storage,
         *,
         phase: int,
         file_type: str,
@@ -73,10 +71,10 @@ class Metrics:
         """
         size_bucket = Metrics.size_bucket(file_size_bytes)
         now = datetime.now(UTC).isoformat()
-        existing = StatsQuery.get_processing_metrics_row(conn, phase, file_type, size_bucket)
+        existing = storage.get_processing_metrics_row(phase, file_type, size_bucket)
         if existing is None:
-            StatsQuery.insert_processing_metrics(
-                conn, phase, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now
+            storage.insert_processing_metrics(
+                phase, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now
             )
             return
         new_count = existing["document_count"] + 1
@@ -91,8 +89,7 @@ class Metrics:
         avg_cpu_percent = (
             existing["avg_cpu_percent"] + (cpu_percent - existing["avg_cpu_percent"]) / new_count
         )
-        StatsQuery.update_processing_metrics(
-            conn,
+        storage.update_processing_metrics(
             phase,
             file_type,
             size_bucket,
@@ -104,7 +101,7 @@ class Metrics:
         )
 
     @staticmethod
-    def update_confidence(conn: sqlite3.Connection, document_id: int, file_type: str) -> None:
+    def update_confidence(storage: Storage, document_id: int, file_type: str) -> None:
         """Fold one freshly-indexed document's pages into `confidence_metrics`'s running
         averages, grouped independently by (file_type, process_type).
 
@@ -113,17 +110,16 @@ class Metrics:
         tracking each process_type separately keeps them meaningful.
         """
         by_process_type = Readers.for_file_type(file_type).storage.confidences_by_process_type(
-            conn, document_id
+            storage, document_id
         )
         if not by_process_type:
             return
 
         now = datetime.now(UTC).isoformat()
         for process_type, confidences in by_process_type.items():
-            existing = StatsQuery.get_confidence_metrics_row(conn, file_type, process_type)
+            existing = storage.get_confidence_metrics_row(file_type, process_type)
             if existing is None:
-                StatsQuery.insert_confidence_metrics(
-                    conn,
+                storage.insert_confidence_metrics(
                     file_type,
                     process_type,
                     len(confidences),
@@ -136,6 +132,6 @@ class Metrics:
             avg_confidence = (
                 existing["avg_confidence"] * existing["page_count"] + sum(confidences)
             ) / new_count
-            StatsQuery.update_confidence_metrics(
-                conn, file_type, process_type, new_count, avg_confidence, now
+            storage.update_confidence_metrics(
+                file_type, process_type, new_count, avg_confidence, now
             )

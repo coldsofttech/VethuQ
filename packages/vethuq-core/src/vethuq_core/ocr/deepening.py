@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from collections.abc import Callable, Collection
@@ -16,14 +15,14 @@ import psutil
 if TYPE_CHECKING:
     import numpy as np
 
-from vethuq_core.db.queries import Ocr as OcrQuery
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines import Engines
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.readers import Readers
 from vethuq_core.settings import OcrSettings
-from vethuq_core.source import Source
+from vethuq_core.sources import Source
+from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
 
@@ -71,9 +70,9 @@ class Deepening:
     QUICK_WORK_CHECK_SECONDS = 5.0
 
     @staticmethod
-    def max_phase(conn: sqlite3.Connection) -> int:
+    def max_phase(storage: Storage) -> int:
         """The highest phase the `index_engine` setting asks for (1 = quick only)."""
-        return Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(conn), 1)
+        return Deepening.ENGINE_PHASES.get(OcrSettings.get_engine(storage), 1)
 
     @staticmethod
     def parse_angles(value: str) -> set[int]:
@@ -162,10 +161,10 @@ class Deepening:
 
     @staticmethod
     def read_at_angle(
-        conn: sqlite3.Connection, arrays: list[np.ndarray], angle: int
+        storage: Storage, arrays: list[np.ndarray], angle: int
     ) -> tuple[list[str], list[float]]:
         """OCR each of `arrays` rotated by `angle`; return its confident lines and their scores."""
-        engine = Engines.get(conn)
+        engine = Engines.get(storage)
         texts: list[str] = []
         scores: list[float] = []
         for array in arrays:
@@ -178,7 +177,7 @@ class Deepening:
 
     @staticmethod
     def find_units(
-        conn: sqlite3.Connection,
+        storage: Storage,
         sources: list[Source],
         max_phase: int,
         skip: Collection[tuple[str, int]] = (),
@@ -196,7 +195,7 @@ class Deepening:
         source_ids = [source.id for source in sources]
         units: list[DeepenUnit] = []
         for table, file_type in (("pdf_pages", "pdf"), ("image_pages", "image")):
-            for row in OcrQuery.Page.list_short_of_phase(conn, table, max_phase, source_ids):
+            for row in storage.list_ocr_pages_short_of_phase(table, max_phase, source_ids):
                 unit = DeepenUnit(
                     table=table,
                     page_id=row["id"],
@@ -228,15 +227,15 @@ class Deepening:
         raise ValueError(f"page {unit.page_number} not found: {unit.file_path}")
 
     @staticmethod
-    def start_document_phase(conn: sqlite3.Connection, unit: DeepenUnit) -> None:
+    def start_document_phase(storage: Storage, unit: DeepenUnit) -> None:
         """Record that real work on `unit`'s document for `unit.phase` has begun (once)."""
-        OcrQuery.Phase.start_document(
-            conn, unit.logical_document_id, unit.phase, datetime.now(UTC).isoformat()
+        storage.start_ocr_document_phase(
+            unit.logical_document_id, unit.phase, datetime.now(UTC).isoformat()
         )
 
     @staticmethod
     def add_document_phase_work(
-        conn: sqlite3.Connection,
+        storage: Storage,
         unit: DeepenUnit,
         seconds: float,
         peak_memory_mb: float,
@@ -248,15 +247,14 @@ class Deepening:
         worked on the document), never wall-clock - a pause, or giving way to a
         new file, would otherwise make a phase look far slower than it is.
         """
-        row = OcrQuery.Phase.get_document_work(conn, unit.logical_document_id, unit.phase)
+        row = storage.get_ocr_document_phase_work(unit.logical_document_id, unit.phase)
         if row is None:
             return
         total = row["duration_seconds"] + seconds
         cpu = cpu_percent
         if row["cpu_percent"] is not None and total > 0:
             cpu = (row["cpu_percent"] * row["duration_seconds"] + cpu_percent * seconds) / total
-        OcrQuery.Phase.update_document_work(
-            conn,
+        storage.update_ocr_document_phase_work(
             unit.logical_document_id,
             unit.phase,
             total,
@@ -265,25 +263,25 @@ class Deepening:
         )
 
     @staticmethod
-    def complete_document_phase_if_done(conn: sqlite3.Connection, unit: DeepenUnit) -> None:
+    def complete_document_phase_if_done(storage: Storage, unit: DeepenUnit) -> None:
         """Mark `unit`'s document finished for `unit.phase` once every page has reached it.
 
         Sets `completed_at`/`indexed_at` (the moment the last page's text for this
         phase became searchable) and folds the document's accumulated work into
         that phase's `processing_metrics`. A document is only ever folded once.
         """
-        if OcrQuery.Page.count_short_of_phase(conn, unit.table, unit.document_id, unit.phase):
+        if storage.count_ocr_pages_short_of_phase(unit.table, unit.document_id, unit.phase):
             return
-        row = OcrQuery.Phase.get_document_completion(conn, unit.logical_document_id, unit.phase)
+        row = storage.get_ocr_document_phase_completion(unit.logical_document_id, unit.phase)
         if row is None or row["completed_at"] is not None:
             return
         now = datetime.now(UTC).isoformat()
-        OcrQuery.Phase.complete_document(conn, unit.logical_document_id, unit.phase, now)
+        storage.complete_ocr_document_phase(unit.logical_document_id, unit.phase, now)
         if row["duration_seconds"] <= 0:
             return
-        doc = OcrQuery.get_document_file_size(conn, unit.document_id)
+        doc = storage.get_ocr_document_file_size(unit.document_id)
         Metrics.fold_processing(
-            conn,
+            storage,
             phase=unit.phase,
             file_type=unit.file_type,
             file_size_bytes=(doc["file_size_bytes"] if doc is not None else 0) or 0,
@@ -294,7 +292,7 @@ class Deepening:
 
     @staticmethod
     def deepen_unit(
-        conn: sqlite3.Connection,
+        storage: Storage,
         unit: DeepenUnit,
         *,
         db_lock: threading.Lock,
@@ -317,9 +315,9 @@ class Deepening:
             # Angles already all read (e.g. an earlier run was interrupted right at the end)
             # - just record the phase as done so it isn't picked up again.
             with db_lock:
-                OcrQuery.Page.mark_phase_done(conn, unit.table, unit.phase, unit.page_id)
-                Deepening.complete_document_phase_if_done(conn, unit)
-                conn.commit()
+                storage.mark_ocr_page_phase_done(unit.table, unit.phase, unit.page_id)
+                Deepening.complete_document_phase_if_done(storage, unit)
+                storage.commit()
             return 1
 
         process = psutil.Process()
@@ -339,13 +337,13 @@ class Deepening:
                     break
                 if not tracked:
                     with db_lock:
-                        Deepening.start_document_phase(conn, unit)
-                        conn.commit()
+                        Deepening.start_document_phase(storage, unit)
+                        storage.commit()
                     tracked = True
-                texts, scores = Deepening.read_at_angle(conn, arrays, angle)
+                texts, scores = Deepening.read_at_angle(storage, arrays, angle)
                 peak_rss = max(peak_rss, process.memory_info().rss)
                 with db_lock:
-                    row = OcrQuery.Page.get_text_row(conn, unit.table, unit.page_id)
+                    row = storage.get_ocr_page_text_row(unit.table, unit.page_id)
                     if row is None:  # the document was replaced/removed while this was running
                         return passes
                     existing_lines = sum(1 for line in row["ocr_text"].split("\n") if line.strip())
@@ -359,8 +357,7 @@ class Deepening:
                         confidence = (confidence * existing_lines + sum(added_scores)) / (
                             existing_lines + len(added_scores)
                         )
-                    OcrQuery.Page.update_text(
-                        conn,
+                    storage.update_ocr_page_text(
                         unit.table,
                         unit.page_id,
                         merged,
@@ -368,7 +365,7 @@ class Deepening:
                         max(row["ocr_phase"], Deepening.completed_phase(done)),
                         Deepening.format_angles(done),
                     )
-                    conn.commit()
+                    storage.commit()
                 passes += 1
         finally:
             if tracked:
@@ -377,19 +374,19 @@ class Deepening:
                 cpu_percent = process.cpu_percent(interval=None)
                 with db_lock:
                     Deepening.add_document_phase_work(
-                        conn, unit, elapsed, max(peak_rss, 0) / (1024 * 1024), cpu_percent
+                        storage, unit, elapsed, max(peak_rss, 0) / (1024 * 1024), cpu_percent
                     )
-                    conn.commit()
+                    storage.commit()
 
         if passes == len(todo):
             with db_lock:
-                Deepening.complete_document_phase_if_done(conn, unit)
-                conn.commit()
+                Deepening.complete_document_phase_if_done(storage, unit)
+                storage.commit()
         return passes
 
     @staticmethod
     def run_batch(
-        conn: sqlite3.Connection,
+        storage: Storage,
         sources: list[Source],
         *,
         max_phase: int,
@@ -417,14 +414,14 @@ class Deepening:
         to do (or nothing could be done).
         """
         skip = skip_units if skip_units is not None else set()
-        units = Deepening.find_units(conn, sources, max_phase, skip)
+        units = Deepening.find_units(storage, sources, max_phase, skip)
         if not units:
             return 0
 
         type_counts = Readers.new_file_type_counts()
         for unit in units:
             type_counts[unit.file_type] += 1
-        workers = max(1, Scheduler.resolve_workers(conn, type_counts))
+        workers = max(1, Scheduler.resolve_workers(storage, type_counts))
 
         halted = threading.Event()
         coord_lock = threading.Lock()
@@ -470,7 +467,7 @@ class Deepening:
             passes = 0
             try:
                 passes = Deepening.deepen_unit(
-                    conn, unit, db_lock=db_lock, should_yield=should_yield
+                    storage, unit, db_lock=db_lock, should_yield=should_yield
                 )
             except Exception:  # noqa: BLE001 - one bad page shouldn't abort the rest
                 _logger.warning("Deeper OCR failed for %s", path_str, exc_info=True)
@@ -500,7 +497,7 @@ class Deepening:
 
     @staticmethod
     def progress(
-        conn: sqlite3.Connection, sources: list[Source], max_phase: int
+        storage: Storage, sources: list[Source], max_phase: int
     ) -> dict[int, tuple[int, int]]:
         """`{phase: (pages done, pages eligible)}` for each deeper phase up to `max_phase`.
 
@@ -514,7 +511,7 @@ class Deepening:
         source_ids = [source.id for source in sources]
         pages_by_phase: dict[int, int] = {}
         for table in ("pdf_pages", "image_pages"):
-            for row in OcrQuery.Phase.list_progress_rows(conn, table, source_ids):
+            for row in storage.list_ocr_phase_progress_rows(table, source_ids):
                 pages_by_phase[row["phase"]] = pages_by_phase.get(row["phase"], 0) + row["pages"]
         total = sum(pages_by_phase.values())
         return {
@@ -526,9 +523,7 @@ class Deepening:
         }
 
     @staticmethod
-    def pending_documents(
-        conn: sqlite3.Connection, sources: list[Source], phase: int
-    ) -> dict[str, int]:
+    def pending_documents(storage: Storage, sources: list[Source], phase: int) -> dict[str, int]:
         """Count the documents under `sources` with a page still short of `phase`, by file_type.
 
         This is the unit `processing_metrics` averages a deeper phase over, so
@@ -541,7 +536,7 @@ class Deepening:
             return counts
         source_ids = [source.id for source in sources]
         for file_type in ("pdf", "image"):
-            counts[file_type] = OcrQuery.Phase.count_documents_short_of(
-                conn, file_type, phase, source_ids
+            counts[file_type] = storage.count_ocr_documents_short_of_phase(
+                file_type, phase, source_ids
             )
         return counts
