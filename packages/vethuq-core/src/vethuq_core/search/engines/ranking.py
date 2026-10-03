@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
+from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.registry import SearchEngines
 from vethuq_core.storage import Storage
@@ -159,6 +160,11 @@ class Ranking:
         return merged
 
     @staticmethod
+    def active_tiers() -> tuple[str, ...]:
+        """`TIERS` without the engines that are not installed or enabled."""
+        return tuple(t for t in Ranking.TIERS if SearchEngineCatalog.is_name_enabled(t))
+
+    @staticmethod
     def _tier_score(engine: str, raw: list[SearchMatch]) -> float:
         """What orders pages within `engine`'s tier, from the raw hits it found on the page."""
         if engine in ("exact", "like"):
@@ -207,7 +213,7 @@ class Ranking:
         """
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         runs: dict[str, list[SearchMatch]] = {}
-        for engine in Ranking.TIERS:
+        for engine in Ranking.active_tiers():
             try:
                 runs[engine] = Ranking._run(
                     storage, engine, query, chars, case_sensitive, threshold, distance

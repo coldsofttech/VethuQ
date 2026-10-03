@@ -94,6 +94,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 [Code]
 { Generated from the file types' type.json files: FileTypeCount, FileTypeId/Label/Default. }
 #include "filetypes.iss"
+{ ...and the search engines' manifests: SearchEngineCount, SearchEngineId/Label/Default. }
+#include "search_engines.iss"
 
 const
   EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
@@ -157,6 +159,30 @@ end;
 
 var
   TypesPage: TInputOptionWizardPage;
+  EnginesPage: TInputOptionWizardPage;
+
+function EnginesFile: string;
+begin
+  Result := ExpandConstant('{localappdata}\VethuQ\search_engines.json');
+end;
+
+function EnginesParam: string;
+begin
+  Result := ExpandConstant('{param:ENGINES|}');
+end;
+
+function EngineWasSelected(const Id: string): Boolean;
+var
+  Previous: AnsiString;
+begin
+  { /ENGINES=exact,fuzzy wins; else the previous install's choice; else the defaults. }
+  if EnginesParam <> '' then
+    Result := Pos(',' + Id + ',', ',' + Lowercase(EnginesParam) + ',') > 0
+  else if LoadStringFromFile(EnginesFile, Previous) then
+    Result := Pos('"' + Id + '"', Previous) > 0
+  else
+    Result := False;
+end;
 
 function TypesFile: string;
 begin
@@ -182,6 +208,45 @@ begin
     Result := False;
 end;
 
+procedure InitEnginesPage;
+var
+  I: Integer;
+  Chosen: Boolean;
+begin
+  EnginesPage := CreateInputOptionPage(
+    TypesPage.ID, 'Search engines',
+    'Which search engines should VethuQ offer?',
+    'The default engine is always installed. ' +
+    'Run this installer again to add more later.',
+    False, False
+  );
+  for I := 0 to SearchEngineCount - 1 do
+  begin
+    EnginesPage.Add(SearchEngineLabel(I));
+    Chosen := EngineWasSelected(SearchEngineId(I));
+    if (EnginesParam = '') and (not FileExists(EnginesFile)) then
+      Chosen := True;
+    EnginesPage.Values[I] := Chosen or SearchEngineDefault(I);
+  end;
+end;
+
+procedure SaveEngineSelection;
+var
+  I: Integer;
+  Json: string;
+begin
+  Json := '';
+  for I := 0 to SearchEngineCount - 1 do
+    if EnginesPage.Values[I] or SearchEngineDefault(I) then
+    begin
+      if Json <> '' then
+        Json := Json + ', ';
+      Json := Json + '"' + SearchEngineId(I) + '"';
+    end;
+  ForceDirectories(ExtractFilePath(EnginesFile));
+  SaveStringToFile(EnginesFile, '{ "enabled": [' + Json + '] }', False);
+end;
+
 procedure InitializeWizard;
 var
   I: Integer;
@@ -202,6 +267,7 @@ begin
       Chosen := FileTypeDefault(I);
     TypesPage.Values[I] := Chosen;
   end;
+  InitEnginesPage;
 end;
 
 procedure SaveTypeSelection;
@@ -226,6 +292,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     SaveTypeSelection;
+    SaveEngineSelection;
     if WizardIsTaskSelected('addtopath') then
       EnvAddPath(ExpandConstant('{app}'));
   end;

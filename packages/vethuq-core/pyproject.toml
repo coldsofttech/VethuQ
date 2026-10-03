@@ -25,8 +25,14 @@ dependencies = [
     "psutil>=5.9",
 ]
 
-# BEGIN generated from filetypes/*/type.json - run scripts/dev/filetypes.py
+# BEGIN generated from the manifests - run scripts/dev/sync_extras.py
 [project.optional-dependencies]
+search-exact = []
+search-full-text = []
+search-fuzzy = []
+search-lexical = []
+search-like = []
+search-proximity = []
 type-jpg = []
 type-pdf = ["pymupdf>=1.24"]
 type-png = []

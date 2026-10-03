@@ -24,6 +24,7 @@ from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import SearchHelp
 from vethuq_cli.search import search as search_command
+from vethuq_cli.search_engines import app as search_engines_app
 from vethuq_cli.settings import app as settings_app
 from vethuq_cli.source import app as source_app
 from vethuq_cli.stats import app as stats_app
@@ -37,6 +38,7 @@ app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")
 app.add_typer(types_app, name="types")
+app.add_typer(search_engines_app, name="search-engines")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
@@ -48,10 +50,11 @@ def _record_installed_file_types() -> None:
         storage = open_storage()
         try:
             FileTypeSettings.record_installed(storage)
+            FileTypeSettings.record_installed_engines(storage)
         finally:
             storage.close()
     except Exception:  # noqa: BLE001 - never block --version on the database
-        _logger.warning("Could not record installed file types", exc_info=True)
+        _logger.warning("Could not record installed file types and search engines", exc_info=True)
 
 
 def _show_version(value: bool) -> None:

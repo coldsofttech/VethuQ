@@ -1,0 +1,8 @@
+{
+  "id": "like",
+  "label": "Contains (like)",
+  "extra": "search-like",
+  "requires": [],
+  "modules": [],
+  "default": true
+}

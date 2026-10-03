@@ -1,6 +1,16 @@
 {
   "file_types": [
     {
+      "id": "pdf",
+      "label": "PDF",
+      "extensions": [
+        ".pdf"
+      ],
+      "extra": "type-pdf",
+      "approx_size_mb": 25,
+      "default": true
+    },
+    {
       "id": "jpg",
       "label": "JPEG image",
       "extensions": [
@@ -10,16 +20,6 @@
       "extra": "type-jpg",
       "approx_size_mb": 0,
       "default": false
-    },
-    {
-      "id": "pdf",
-      "label": "PDF",
-      "extensions": [
-        ".pdf"
-      ],
-      "extra": "type-pdf",
-      "approx_size_mb": 25,
-      "default": true
     },
     {
       "id": "png",

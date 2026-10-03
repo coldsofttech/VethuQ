@@ -3033,7 +3033,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["type-jpg", "type-pdf", "type-png"]
+provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-cli"
@@ -3081,7 +3081,7 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.24" },
     { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
 ]
-provides-extras = ["type-jpg", "type-pdf", "type-png"]
+provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-ui"
