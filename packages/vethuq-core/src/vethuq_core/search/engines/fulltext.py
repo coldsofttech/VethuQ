@@ -74,6 +74,7 @@ class FullTextSearchEngine:
                         start=start,
                         end=end,
                         chars=chars,
+                        engine=self.name,
                         score=row["score"],
                     )
                 )

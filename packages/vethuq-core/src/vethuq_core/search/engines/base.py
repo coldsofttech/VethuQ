@@ -30,6 +30,10 @@ class SearchMatch:
     duplicate_of_path: str | None
     source: str = "ocr"  # 'native', 'ocr' or 'mixed' - how the page's text was obtained
     score: float | None = None  # relevance (higher is better); only ranked engines set it
+    start: int | None = None  # where the match starts in the page's text (newlines as spaces)
+    end: int | None = None  # ...and ends
+    engine: str | None = None  # the engine that found it, or the strictest one that did
+    matched_by: tuple[str, ...] = ()  # every engine that found it, strictest first (`all` only)
 
 
 class SearchQueryError(ValueError):

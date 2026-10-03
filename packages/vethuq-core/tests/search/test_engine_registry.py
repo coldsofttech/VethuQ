@@ -36,4 +36,6 @@ class TestSearchEngines:
 
 class TestEngineRegistry:
     def test_lists_all_engines_and_matches_settings(self):
-        assert SearchEngines.available() == sorted(SearchSettings.ENGINES)
+        # `all` isn't an engine: it runs the others.
+        engines = [e for e in SearchSettings.ENGINES if e != SearchSettings.ENGINE_ALL]
+        assert SearchEngines.available() == sorted(engines)

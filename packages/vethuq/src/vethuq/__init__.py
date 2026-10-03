@@ -25,8 +25,9 @@ from vethuq._core.logs import Logs as _Logs
 from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.search import Export as _Export
+from vethuq._core.search import PageResult, SearchMatch, SearchOptionError, SearchQueryError
 from vethuq._core.search import Search as _Search
-from vethuq._core.search import SearchMatch, SearchOptionError, SearchQueryError
+from vethuq._core.search.engines import Ranking as _Ranking
 from vethuq._core.settings import DbSettings as _DbSettings
 from vethuq._core.settings import GpuSettings as _GpuSettings
 from vethuq._core.settings import IndexSettings as _IndexSettings
@@ -57,6 +58,8 @@ from vethuq._core.storage import open_storage as _open_storage
 DB_PATH = _default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
 
+ENGINE_BADGES = _Ranking.BADGES
+ENGINE_TIERS = _Ranking.TIERS
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
@@ -68,7 +71,12 @@ INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
 LOG_COMPONENTS = tuple(_Logs.COMPONENTS)
 
+engine_badge = _Ranking.engine_badge
+hit_badge = _Ranking.hit_badge
+
 __all__ = [
+    "ENGINE_BADGES",
+    "ENGINE_TIERS",
     "INTEGRITY_CHECK_VALUES",
     "LOG_COMPONENTS",
     "LOG_LEVEL_VALUES",
@@ -103,6 +111,7 @@ __all__ = [
     "OcrEngineSettings",
     "OcrSettings",
     "OcrRetrySettings",
+    "PageResult",
     "ProcessingMetric",
     "RemovedRetentionSettings",
     "Search",
@@ -132,6 +141,8 @@ __all__ = [
     "Stats",
     "ThreadWorkersSettings",
     "Vethuq",
+    "engine_badge",
+    "hit_badge",
 ]
 
 
@@ -897,10 +908,14 @@ class Search:
         (`distance` is the most words between the first and last term): a name from
         `SEARCH_PROXIMITY_PRESETS` or a number from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`,
         defaulting to `Vethuq().settings.search.proximity.distance`; one
-        `SearchMatch` per passage. Raises `SearchOptionError` for an unknown engine, an
-        invalid `threshold` or `distance`, or an explicit `case_sensitive`, `threshold`
-        or `distance` the engine can't honour, and `SearchQueryError` for a
-        `proximity` query of fewer than two terms.
+        `SearchMatch` per passage. `engine="all"` - the default, unless
+        `Vethuq().settings.search.engine` says otherwise - runs every engine and returns
+        the hits in ranked page order, each labelled with the engine that found it
+        (see `run_pages` for them grouped by page); the options above then reach
+        the engines that can use them and are never rejected. Raises `SearchOptionError`
+        for an unknown engine, an invalid `threshold` or `distance`, or an explicit
+        `case_sensitive`, `threshold` or `distance` the engine can't honour, and
+        `SearchQueryError` for a `proximity` query of fewer than two terms.
         """
         storage = _open_storage()
         try:
@@ -910,6 +925,46 @@ class Search:
                 content,
                 context_chars=context_chars,
                 engine=options.engine,
+                case_sensitive=options.case_sensitive,
+                threshold=options.threshold,
+                distance=options.distance,
+            )
+        finally:
+            storage.close()
+
+    def run_pages(
+        self,
+        content: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool | None = None,
+        threshold: float | str | None = None,
+        distance: int | str | None = None,
+    ) -> list[PageResult]:
+        """Search with every engine at once and return the pages found, best first.
+
+        Each page is one `PageResult` - however many engines found it - ranked by the
+        strictest engine that did: Exact, Contains, Near, Word, then Similar (see
+        `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge` for the
+        labels the CLI and the UI show), and within a tier by that engine's own signal.
+        `PageResult.engine` is the page's strictest engine and `matched_by` all of
+        them; its `hits` are `SearchMatch`es best first, each with its own `engine`
+        and `matched_by` (hits found by several engines are merged into one).
+
+        `case_sensitive`, `threshold` and `distance` default to their settings and
+        reach the engines that can use them (`like`/`fuzzy`, `fuzzy`, `proximity`);
+        `proximity` is skipped for a query of fewer than two terms.
+        `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
+        `SearchOptionError` for an invalid `threshold` or `distance`. This is what
+        `run` does when `engine="all"` (the default), with the hits flattened.
+        """
+        storage = _open_storage()
+        try:
+            options = _Search.resolve_options(storage, "all", case_sensitive, threshold, distance)
+            return _Search.indexed_pages(
+                storage,
+                content,
+                context_chars=context_chars,
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from vethuq_core.logs import Logs
-from vethuq_core.search.engines import SearchEngines, SearchMatch
+from vethuq_core.search.engines import PageResult, Ranking, SearchEngines, SearchMatch
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -42,7 +42,7 @@ class SearchOptionError(ValueError):
 class SearchOptions(NamedTuple):
     """The resolved options a search runs with.
 
-    `threshold` is set only for `fuzzy` and `distance` only for `proximity`.
+    `threshold` is set for `fuzzy` and `all`, `distance` for `proximity` and `all`.
     """
 
     engine: str
@@ -65,9 +65,10 @@ class Search:
         Each falls back to its setting when None. The engines differ in what they
         can honour: `exact` is always case-sensitive while `full-text` and
         `proximity` never are, only `fuzzy` has a similarity `threshold`, and only
-        `proximity` has a word `distance`. A preference that came from the
-        *setting* is simply not applied where the engine can't use it, but one
-        asked for explicitly that the engine can't honour raises
+        `proximity` has a word `distance`. `all` runs every engine, each applying
+        the options it can, so it accepts them all and never rejects one. A
+        preference that came from the *setting* is simply not applied where the engine
+        can't use it, but one asked for explicitly that the engine can't honour raises
         `SearchOptionError` rather than being silently ignored - as does an
         unknown `engine`, or a `threshold` or `distance` that isn't a valid value
         (see `SearchSettings.parse_fuzzy_threshold` and `parse_proximity_distance`).
@@ -82,7 +83,7 @@ class Search:
                 threshold = SearchSettings.parse_fuzzy_threshold(threshold)
             except ValueError as exc:
                 raise SearchOptionError(str(exc), "threshold") from exc
-            if resolved_engine != "fuzzy":
+            if resolved_engine not in ("fuzzy", SearchSettings.ENGINE_ALL):
                 raise SearchOptionError(
                     "Only the fuzzy engine has a similarity threshold; "
                     "use --engine fuzzy (or the fuzzy engine) to set one.",
@@ -93,12 +94,27 @@ class Search:
                 distance = SearchSettings.parse_proximity_distance(distance)
             except ValueError as exc:
                 raise SearchOptionError(str(exc), "distance") from exc
-            if resolved_engine != "proximity":
+            if resolved_engine not in ("proximity", SearchSettings.ENGINE_ALL):
                 raise SearchOptionError(
                     "Only the proximity engine has a word distance; "
                     "use --engine proximity (or the proximity engine) to set one.",
                     "distance",
                 )
+        if resolved_engine == SearchSettings.ENGINE_ALL:
+            return SearchOptions(
+                resolved_engine,
+                (
+                    case_sensitive
+                    if case_sensitive is not None
+                    else SearchSettings.is_case_sensitive(storage)
+                ),
+                threshold if threshold is not None else SearchSettings.get_fuzzy_threshold(storage),
+                (
+                    distance
+                    if distance is not None
+                    else SearchSettings.get_proximity_distance(storage)
+                ),
+            )
         if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
                 raise SearchOptionError(
@@ -133,6 +149,48 @@ class Search:
         return SearchOptions(resolved_engine, case_sensitive)
 
     @staticmethod
+    def indexed_pages(
+        storage: Storage,
+        query: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool = False,
+        threshold: float | None = None,
+        distance: int | None = None,
+    ) -> list[PageResult]:
+        """Search with every engine and return the pages found, best first (see `ranking`).
+
+        Pages are ranked by how strict the strictest engine that found them is - Exact,
+        Contains, Near, Word, then Similar - and within that by the engine's own signal.
+        Each page lists its hits, best first, each labelled with the engine that found it.
+        `case_sensitive` reaches the engines that can honour it, `threshold` (0-1) is the
+        fuzzy engine's and `distance` the proximity engine's, each defaulting to the
+        user's setting.
+        """
+        try:
+            return Ranking.search_all(
+                storage,
+                query,
+                context_chars=context_chars,
+                case_sensitive=case_sensitive,
+                threshold=threshold,
+                distance=distance,
+            )
+        except Exception as exc:
+            _logger.error(
+                "Search failed: engine=all case_sensitive=%s threshold=%s distance=%s "
+                "query_length=%d error=%s: %s",
+                case_sensitive,
+                threshold,
+                distance,
+                len(query),
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise
+
+    @staticmethod
     def indexed_content(
         storage: Storage,
         query: str,
@@ -148,7 +206,9 @@ class Search:
         Returns one `SearchMatch` per occurrence of `query`, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a page in
         text order) - or best match first for the ranked `full-text`, `fuzzy` and
-        `proximity` engines. Only successfully indexed documents are considered.
+        `proximity` engines. `engine="all"` runs every engine and returns the hits of
+        `indexed_pages`, in ranked page order. Only successfully indexed documents
+        are considered.
         `like` is case-insensitive unless `case_sensitive`; `exact` is always
         case-sensitive; `full-text` and `proximity` can't be (asking for it raises
         `ValueError`). `fuzzy` finds words within `threshold` similarity (0-1,
@@ -158,6 +218,17 @@ class Search:
         `distance` they don't use. `proximity` needs at least two terms
         (`SearchQueryError` otherwise).
         """
+        if engine == SearchSettings.ENGINE_ALL:
+            return Ranking.flatten(
+                Search.indexed_pages(
+                    storage,
+                    query,
+                    context_chars=context_chars,
+                    case_sensitive=case_sensitive,
+                    threshold=threshold,
+                    distance=distance,
+                )
+            )
         try:
             return SearchEngines.get(storage, engine).search(
                 query,

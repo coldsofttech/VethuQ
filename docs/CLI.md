@@ -135,11 +135,13 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine like|exact|full-text|fuzzy|proximity] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
-`content` is matched (default `like`, or `vethuq settings search engine`):
+`content` is matched — by default (`all`, or `vethuq settings search engine`)
+every engine runs and the pages are ranked together (below); any other value
+runs just that engine:
 
 | Engine | Matches | `Museum` in "Visit the Museum" |
 |---|---|---|
@@ -148,6 +150,58 @@ documents with status `indexed` are searched. `--engine` chooses how
 | `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
+
+### `--engine all` (the default): every engine, ranked together
+
+The engines answer different questions and their scores can't be compared, so
+pages are ranked by **how strictly they matched** — the strictest engine that
+found a page decides its tier — and only within a tier by that engine's own
+signal:
+
+| Tier | Engine | Page label | Ordered within the tier by |
+|---|---|---|---|
+| 1 | `exact` | **Exact** | number of matches on the page |
+| 2 | `like` | **Contains** | number of matches on the page |
+| 3 | `proximity` | **Near** | relevance |
+| 4 | `full-text` | **Word** | relevance |
+| 5 | `fuzzy` | **Similar 83%** | best word similarity |
+
+`proximity` ranks above `full-text` because every page it finds `full-text`
+finds too (both need all the words), so the other way round "the words are close
+together" could never raise a page. Ties go to the page more engines agree on,
+then to file path and page.
+
+Because the engines' matches nest — an exact match is also a substring, a word
+and a similar word — a good match is usually found by three or four of them, so
+each **page is listed once**, labelled with its strictest engine and the others
+that found it, and hits that overlap are merged into one:
+
+```
+Results: 2 pages (engine: all)
+
+contract.pdf
+File: /docs/contract.pdf
+Page: 3 of 12 [ocr] [Exact]  also: Contains, Word, Similar
+
+<box: the best hit, ...the Museum of...>
+
+[Similar 83%]
+<box: a weaker hit on the same page, ...the Muzeum shop...>
+
++2 more matches on this page
+```
+
+The label after `[ocr]` is the page's tier; a hit found less strictly than the
+page's best carries its own label; a page shows its best three hits (best engine
+first, then by position) and counts the rest. A `proximity` passage swallows the
+word hits inside it. Each engine applies the options it can: `--case-sensitive`
+reaches `like` and `fuzzy` (`exact` always matches case, `full-text` and
+`proximity` never do), `--threshold`/`--fuzziness` only `fuzzy`, `--distance`
+only `proximity`, each defaulting to its setting — and `all` never rejects an
+option. `proximity` is skipped for a query of fewer than two terms. Exports list
+every hit with its `engine` and `matched_by` (and a Match column in HTML).
+
+### The single engines
 
 For `full-text`, all the words must appear on the page (`"amount due"` in
 quotes must appear as that phrase), and a trailing `*` makes a word a prefix
@@ -195,8 +249,9 @@ the results shows which engine (with its case-sensitivity, threshold or
 distance) produced them, and an empty `exact`, `full-text`, `fuzzy` or
 `proximity` search suggests a looser search.
 Results open in a pager, starting at the top: scroll (e.g. the
-down arrow, space, or page down) to reveal more, and press `q` to close
-it. Each file with a match prints its path once, followed by a
+down arrow, space, or page down) to reveal more, press `h` (with the
+default `all` engine) for what Exact, Contains, Near, Word and Similar
+mean, and press `q` to close it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every match in
 that file (PDFs only show `Page:` — an image is a single page). A
 duplicate file (identical content to another already-indexed file) is
@@ -243,7 +298,7 @@ vethuq search "invoice total"
 
 Examples, assuming a page that reads "Learn English at the English Institute":
 
-**`like`** (the default) finds the text anywhere, even inside a word:
+**`like`** finds the text anywhere, even inside a word:
 
 ```bash
 vethuq search eng                                   # case-insensitive: finds "English" (twice)
@@ -443,7 +498,8 @@ vethuq settings search export-format show
 ### `search engine set <engine>|show`
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one
-of `like` (the default), `exact`, `full-text`, `fuzzy` or `proximity`.
+of `all` (the default — every engine, ranked together), `like`, `exact`,
+`full-text`, `fuzzy` or `proximity`.
 
 ```bash
 vethuq settings search engine set full-text

@@ -135,9 +135,16 @@ the `full-text`, `fuzzy` and `proximity` engines. Only successfully indexed docu
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
+With the default `engine="all"` every engine runs and the hits come back in
+ranked page order — strictest match first (see `run_pages`) — each `SearchMatch`
+labelled with the engine that found it (`engine`) and every engine that did
+(`matched_by`); the options below then reach the engines that can use them and
+are never rejected.
+
 `engine` is one of `SEARCH_ENGINES` and defaults to
 `client.settings.search.engine`:
 
+- `"all"` — every engine at once, the pages ranked together (the default)
 - `"like"` — `content` anywhere, even inside a word, ignoring case
 - `"exact"` — `content` as typed: same case, as a whole word
 - `"full-text"` — pages containing `content`'s words (any case, English word
@@ -172,6 +179,24 @@ query of fewer than two terms.
 ```python
 for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
+```
+
+### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None)`
+
+Search with every engine at once and return the pages found, best first, as
+`PageResult`s. Pages are ranked by the strictest engine that found them —
+`"exact"` (Exact), `"like"` (Contains), `"proximity"` (Near), `"full-text"` (Word),
+`"fuzzy"` (Similar), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
+label the CLI and the UI show) — and within a tier by that engine's own signal, so
+a page is one result however many engines found it. `case_sensitive`, `threshold`
+and `distance` default to their settings and reach only the engines that can use
+them; `proximity` is skipped for a query of fewer than two terms.
+
+```python
+for page in client.search.run_pages("Museum"):
+    print(page.file_path, page.page_number, vethuq.hit_badge(page.hits[0]))
+    for hit in page.hits:  # best first
+        print("  ", vethuq.hit_badge(hit), hit.matched)
 ```
 
 Examples, assuming a page that reads "Learn English at the English Institute"
@@ -318,8 +343,8 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 
 ### `client.settings.search.engine`
 
-- `get()` — default engine `search` uses (`"like"` by default)
-- `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"like"`, `"exact"`,
+- `get()` — default engine `search` uses (`"all"` by default: every engine, ranked together)
+- `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"all"`, `"like"`, `"exact"`,
   `"full-text"`, `"fuzzy"`, `"proximity"`); raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.fuzzy.threshold`
@@ -467,6 +492,18 @@ The outcome of a database integrity check, returned by `client.db.integrity_chec
 - `ok` (`True` when the database is intact)
 - `errors` (the problems SQLite reported; empty when `ok`)
 
+## `PageResult`
+
+A page found by the combined search, returned by `client.search.run_pages`:
+
+- `file_id`, `file_name`, `file_path`, `page_number`, `total_pages`, `duplicate_of_path`, `source`
+- `engine` — the strictest engine that found anything on the page (its tier)
+- `matched_by` — every engine that did, strictest first
+- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`) or its best word similarity (`fuzzy`)
+- `hits` — its `SearchMatch`es, ordered by engine strictness then position; hits that overlap are merged into one
+
+`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Similar 83%"`).
+
 ## `ProcessingMetric`
 
 - `phase`, `file_type`, `size_bucket`, `document_count`
@@ -484,6 +521,8 @@ One occurrence of the query on a page, returned by `client.search.run`:
 - `source` (`"native"`, `"ocr"` or `"mixed"` — how the page's text was obtained)
 - `score` (higher is better; the `full-text` and `proximity` engines' relevance or the `fuzzy` engine's word similarity, otherwise `None`)
 - `duplicate_of_path` (set if this file's content matched an already-indexed file)
+- `start`, `end` (where the match sits in the page's text, newlines counted as spaces)
+- `engine` (the engine that found it — for the combined search, the strictest that did) and `matched_by` (every engine that found it, strictest first; only set by the combined search)
 
 ## `Source`
 

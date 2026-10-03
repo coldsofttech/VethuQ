@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq_core.search.engines import SearchQueryError
+from vethuq_core.search.engines import PageResult, SearchQueryError
 from vethuq_core.search.export import Export
 from vethuq_core.search.search import (
     FileMatch,
@@ -15,6 +15,7 @@ from vethuq_core.search.search import (
 __all__ = [
     "Export",
     "FileMatch",
+    "PageResult",
     "Search",
     "SearchMatch",
     "SearchOptionError",

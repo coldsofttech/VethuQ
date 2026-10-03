@@ -11,6 +11,7 @@ from importlib import resources
 from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
+from vethuq_core.search.engines import Ranking
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
 from vethuq_core.sources import Source, SourceFile
@@ -24,6 +25,11 @@ class Export:
     def template(name: str) -> str:
         """The text of one of the export's template files (`templates/<name>`)."""
         return (Export._TEMPLATES / name).read_text(encoding="utf-8")
+
+    @staticmethod
+    def _match_type(match: SearchMatch) -> str:
+        """How the match was found, as the CLI and UI name it (`Exact`, `Similar 83%`), or ''."""
+        return Ranking.hit_badge(match) if match.engine in Ranking.BADGES else ""
 
     @staticmethod
     def _matched_text(match: SearchMatch) -> str:
@@ -79,6 +85,10 @@ class Export:
             "total_pages": match.total_pages,
             "matched_text": Export._matched_text(match),
         }
+        if match.engine is not None:
+            entry["engine"] = match.engine
+        if match.matched_by:
+            entry["matched_by"] = list(match.matched_by)
         if match.score is not None:
             entry["score"] = match.score
         return entry
@@ -139,6 +149,7 @@ class Export:
                 .replace("{{FILE_PATH}}", html.escape(match.file_path))
                 .replace("{{PAGE}}", page)
                 .replace("{{TOTAL_PAGES}}", total_pages)
+                .replace("{{MATCH}}", html.escape(Export._match_type(match)))
                 .replace("{{SNIPPET}}", snippet)
             )
             rows.append(row)

@@ -106,7 +106,7 @@ class TestSearch:
             db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00", page_number=1
         )
 
-        result = runner.invoke(app, ["search", "amount due"])
+        result = runner.invoke(app, ["search", "amount due", "--engine", "like"])
 
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
@@ -120,7 +120,7 @@ class TestSearch:
         db_path = use_temp_db()
         _seed_indexed_image(db_path, "/docs/scan.png", "Signed by John Doe")
 
-        result = runner.invoke(app, ["search", "john doe"])
+        result = runner.invoke(app, ["search", "john doe", "--engine", "like"])
 
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
@@ -133,7 +133,7 @@ class TestSearch:
         for i in range(15):
             _seed_indexed_pdf(db_path, f"/docs/report-{i:02d}.pdf", "budget overview")
 
-        result = runner.invoke(app, ["search", "budget"])
+        result = runner.invoke(app, ["search", "budget", "--engine", "like"])
 
         assert result.exit_code == 0
         assert "Results: 15 matches (engine: like)" in result.stdout
@@ -172,7 +172,7 @@ class TestSearch:
         finally:
             conn.close()
 
-        result = runner.invoke(app, ["search", "budget"])
+        result = runner.invoke(app, ["search", "budget", "--engine", "like"])
 
         lines = _content_lines(result.stdout)
         assert lines.count("File: /docs/report.pdf") == 1
@@ -236,7 +236,7 @@ class TestSearch:
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
 
-        result = runner.invoke(app, ["search", "amount due"])
+        result = runner.invoke(app, ["search", "amount due", "--engine", "like"])
 
         assert result.exit_code == 0
         assert "Results: 1 match (engine: like)" in result.stdout
@@ -244,7 +244,7 @@ class TestSearch:
     def test_search_pager_export_prompts_and_writes_file(self, use_temp_db, tmp_path, monkeypatch):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
-        monkeypatch.setattr(Pager, "page", lambda rendered, on_export: on_export())
+        monkeypatch.setattr(Pager, "page", lambda rendered, on_export, help_text=None: on_export())
         output = tmp_path / "out.json"
 
         result = runner.invoke(app, ["search", "amount due"], input=f"{output}\n\n")
@@ -259,7 +259,7 @@ class TestSearch:
     ):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
-        monkeypatch.setattr(Pager, "page", lambda rendered, on_export: on_export())
+        monkeypatch.setattr(Pager, "page", lambda rendered, on_export, help_text=None: on_export())
 
         result = runner.invoke(app, ["search", "amount due"], input="\n")
 
@@ -294,7 +294,7 @@ class TestSearch:
             conn.close()
         _seed_indexed_pdf(db_path, "/docs/b.pdf", "budget three")
 
-        result = runner.invoke(app, ["search", "budget"])
+        result = runner.invoke(app, ["search", "budget", "--engine", "like"])
 
         lines = _content_lines(result.stdout)
         assert lines.count("File: /docs/a.pdf") == 1
@@ -312,20 +312,20 @@ class TestSearch:
         finally:
             conn.close()
 
-        result = runner.invoke(app, ["search", "amount due"])
+        result = runner.invoke(app, ["search", "amount due", "--engine", "like"])
 
         assert f"Page: 1 of 1 [{source}]" in _content_lines(result.stdout)
 
 
 class TestSearchEngines:
-    def test_engine_defaults_to_like_and_shows_it_in_the_header(self, use_temp_db):
+    def test_engine_defaults_to_all_and_shows_it_in_the_header(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
 
         result = runner.invoke(app, ["search", "mus"])
 
         assert result.exit_code == 0
-        assert "Results: 1 match (engine: like)" in result.stdout
+        assert "Results: 1 page (engine: all)" in result.stdout
 
     def test_exact_engine_matches_as_typed(self, use_temp_db):
         db_path = use_temp_db()
@@ -354,8 +354,8 @@ class TestSearchEngines:
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
 
-        loose = runner.invoke(app, ["search", "museum"])
-        strict = runner.invoke(app, ["search", "museum", "--case-sensitive"])
+        loose = runner.invoke(app, ["search", "museum", "--engine", "like"])
+        strict = runner.invoke(app, ["search", "museum", "--engine", "like", "--case-sensitive"])
 
         assert "Results: 1 match (engine: like)" in loose.stdout
         assert "No matches found." in strict.stdout
@@ -649,3 +649,146 @@ class TestSearchEngines:
         for result in (percent, whole, ratio):
             assert "Results: 1 match (engine: fuzzy, threshold 70%)" in result.stdout
         assert "No matches found." in strict.stdout
+
+
+def _seed_pages(db_path, path: str, pages: list[str]) -> None:
+    for number, text in enumerate(pages, start=1):
+        if number == 1:
+            _seed_indexed_pdf(db_path, path, text)
+            continue
+        conn = db_module.Db.connect(db_path)
+        try:
+            document_id = conn.execute(
+                "SELECT id FROM document_index WHERE file_path = ?", (path,)
+            ).fetchone()["id"]
+            conn.execute(
+                "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+                "VALUES (?, ?, ?, 0.9)",
+                (document_id, number, text),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+class TestSearchAll:
+    def test_labels_each_page_with_how_it_was_found(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/exact.pdf", "Visit the Museum today")
+
+        result = runner.invoke(app, ["search", "Museum"])
+
+        assert result.exit_code == 0
+        lines = _content_lines(result.stdout)
+        assert "Search Results: 1 page (engine: all)" in lines
+        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Word, Similar" in lines
+
+    def test_ranks_pages_exact_then_contains_then_word_then_similar(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/d_similar.pdf", "the Muzeum guide")
+        _seed_indexed_pdf(db_path, "/docs/c_word.pdf", "he runs fast")
+        _seed_indexed_pdf(db_path, "/docs/b_contains.pdf", "the MUSEUM guide")
+        _seed_indexed_pdf(db_path, "/docs/a_exact.pdf", "the Museum guide")
+
+        museum = runner.invoke(app, ["search", "Museum"])
+        running = runner.invoke(app, ["search", "running"])
+
+        order = [line for line in _content_lines(museum.stdout) if line.startswith("File: ")]
+        assert order == [
+            "File: /docs/a_exact.pdf",
+            "File: /docs/b_contains.pdf",
+            "File: /docs/d_similar.pdf",
+        ]
+        assert "[Exact]" in museum.stdout and "[Contains]" in museum.stdout
+        assert "[Similar 83%]" in museum.stdout
+        assert "[Word]" in running.stdout
+
+    def test_labels_a_weaker_hit_and_caps_the_boxes_per_page(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(
+            db_path,
+            "/docs/museum.pdf",
+            "the Museum; a Muzeum; the Museum; a Muzeum; the Museum; a Muzeum",
+        )
+
+        result = runner.invoke(app, ["search", "Museum"])
+
+        lines = _content_lines(result.stdout)
+        assert "Search Results: 1 page (engine: all)" in lines
+        # 6 hits, best first: the three Exact ones fill the three boxes, the weaker are counted
+        assert lines.count("[Similar 83%]") == 0
+        assert "+3 more matches on this page" in lines
+
+    def test_labels_hits_found_less_strictly_than_the_pages_best(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "the Museum; a Muzeum; a Muzeum")
+
+        result = runner.invoke(app, ["search", "Museum"])
+
+        lines = _content_lines(result.stdout)
+        # the first box is the page's own [Exact] label, the other two are labelled
+        assert lines.count("[Similar 83%]") == 2
+        assert not any(line.startswith("+") and "more" in line for line in lines)
+
+    def test_uses_options_where_the_engine_can_and_never_errors(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "the MUSEUM and the Museurn")
+
+        strict = runner.invoke(app, ["search", "museum", "--case-sensitive"])
+        loose = runner.invoke(app, ["search", "Museum", "--threshold", "65%"])
+        near = runner.invoke(app, ["search", "MUSEUM Museurn", "--distance", "loose"])
+
+        for result in (strict, loose, near):
+            assert result.exit_code == 0
+        # case-sensitive reaches like and fuzzy only, so full-text alone is left to find MUSEUM
+        assert "[Word]" in strict.stdout and "(engine: all, case-sensitive)" in strict.stdout
+        assert "Museurn" in loose.stdout
+        assert "[Near]" in near.stdout
+
+    def test_reports_no_matches(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        result = runner.invoke(app, ["search", "zebra"])
+
+        assert result.exit_code == 0
+        assert "No matches found." in result.stdout
+
+    def test_skips_proximity_for_a_single_word(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        result = runner.invoke(app, ["search", "Museum", "--engine", "all"])
+
+        assert result.exit_code == 0
+        assert "Near" not in result.stdout
+
+    def test_export_lists_each_hit_with_its_engines(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "the Museum and a Muzeum")
+        as_json = tmp_path / "out.json"
+        as_html = tmp_path / "out.html"
+
+        first = runner.invoke(app, ["search", "Museum", "--export", str(as_json)])
+        second = runner.invoke(
+            app, ["search", "Museum", "--export", str(as_html), "--format", "html"]
+        )
+
+        assert first.exit_code == 0 and second.exit_code == 0
+        payload = json.loads(as_json.read_text())
+        assert payload["engine"] == "all"
+        assert [m["engine"] for m in payload["matches"]] == ["exact", "fuzzy"]
+        assert "Muzeum" in payload["matches"][1]["matched_text"]
+        assert payload["matches"][0]["matched_by"] == ["exact", "like", "full-text", "fuzzy"]
+        html_text = as_html.read_text()
+        assert "engine: all" in html_text
+        assert ">Exact<" in html_text and ">Similar 83%<" in html_text
+
+    def test_single_engine_keeps_the_flat_per_match_output(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_pages(db_path, "/docs/museum.pdf", ["the Museum", "the Museum again"])
+
+        result = runner.invoke(app, ["search", "Museum", "--engine", "exact"])
+
+        assert "Results: 2 matches (engine: exact, case-sensitive)" in result.stdout
+        assert "[Exact]" not in result.stdout  # single-engine results aren't labelled
