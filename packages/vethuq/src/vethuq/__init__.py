@@ -43,11 +43,13 @@ from vethuq._core.settings import OcrSettings as _OcrSettings
 from vethuq._core.settings import SearchSettings as _SearchSettings
 from vethuq._core.settings import SourceSettings as _SourceSettings
 from vethuq._core.sources import (
+    PurgeResult,
     Source,
     SourceAlreadyExistsError,
     SourceError,
     SourceFile,
     SourceNotFoundError,
+    SourceNotRemovedError,
     SourcePathError,
 )
 from vethuq._core.sources import Sources as _Sources
@@ -137,6 +139,7 @@ __all__ = [
     "SearchQueryError",
     "SearchSettings",
     "Settings",
+    "PurgeResult",
     "SettingsError",
     "SnippetSettings",
     "Source",
@@ -144,6 +147,7 @@ __all__ = [
     "SourceError",
     "SourceFile",
     "SourceNotFoundError",
+    "SourceNotRemovedError",
     "SourcePathError",
     "Sources",
     "StaleLockError",
@@ -203,6 +207,19 @@ class Sources:
         storage = _open_storage()
         try:
             return _Sources.remove(storage, path_or_id)
+        finally:
+            storage.close()
+
+    def purge(self, path_or_id: str | Path | int) -> PurgeResult:
+        """Permanently delete a removed source (by id or path) or a removed file (by path).
+
+        Works whether or not the retention period has passed, and deletes the
+        indexed data too. Raises `SourceNotRemovedError` if the source or file is
+        still active, and `SourceNotFoundError` if nothing matches.
+        """
+        storage = _open_storage()
+        try:
+            return _Sources.purge(storage, _Sources.coerce(path_or_id))
         finally:
             storage.close()
 

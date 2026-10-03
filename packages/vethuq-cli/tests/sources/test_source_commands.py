@@ -375,3 +375,52 @@ class TestSourceListSort:
         result = runner.invoke(app, ["source", "list", "--sort-by", "size"])
 
         assert result.exit_code != 0
+
+
+class TestSourcePurge:
+    def test_purge_removed_source_with_force(self, use_temp_db, tmp_path):
+        use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        runner.invoke(app, ["source", "add", str(folder)])
+        runner.invoke(app, ["source", "remove", str(folder), "--force"])
+
+        result = runner.invoke(app, ["source", "purge", str(folder), "--force"])
+
+        assert result.exit_code == 0
+        assert "Purged folder" in result.stdout
+        again = runner.invoke(app, ["source", "purge", str(folder), "--force"])
+        assert again.exit_code == 1
+
+    def test_purge_confirms_and_can_abort(self, use_temp_db, tmp_path):
+        use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        runner.invoke(app, ["source", "add", str(folder)])
+        runner.invoke(app, ["source", "remove", str(folder), "--force"])
+
+        aborted = runner.invoke(app, ["source", "purge", str(folder)], input="n\n")
+        assert aborted.exit_code == 0
+        assert "Aborted" in aborted.stdout
+
+        confirmed = runner.invoke(app, ["source", "purge", str(folder)], input="y\n")
+        assert confirmed.exit_code == 0
+        assert "Purged folder" in confirmed.stdout
+
+    def test_purge_active_source_fails(self, use_temp_db, tmp_path):
+        use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        runner.invoke(app, ["source", "add", str(folder)])
+
+        result = runner.invoke(app, ["source", "purge", str(folder), "--force"])
+
+        assert result.exit_code == 1
+        assert "still active" in _unwrapped(result.output) or "active" in result.output
+
+    def test_purge_unknown_target_fails(self, use_temp_db, tmp_path):
+        use_temp_db()
+
+        result = runner.invoke(app, ["source", "purge", str(tmp_path / "nope"), "--force"])
+
+        assert result.exit_code == 1
