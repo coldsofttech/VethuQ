@@ -1,3 +1,5 @@
+import re
+
 from typer.testing import CliRunner
 from vethuq_cli.main import app
 from vethuq_core.db.backup import Backup
@@ -459,6 +461,12 @@ class TestBackupSettings:
             assert runner.invoke(app, ["settings", "db", "backup", *args]).exit_code == 1
 
 
+def _flat(text: str) -> str:
+    """Panel output with borders and whitespace removed, so a long path folded across lines
+    still matches."""
+    return re.sub(r"[│\s]", "", text)
+
+
 class TestBackupsLocation:
     def test_show_defaults_to_next_to_the_database(self, use_temp_db):
         use_temp_db()
@@ -466,8 +474,8 @@ class TestBackupsLocation:
         result = runner.invoke(app, ["settings", "location", "backups", "show"])
 
         assert result.exit_code == 0
-        assert "backups" in result.stdout
-        assert "default" in result.stdout
+        assert "backups" in _flat(result.stdout)
+        assert "thedefault" in _flat(result.stdout)
 
     def test_set_moves_backups_and_show_reflects_it(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
@@ -482,7 +490,7 @@ class TestBackupsLocation:
 
         assert set_result.exit_code == 0
         assert (target / "keep.db.gz").exists()
-        assert "elsewhere" in show_result.stdout
+        assert "elsewhere" in _flat(show_result.stdout)
 
     def test_set_asks_first(self, use_temp_db, tmp_path):
         use_temp_db()
