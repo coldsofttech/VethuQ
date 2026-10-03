@@ -6,14 +6,11 @@ import sqlite3
 from pathlib import Path
 
 from vethuq_core.db.migration import Migration
+from vethuq_core.errors import CorruptDatabaseError, SchemaVersionError
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
 
 _logger = Logs.get_logger("database")
-
-
-class SchemaVersionError(Exception):
-    """The database's schema is newer than this build of VethuQ supports."""
 
 
 class Db:
@@ -283,11 +280,28 @@ END;
     @staticmethod
     def default_db_path() -> Path:
         """Return the per-user path where VethuQ's SQLite database lives (`<data root>/db/`)."""
+        Paths.check_config()
         root = Paths.default_data_root()
         db_dir = root / Paths.DB_DIRNAME
-        db_dir.mkdir(parents=True, exist_ok=True)
+        Paths.ensure_writable(db_dir)
         Db._migrate_legacy_db(root, db_dir)
         return db_dir / Db.DB_FILENAME
+
+    @staticmethod
+    def _corruption_error(exc: sqlite3.Error, db_path: Path) -> CorruptDatabaseError | None:
+        """A `CorruptDatabaseError` if `exc` means the file is damaged, else None.
+
+        SQLite reports "file is not a database" and "database disk image is malformed"
+        as a plain `DatabaseError`; its subclasses (locked, read-only, ...) are not corruption.
+        """
+        if type(exc) is not sqlite3.DatabaseError:
+            return None
+        _logger.error("Database file is corrupt or not a database: path=%s (%s)", db_path, exc)
+        return CorruptDatabaseError(
+            f"The VethuQ database at {db_path} is damaged or isn't a database ({exc}).",
+            "Restore a backup with 'vethuq db restore <name>' (see 'vethuq db backup list'), "
+            "or move the file aside to start fresh.",
+        )
 
     @staticmethod
     def connect(
@@ -317,8 +331,11 @@ END;
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute(f"PRAGMA busy_timeout = {Db.BUSY_TIMEOUT_MS}")
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
             _logger.exception("Could not open database: path=%s", path)
+            corrupt = Db._corruption_error(exc, path)
+            if corrupt is not None:
+                raise corrupt from exc
             raise
         try:
             Db._ensure_schema(conn, path)
@@ -326,6 +343,10 @@ END;
             if isinstance(exc, sqlite3.Error):
                 _logger.exception("Could not prepare database schema: path=%s", path)
             conn.close()
+            if isinstance(exc, sqlite3.Error):
+                corrupt = Db._corruption_error(exc, path)
+                if corrupt is not None:
+                    raise corrupt from exc
             raise
 
         from vethuq_core.db.backup import Backup
@@ -378,8 +399,8 @@ END;
             )
             raise SchemaVersionError(
                 f"The database schema (version {row['version']}) is newer than this version "
-                f"of VethuQ supports (version {Db.SCHEMA_VERSION}). Upgrade VethuQ to open this "
-                "database."
+                f"of VethuQ supports (version {Db.SCHEMA_VERSION}).",
+                "Upgrade VethuQ to open this database.",
             )
 
     @staticmethod

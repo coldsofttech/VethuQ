@@ -23,9 +23,12 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from platformdirs import user_config_dir, user_data_dir
+
+from vethuq_core.errors import DataFolderNotWritableError, InvalidConfigError
 
 
 class Paths:
@@ -68,6 +71,46 @@ class Paths:
         if not isinstance(data, dict):
             return {}
         return {k: v for k, v in data.items() if isinstance(v, str) and v.strip()}
+
+    @staticmethod
+    def check_config() -> None:
+        """Raise `InvalidConfigError` if the saved settings or `VETHUQ_HOME` can't be used."""
+        file = Paths.location_file()
+        if file.exists():
+            try:
+                data = json.loads(file.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise InvalidConfigError(
+                    f"The settings file {file} can't be read ({exc}).",
+                    "Fix it, or delete the file to go back to the default location.",
+                ) from exc
+            if not isinstance(data, dict):
+                raise InvalidConfigError(
+                    f"The settings file {file} is not in the expected format.",
+                    "Delete the file to go back to the default location.",
+                )
+        env = Paths.env_location()
+        if env is not None and env.exists() and not env.is_dir():
+            raise InvalidConfigError(
+                f"{Paths.ENV_VAR} points to {env}, which is a file, not a folder.",
+                f"Set {Paths.ENV_VAR} to a folder, or unset it.",
+            )
+
+    @staticmethod
+    def ensure_writable(folder: Path) -> None:
+        """Create `folder` and prove it can be written to, or raise `DataFolderNotWritableError`."""
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            # A uniquely named, self-deleting file: several processes (e.g. parallel test
+            # workers) can probe the same folder at once without clashing over one name.
+            with tempfile.TemporaryFile(dir=folder):
+                pass
+        except OSError as exc:
+            raise DataFolderNotWritableError(
+                f"VethuQ can't write to its data folder {folder} ({exc.strerror or exc}).",
+                f"Check the folder's permissions and free space, or choose another with "
+                f"'vethuq settings location set' or the {Paths.ENV_VAR} setting.",
+            ) from exc
 
     @staticmethod
     def _write_pointer(data: dict[str, str]) -> None:

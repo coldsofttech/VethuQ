@@ -8,6 +8,10 @@ The `vethuq` command-line tool manages sources (files/folders registered
 for OCR/indexing), runs the OCR indexing pipeline, and configures
 settings.
 
+If VethuQ can't start (invalid settings, an unwritable data folder, a damaged database, missing
+OCR models), it prints what is wrong and what to do, then exits with a code specific to the
+problem (10-15). See [docs/troubleshooting.md](troubleshooting.md).
+
 ## `--version`
 
 Show the VethuQ version, Python version, platform and database schema version in a panel, then exit. Handy to include when asking for support.

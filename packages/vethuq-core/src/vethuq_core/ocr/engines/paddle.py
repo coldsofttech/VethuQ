@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 from importlib.metadata import version as _package_version
+from importlib.util import find_spec
 from typing import TYPE_CHECKING
 
+from vethuq_core.errors import OcrModelMissingError
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines.base import OcrResult
 
@@ -28,22 +30,48 @@ class PaddleOcrEngine:
 
     LANGUAGE = "en"
 
-    def __init__(self, use_gpu: bool = False) -> None:
-        from paddleocr import PaddleOCR
+    NOT_INSTALLED_MESSAGE = "The OCR engine (PaddleOCR) isn't installed."
+    NOT_INSTALLED_HINT = "Reinstall VethuQ to restore it."
 
-        self._ocr = PaddleOCR(
-            lang=PaddleOcrEngine.LANGUAGE,
-            device=PaddleOcrEngine.resolve_device(use_gpu),
-            # Corrects whole-page rotation (0/90/180/270) and per-line rotated
-            # text so scanned/photographed pages that aren't perfectly upright
-            # still OCR correctly. use_doc_unwarping (perspective/warp, not
-            # angle, correction) stays off - it's a heavier pass and unrelated
-            # to angle handling.
-            use_doc_orientation_classify=True,
-            use_doc_unwarping=False,
-            use_textline_orientation=True,
-            enable_mkldnn=False,
-        )
+    @staticmethod
+    def check_installed() -> None:
+        """Raise `OcrModelMissingError` if PaddleOCR can't be imported - a cheap check that
+        doesn't load it, so a caller can fail fast before starting a background run."""
+        if find_spec("paddleocr") is None:
+            _logger.error("OCR engine is not installed")
+            raise OcrModelMissingError(
+                PaddleOcrEngine.NOT_INSTALLED_MESSAGE, PaddleOcrEngine.NOT_INSTALLED_HINT
+            )
+
+    def __init__(self, use_gpu: bool = False) -> None:
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as exc:
+            _logger.error("OCR engine is not installed: %s", exc)
+            raise OcrModelMissingError(
+                PaddleOcrEngine.NOT_INSTALLED_MESSAGE, PaddleOcrEngine.NOT_INSTALLED_HINT
+            ) from exc
+
+        try:
+            self._ocr = PaddleOCR(
+                lang=PaddleOcrEngine.LANGUAGE,
+                device=PaddleOcrEngine.resolve_device(use_gpu),
+                # Corrects whole-page rotation (0/90/180/270) and per-line rotated
+                # text so scanned/photographed pages that aren't perfectly upright
+                # still OCR correctly. use_doc_unwarping (perspective/warp, not
+                # angle, correction) stays off - it's a heavier pass and unrelated
+                # to angle handling.
+                use_doc_orientation_classify=True,
+                use_doc_unwarping=False,
+                use_textline_orientation=True,
+                enable_mkldnn=False,
+            )
+        except Exception as exc:
+            _logger.exception("Could not load the OCR models")
+            raise OcrModelMissingError(
+                f"The OCR models couldn't be loaded ({exc}).",
+                "Connect to the internet once so they can download, or reinstall VethuQ.",
+            ) from exc
         self._name = f"paddleocr {_package_version('paddleocr')}"
 
     @staticmethod

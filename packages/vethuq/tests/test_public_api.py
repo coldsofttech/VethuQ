@@ -569,3 +569,20 @@ def test_version_reports_install_details(client: vethuq.Vethuq) -> None:
     assert isinstance(info, vethuq.VersionDetails)
     assert info.python and info.platform
     assert info.db_schema > 0
+
+
+class TestStartupErrors:
+    def test_startup_errors_are_exported_with_distinct_exit_codes(self):
+        names = [
+            "InvalidConfigError",
+            "DataFolderNotWritableError",
+            "CorruptDatabaseError",
+            "OcrModelMissingError",
+            "SchemaVersionError",
+            "StaleLockError",
+        ]
+        classes = [getattr(vethuq, name) for name in names]
+
+        assert all(issubclass(cls, vethuq.StartupError) for cls in classes)
+        assert len({cls.exit_code for cls in classes}) == len(classes)
+        assert all(name in vethuq.__all__ for name in names + ["StartupError"])
