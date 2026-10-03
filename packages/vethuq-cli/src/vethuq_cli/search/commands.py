@@ -83,11 +83,13 @@ class SearchHelp:
         "indexed documents are searched.\n\n"
         "--engine picks how CONTENT is matched:\n\n"
         "all (the default) - runs every engine and lists each page once, ranked by the "
-        "strictest way it matched: Exact, Contains, Near, Word, then Similar. Each page is "
-        "labelled with that, the other engines that found it, and any hit found less "
+        "strictest way it matched: Exact, Contains, Relevant, Near, Word, then Similar. Each "
+        "page is labelled with that, the other engines that found it, and any hit found less "
         "strictly than the page's best. Each engine applies the options it can.\n\n"
         "like - finds CONTENT anywhere, even inside a word, ignoring case. "
         '`mus` finds "Museum". Results are ordered by file path.\n\n'
+        "lexical - finds CONTENT anywhere, even inside a word, like `like`, but lists the "
+        "best-matching pages first. Needs at least 3 characters.\n\n"
         "exact - finds CONTENT exactly as typed: same case, as a whole word. `Museum` finds "
         '"Museum" but not "museum" or "Museums". Always case-sensitive.\n\n'
         "full-text - finds pages containing all your words, in any order, ignoring case and "
@@ -104,7 +106,7 @@ class SearchHelp:
         "pages first. Never case-sensitive.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
         "`e` to export what's been found and close the pager, `h` (with the default `all` "
-        "engine) to see what Exact, Contains, Near, Word and Similar mean, `q` to close "
+        "engine) to see what Exact, Contains, Relevant, Near, Word and Similar mean, `q` to close "
         "without exporting. A file with several matching pages prints its file name as a bold "
         "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
         "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
@@ -132,7 +134,7 @@ def search(
         None,
         "--case-sensitive/--no-case-sensitive",
         help=(
-            "Match case. Only 'like' and 'fuzzy' honour it (default: `vethuq settings "
+            "Match case. Only 'like', 'lexical' and 'fuzzy' honour it (default: `vethuq settings "
             "search case-sensitive`); 'exact' is always case-sensitive, 'full-text' and "
             "'proximity' never are. With 'all', each engine applies what it can."
         ),

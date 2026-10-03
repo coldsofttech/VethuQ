@@ -203,11 +203,11 @@ class InteractiveMenu:
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
-        # Only `like`, `fuzzy` and `all` (which includes them) have a choice to make:
+        # Only `like`, `lexical`, `fuzzy` and `all` (which includes them) have a choice to make:
         # `exact` is always case-sensitive while `full-text` and `proximity` never are,
         # so asking would have no effect. `all` uses the stored threshold and distance.
         case_sensitive: bool | None = None
-        if engine in (SearchSettings.ENGINE_ALL, "like", "fuzzy"):
+        if engine in (SearchSettings.ENGINE_ALL, "like", "lexical", "fuzzy"):
             case_sensitive = Confirm.ask(
                 "Case-sensitive?", console=console, default=default_case_sensitive
             )
