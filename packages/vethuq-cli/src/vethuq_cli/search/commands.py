@@ -116,10 +116,11 @@ def search(
                     if match.duplicate_of_path is not None:
                         file_line += f"  (duplicate of {match.duplicate_of_path})"
                     console.print(Text(file_line, style=f"bold {accent}"))
+                label = Text(style=accent)
                 if match.page_number is not None:
-                    console.print(
-                        Text(f"Page: {match.page_number} of {match.total_pages}", style=accent)
-                    )
+                    label.append(f"Page: {match.page_number} of {match.total_pages} ")
+                label.append(f"[{match.source}]")
+                console.print(label)
                 console.print()
                 for line in ResultRenderer.render_box(match, width, accent):
                     console.print(line)

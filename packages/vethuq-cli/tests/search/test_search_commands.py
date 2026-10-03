@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
@@ -94,7 +95,7 @@ class TestSearch:
         assert "Results: 1 match" in lines
         assert "File: /docs/invoice.pdf" in lines
         assert lines[lines.index("File: /docs/invoice.pdf") - 1] == "invoice.pdf"
-        assert "Page: 1 of 1" in lines
+        assert "Page: 1 of 1 [ocr]" in lines
         assert any(set(line) <= {"_"} for line in lines)
         assert any(line.startswith("|") and line.endswith("|") for line in lines)
         assert "amount due" in result.stdout
@@ -109,6 +110,7 @@ class TestSearch:
         lines = result.stdout.splitlines()
         assert "File: /docs/scan.png" in lines
         assert not any(line.startswith("Page:") for line in lines)
+        assert "[ocr]" in lines
 
     def test_search_shows_all_matches_without_prompting(self, use_temp_db):
         db_path = use_temp_db()
@@ -158,8 +160,8 @@ class TestSearch:
 
         lines = result.stdout.splitlines()
         assert lines.count("File: /docs/report.pdf") == 1
-        assert "Page: 1 of 3" in lines
-        assert "Page: 3 of 3" in lines
+        assert "Page: 1 of 3 [ocr]" in lines
+        assert "Page: 3 of 3 [ocr]" in lines
 
     def test_search_export_requires_a_value(self, use_temp_db, tmp_path):
         use_temp_db()
@@ -282,3 +284,18 @@ class TestSearch:
         assert lines.count("File: /docs/a.pdf") == 1
         assert lines.count("File: /docs/b.pdf") == 1
         assert "Results: 3 matches" in result.stdout
+
+    @pytest.mark.parametrize("source", ["native", "mixed"])
+    def test_search_shows_page_source_tag(self, use_temp_db, source):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/invoice.pdf", "Total amount due: $1,200.00")
+        conn = db_module.Db.connect(db_path)
+        try:
+            conn.execute("UPDATE pdf_pages SET source = ?", (source,))
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = runner.invoke(app, ["search", "amount due"])
+
+        assert f"Page: 1 of 1 [{source}]" in result.stdout.splitlines()
