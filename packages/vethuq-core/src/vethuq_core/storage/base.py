@@ -112,6 +112,14 @@ class DocumentStore(Protocol):
 
     def fail_stuck_processing_document_index(self, message: str, now: str) -> int: ...
 
+    def find_document_index_row_for_reindex(
+        self, *, row_id: int | None = None, file_path: str | None = None
+    ) -> Row | None: ...
+
+    def reset_document_index_for_reindex(
+        self, source_id: int, file_path: str | None = None
+    ) -> int: ...
+
     def list_tracked_document_index_rows(self, source_id: int) -> Sequence[Row]: ...
 
     def update_document_index_path(

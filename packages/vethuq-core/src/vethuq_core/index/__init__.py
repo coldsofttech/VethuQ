@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from vethuq_core.index.eta import Eta
+from vethuq_core.index.reindex import AmbiguousFileError, FileNotTrackedError, Reindex
 from vethuq_core.index.runner import (
     AlreadyRunningError,
     DatabaseIntegrityError,
@@ -15,11 +16,14 @@ from vethuq_core.index.runner import (
 
 __all__ = [
     "AlreadyRunningError",
+    "AmbiguousFileError",
     "DatabaseIntegrityError",
     "Eta",
+    "FileNotTrackedError",
     "IndexRun",
     "IndexRunner",
     "IndexRunnerError",
     "IndexState",
+    "Reindex",
     "StaleLockError",
 ]

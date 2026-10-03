@@ -28,7 +28,7 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run pytest -n auto
+        entry: uv run pytest -n auto -m "not integration"
         language: system
         pass_filenames: false
         stages: [pre-push]

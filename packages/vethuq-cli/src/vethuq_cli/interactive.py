@@ -34,6 +34,8 @@ from vethuq_cli.db import reset as db_reset
 from vethuq_cli.db import restore as db_restore
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
+from vethuq_cli.index.commands import reindex_file as index_reindex_file
+from vethuq_cli.index.commands import reindex_source as index_reindex_source
 from vethuq_cli.index.commands import restart as index_restart
 from vethuq_cli.index.commands import resume as index_resume
 from vethuq_cli.index.commands import run as index_run
@@ -317,6 +319,8 @@ class InteractiveMenu:
                     ("5", "Pause"),
                     ("6", "Resume"),
                     ("7", "History"),
+                    ("8", "Reindex source"),
+                    ("9", "Reindex file"),
                     ("0", "Back"),
                 ],
             )
@@ -357,6 +361,27 @@ class InteractiveMenu:
                 ).strip()
                 InteractiveMenu._run_safely(
                     index_history, target=target or None, limit=10, as_json=False
+                )
+            elif choice == "8":
+                target = Prompt.ask("Source id or path to re-index", console=console).strip()
+                if not target:
+                    continue
+                wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
+                InteractiveMenu._run_safely(
+                    index_reindex_source, target=target, wait=wait, force=False
+                )
+            elif choice == "9":
+                file = Prompt.ask("File id or path to re-index", console=console).strip()
+                if not file:
+                    continue
+                source = Prompt.ask(
+                    "Source id or path (blank unless the file is under several sources)",
+                    console=console,
+                    default="",
+                ).strip()
+                wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
+                InteractiveMenu._run_safely(
+                    index_reindex_file, file=file, source=source or None, wait=wait, force=False
                 )
 
     @staticmethod

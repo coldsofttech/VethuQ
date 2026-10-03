@@ -16,13 +16,16 @@ from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
 from vethuq._core.db.integrity import IntegrityCheckResult
 from vethuq._core.index import (
     AlreadyRunningError,
+    AmbiguousFileError,
     DatabaseIntegrityError,
+    FileNotTrackedError,
     IndexRun,
     IndexRunnerError,
     IndexState,
     StaleLockError,
 )
 from vethuq._core.index import IndexRunner as _IndexRunner
+from vethuq._core.index import Reindex as _Reindex
 from vethuq._core.logs import LogNotFoundError
 from vethuq._core.logs import Logs as _Logs
 from vethuq._core.ocr import Document as _Document
@@ -97,6 +100,7 @@ __all__ = [
     "SEARCH_PROXIMITY_PRESETS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
+    "AmbiguousFileError",
     "BackupError",
     "BackupInfo",
     "BackupSettings",
@@ -121,6 +125,7 @@ __all__ = [
     "LogRetentionSettings",
     "Logs",
     "LogsSettings",
+    "FileNotTrackedError",
     "OcrEngineSettings",
     "OcrSettings",
     "OcrRetrySettings",
@@ -258,6 +263,34 @@ class Index:
         pid = _IndexRunner.start_run(
             str(target) if target is not None else None, force=force, restart=True
         )
+        return _IndexRunner.wait(pid) if wait else pid
+
+    def reindex(
+        self, target: str | int, *, force: bool = False, wait: bool = False
+    ) -> int | IndexState | None:
+        """Re-index every file under a source (id or path), not just failed ones.
+
+        Files are OCR'd again and their existing documents updated in place, so
+        nothing is duplicated. Same errors and return value as `run`.
+        """
+        pid = _Reindex.start_source(target, force=force)
+        return _IndexRunner.wait(pid) if wait else pid
+
+    def reindex_file(
+        self,
+        file: str | int,
+        *,
+        source: str | int | None = None,
+        force: bool = False,
+        wait: bool = False,
+    ) -> int | IndexState | None:
+        """Re-index one file, given its document id or path.
+
+        Raises `FileNotTrackedError` if the file isn't tracked, and
+        `AmbiguousFileError` if it sits under more than one source and `source`
+        (id or path) isn't given. Otherwise like `run`.
+        """
+        pid = _Reindex.start_file(file, source=source, force=force)
         return _IndexRunner.wait(pid) if wait else pid
 
     def status(self, target: str | int | None = None) -> IndexState | list[DocumentResult] | None:
