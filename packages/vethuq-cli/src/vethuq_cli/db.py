@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich import box
+from rich.console import RenderableType
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
@@ -15,11 +17,56 @@ from vethuq_core.index.runner import IndexRunner
 from vethuq_core.storage import default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.index.panel import IndexPanel
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Database maintenance commands.")
 backup_app = typer.Typer(help="Create, list and delete compressed database backups.")
 app.add_typer(backup_app, name="backup")
+
+
+class DbPanel:
+    @staticmethod
+    def build(message: str | Text | Table, border_style: str, title: str = "Database") -> Panel:
+        """A full-width panel (titled "Database" by default): `message` (white unless already
+        styled), left-aligned title, coloured border."""
+        content: RenderableType
+        if isinstance(message, Table):
+            content = message
+        else:
+            content = Text(message, style="white") if isinstance(message, str) else message
+            # The shared console is soft-wrapping, which would crop long lines in a panel.
+            content.no_wrap = False
+            content.overflow = "fold"
+        return Panel(
+            content,
+            title=Text(title),
+            title_align="left",
+            border_style=border_style,
+            expand=True,
+        )
+
+    @staticmethod
+    def size(num_bytes: int) -> str:
+        value = float(num_bytes)
+        for unit in ("B", "KB", "MB", "GB"):
+            if value < 1024 or unit == "GB":
+                return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+            value /= 1024
+        return f"{num_bytes} B"
+
+    @staticmethod
+    def safety_note(safety: BackupInfo | None) -> Text:
+        """Where the database that was just replaced went, and how to get it back."""
+        if safety is None:
+            return Text()
+        return Text.assemble(
+            ("\n\nThe previous database was saved as ", "white"),
+            (safety.name, Theme.VALUE),
+            (". Undo with 'vethuq db restore ", "white"),
+            (safety.name, Theme.VALUE),
+            ("'.", "white"),
+        )
 
 
 class DbCommands:
@@ -39,39 +86,13 @@ class DbCommands:
             )
 
     @staticmethod
-    def confirm(question: str, force: bool) -> None:
+    def confirm(prompt: Text, title: str, force: bool) -> None:
+        """Ask first unless `force`; "Aborted." (exit 0) if the answer is no."""
         if force:
             return
-        if not Confirm.ask(question, console=console, default=False):
-            console.print(Panel(Text("Aborted.", style="bright_black"), expand=True))
+        if not Confirm.ask(prompt, console=console, default=False):
+            console.print(DbPanel.build("Aborted.", "bright_black", title))
             raise typer.Exit(code=0)
-
-    @staticmethod
-    def panel(message: Text, title: str, style: str) -> None:
-        console.print(Panel(message, title=title, title_align="left", border_style=style))
-
-    @staticmethod
-    def safety_note(safety: BackupInfo | None) -> Text:
-        if safety is None:
-            return Text("")
-        return Text.assemble(
-            ("\n\nThe previous database was saved as '", "white"),
-            (safety.name, Theme.VALUE),
-            ("' (restore it with 'vethuq db restore ", "white"),
-            (safety.name, Theme.VALUE),
-            ("').", "white"),
-        )
-
-    @staticmethod
-    def size(num_bytes: int) -> str:
-        if num_bytes < 1024:
-            return f"{num_bytes} B"
-        value = num_bytes / 1024
-        for unit in ("KB", "MB"):
-            if value < 1024:
-                return f"{value:.1f} {unit}"
-            value /= 1024
-        return f"{value:.1f} GB"
 
 
 @app.command("integrity-check")
@@ -118,18 +139,21 @@ def backup_create(
     Named snapshots are never deleted automatically. Automatic backups are pruned
     after 'vethuq settings db backup retention' days.
     """
+    open_storage().close()  # a fresh install has no database file until something opens it
     try:
         info = Backup.create(default_db_path(), name)
     except BackupError as exc:
         raise DbCommands.fail(str(exc)) from exc
-    DbCommands.panel(
-        Text.assemble(
-            ("Backup '", "white"),
-            (info.name, Theme.VALUE),
-            (f"' created ({DbCommands.size(info.size)}).", "white"),
-        ),
-        "Backup",
-        Theme.OK,
+    console.print(
+        DbPanel.build(
+            Text.assemble(
+                ("Backup created: ", Theme.OK),
+                (info.name, "white"),
+                (f" ({DbPanel.size(info.size)})", "bright_black"),
+            ),
+            Theme.OK,
+            "Backups",
+        )
     )
 
 
@@ -138,21 +162,22 @@ def backup_list() -> None:
     """List the database backups, newest first."""
     infos = Backup.entries(default_db_path())
     if not infos:
-        DbCommands.panel(Text("No backups yet.", style="white"), "Backups", Theme.PRIMARY)
+        console.print(DbPanel.build("No backups yet.", "bright_black", "Backups"))
         return
-    table = Table(title="Backups", title_justify="left", expand=True)
-    table.add_column("Name")
-    table.add_column("Kind")
+
+    table = Table(box=box.SIMPLE, header_style=f"bold {Theme.PRIMARY}", border_style=Theme.PRIMARY)
+    table.add_column("Name", no_wrap=False, overflow="fold")
+    table.add_column("Kind", style=Theme.LABEL)
     table.add_column("Created")
-    table.add_column("Size", justify="right")
+    table.add_column("Size", justify="right", style="bright_black")
     for info in infos:
         table.add_row(
             info.name,
             info.kind,
-            info.created_at.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
-            DbCommands.size(info.size),
+            IndexPanel.friendly_time(info.created_at.isoformat()),
+            DbPanel.size(info.size),
         )
-    console.print(table)
+    console.print(DbPanel.build(table, Theme.PRIMARY, "Backups"))
 
 
 @backup_app.command("delete")
@@ -161,12 +186,16 @@ def backup_delete(
     force: bool = typer.Option(False, "--force", help="Delete without asking for confirmation."),
 ) -> None:
     """Delete one database backup."""
-    DbCommands.confirm(f"Delete backup '{name}'?", force)
+    DbCommands.confirm(Text.assemble("Delete backup ", (name, Theme.VALUE), "?"), "Backups", force)
     try:
         Backup.delete(default_db_path(), name)
     except BackupError as exc:
         raise DbCommands.fail(str(exc)) from exc
-    DbCommands.panel(Text(f"Backup '{name}' deleted.", style="white"), "Backup", Theme.OK)
+    console.print(
+        DbPanel.build(
+            Text.assemble(("Backup deleted: ", Theme.OK), (name, "white")), Theme.OK, "Backups"
+        )
+    )
 
 
 @app.command("restore")
@@ -184,19 +213,21 @@ def restore(
     db_path = default_db_path()
     DbCommands.require_idle(db_path)
     DbCommands.confirm(
-        f"Replace the current database with '{source}'? Changes made since that backup "
-        "will be lost.",
+        Text.assemble(
+            "Replace the current database with ",
+            (source, Theme.VALUE),
+            "? Changes made since that backup will be lost.",
+        ),
+        "Restore",
         force,
     )
     try:
         safety = Backup.restore(db_path, source)
     except BackupError as exc:
         raise DbCommands.fail(str(exc)) from exc
-    message = Text.assemble(
-        ("Database restored from '", "white"), (source, Theme.VALUE), ("'.", "white")
-    )
-    message.append_text(DbCommands.safety_note(safety))
-    DbCommands.panel(message, "Restore", Theme.OK)
+    message = Text.assemble(("Database restored from ", Theme.OK), (source, "white"))
+    message.append_text(DbPanel.safety_note(safety))
+    console.print(DbPanel.build(message, Theme.OK, "Restore"))
 
 
 @app.command("reset")
@@ -211,17 +242,20 @@ def reset(
     db_path = default_db_path()
     DbCommands.require_idle(db_path)
     DbCommands.confirm(
-        "Clear ALL data - registered sources, the search index and settings? "
-        "Your source files themselves are not touched.",
+        Text(
+            "Clear ALL data - registered sources, the search index and settings? "
+            "Your source files themselves are not touched."
+        ),
+        "Reset",
         force,
     )
     try:
         safety = Backup.reset(db_path)
     except BackupError as exc:
         raise DbCommands.fail(str(exc)) from exc
-    message = Text("The database was reset.", style="white")
-    message.append_text(DbCommands.safety_note(safety))
-    DbCommands.panel(message, "Reset", Theme.OK)
+    message = Text("Database reset: all data cleared.", style=Theme.OK)
+    message.append_text(DbPanel.safety_note(safety))
+    console.print(DbPanel.build(message, Theme.OK, "Reset"))
 
 
 @app.command("repair")
@@ -238,9 +272,9 @@ def repair() -> None:
     except BackupError as exc:
         raise DbCommands.fail(str(exc)) from exc
     if result.ok:
-        message = Text("Database repaired: the integrity check now passes.", style="white")
-        message.append_text(DbCommands.safety_note(safety))
-        DbCommands.panel(message, "Repair", Theme.OK)
+        message = Text("Database repaired: the integrity check now passes.", style=Theme.OK)
+        message.append_text(DbPanel.safety_note(safety))
+        console.print(DbPanel.build(message, Theme.OK, "Repair"))
         return
     error_console.print("The database could not be repaired:", style=Theme.ERROR)
     for line in result.errors:

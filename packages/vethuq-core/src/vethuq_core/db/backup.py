@@ -299,7 +299,7 @@ class Backup:
             staging.replace(db_path)
         finally:
             staging.unlink(missing_ok=True)
-        _logger.warning("Restored database from %s", source)
+        _logger.info("Restored database from %s", source)
         return safety
 
     @staticmethod
@@ -311,7 +311,7 @@ class Backup:
         """
         safety = Backup._safety_snapshot(db_path)
         Backup._remove_db_files(db_path)
-        _logger.warning("Reset the database (all data cleared)")
+        _logger.info("Reset the database (all data cleared)")
         return safety
 
     @staticmethod
