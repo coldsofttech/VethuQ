@@ -42,6 +42,7 @@ from vethuq._core.sources import (
     Source,
     SourceAlreadyExistsError,
     SourceError,
+    SourceFile,
     SourceNotFoundError,
     SourcePathError,
 )
@@ -121,6 +122,7 @@ __all__ = [
     "Source",
     "SourceAlreadyExistsError",
     "SourceError",
+    "SourceFile",
     "SourceNotFoundError",
     "SourcePathError",
     "Sources",
@@ -149,6 +151,20 @@ class Sources:
         storage = _open_storage()
         try:
             return _Sources.add(storage, path)
+        finally:
+            storage.close()
+
+    # Defined before `list` below, whose name would otherwise shadow the builtin in annotations.
+    def files(self, path_or_id: str | Path | int) -> list[SourceFile]:
+        """Return the files tracked under a source, by id or path, ordered by file path.
+
+        Each `SourceFile` carries its id, status and the same detail
+        `vethuq source list <source> --detail` shows. Raises
+        `SourceNotFoundError` if no active source matches.
+        """
+        storage = _open_storage()
+        try:
+            return _Sources.list_files(storage, path_or_id)
         finally:
             storage.close()
 

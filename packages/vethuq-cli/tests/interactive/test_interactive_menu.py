@@ -55,10 +55,39 @@ class TestInteractiveMenu:
     def test_sources_list_then_back_then_exit(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="2\n1\n0\n8\n")
+        result = runner.invoke(app, [], input="2\n1\n\n\n\n0\n8\n")
 
         assert result.exit_code == 0
         assert "No sources registered yet." in result.stdout
+
+    def test_sources_list_files_with_detail(self, use_temp_db, tmp_path):
+        use_temp_db()
+        runner.invoke(app, ["source", "add", str(tmp_path)])
+
+        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\ny\n\n\n\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "No files indexed yet for this source." in result.stdout
+
+    def test_sources_list_files_unknown_source_keeps_shell_alive(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="2\n2\n99\nn\n\n\n\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "No active source matches" in result.output
+        assert "Goodbye." in result.stdout
+
+    def test_sources_list_files_export_from_menu(self, use_temp_db, tmp_path):
+        use_temp_db()
+        runner.invoke(app, ["source", "add", str(tmp_path)])
+        out = tmp_path / "out.html"
+
+        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\nn\n\n\n{out}\nhtml\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Exported 0 file(s)" in result.stdout
+        assert out.read_text().startswith("<!doctype html>")
 
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()

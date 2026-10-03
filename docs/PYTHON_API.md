@@ -376,6 +376,17 @@ for source in client.sources.list():
     print(source.id, source.path)
 ```
 
+### `files(path_or_id)`
+
+Return the files tracked under a source (by id or path), ordered by file
+path, as `SourceFile` objects. Raises `SourceNotFoundError` if no active
+source matches.
+
+```python
+for file in client.sources.files(3):
+    print(file.id, file.file_path, file.status)
+```
+
 ### `remove(source_id)`
 
 Unregister a source by id or path. Raises `SourceNotFoundError` if it

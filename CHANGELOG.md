@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq source list <id-or-path>` lists the files under a source with their id and index status; add `--detail` for timestamps, OCR phases and more. Also in the interactive menu (Sources > List Files). `--export <file> [--format json|html]` writes any `source list` form (sources, files, or files with `--detail`) to a file, like `search --export`. Sort with `--sort asc|desc` and `--sort-by filename|id|status` (ascending by filename by default).
+- `client.sources.files(path_or_id)` returns the files under a source with their status and detail.
 - If the index worker crashes hard (for example inside the OCR library), the fault trace now lands in `index.log` and `index status` names the crash; deeper OCR passes also log each page and angle before reading it.
 - Command output is now shown in full-width panels with left-aligned titles (and tables for lists): search results (one panel per file, one box per match), sources, index, stats, logs and settings.
 - The interactive menu now opens with a VethuQ header panel and shows the main menu and every sub-menu as a panel of numbered options.

@@ -47,3 +47,15 @@
   .snippet mark { background: var(--vq-highlight); color: var(--vq-on-highlight); padding: 0 2px; }
   footer { margin-top: 1.5rem; color: var(--vq-text-muted); font-size: 0.85rem; }
   footer .footer-title { font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  table.list { border-collapse: collapse; width: 100%; }
+  table.list th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--vq-surface-alt);
+    border-bottom: 1px solid var(--vq-border);
+    white-space: nowrap;
+  }
+  table.list td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--vq-border-soft); }
+  table.list td a { color: var(--vq-primary); text-decoration: none; }
+  table.list td a:hover { color: var(--vq-primary-hover); text-decoration: underline; }

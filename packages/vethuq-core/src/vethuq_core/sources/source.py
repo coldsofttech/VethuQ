@@ -54,6 +54,78 @@ class Source:
             removed_at=row["removed_at"],
         )
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "path": self.path,
+            "type": self.source_type,
+            "status": self.status,
+            "added_at": self.added_at,
+            "last_scanned_at": self.last_scanned_at,
+        }
+
+
+@dataclass(frozen=True)
+class PhaseTiming:
+    """Timing of one deeper OCR phase (2+) of a document."""
+
+    phase: int
+    started_at: str
+    completed_at: str | None
+    duration_seconds: float
+
+
+@dataclass(frozen=True)
+class SourceFile:
+    """One file tracked under a source, as listed by `vethuq source list <source>`."""
+
+    id: int
+    file_path: str
+    file_type: str  # "pdf" | "image"
+    status: str
+    error_message: str | None
+    file_size_bytes: int | None
+    started_at: str | None
+    completed_at: str | None
+    indexed_at: str | None
+    duration: float | None
+    retry_count: int
+    confidence: float | None
+    duplicate_of_path: str | None
+    pages: int
+    ocr_phase: int | None  # highest phase every page has completed; None if no pages yet
+    ocr_angles: list[int]
+    phase_timings: list[PhaseTiming]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "file": self.file_path,
+            "file_type": self.file_type,
+            "status": self.status,
+            "error": self.error_message,
+            "size_bytes": self.file_size_bytes,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "indexed_at": self.indexed_at,
+            "duration": self.duration,
+            "retry_count": self.retry_count,
+            "confidence": self.confidence,
+            "duplicate_of": self.duplicate_of_path,
+            "pages": self.pages,
+            "ocr_phase": self.ocr_phase,
+            "ocr_angles": self.ocr_angles,
+            "phases": [
+                {
+                    "phase": t.phase,
+                    "started_at": t.started_at,
+                    "completed_at": t.completed_at,
+                    "duration": t.duration_seconds,
+                }
+                for t in self.phase_timings
+            ],
+        }
+
 
 class Sources:
     @staticmethod
@@ -127,6 +199,62 @@ class Sources:
             raise SourceNotFoundError(f"No active source matches: {path_or_id}")
 
         return Source._from_row(row)
+
+    @staticmethod
+    def list_files(storage: Storage, path_or_id: str | Path | int) -> list[SourceFile]:
+        """List every file tracked under an active source, ordered by path.
+
+        Duplicates have no pages of their own, so their confidence and OCR phase
+        are the original's. Raises SourceNotFoundError if no active source matches.
+        """
+        source = Sources.get(storage, path_or_id)
+        files = []
+        for row in storage.list_source_file_rows(source.id):
+            pages = storage.list_page_ocr_state(row["file_type"], row["canonical_id"])
+            angles: set[int] = set()
+            for page in pages:
+                angles.update(int(a) for a in page["ocr_angles"].split(",") if a.strip())
+            confidence = None
+            if row["status"] == "indexed" and pages:
+                confidence = sum(p["confidence"] for p in pages) / len(pages)
+
+            duration = None
+            if row["started_at"] and row["completed_at"]:
+                duration = (
+                    datetime.fromisoformat(row["completed_at"])
+                    - datetime.fromisoformat(row["started_at"])
+                ).total_seconds()
+
+            files.append(
+                SourceFile(
+                    id=row["id"],
+                    file_path=row["file_path"],
+                    file_type=row["file_type"],
+                    status=row["status"],
+                    error_message=row["error_message"],
+                    file_size_bytes=row["file_size_bytes"],
+                    started_at=row["started_at"],
+                    completed_at=row["completed_at"],
+                    indexed_at=row["indexed_at"],
+                    duration=duration,
+                    retry_count=row["retry_count"],
+                    confidence=confidence,
+                    duplicate_of_path=row["duplicate_of_path"],
+                    pages=len(pages),
+                    ocr_phase=min((p["ocr_phase"] for p in pages), default=None),
+                    ocr_angles=sorted(angles),
+                    phase_timings=[
+                        PhaseTiming(
+                            phase=t["phase"],
+                            started_at=t["started_at"],
+                            completed_at=t["completed_at"],
+                            duration_seconds=t["duration_seconds"],
+                        )
+                        for t in storage.list_phase_rows(row["document_id"])
+                    ],
+                )
+            )
+        return files
 
     @staticmethod
     def progress(storage: Storage, source_id: int) -> tuple[int, int]:

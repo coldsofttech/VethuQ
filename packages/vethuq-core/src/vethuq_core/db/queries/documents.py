@@ -387,6 +387,56 @@ class Document:
         ).fetchall()
 
     @staticmethod
+    def list_source_file_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
+        """One row per `document_index` row of `source_id`, with the detail `source list` shows.
+
+        `canonical_id` and `duplicate_of_path` follow the same rule as `get_result_rows`.
+        """
+        return conn.execute(
+            "SELECT di.id AS id, di.document_id AS document_id, di.file_path AS file_path, "
+            "di.file_type AS file_type, di.status AS status, "
+            "di.error_message AS error_message, di.file_size_bytes AS file_size_bytes, "
+            "di.started_at AS started_at, di.completed_at AS completed_at, "
+            "di.indexed_at AS indexed_at, di.retry_count AS retry_count, "
+            "COALESCE("
+            "  (SELECT peer.id FROM document_index peer "
+            "   WHERE peer.document_id = di.document_id AND ("
+            "     EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
+            "     OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            "   ) LIMIT 1), "
+            "  di.id"
+            ") AS canonical_id, "
+            "(SELECT peer.file_path FROM document_index peer "
+            " WHERE peer.document_id = di.document_id AND peer.id != di.id AND ("
+            "   EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = peer.id) "
+            "   OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = peer.id)"
+            " ) LIMIT 1) AS duplicate_of_path "
+            "FROM document_index di "
+            "WHERE di.source_id = ? ORDER BY di.file_path",
+            (source_id,),
+        ).fetchall()
+
+    @staticmethod
+    def list_page_ocr_state(
+        conn: sqlite3.Connection, file_type: str, document_id: int
+    ) -> list[sqlite3.Row]:
+        """`(ocr_phase, ocr_angles, confidence)` of every stored page of `document_id`."""
+        table = "pdf_pages" if file_type == "pdf" else "image_pages"
+        return conn.execute(
+            f"SELECT ocr_phase, ocr_angles, confidence FROM {table} WHERE document_id = ?",
+            (document_id,),
+        ).fetchall()
+
+    @staticmethod
+    def list_phase_rows(conn: sqlite3.Connection, logical_document_id: int) -> list[sqlite3.Row]:
+        """The deeper-phase (2+) `document_phases` rows of a logical document, in phase order."""
+        return conn.execute(
+            "SELECT phase, started_at, completed_at, indexed_at, duration_seconds "
+            "FROM document_phases WHERE document_id = ? ORDER BY phase",
+            (logical_document_id,),
+        ).fetchall()
+
+    @staticmethod
     def search_indexed_pdf_pages(conn: sqlite3.Connection, like_pattern: str) -> list[sqlite3.Row]:
         """Return indexed `pdf_pages` rows whose `ocr_text` matches `like_pattern`.
 

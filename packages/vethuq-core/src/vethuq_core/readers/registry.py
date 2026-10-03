@@ -5,15 +5,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from vethuq_core.readers.reader import JpgReader, PdfReader, PngReader, Reader
+from vethuq_core.readers.reader import DocumentReader, JpgReader, PdfReader, PngReader
 
 
 class Readers:
     """Looks readers up by file path or file type. Supporting a new file format is a
-    `Reader` subclass plus `Readers.register` - the OCR pipeline only ever sees the
-    `Reader` abstraction, keyed off `file_type`."""
+    `DocumentReader` subclass plus `Readers.register` - the OCR pipeline only ever sees the
+    `DocumentReader` abstraction, keyed off `file_type`."""
 
-    _BY_SUFFIX: dict[str, Reader] = {}
+    _BY_SUFFIX: dict[str, DocumentReader] = {}
 
     # `document_index.file_type` of a file no reader handles.
     UNSUPPORTED_FILE_TYPE = "unsupported"
@@ -23,18 +23,18 @@ class Readers:
     _WINDOWS_HIDDEN_ATTRIBUTE = 0x2
 
     @staticmethod
-    def register(extensions: str | tuple[str, ...], reader: Reader) -> None:
+    def register(extensions: str | tuple[str, ...], reader: DocumentReader) -> None:
         """Handle files with the given extension(s) (e.g. `".tiff"`) using `reader`."""
         for extension in (extensions,) if isinstance(extensions, str) else extensions:
             Readers._BY_SUFFIX[extension.lower()] = reader
 
     @staticmethod
-    def for_path(file_path: Path) -> Reader:
+    def for_path(file_path: Path) -> DocumentReader:
         """The reader registered for `file_path`'s extension (KeyError if none)."""
         return Readers._BY_SUFFIX[file_path.suffix.lower()]
 
     @staticmethod
-    def for_file_type(file_type: str) -> Reader:
+    def for_file_type(file_type: str) -> DocumentReader:
         """A reader that handles `file_type` (KeyError if none does).
 
         Readers sharing a `file_type` share its storage and weight, so any one of

@@ -1,6 +1,6 @@
 """Document readers: open a file and yield its pages, with no OCR involved.
 
-A `Reader` only *extracts* - a page's native text layer and a way to render the
+A `DocumentReader` only *extracts* - a page's native text layer and a way to render the
 page (or embedded image regions within it) to an image. Deciding whether that
 content needs OCR, and running it, is the OCR pipeline's job (`vethuq_core.ocr`),
 so reading can be reused and tested without pulling in an OCR engine.
@@ -34,7 +34,7 @@ Region = tuple[float, float, float, float]
 
 @dataclass(frozen=True)
 class ReadPage:
-    """One page as extracted by a `Reader`.
+    """One page as extracted by a `DocumentReader`.
 
     `native_text` is the file's own text layer for the page ('' when the format
     has none, e.g. an image). `image_regions` are the embedded image areas large
@@ -50,7 +50,7 @@ class ReadPage:
     render: Callable[[Region | None], str | np.ndarray]
 
 
-class Reader(ABC):
+class DocumentReader(ABC):
     """Reads one file type into its pages. Extend this to support a new file type.
 
     `file_type` is the label stored in `document_index`/`processing_metrics`/
@@ -72,7 +72,7 @@ class Reader(ABC):
         """Yield the file's pages in order, or only the 1-based `page_number` if given."""
 
 
-class PdfReader(Reader):
+class PdfReader(DocumentReader):
     file_type = "pdf"
     storage = PdfPageStorage()
     # Multi-page and heavier to render than a single image.
@@ -142,7 +142,7 @@ class PdfReader(Reader):
         return render
 
 
-class ImageReader(Reader):
+class ImageReader(DocumentReader):
     file_type = "image"
     storage = ImagePageStorage()
 
