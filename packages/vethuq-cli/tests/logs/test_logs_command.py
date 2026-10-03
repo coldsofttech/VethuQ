@@ -1,4 +1,6 @@
+from rich.console import Console
 from typer.testing import CliRunner
+from vethuq_cli.logs import LogsCommand
 from vethuq_cli.main import app
 
 runner = CliRunner()
@@ -94,3 +96,39 @@ class TestLogsCommand:
         )
 
         assert result.exit_code == 1
+
+
+class TestFollowView:
+    @staticmethod
+    def _render(view, width=60, height=8) -> str:
+        console = Console(width=width, height=height, record=True, force_terminal=False)
+        console.print(view)
+        return console.export_text()
+
+    def test_shows_the_newest_entries_that_fit_the_height(self):
+        view = LogsCommand._FollowView(
+            "Index Log", [_entry("INFO", f"entry {i}", i) for i in range(20)]
+        )
+
+        output = self._render(view, height=8)
+
+        assert "entry 19" in output
+        assert "entry 0" not in output
+        assert output.count("entry ") <= 6  # 8 rows less the panel's top and bottom
+
+    def test_new_entries_appear_and_old_ones_scroll_off(self):
+        view = LogsCommand._FollowView("Index Log", [_entry("INFO", "first", 1)])
+        assert "first" in self._render(view)
+
+        for second in range(2, 12):
+            view.add(_entry("INFO", f"later {second}", second))
+        output = self._render(view, height=6)
+
+        assert "later 11" in output
+        assert "first" not in output
+
+    def test_waits_when_there_are_no_entries_yet(self):
+        output = self._render(LogsCommand._FollowView("Index Log"))
+
+        assert "Waiting for new log entries" in output
+        assert "Index Log" in output

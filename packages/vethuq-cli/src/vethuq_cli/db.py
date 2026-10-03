@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import typer
+from rich.panel import Panel
+from rich.text import Text
 from vethuq_core.db.integrity import IntegrityCheck
 from vethuq_core.storage import open_storage
 
@@ -28,7 +30,15 @@ def integrity_check() -> None:
         storage.close()
 
     if result.ok:
-        console.print("Database integrity check passed.", style=Theme.OK)
+        console.print(
+            Panel(
+                Text("Database integrity check passed.", style="white"),
+                title="Integrity Check",
+                title_align="left",
+                border_style=Theme.OK,
+                expand=True,
+            )
+        )
         return
 
     error_console.print("Database integrity check FAILED:", style=Theme.ERROR)

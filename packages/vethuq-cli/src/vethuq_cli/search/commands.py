@@ -5,11 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.console import RenderableType
+from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 from vethuq_core.search import (
     Export,
     Search,
+    SearchMatch,
     SearchOptionError,
     SearchOptions,
     SearchQueryError,
@@ -70,6 +73,38 @@ def _resolve_options(
         else:
             hint = "--case-sensitive" if case_sensitive else "--no-case-sensitive"
         raise typer.BadParameter(str(exc), param_hint=hint) from exc
+
+
+class SearchHelp:
+    TEXT = (
+        "Search indexed content for CONTENT and print matching pages. Only successfully "
+        "indexed documents are searched.\n\n"
+        "--engine picks how CONTENT is matched:\n\n"
+        "like (the default) - finds CONTENT anywhere, even inside a word, ignoring case. "
+        '`mus` finds "Museum". Results are ordered by file path.\n\n'
+        "exact - finds CONTENT exactly as typed: same case, as a whole word. `Museum` finds "
+        '"Museum" but not "museum" or "Museums". Always case-sensitive.\n\n'
+        "full-text - finds pages containing all your words, in any order, ignoring case and "
+        'matching English word forms such as plurals (`museum` finds "Museums"). Quote a '
+        '"phrase" to keep words together, and end a word with * for a prefix (`mus*`). Best '
+        "matches first. Never case-sensitive.\n\n"
+        "fuzzy - finds words close to yours, tolerating typos and OCR misreads (`Musuem` or "
+        "`Museurn` for `Museum`). Every word must be matched, as close as --threshold or "
+        "--fuzziness allows; words under 4 letters and anything with a digit must match "
+        "exactly. Closest matches first.\n\n"
+        "proximity - finds passages where all your words (at least two, any order; quote a "
+        '"phrase" to keep words together) sit within --distance words of each other, such '
+        "as `payment` and `termination` in the same clause. One result per passage, best "
+        "pages first. Never case-sensitive.\n\n"
+        "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
+        "`e` to export what's been found and close the pager, `q` to close without "
+        "exporting. A file with several matching pages prints its file name as a bold "
+        "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
+        "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
+        "How much context the box shows is set by `vethuq settings search snippet`.\n\n"
+        "With --export, results are written to that file as JSON or HTML instead of being "
+        "printed here."
+    )
 
 
 def search(
@@ -134,33 +169,7 @@ def search(
         help="Export format: 'json' or 'html'. Only used with --export.",
     ),
 ) -> None:
-    """Search indexed content for CONTENT and print matching pages.
-
-    Only successfully indexed documents are searched. `--engine` picks how
-    CONTENT is matched: `like` finds it anywhere, even inside a word, ignoring
-    case; `exact` finds it as typed - same case, as a whole word; `full-text`
-    finds pages containing its words (any case, English word forms such as
-    plurals, quote a "phrase", end a word with * for a prefix) and lists the
-    best matches first; `fuzzy` finds words close to yours - typos and OCR
-    misreads such as `Musuem` or `Museurn` for `Museum` - as close as
-    `--threshold`/`--fuzziness` allows (words under 4 letters and anything
-    with a digit must match exactly), closest first; `proximity` finds
-    passages where all your words - at least two, any order, "quote a phrase"
-    to keep words together - sit within `--distance` words of each other,
-    e.g. `payment` and `termination` in the same clause, with one result per
-    passage. Results open in a
-    pager at the top - scroll (e.g. the down arrow) to reveal more, `e` to
-    export what's been found and close the pager, `q` to close without
-    exporting. A file with several matching pages prints its file name as a
-    bold heading and its `File:` path line once, followed by one `Page: X of Y`
-    and boxed, highlighted snippet per match;
-    consecutive files alternate accent colors to make them easier to tell
-    apart. How much context the box shows is configurable via
-    `vethuq settings search snippet`.
-
-    With `--export`, results are written to that file as JSON or HTML
-    instead of being printed here.
-    """
+    """Search indexed content for CONTENT and print matching pages."""
     storage = open_storage()
     try:
         options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness, distance)
@@ -176,9 +185,10 @@ def search(
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
         if not matches:
-            console.print("No matches found.", style=Theme.NOTICE)
+            message = Text("No matches found.", style=Theme.NOTICE)
             if options.engine in _NO_MATCH_HINTS:
-                console.print(_NO_MATCH_HINTS[options.engine], style="bright_black")
+                message.append(f"\n\n{_NO_MATCH_HINTS[options.engine]}", style="bright_black")
+            console.print(ResultRenderer.message_panel(message, Theme.NOTICE))
             return
 
         if export is not None:
@@ -199,10 +209,13 @@ def search(
                 distance=options.distance,
             )
             console.print(
-                Text.assemble(
-                    "Exported ",
-                    (str(len(matches)), Theme.VALUE),
-                    f" match(es) to {output_path} ({resolved_format}).",
+                ResultRenderer.message_panel(
+                    Text.assemble(
+                        ("Exported ", "white"),
+                        (str(len(matches)), Theme.VALUE),
+                        (f" match(es) to {output_path} ({resolved_format}).", "white"),
+                    ),
+                    Theme.OK,
                 )
             )
             return
@@ -230,46 +243,43 @@ def search(
                 distance=options.distance,
             )
             console.print(
-                Text.assemble(
-                    "Exported ",
-                    (str(len(matches)), Theme.VALUE),
-                    f" match(es) to {output_path} ({resolved_format}).",
+                ResultRenderer.message_panel(
+                    Text.assemble(
+                        ("Exported ", "white"),
+                        (str(len(matches)), Theme.VALUE),
+                        (f" match(es) to {output_path} ({resolved_format}).", "white"),
+                    ),
+                    Theme.OK,
                 )
             )
 
-        width = max(SearchSettings.get_snippet_context_chars(storage), ResultRenderer.MIN_BOX_WIDTH)
-        match_word = "match" if len(matches) == 1 else "matches"
+        file_panels: list[Panel] = []
+        entries: list[RenderableType] = []
+        first_match: SearchMatch | None = None
+        last_file_path: str | None = None
+        accent = ResultRenderer.ACCENT_STYLES[0]
+
+        def _close_file() -> None:
+            if first_match is not None:
+                file_panels.append(ResultRenderer.file_panel(first_match, accent, entries))
+
+        for match in matches:
+            if match.file_path != last_file_path:
+                _close_file()
+                accent = ResultRenderer.ACCENT_STYLES[
+                    len(file_panels) % len(ResultRenderer.ACCENT_STYLES)
+                ]
+                first_match, last_file_path, entries = match, match.file_path, []
+            entries.append(ResultRenderer.match_label(match, options, accent))
+            entries.append(ResultRenderer.match_panel(match, accent))
+        _close_file()
 
         with console.capture() as capture:
-            header = f"Results: {len(matches)} {match_word} ({ResultRenderer.describe(options)})"
-            console.print(Text(header, style=ResultRenderer.HEADER_STYLE))
-            console.print()
-            last_file_path: str | None = None
-            file_index = -1
-            accent = ResultRenderer.ACCENT_STYLES[0]
-            for match in matches:
-                if match.file_path != last_file_path:
-                    last_file_path = match.file_path
-                    file_index += 1
-                    accent = ResultRenderer.ACCENT_STYLES[
-                        file_index % len(ResultRenderer.ACCENT_STYLES)
-                    ]
-                    console.print(Text(match.file_name, style=f"bold {accent}"))
-                    file_line = f"File: {match.file_path}"
-                    if match.duplicate_of_path is not None:
-                        file_line += f"  (duplicate of {match.duplicate_of_path})"
-                    console.print(Text(file_line, style=f"bold {accent}"))
-                label = Text(style=accent)
-                if match.page_number is not None:
-                    label.append(f"Page: {match.page_number} of {match.total_pages} ")
-                label.append(f"[{match.source}]")
-                if options.engine == "fuzzy" and match.score is not None:
-                    label.append(f" similarity {match.score:.0%}")
-                console.print(label)
-                console.print()
-                for line in ResultRenderer.render_box(match, width, accent):
-                    console.print(line)
-                console.print()
+            console.print(
+                ResultRenderer.results_panel(
+                    ResultRenderer.heading(len(matches), options), file_panels
+                )
+            )
         Pager.page(capture.get(), _export_from_pager)
     finally:
         storage.close()

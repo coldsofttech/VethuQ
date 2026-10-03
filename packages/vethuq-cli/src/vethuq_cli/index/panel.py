@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
+from rich import box
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TaskProgressColumn
@@ -22,6 +24,49 @@ from vethuq_core.storage import Storage
 
 from vethuq_cli.console import console
 from vethuq_cli.theme import Theme
+
+
+class IndexPanel:
+    @staticmethod
+    def message(message: str | Text, border_style: str, title: str = "Index") -> Panel:
+        """A full-width panel: `message` (white unless already styled), left-aligned `title`,
+        coloured border."""
+        text = Text(message, style="white") if isinstance(message, str) else message
+        # The shared console is soft-wrapping, which would crop long lines in a panel.
+        text.no_wrap = False
+        text.overflow = "fold"
+        return Panel(text, title=title, title_align="left", border_style=border_style, expand=True)
+
+    @staticmethod
+    def table(table: Table, title: str, border_style: str = Theme.PRIMARY) -> Panel:
+        """A full-width panel around `table`, with a left-aligned `title`."""
+        return Panel(table, title=title, title_align="left", border_style=border_style, expand=True)
+
+    @staticmethod
+    def friendly_time(value: str, now: datetime | None = None) -> str:
+        """An ISO timestamp as a short, local-time phrase: "Today, 13:40", "Yesterday, 09:12",
+        "3 Oct, 13:40" (this year) or "3 Oct 2025, 13:40". `value` unchanged if it isn't ISO."""
+        try:
+            moment = datetime.fromisoformat(value).astimezone()
+        except ValueError:
+            return value
+        current = (now or datetime.now().astimezone()).astimezone()
+        clock = moment.strftime("%H:%M")
+        days_ago = (current.date() - moment.date()).days
+        if days_ago == 0:
+            return f"Today, {clock}"
+        if days_ago == 1:
+            return f"Yesterday, {clock}"
+        if moment.year == current.year:
+            return f"{moment.day} {moment.strftime('%b')}, {clock}"
+        return f"{moment.day} {moment.strftime('%b %Y')}, {clock}"
+
+    @staticmethod
+    def new_table() -> Table:
+        """A table in the style the other panels use."""
+        return Table(
+            box=box.SIMPLE, header_style=f"bold {Theme.PRIMARY}", border_style=Theme.PRIMARY
+        )
 
 
 class StatePanel:
@@ -142,7 +187,13 @@ class StatePanel:
                 table.add_row("ETA", eta)
 
         border_style = status_style if status_style != "default" else "white"
-        return Panel(table, title="Index Run", border_style=border_style, expand=False)
+        return Panel(
+            table,
+            title="Index Run",
+            title_align="left",
+            border_style=border_style,
+            expand=True,
+        )
 
     @staticmethod
     def print_state(storage: Storage, state: IndexState) -> None:
@@ -157,6 +208,10 @@ class StatePanel:
             )
         if final is None or final.pid != pid:
             console.print(
-                "Background run ended before reporting any progress. "
-                f"If this is unexpected, check {IndexRunner.log_path()} for errors."
+                IndexPanel.message(
+                    "Background run ended before reporting any progress. "
+                    f"If this is unexpected, check {IndexRunner.log_path()} for errors.",
+                    Theme.WARNING,
+                    "Index Run",
+                )
             )

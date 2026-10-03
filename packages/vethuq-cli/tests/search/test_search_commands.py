@@ -20,6 +20,15 @@ def _flatten(output: str) -> str:
     return " ".join(plain.replace("\u2502", " ").split())
 
 
+_BOX_CHARS = "─│┌┐└┘╭╮╰╯├┤"
+
+
+def _content_lines(output: str) -> list[str]:
+    """`output`'s lines with the panel borders (and the padding inside them) stripped."""
+    stripped = (line.strip(_BOX_CHARS + " ") for line in output.splitlines())
+    return [line for line in stripped if line]
+
+
 def _add_source(conn, path: str = "/docs") -> int:
     now = datetime.now(UTC).isoformat()
     cursor = conn.execute(
@@ -100,14 +109,12 @@ class TestSearch:
         result = runner.invoke(app, ["search", "amount due"])
 
         assert result.exit_code == 0
-        lines = result.stdout.splitlines()
-        assert "Results: 1 match (engine: like)" in lines
+        lines = _content_lines(result.stdout)
+        assert "Search Results: 1 match (engine: like)" in lines
         assert "File: /docs/invoice.pdf" in lines
         assert lines[lines.index("File: /docs/invoice.pdf") - 1] == "invoice.pdf"
         assert "Page: 1 of 1 [ocr]" in lines
-        assert any(set(line) <= {"_"} for line in lines)
-        assert any(line.startswith("|") and line.endswith("|") for line in lines)
-        assert "amount due" in result.stdout
+        assert "Total amount due: $1,200.00" in lines  # the snippet, in its own box
 
     def test_search_image_match_has_no_page_line(self, use_temp_db):
         db_path = use_temp_db()
@@ -116,7 +123,7 @@ class TestSearch:
         result = runner.invoke(app, ["search", "john doe"])
 
         assert result.exit_code == 0
-        lines = result.stdout.splitlines()
+        lines = _content_lines(result.stdout)
         assert "File: /docs/scan.png" in lines
         assert not any(line.startswith("Page:") for line in lines)
         assert "[ocr]" in lines
@@ -167,7 +174,7 @@ class TestSearch:
 
         result = runner.invoke(app, ["search", "budget"])
 
-        lines = result.stdout.splitlines()
+        lines = _content_lines(result.stdout)
         assert lines.count("File: /docs/report.pdf") == 1
         assert "Page: 1 of 3 [ocr]" in lines
         assert "Page: 3 of 3 [ocr]" in lines
@@ -289,7 +296,7 @@ class TestSearch:
 
         result = runner.invoke(app, ["search", "budget"])
 
-        lines = result.stdout.splitlines()
+        lines = _content_lines(result.stdout)
         assert lines.count("File: /docs/a.pdf") == 1
         assert lines.count("File: /docs/b.pdf") == 1
         assert "Results: 3 matches (engine: like)" in result.stdout
@@ -307,7 +314,7 @@ class TestSearch:
 
         result = runner.invoke(app, ["search", "amount due"])
 
-        assert f"Page: 1 of 1 [{source}]" in result.stdout.splitlines()
+        assert f"Page: 1 of 1 [{source}]" in _content_lines(result.stdout)
 
 
 class TestSearchEngines:

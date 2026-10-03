@@ -41,7 +41,9 @@ class StatsRenderer:
                     f"{m.avg_peak_memory_mb:.0f} MB",
                     f"{m.avg_machine_cpu_percent:.0f}%",
                 )
-        return Panel(body, title="Processing", border_style=Theme.PRIMARY)
+        return Panel(
+            body, title="Processing", title_align="left", border_style=Theme.PRIMARY, expand=True
+        )
 
     @staticmethod
     def confidence_panel(metrics: list[ConfidenceMetric]) -> Panel:
@@ -61,7 +63,19 @@ class StatsRenderer:
                 body.add_row(
                     m.file_type, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"
                 )
-        return Panel(body, title="Confidence", border_style=Theme.ACCENT)
+        return Panel(
+            body, title="Confidence", title_align="left", border_style=Theme.ACCENT, expand=True
+        )
+
+    @staticmethod
+    def reset_panel(message: str, border_style: str) -> Panel:
+        return Panel(
+            Text(message, style="white", no_wrap=False, overflow="fold"),
+            title="Reset Statistics",
+            title_align="left",
+            border_style=border_style,
+            expand=True,
+        )
 
     @staticmethod
     def align_widths(render_console: Console, *panels: Panel) -> None:
