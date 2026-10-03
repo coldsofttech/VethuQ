@@ -22,7 +22,6 @@ import json
 import logging
 import os
 import shutil
-import sqlite3
 from pathlib import Path
 
 from platformdirs import user_config_dir, user_data_dir
@@ -134,13 +133,6 @@ class Paths:
         location afterwards and must ensure no index run is active.
         """
         folders = Paths.plan_move(source, target)
-        db_file = source / Paths.DB_DIRNAME / "vethuq.db"
-        if db_file.exists():  # fold the WAL into the main file so the copy is complete
-            conn = sqlite3.connect(db_file)
-            try:
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            finally:
-                conn.close()
         target.mkdir(parents=True, exist_ok=True)
         copied: list[Path] = []
         try:
