@@ -110,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Index status no longer fails intermittently on Windows when the progress file is being refreshed at the same moment.
+- Indexing with several workers now treats identical files the same way every time: the first one (by name) is the original and the rest are duplicates, as in a single-worker run.
 - `vethuq index status` no longer shows a run as "running" after its worker has died: it now reports it as failed with the reason, and flags a worker that has stopped responding.
 - A file edited while an index run was already working through it now gets its quick re-scan first, instead of waiting behind the moderate/deep passes.
 - Re-indexing a document (e.g. after removing and re-adding its source) no longer leaves stale page text from the previous run alongside the new results.

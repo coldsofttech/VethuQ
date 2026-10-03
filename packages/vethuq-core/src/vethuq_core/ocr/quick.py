@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
+from vethuq_core.ocr.content_gate import ContentGate
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
@@ -657,13 +658,27 @@ class Quick:
         state_lock = threading.Lock()
         db_lock = threading.Lock()
 
+        concurrent = (
+            IndexSettings.get_thread_workers(storage) == IndexSettings.THREAD_WORKERS_AUTO
+            or workers > 1
+        )
+        gate = ContentGate() if concurrent else None
+        order = {id(item): index for index, item in enumerate(pending)}
+
         def handle_one(item: PendingFile) -> None:
             path_str = str(item.path)
             if on_file_start is not None:
                 on_file_start(path_str)
-            succeeded = Quick.process_file(
-                storage, item.source, item.path, item.file_type, db_lock=db_lock
-            )
+            index = order[id(item)]
+            if gate is not None:
+                gate.enter(index, item.path)
+            try:
+                succeeded = Quick.process_file(
+                    storage, item.source, item.path, item.file_type, db_lock=db_lock
+                )
+            finally:
+                if gate is not None:
+                    gate.leave(index)
             if succeeded is not None:
                 # None means the file was already claimed by another
                 # concurrently-running index run and left untouched here - that
