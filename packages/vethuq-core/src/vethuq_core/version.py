@@ -1,28 +1,52 @@
-"""Version information shown by `vethuq --version`."""
+"""Version information shown by `vethuq --version` and `client.version`."""
 
 from __future__ import annotations
 
 import platform
+from dataclasses import dataclass
 from importlib import metadata
 
 from vethuq_core.db.connection import Db
 
 
+@dataclass(frozen=True)
+class VersionDetails:
+    """What this install is running: VethuQ, Python, platform and database schema."""
+
+    vethuq: str
+    python: str
+    platform: str
+    db_schema: int
+
+
 class VersionInfo:
-    """Build the label/value rows describing this install: CLI, Python, platform and DB schema."""
+    # Published as `vethuq` (CLI + library merged); `vethuq-cli` in the dev workspace.
+    DISTRIBUTIONS = ("vethuq", "vethuq-cli")
 
     @staticmethod
-    def package_version(dist: str) -> str:
-        try:
-            return metadata.version(dist)
-        except metadata.PackageNotFoundError:
-            return "unknown"
+    def vethuq_version() -> str:
+        for dist in VersionInfo.DISTRIBUTIONS:
+            try:
+                return metadata.version(dist)
+            except metadata.PackageNotFoundError:
+                continue
+        return "unknown"
 
     @staticmethod
-    def rows(dist: str = "vethuq-cli") -> list[tuple[str, str]]:
+    def details() -> VersionDetails:
+        return VersionDetails(
+            vethuq=VersionInfo.vethuq_version(),
+            python=platform.python_version(),
+            platform=platform.platform(),
+            db_schema=Db.SCHEMA_VERSION,
+        )
+
+    @staticmethod
+    def rows() -> list[tuple[str, str]]:
+        d = VersionInfo.details()
         return [
-            ("VethuQ CLI", VersionInfo.package_version(dist)),
-            ("Python", platform.python_version()),
-            ("Platform", platform.platform()),
-            ("Database schema", str(Db.SCHEMA_VERSION)),
+            ("VethuQ CLI", d.vethuq),
+            ("Python", d.python),
+            ("Platform", d.platform),
+            ("Database schema", str(d.db_schema)),
         ]

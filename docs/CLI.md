@@ -8,6 +8,14 @@ The `vethuq` command-line tool manages sources (files/folders registered
 for OCR/indexing), runs the OCR indexing pipeline, and configures
 settings.
 
+## `--version`
+
+Show the VethuQ version, Python version, platform and database schema version in a panel, then exit. Handy to include when asking for support.
+
+```
+vethuq --version
+```
+
 ## `db`
 
 ### `integrity-check`

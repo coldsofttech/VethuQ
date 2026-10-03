@@ -561,3 +561,11 @@ def test_sources_purge_deletes_removed_source_and_refuses_active(
 
     assert result.path == source.path
     assert client.sources.list(include_inactive=True) == []
+
+
+def test_version_reports_install_details(client: vethuq.Vethuq) -> None:
+    info = client.version
+
+    assert isinstance(info, vethuq.VersionDetails)
+    assert info.python and info.platform
+    assert info.db_schema > 0

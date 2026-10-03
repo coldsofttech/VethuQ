@@ -18,6 +18,15 @@ Every method below connects to VethuQ's local SQLite database — the same
 one the CLI and desktop app use, at `DB_PATH` — for the single call and
 closes it again. There's no connection object to manage.
 
+## `client.version`
+
+A read-only property returning `VersionDetails` with `vethuq` (the installed version), `python`, `platform` and `db_schema` (the database schema version this build supports). It doesn't open the database.
+
+```python
+info = client.version
+print(info.vethuq, info.python, info.platform, info.db_schema)
+```
+
 ## `client.db`
 
 ### `integrity_check()`
