@@ -15,6 +15,7 @@ from vethuq_cli.db import app as db_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.logs import LogsCommand
+from vethuq_cli.search import SearchHelp
 from vethuq_cli.search import search as search_command
 from vethuq_cli.settings import app as settings_app
 from vethuq_cli.source import app as source_app
@@ -28,8 +29,8 @@ app.add_typer(index_app, name="index")
 app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")
-app.command("search")(search_command)
-app.command("logs")(LogsCommand.run)
+app.command("search", help=SearchHelp.TEXT)(search_command)
+app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
 
 @app.callback(invoke_without_command=True)

@@ -53,19 +53,21 @@ class Export:
         engine: str | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> None:
         """Write `matches` for `query` to `output` as `format_` ('json' or 'html').
 
-        `engine`, `case_sensitive` and (for the fuzzy engine) `threshold` record
+        `engine`, `case_sensitive`, and - for the fuzzy and proximity engines - the
+        `threshold` or `distance` record
         how the search was run, so the export can be reproduced; they're omitted
-        from the file when `engine` is None, and `threshold` when it is.
+        from the file when `engine` is None, and `threshold`/`distance` when they are.
         """
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
         if format_ == "json":
-            Export._write_json(matches, query, output, engine, case_sensitive, threshold)
+            Export._write_json(matches, query, output, engine, case_sensitive, threshold, distance)
         else:
-            Export._write_html(matches, query, output, engine, case_sensitive, threshold)
+            Export._write_html(matches, query, output, engine, case_sensitive, threshold, distance)
 
     @staticmethod
     def _match_entry(match: SearchMatch) -> dict[str, object]:
@@ -88,6 +90,7 @@ class Export:
         engine: str | None,
         case_sensitive: bool,
         threshold: float | None,
+        distance: int | None,
     ) -> None:
         payload: dict[str, object] = {"query": query}
         if engine is not None:
@@ -95,6 +98,8 @@ class Export:
             payload["case_sensitive"] = case_sensitive
             if threshold is not None:
                 payload["threshold"] = threshold
+            if distance is not None:
+                payload["distance"] = distance
         payload["generated_at"] = Export._generated_at()
         payload["result_count"] = len(matches)
         payload["matches"] = [Export._match_entry(match) for match in matches]
@@ -108,6 +113,7 @@ class Export:
         engine: str | None,
         case_sensitive: bool,
         threshold: float | None,
+        distance: int | None,
     ) -> None:
         search_mode = ""
         if engine is not None:
@@ -115,7 +121,9 @@ class Export:
             if case_sensitive:
                 search_mode += ", case-sensitive"
             if threshold is not None:
-                search_mode += f", threshold {threshold:.2f}"
+                search_mode += f", threshold {threshold:.0%}"
+            if distance is not None:
+                search_mode += f", within {distance} words"
         rows = []
         for match in matches:
             page = str(match.page_number) if match.page_number is not None else "-"

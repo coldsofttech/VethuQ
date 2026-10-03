@@ -61,7 +61,9 @@ class FuzzySearchEngine:
         context_chars: int | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
+        SearchEngineHelpers.require_no_distance(self.name, distance)
         limit = (
             SearchSettings.get_fuzzy_threshold(self._storage)
             if threshold is None

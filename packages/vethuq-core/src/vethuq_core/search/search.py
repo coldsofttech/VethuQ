@@ -31,7 +31,7 @@ class FileMatch:
 class SearchOptionError(ValueError):
     """A search option combination that can't be honoured.
 
-    `option` is which argument to blame: 'engine', 'case_sensitive' or 'threshold'.
+    `option` is which argument to blame: 'engine', 'case_sensitive', 'threshold' or 'distance'.
     """
 
     def __init__(self, message: str, option: str) -> None:
@@ -40,11 +40,15 @@ class SearchOptionError(ValueError):
 
 
 class SearchOptions(NamedTuple):
-    """The resolved options a search runs with; `threshold` is set only for `fuzzy`."""
+    """The resolved options a search runs with.
+
+    `threshold` is set only for `fuzzy` and `distance` only for `proximity`.
+    """
 
     engine: str
     case_sensitive: bool
     threshold: float | None = None
+    distance: int | None = None
 
 
 class Search:
@@ -54,17 +58,19 @@ class Search:
         engine: str | None,
         case_sensitive: bool | None,
         threshold: float | str | None = None,
+        distance: int | str | None = None,
     ) -> SearchOptions:
-        """Work out the engine, case sensitivity and fuzzy threshold to search with.
+        """Work out the engine, case sensitivity, fuzzy threshold and proximity distance.
 
         Each falls back to its setting when None. The engines differ in what they
-        can honour: `exact` is always case-sensitive and `full-text` never is, and
-        only `fuzzy` has a similarity `threshold`. A preference that came from the
+        can honour: `exact` is always case-sensitive while `full-text` and
+        `proximity` never are, only `fuzzy` has a similarity `threshold`, and only
+        `proximity` has a word `distance`. A preference that came from the
         *setting* is simply not applied where the engine can't use it, but one
         asked for explicitly that the engine can't honour raises
         `SearchOptionError` rather than being silently ignored - as does an
-        unknown `engine` or a `threshold` that is neither a preset name nor a
-        similarity in (0, 1].
+        unknown `engine`, or a `threshold` or `distance` that isn't a valid value
+        (see `SearchSettings.parse_fuzzy_threshold` and `parse_proximity_distance`).
         """
         if engine is not None and engine not in SearchSettings.ENGINES:
             raise SearchOptionError(
@@ -82,19 +88,38 @@ class Search:
                     "use --engine fuzzy (or the fuzzy engine) to set one.",
                     "threshold",
                 )
-        if resolved_engine == "full-text":
+        if distance is not None:
+            try:
+                distance = SearchSettings.parse_proximity_distance(distance)
+            except ValueError as exc:
+                raise SearchOptionError(str(exc), "distance") from exc
+            if resolved_engine != "proximity":
+                raise SearchOptionError(
+                    "Only the proximity engine has a word distance; "
+                    "use --engine proximity (or the proximity engine) to set one.",
+                    "distance",
+                )
+        if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
                 raise SearchOptionError(
-                    "The full-text engine is always case-insensitive; "
+                    f"The {resolved_engine} engine is always case-insensitive; "
                     "use the like, exact or fuzzy engine for a case-sensitive search.",
                     "case_sensitive",
                 )
+            if resolved_engine == "proximity":
+                effective_distance = (
+                    distance
+                    if distance is not None
+                    else SearchSettings.get_proximity_distance(storage)
+                )
+                return SearchOptions(resolved_engine, False, None, effective_distance)
             return SearchOptions(resolved_engine, False)
         if resolved_engine == "exact":
             if case_sensitive is False:
                 raise SearchOptionError(
                     "The exact engine is always case-sensitive; "
-                    "use the like, full-text or fuzzy engine for a case-insensitive search.",
+                    "use the like, full-text, fuzzy or proximity engine for a "
+                    "case-insensitive search.",
                     "case_sensitive",
                 )
             return SearchOptions(resolved_engine, True)
@@ -116,17 +141,22 @@ class Search:
         engine: str | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query` using the named (default: `like`) engine.
 
         Returns one `SearchMatch` per occurrence of `query`, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a page in
-        text order) - or best match first for the ranked `full-text` and `fuzzy`
-        engines. Only successfully indexed documents are considered. `like` is
-        case-insensitive unless `case_sensitive`; `exact` is always case-sensitive;
-        `full-text` can't be (asking for it raises `ValueError`). `fuzzy` finds words
-        within `threshold` similarity (0-1, default the user's setting) of the
-        query's; the other engines raise `ValueError` if given one.
+        text order) - or best match first for the ranked `full-text`, `fuzzy` and
+        `proximity` engines. Only successfully indexed documents are considered.
+        `like` is case-insensitive unless `case_sensitive`; `exact` is always
+        case-sensitive; `full-text` and `proximity` can't be (asking for it raises
+        `ValueError`). `fuzzy` finds words within `threshold` similarity (0-1,
+        default the user's setting) of the query's, and `proximity` finds passages
+        where all the query's terms sit within `distance` words (default the user's
+        setting); the other engines raise `ValueError` if given a `threshold` or
+        `distance` they don't use. `proximity` needs at least two terms
+        (`SearchQueryError` otherwise).
         """
         try:
             return SearchEngines.get(storage, engine).search(
@@ -134,14 +164,16 @@ class Search:
                 context_chars=context_chars,
                 case_sensitive=case_sensitive,
                 threshold=threshold,
+                distance=distance,
             )
         except Exception as exc:
             _logger.error(
-                "Search failed: engine=%s case_sensitive=%s threshold=%s query_length=%d "
-                "error=%s: %s",
+                "Search failed: engine=%s case_sensitive=%s threshold=%s distance=%s "
+                "query_length=%d error=%s: %s",
                 engine or "default",
                 case_sensitive,
                 threshold,
+                distance,
                 len(query),
                 type(exc).__name__,
                 exc,
@@ -158,11 +190,12 @@ class Search:
         engine: str | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[FileMatch]:
         """Search like `indexed_content`, but return one `FileMatch` per matching file.
 
         Files keep the order of their first matching page (so, by file path, or by
-        relevance for the ranked `full-text` and `fuzzy` engines).
+        relevance for the ranked `full-text`, `fuzzy` and `proximity` engines).
         """
         files: dict[int, FileMatch] = {}
         for match in Search.indexed_content(
@@ -172,6 +205,7 @@ class Search:
             engine=engine,
             case_sensitive=case_sensitive,
             threshold=threshold,
+            distance=distance,
         ):
             files.setdefault(
                 match.file_id,

@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - If the index worker crashes hard (for example inside the OCR library), the fault trace now lands in `index.log` and `index status` names the crash; deeper OCR passes also log each page and angle before reading it.
+- Command output is now shown in full-width panels with left-aligned titles (and tables for lists): search results (one panel per file, one box per match), sources, index, stats, logs and settings.
+- The interactive menu now opens with a VethuQ header panel and shows the main menu and every sub-menu as a panel of numbered options.
+- `vethuq logs <component> --follow` now updates a single live panel with the newest entries instead of scrolling.
+- `vethuq index history` shows start times in a friendly form ("Today, 14:40") in your local time.
+- `--help` now explains each value for `vethuq search --engine`, `vethuq logs` (components, `--level`, `--export`) and the engine, format, threshold, distance, level and worker settings.
+- `vethuq search --engine proximity` finds passages where all your words sit within a set number of words of each other; set how near with `--distance` or `vethuq settings search proximity distance`. Fuzzy thresholds can now be given as percentages (`80%`).
 - `vethuq search --engine fuzzy` finds words close to yours, so typos and OCR misreads like `Muzeum` or `Museurn` still find `Museum`; set how close with `--threshold` or `--fuzziness strict|balanced|loose`, or store a default with `vethuq settings search fuzzy threshold`.
 - `vethuq search` can now match exactly as typed (`--engine exact`) or by whole words with the best matches first (`--engine full-text`), and `--case-sensitive` makes the default search care about capitals; choose the defaults with `vethuq settings search engine` and `case-sensitive`.
 - Logs no longer record what you searched for (`vethuq search` logs `<query omitted>`; a failed search logs only the query's length), and a test now fails the build if any log call references document text or search queries (`ocr_text`, `native_text`, `query`, ...).

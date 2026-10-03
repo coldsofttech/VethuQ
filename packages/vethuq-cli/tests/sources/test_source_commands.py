@@ -4,6 +4,11 @@ from vethuq_cli.main import app
 runner = CliRunner()
 
 
+def _unwrapped(output: str) -> str:
+    """`output` with the panel borders and the line breaks a long path wraps at removed."""
+    return "".join(output.replace("\u2502", " ").split())
+
+
 class TestSource:
     def test_add_and_list_source(self, use_temp_db, tmp_path):
         use_temp_db()
@@ -16,7 +21,7 @@ class TestSource:
 
         list_result = runner.invoke(app, ["source", "list"])
         assert list_result.exit_code == 0
-        assert str(folder.resolve()) in list_result.stdout
+        assert _unwrapped(str(folder.resolve())) in _unwrapped(list_result.stdout)
 
     def test_add_missing_path_fails(self, use_temp_db, tmp_path):
         use_temp_db()
@@ -64,4 +69,4 @@ class TestSource:
         assert "Removed folder" not in remove_result.stdout
 
         list_result = runner.invoke(app, ["source", "list"])
-        assert str(folder.resolve()) in list_result.stdout
+        assert _unwrapped(str(folder.resolve())) in _unwrapped(list_result.stdout)

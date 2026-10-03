@@ -181,4 +181,23 @@ class TestExportSearchMode:
 
         Export.search_results([_match()], "due", output, "html", engine="fuzzy", threshold=0.65)
 
-        assert "engine: fuzzy, threshold 0.65" in output.read_text()
+        assert "engine: fuzzy, threshold 65%" in output.read_text()
+
+    def test_json_export_records_distance_only_when_given(self, tmp_path: Path):
+        with_distance = tmp_path / "with.json"
+        without = tmp_path / "without.json"
+
+        Export.search_results(
+            [_match()], "a b", with_distance, "json", engine="proximity", distance=10
+        )
+        Export.search_results([_match()], "a b", without, "json", engine="like")
+
+        assert json.loads(with_distance.read_text())["distance"] == 10
+        assert "distance" not in json.loads(without.read_text())
+
+    def test_html_export_shows_distance(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match()], "a b", output, "html", engine="proximity", distance=3)
+
+        assert "engine: proximity, within 3 words" in output.read_text()

@@ -32,6 +32,10 @@ class SearchMatch:
     score: float | None = None  # relevance (higher is better); only ranked engines set it
 
 
+class SearchQueryError(ValueError):
+    """The query itself can't be searched by this engine (e.g. too few terms for `proximity`)."""
+
+
 class SearchEngineUnavailable(Exception):
     """Raised by an engine that can't serve queries right now (e.g. its index is missing).
 
@@ -58,6 +62,7 @@ class SearchEngine(Protocol):
         context_chars: int | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
         """Return one `SearchMatch` per occurrence of `query`.
 
@@ -69,7 +74,11 @@ class SearchEngine(Protocol):
         honour it raises `ValueError`. `threshold` is the minimum word
         similarity (0-1] a tolerant engine accepts, None meaning the user's
         setting; an engine that isn't tolerant raises `ValueError` if given
-        one. An empty `query` matches nothing. May raise `SearchEngineUnavailable`.
+        one. `distance` is the most words a `proximity` search allows between
+        its first and last term, None meaning the user's setting; other engines
+        raise `ValueError` if given one. An empty `query` matches nothing, and a
+        query an engine can't search raises `SearchQueryError`. May raise
+        `SearchEngineUnavailable`.
         """
         ...
 
@@ -92,6 +101,7 @@ class FallbackSearchEngine:
         context_chars: int | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
         try:
             return self._primary.search(
@@ -99,6 +109,7 @@ class FallbackSearchEngine:
                 context_chars=context_chars,
                 case_sensitive=case_sensitive,
                 threshold=threshold,
+                distance=distance,
             )
         except SearchEngineUnavailable:
             return self._fallback.search(
@@ -106,4 +117,5 @@ class FallbackSearchEngine:
                 context_chars=context_chars,
                 case_sensitive=case_sensitive,
                 threshold=threshold,
+                distance=distance,
             )

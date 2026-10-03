@@ -92,11 +92,16 @@ class TestOcr:
 
         logger = Logs.get_logger("index")
         handler = Capture()
+        # The logger only has a level once `Logs.setup` has run for it; without one the
+        # info-level reads would be dropped and this would depend on test order.
+        previous_level = logger.level
+        logger.setLevel(logging.INFO)
         logger.addHandler(handler)
         try:
             Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
         finally:
             logger.removeHandler(handler)
+            logger.setLevel(previous_level)
 
         reads = [m for m in messages if m.startswith("Deeper read:")]
         assert [m.rsplit("angle=", 1)[1] for m in reads] == ["90", "180", "270"]

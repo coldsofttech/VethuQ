@@ -37,8 +37,10 @@ class FullTextSearchEngine:
         context_chars: int | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
+        SearchEngineHelpers.require_no_distance(self.name, distance)
         if case_sensitive:
             raise ValueError("The full-text engine is always case-insensitive.")
         expression = FullTextSearchEngine.build_match_expression(query)
@@ -82,17 +84,17 @@ class FullTextSearchEngine:
         return matches
 
     @staticmethod
-    def build_match_expression(query: str) -> str | None:
-        """Turn a user's `query` into a safe FTS5 `MATCH` expression, or None if it has no words.
+    def parse_terms(query: str) -> list[str]:
+        """Split a user's `query` into safe FTS5 term expressions, one per word or phrase.
 
-        Every whitespace-separated term must appear on the page (AND). A
-        `"double quoted"` run is a phrase (its words adjacent, in order), a term
-        ending in `*` is a prefix (`mus*` finds "museum"), and anything else is
-        matched as a whole word. Each term is reduced to its word characters and
-        quoted, so punctuation and FTS5 operators (`AND`, `NEAR`, `-`, `:` ...)
-        in the query are searched as plain text and never interpreted.
+        A `"double quoted"` run is a phrase (its words adjacent, in order), a term
+        ending in `*` is a prefix (`mus*` finds "museum"), and anything else is a
+        whole word. Each term is reduced to its word characters and quoted, so
+        punctuation and FTS5 operators (`AND`, `NEAR`, `-`, `:` ...) in the query
+        are searched as plain text and never interpreted. Terms with no word
+        characters are dropped.
         """
-        parts = []
+        terms = []
         for phrase, bare in FullTextSearchEngine._TERM.findall(query):
             words = FullTextSearchEngine._WORDS.findall(phrase or bare)
             if not words:
@@ -100,8 +102,17 @@ class FullTextSearchEngine:
             expr = '"' + " ".join(words) + '"'
             if bare.endswith("*"):
                 expr += " *"
-            parts.append(expr)
-        return " ".join(parts) if parts else None
+            terms.append(expr)
+        return terms
+
+    @staticmethod
+    def build_match_expression(query: str) -> str | None:
+        """Turn a user's `query` into a safe FTS5 `MATCH` expression, or None if it has no words.
+
+        Every term (see `parse_terms`) must appear on the page (AND).
+        """
+        terms = FullTextSearchEngine.parse_terms(query)
+        return " ".join(terms) if terms else None
 
     @staticmethod
     def _highlighted_spans(highlighted: str) -> tuple[str, list[tuple[int, int]]]:

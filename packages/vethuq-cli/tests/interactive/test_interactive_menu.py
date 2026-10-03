@@ -18,6 +18,40 @@ class TestInteractiveMenu:
         assert "Main Menu" in result.stdout
         assert "Goodbye." in result.stdout
 
+    def test_header_panel_shows_the_app_name_and_tagline(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="8\n")
+
+        assert "VethuQ" in result.stdout
+        assert "Document intelligence and evidence infrastructure." in result.stdout
+
+    def test_each_menu_is_a_panel_listing_its_numbered_items(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n1\n0\n0\n8\n")
+
+        assert "Main Menu" in result.stdout
+        assert "Settings > GPU" in result.stdout
+        assert "Enable" in result.stdout and "Back" in result.stdout
+        assert "Enter a number - q to quit" in result.stdout
+
+    def test_an_invalid_selection_asks_again(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="9\n8\n")
+
+        assert "Invalid selection" in result.output
+        assert "Goodbye." in result.stdout
+
+    def test_q_leaves_the_shell_from_any_menu(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\nq\n")
+
+        assert result.exit_code == 0
+        assert "Goodbye." in result.stdout
+
     def test_sources_list_then_back_then_exit(self, use_temp_db):
         use_temp_db()
 
@@ -207,14 +241,14 @@ class TestInteractiveSearchEngines:
         result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nloose\n8\n")
 
         assert result.exit_code == 0
-        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in result.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 65%)" in result.stdout
 
     def test_fuzzy_accepts_a_number_and_defaults_to_the_stored_threshold(self, use_temp_db):
         db_path = use_temp_db()
         _seed_page(db_path, "Visit the Museurn today")
 
         numeric = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n0.7\n8\n")
-        assert "threshold 0.70" in numeric.stdout
+        assert "threshold 70%" in numeric.stdout
 
         storage = open_storage(db_path)
         try:
@@ -223,7 +257,7 @@ class TestInteractiveSearchEngines:
             storage.close()
         # Enter accepts the stored default (loose).
         default = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n\n8\n")
-        assert "threshold 0.65" in default.stdout
+        assert "threshold 65%" in default.stdout
 
     def test_fuzzy_rejects_an_invalid_fuzziness_answer(self, use_temp_db):
         _seed_page(use_temp_db(), "Visit the Museum today")
@@ -243,3 +277,50 @@ class TestInteractiveSearchEngines:
         assert result.exit_code == 0
         assert "Search fuzzy threshold set to loose." in result.stdout
         assert "Search fuzzy threshold: loose" in result.stdout
+
+    _CONTRACT = "The payment is due within thirty days, subject to the termination clause."
+
+    def test_proximity_asks_for_a_distance_and_no_case_question(self, use_temp_db):
+        _seed_page(use_temp_db(), self._CONTRACT)
+
+        # Search > text > engine (proximity) > distance 12, then exit. No case question.
+        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n12\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: proximity, within 12 words)" in result.stdout
+        assert "Case-sensitive?" not in result.stdout
+
+    def test_proximity_accepts_presets_and_defaults_to_the_stored_distance(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_page(db_path, self._CONTRACT)
+
+        preset = runner.invoke(app, [], input="1\npayment termination\nproximity\nloose\n8\n")
+        assert "within 30 words" in preset.stdout
+
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_proximity_distance(storage, "15")
+        finally:
+            storage.close()
+        # Enter accepts the stored default (15).
+        default = runner.invoke(app, [], input="1\npayment termination\nproximity\n\n8\n")
+        assert "within 15 words" in default.stdout
+
+    def test_proximity_rejects_an_invalid_distance_answer(self, use_temp_db):
+        _seed_page(use_temp_db(), self._CONTRACT)
+
+        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results:" not in result.output
+        assert "from 1 to 100" in result.output
+
+    def test_settings_proximity_distance_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Proximity Distance > Set tight; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n6\n2\ntight\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search proximity distance set to tight." in result.stdout
+        assert "Search proximity distance: tight (3 words)" in result.stdout

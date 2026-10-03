@@ -261,6 +261,18 @@ class _DocumentStoreMixin:
     def search_fulltext_image_pages(self, match_expr: str) -> list[sqlite3.Row]:
         return Document.search_fulltext_image_pages(self._conn, match_expr)
 
+    def search_proximity_pdf_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_proximity_pdf_pages(self._conn, match_expr)
+
+    def search_proximity_image_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_proximity_image_pages(self._conn, match_expr)
+
+    def get_pdf_term_highlights(self, match_expr: str, page_ids: list[int]) -> dict[int, str]:
+        return Document.get_pdf_term_highlights(self._conn, match_expr, page_ids)
+
+    def get_image_term_highlights(self, match_expr: str, page_ids: list[int]) -> dict[int, str]:
+        return Document.get_image_term_highlights(self._conn, match_expr, page_ids)
+
     def get_pdf_page_counts_by_document(self) -> list[sqlite3.Row]:
         return Document.get_pdf_page_counts(self._conn)
 

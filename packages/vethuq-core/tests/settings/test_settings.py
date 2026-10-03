@@ -162,3 +162,75 @@ class TestDbSettings:
     def test_set_integrity_check_interval_minutes_rejects_negative(self, storage: Storage):
         with pytest.raises(ValueError, match="non-negative"):
             DbSettings.set_integrity_check_interval_minutes(storage, -1)
+
+
+class TestSearchProximitySettings:
+    @pytest.mark.parametrize(
+        ("value", "ratio"),
+        [
+            ("80%", 0.8),
+            ("65 %", 0.65),
+            (" 90% ", 0.9),
+            ("80", 0.8),
+            ("100", 1.0),
+            ("100%", 1.0),
+            ("0.8", 0.8),
+            (0.8, 0.8),
+            (80, 0.8),
+            ("1", 1.0),
+        ],
+    )
+    def test_parse_fuzzy_threshold_accepts_percentages_and_similarities(self, value, ratio):
+        assert SearchSettings.parse_fuzzy_threshold(value) == pytest.approx(ratio)
+
+    @pytest.mark.parametrize("value", ["0%", "101%", "-5%", "%", "1.5", "80.5", "101", "0", "abc%"])
+    def test_parse_fuzzy_threshold_rejects_bad_percentages(self, value):
+        with pytest.raises(ValueError):
+            SearchSettings.parse_fuzzy_threshold(value)
+
+    def test_fuzzy_threshold_setting_stores_percentages(self, storage: Storage):
+        SearchSettings.set_fuzzy_threshold(storage, "75%")
+
+        assert SearchSettings.get_fuzzy_threshold_setting(storage) == "75%"
+        assert SearchSettings.get_fuzzy_threshold(storage) == pytest.approx(0.75)
+
+    def test_proximity_distance_defaults_to_medium_ten_words(self, storage: Storage):
+        assert SearchSettings.get_proximity_distance_setting(storage) == "medium"
+        assert SearchSettings.get_proximity_distance(storage) == 10
+
+    @pytest.mark.parametrize(
+        ("value", "words"),
+        [
+            ("tight", 3),
+            ("medium", 10),
+            ("loose", 30),
+            ("LOOSE", 30),
+            ("7", 7),
+            ("100", 100),
+            (" 1 ", 1),
+        ],
+    )
+    def test_set_proximity_distance_roundtrip(self, storage: Storage, value, words):
+        SearchSettings.set_proximity_distance(storage, value)
+
+        assert SearchSettings.get_proximity_distance_setting(storage) == value.strip().lower()
+        assert SearchSettings.get_proximity_distance(storage) == words
+
+    @pytest.mark.parametrize("value", ["", "nope", "0", "-1", "101", "2.5", "1e1", "ten"])
+    def test_set_proximity_distance_rejects_invalid_values(self, storage: Storage, value):
+        with pytest.raises(ValueError):
+            SearchSettings.set_proximity_distance(storage, value)
+        assert SearchSettings.get_proximity_distance_setting(storage) == "medium"
+
+    def test_a_corrupt_stored_proximity_distance_falls_back_to_the_default(self, storage: Storage):
+        Settings.set(storage, "search_proximity_distance", "garbage")
+
+        assert SearchSettings.get_proximity_distance_setting(storage) == "medium"
+        assert SearchSettings.get_proximity_distance(storage) == 10
+
+    def test_parse_proximity_distance_accepts_numbers_and_names(self):
+        assert SearchSettings.parse_proximity_distance(5) == 5
+        assert SearchSettings.parse_proximity_distance(" Tight ") == 3
+        for bad in (0, 101, 2.5, True, None):
+            with pytest.raises(ValueError):
+                SearchSettings.parse_proximity_distance(bad)

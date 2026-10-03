@@ -25,7 +25,6 @@ def show() -> None:
         storage.close()
     processing_panel = StatsRenderer.processing_panel(processing)
     confidence_panel = StatsRenderer.confidence_panel(confidence)
-    StatsRenderer.align_widths(console, processing_panel, confidence_panel)
     console.print(processing_panel)
     console.print(confidence_panel)
 
@@ -48,7 +47,7 @@ def reset(
         console=console,
         default=False,
     ):
-        console.print("Aborted.", style="bright_black")
+        console.print(StatsRenderer.reset_panel("Aborted.", "bright_black"))
         raise typer.Exit(code=0)
 
     storage = open_storage()
@@ -56,4 +55,4 @@ def reset(
         Stats.reset(storage)
     finally:
         storage.close()
-    console.print("Statistics reset.", style=Theme.OK)
+    console.print(StatsRenderer.reset_panel("Statistics reset.", Theme.OK))
