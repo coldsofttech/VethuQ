@@ -15,6 +15,7 @@ from rich.text import Text
 from vethuq_core.index import (
     Eta,
     IndexRunner,
+    IndexRunnerError,
     IndexState,
 )
 from vethuq_core.ocr import Deepening
@@ -22,7 +23,7 @@ from vethuq_core.settings import IndexSettings
 from vethuq_core.sources import SourceNotFoundError
 from vethuq_core.storage import Storage
 
-from vethuq_cli.console import console
+from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
 
 
@@ -198,6 +199,28 @@ class StatePanel:
     @staticmethod
     def print_state(storage: Storage, state: IndexState) -> None:
         console.print(StatePanel.build(storage, state, animated=False))
+
+    @staticmethod
+    def live_wait_or_stop(storage: Storage, pid: int) -> bool:
+        """Like `live_wait`, but Ctrl+C stops the run this command started.
+
+        Returns True if the user interrupted (the run was asked to stop).
+        """
+        try:
+            StatePanel.live_wait(storage, pid)
+        except KeyboardInterrupt:
+            try:
+                IndexRunner.request_stop()
+            except IndexRunnerError as exc:
+                error_console.print(str(exc), style=Theme.ERROR)
+            else:
+                console.print(
+                    IndexPanel.message(
+                        "Interrupted - index run stopped.", Theme.WARNING, "Index Run"
+                    )
+                )
+            return True
+        return False
 
     @staticmethod
     def live_wait(storage: Storage, pid: int) -> None:

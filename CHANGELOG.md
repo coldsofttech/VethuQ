@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pressing Ctrl+C during `vethuq index run --wait` or `index restart --wait` (also in the interactive menu) now stops the run cleanly instead of leaving it running.
 - `vethuq settings location set <folder>` moves VethuQ's database, logs and run files to a folder of your choice (asks first; `--force` skips the prompt); `location show` prints where they are (also under Settings > Location in the interactive menu). The `VETHUQ_HOME` environment variable overrides it.
 - `vethuq search --engine lexical` finds your text anywhere in a page (mid-word included) and lists the best-matching pages first; it needs at least three characters. In the default combined search it appears as a "Relevant" label.
 - `vethuq search` now runs every engine at once by default and lists each page once, ranked by how strictly it matched (Exact, Contains, Relevant, Near, Word, then Similar) and labelled with how it was found. Press `h` in the results pager for what each label means. Pick a single engine with `--engine`; `client.search.run_pages` returns the ranked pages.

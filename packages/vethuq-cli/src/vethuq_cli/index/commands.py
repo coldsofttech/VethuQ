@@ -63,9 +63,11 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
 
     storage = open_storage()
     try:
-        StatePanel.live_wait(storage, pid)
+        interrupted = StatePanel.live_wait_or_stop(storage, pid)
     finally:
         storage.close()
+    if interrupted:
+        raise typer.Exit(code=130)
 
 
 @app.command("run")
