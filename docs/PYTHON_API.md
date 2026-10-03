@@ -112,12 +112,13 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
 `client.settings.search.export_format` if not given, and must be one of
-`SEARCH_EXPORT_FORMATS`. Pass the `engine` and `case_sensitive` the search
+`SEARCH_EXPORT_FORMATS`. Pass the `engine`, `case_sensitive` and (for
+`fuzzy`) `threshold` the search
 ran with to record them in the file.
 
 ```python
@@ -125,12 +126,12 @@ matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
 order, occurrences within a page in text order) — or best match first for
-the `full-text` engine. Only successfully indexed documents are
+the `full-text` and `fuzzy` engines. Only successfully indexed documents are
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
@@ -142,19 +143,91 @@ if not given.
 - `"full-text"` — pages containing `content`'s words (any case, English word
   forms; `"quote a phrase"`, end a word with `*` for a prefix), ranked by
   relevance (`SearchMatch.score`)
+- `"fuzzy"` — words *close to* `content`'s, tolerating typos and OCR misreads
+  (`Muzeum`, `Museurn` for `Museum`), closest first. Every word must be matched;
+  words under 4 letters and words containing a digit must match exactly.
+  `SearchMatch.score` is the found word's similarity, 0–1 (1.0 = identical)
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
-only `"like"` acts on it (`"exact"` is always case-sensitive, `"full-text"`
-never is). Raises `SearchOptionError` (a `ValueError`; its `option` says
-which argument) for an unknown engine or an explicit `case_sensitive` the
-engine can't honour.
+only `"like"` and `"fuzzy"` act on it (`"exact"` is always case-sensitive,
+`"full-text"` never is; for `"fuzzy"` a difference in case counts as one
+edit). `threshold` (`"fuzzy"` only) is the minimum similarity between
+`content`'s words and the words found — `1 − edits ÷ length of the longer
+word`, at most 2 edits: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 0.90,
+`"balanced"` 0.80, `"loose"` 0.65) or a number above 0 and up to 1, defaulting
+to `client.settings.search.fuzzy.threshold`. Raises `SearchOptionError` (a
+`ValueError`; its `option` says which argument) for an unknown engine, an
+invalid `threshold`, or an explicit `case_sensitive` or `threshold` the engine
+can't honour.
 
 ```python
 for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
+```
 
-client.search.run("Museum", engine="exact")
-client.search.run("amount due", engine="full-text")
+Examples, assuming a page that reads "Learn English at the English Institute"
+(the same ones as in [docs/CLI.md](CLI.md)):
+
+**`"like"`** (the default) finds the text anywhere, even inside a word:
+
+```python
+client.search.run("eng")  # case-insensitive: finds "English" (twice)
+client.search.run("english", engine="like")  # case-insensitive: finds "English"
+client.search.run("English", case_sensitive=True)  # case-sensitive: finds "English"
+client.search.run(
+    "english", case_sensitive=True
+)  # case-sensitive: no match ("english" != "English")
+client.search.run("ENGLISH", case_sensitive=False)  # case-insensitive, even if the setting is on
+```
+
+**`"exact"`** finds the text as typed, as a whole word. It is always
+case-sensitive, so `case_sensitive=True` is allowed but redundant, and
+`case_sensitive=False` raises `SearchOptionError`:
+
+```python
+client.search.run("English", engine="exact")  # finds "English"
+client.search.run("english", engine="exact")  # no match: wrong case
+client.search.run("eng", engine="exact")  # no match: only part of a word
+client.search.run("English Institute", engine="exact")  # finds the phrase as typed
+client.search.run("English", engine="exact", case_sensitive=True)  # same as the first example
+client.search.run(
+    "English", engine="exact", case_sensitive=False
+)  # raises SearchOptionError: always case-sensitive
+```
+
+**`"full-text"`** finds pages containing the words, in any form, best
+matches first (`SearchMatch.score` is the relevance). It is always
+case-insensitive, so `case_sensitive=False` is allowed but redundant, and
+`case_sensitive=True` raises `SearchOptionError`:
+
+```python
+client.search.run("english", engine="full-text")  # finds "English", any case
+client.search.run("ENGLISH", engine="full-text")  # same results
+client.search.run("eng*", engine="full-text")  # prefix: finds "English", "engine", "engineering"...
+client.search.run("eng", engine="full-text")  # no match: not a whole word
+client.search.run("english institute", engine="full-text")  # both words on the page, any order
+client.search.run(
+    '"english institute"', engine="full-text"
+)  # the exact phrase, words adjacent and in order
+client.search.run("english", engine="full-text", case_sensitive=False)  # same as the first example
+client.search.run(
+    "english", engine="full-text", case_sensitive=True
+)  # raises SearchOptionError: always case-insensitive
+```
+
+**`"fuzzy"`** finds words close to yours, closest first
+(`SearchMatch.score` is each word's similarity):
+
+```python
+client.search.run("Museum", engine="fuzzy")  # finds "Muzeum", "Musuem", "Museums"
+client.search.run("Museum", engine="fuzzy", threshold="loose")  # also "Museurn"
+client.search.run("Museum", engine="fuzzy", threshold=0.7)  # a number instead of a name
+client.search.run(
+    "museum", engine="fuzzy", case_sensitive=True
+)  # a difference in case counts as one edit
+client.search.run(
+    "Museum", engine="like", threshold=0.7
+)  # raises SearchOptionError: only fuzzy has a threshold
 ```
 
 ## `client.settings`
@@ -228,7 +301,7 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 
 - `get()` — default engine `search` uses (`"like"` by default)
 - `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"like"`, `"exact"`,
-  `"full-text"`); raises `InvalidSettingValueError` otherwise
+  `"full-text"`, `"fuzzy"`); raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 
@@ -363,7 +436,7 @@ One occurrence of the query on a page, returned by `client.search.run`:
 - `before`, `matched`, `after` (the match split out for highlighting)
 - `truncated_before`, `truncated_after`
 - `source` (`"native"`, `"ocr"` or `"mixed"` — how the page's text was obtained)
-- `score` (relevance, higher is better; only set by the `full-text` engine, otherwise `None`)
+- `score` (higher is better; the `full-text` engine's relevance or the `fuzzy` engine's word similarity, otherwise `None`)
 - `duplicate_of_path` (set if this file's content matched an already-indexed file)
 
 ## `Source`

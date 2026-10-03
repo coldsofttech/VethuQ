@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq search --engine fuzzy` finds words close to yours, so typos and OCR misreads like `Muzeum` or `Museurn` still find `Museum`; set how close with `--threshold` or `--fuzziness strict|balanced|loose`, or store a default with `vethuq settings search fuzzy threshold`.
 - `vethuq search` can now match exactly as typed (`--engine exact`) or by whole words with the best matches first (`--engine full-text`), and `--case-sensitive` makes the default search care about capitals; choose the defaults with `vethuq settings search engine` and `case-sensitive`.
 - Logs no longer record what you searched for (`vethuq search` logs `<query omitted>`; a failed search logs only the query's length), and a test now fails the build if any log call references document text or search queries (`ocr_text`, `native_text`, `query`, ...).
 - Logs now cover scanning and processing per area: `index.log` records each source scan (start, files found, outcome), duplicate skips, per-attempt retries, and OCR, native-extraction and indexing failures with file, page, engine and exception; `database.log` records database open/schema/write failures and search failures (with the query and engine).

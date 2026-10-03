@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 
 from rich.text import Text
-from vethuq_core.search import SearchMatch
+from vethuq_core.search import SearchMatch, SearchOptions
 
 from vethuq_cli.theme import Theme
 
@@ -14,6 +14,16 @@ class ResultRenderer:
     MIN_BOX_WIDTH = 20
     HEADER_STYLE = "bold bright_white"
     ACCENT_STYLES = [Theme.PRIMARY, Theme.ACCENT]
+
+    @staticmethod
+    def describe(options: SearchOptions) -> str:
+        """The engine and its non-default options, as shown after the results count."""
+        parts = [f"engine: {options.engine}"]
+        if options.case_sensitive:
+            parts.append("case-sensitive")
+        if options.threshold is not None:
+            parts.append(f"threshold {options.threshold:.2f}")
+        return ", ".join(parts)
 
     @staticmethod
     def render_box(match: SearchMatch, width: int, accent: str) -> list[Text]:

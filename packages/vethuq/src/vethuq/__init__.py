@@ -59,6 +59,7 @@ DB_PATH = _default_db_path()
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
+SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
@@ -71,6 +72,7 @@ __all__ = [
     "OCR_ENGINE_MODES",
     "SEARCH_ENGINES",
     "SEARCH_EXPORT_FORMATS",
+    "SEARCH_FUZZY_PRESETS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
     "ConfidenceMetric",
@@ -101,6 +103,8 @@ __all__ = [
     "Search",
     "SearchCaseSensitiveSettings",
     "SearchEngineSettings",
+    "SearchFuzzySettings",
+    "SearchFuzzyThresholdSettings",
     "SearchMatch",
     "SearchOptionError",
     "SearchSettings",
@@ -368,7 +372,7 @@ class SearchEngineSettings:
 
 
 class SearchCaseSensitiveSettings:
-    """Whether `search` matches case by default (only the 'like' engine honours it).
+    """Whether `search` matches case by default (only the 'like' and 'fuzzy' engines honour it).
 
     Not instantiated directly — use `Vethuq().settings.search.case_sensitive`.
     """
@@ -390,6 +394,42 @@ class SearchCaseSensitiveSettings:
             storage.close()
 
 
+class SearchFuzzyThresholdSettings:
+    """How close a word must be to the query for `fuzzy` search to match it.
+
+    Not instantiated directly — use `Vethuq().settings.search.fuzzy.threshold`.
+    """
+
+    def get(self) -> str:
+        """The stored threshold, as set: a name from `SEARCH_FUZZY_PRESETS` or a number
+        as text. `"balanced"` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_fuzzy_threshold_setting(storage)
+        finally:
+            storage.close()
+
+    def set(self, threshold: str | float) -> None:
+        """Set the default threshold: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 0.90,
+        `"balanced"` 0.80, `"loose"` 0.65) or a similarity above 0 and up to 1.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_fuzzy_threshold(storage, str(threshold))
+        finally:
+            storage.close()
+
+
+class SearchFuzzySettings:
+    """Configure the `fuzzy` search engine. Not instantiated directly — use
+    `Vethuq().settings.search.fuzzy`."""
+
+    def __init__(self) -> None:
+        self.threshold = SearchFuzzyThresholdSettings()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
@@ -398,6 +438,7 @@ class SearchSettings:
         self.export_format = ExportFormatSettings()
         self.engine = SearchEngineSettings()
         self.case_sensitive = SearchCaseSensitiveSettings()
+        self.fuzzy = SearchFuzzySettings()
 
 
 class RemovedRetentionSettings:
@@ -763,12 +804,13 @@ class Search:
         context_chars: int | None = None,
         engine: str | None = None,
         case_sensitive: bool | None = None,
+        threshold: float | str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `content`.
 
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
-        page in text order) - or best match first for the `full-text` engine.
+        page in text order) - or best match first for the `full-text` and `fuzzy` engines.
         Only successfully indexed documents are considered. `context_chars`
         defaults to `Vethuq().settings.search.snippet` if not given.
 
@@ -777,21 +819,29 @@ class Search:
         even inside a word, ignoring case; `exact` finds it as typed - same
         case, as a whole word; `full-text` finds pages containing its words
         (any case, English word forms such as plurals; quote a "phrase", end
-        a word with * for a prefix), best matches first. `case_sensitive`
+        a word with * for a prefix), best matches first; `fuzzy` finds words
+        close to `content`'s - typos and OCR misreads such as `Musuem` or
+        `Museurn` for `Museum` - closest first (words under 4 letters and
+        anything with a digit must match exactly). `case_sensitive`
         defaults to `Vethuq().settings.search.case_sensitive` and only `like`
-        acts on it - `exact` is always case-sensitive and `full-text` never
-        is. Raises `SearchOptionError` for an unknown engine or an explicit
-        `case_sensitive` the engine can't honour.
+        and `fuzzy` act on it - `exact` is always case-sensitive and
+        `full-text` never is. `threshold` (`fuzzy` only) is the minimum
+        similarity between `content`'s words and the words found: a name
+        from `SEARCH_FUZZY_PRESETS` or a number above 0 and up to 1, defaulting
+        to `Vethuq().settings.search.fuzzy.threshold`. Raises `SearchOptionError`
+        for an unknown engine, an invalid `threshold`, or an explicit
+        `case_sensitive` or `threshold` the engine can't honour.
         """
         storage = _open_storage()
         try:
-            resolved_engine, match_case = _Search.resolve_options(storage, engine, case_sensitive)
+            options = _Search.resolve_options(storage, engine, case_sensitive, threshold)
             return _Search.indexed_content(
                 storage,
                 content,
                 context_chars=context_chars,
-                engine=resolved_engine,
-                case_sensitive=match_case,
+                engine=options.engine,
+                case_sensitive=options.case_sensitive,
+                threshold=options.threshold,
             )
         finally:
             storage.close()
@@ -805,13 +855,14 @@ class Search:
         *,
         engine: str | None = None,
         case_sensitive: bool = False,
+        threshold: float | None = None,
     ) -> Path:
         """Write `matches` for `query` to `output` as JSON or HTML.
 
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
-        `engine` and `case_sensitive` the search ran with to record them in
-        the file.
+        `engine`, `case_sensitive` and (for `fuzzy`) `threshold` the search ran
+        with to record them in the file.
         """
         storage = _open_storage()
         try:
@@ -826,6 +877,7 @@ class Search:
             resolved_format,
             engine=engine,
             case_sensitive=case_sensitive,
+            threshold=threshold,
         )
         return output_path
 

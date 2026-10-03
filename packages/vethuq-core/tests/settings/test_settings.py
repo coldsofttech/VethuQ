@@ -84,6 +84,45 @@ class TestSearchSettings:
         SearchSettings.set_case_sensitive(storage, False)
         assert SearchSettings.is_case_sensitive(storage) is False
 
+    def test_fuzzy_threshold_defaults_to_balanced(self, storage: Storage):
+        assert SearchSettings.get_fuzzy_threshold_setting(storage) == "balanced"
+        assert SearchSettings.get_fuzzy_threshold(storage) == 0.8
+
+    @pytest.mark.parametrize(
+        ("value", "ratio"),
+        [
+            ("strict", 0.9),
+            ("balanced", 0.8),
+            ("loose", 0.65),
+            ("LOOSE", 0.65),
+            ("0.75", 0.75),
+            ("1", 1.0),
+        ],
+    )
+    def test_set_fuzzy_threshold_roundtrip(self, storage: Storage, value: str, ratio: float):
+        SearchSettings.set_fuzzy_threshold(storage, value)
+
+        assert SearchSettings.get_fuzzy_threshold_setting(storage) == value.lower()
+        assert SearchSettings.get_fuzzy_threshold(storage) == ratio
+
+    @pytest.mark.parametrize("value", ["", "nope", "0", "-0.5", "1.01", "nan"])
+    def test_set_fuzzy_threshold_rejects_invalid_values(self, storage: Storage, value: str):
+        with pytest.raises(ValueError):
+            SearchSettings.set_fuzzy_threshold(storage, value)
+        assert SearchSettings.get_fuzzy_threshold_setting(storage) == "balanced"
+
+    def test_a_corrupt_stored_fuzzy_threshold_falls_back_to_the_default(self, storage: Storage):
+        Settings.set(storage, "search_fuzzy_threshold", "garbage")
+
+        assert SearchSettings.get_fuzzy_threshold_setting(storage) == "balanced"
+        assert SearchSettings.get_fuzzy_threshold(storage) == 0.8
+
+    def test_parse_fuzzy_threshold_accepts_numbers_and_names(self):
+        assert SearchSettings.parse_fuzzy_threshold(0.5) == 0.5
+        assert SearchSettings.parse_fuzzy_threshold(" Strict ") == 0.9
+        with pytest.raises(ValueError):
+            SearchSettings.parse_fuzzy_threshold(0)
+
 
 class TestIndexSettings:
     def test_thread_workers_defaults_to_disabled(self, storage: Storage):

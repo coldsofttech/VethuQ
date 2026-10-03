@@ -42,6 +42,8 @@ from vethuq_cli.settings import (
     engine_show,
     export_format_set,
     export_format_show,
+    fuzzy_threshold_set,
+    fuzzy_threshold_show,
     gpu_disable,
     gpu_enable,
     gpu_status,
@@ -125,23 +127,39 @@ class InteractiveMenu:
         try:
             default_engine = SearchSettings.get_engine(storage)
             default_case_sensitive = SearchSettings.is_case_sensitive(storage)
+            default_threshold = SearchSettings.get_fuzzy_threshold_setting(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
-        # Only `like` has a choice to make: `exact` is always case-sensitive and
-        # `full-text` never is, so asking would be a question with no effect.
+        # Only `like` and `fuzzy` have a choice to make: `exact` is always
+        # case-sensitive and `full-text` never is, so asking would have no effect.
         case_sensitive: bool | None = None
-        if engine == "like":
+        if engine in ("like", "fuzzy"):
             case_sensitive = Confirm.ask(
                 "Case-sensitive?", console=console, default=default_case_sensitive
             )
+        threshold: float | None = None
+        if engine == "fuzzy":
+            presets = ", ".join(SearchSettings.FUZZY_PRESETS)
+            answer = Prompt.ask(
+                f"Fuzziness ({presets}, or a similarity above 0 up to 1)",
+                console=console,
+                default=default_threshold,
+            )
+            try:
+                threshold = SearchSettings.parse_fuzzy_threshold(answer)
+            except ValueError as exc:
+                error_console.print(f"Error: {exc}", style="bold red")
+                return
         InteractiveMenu._run_safely(
             run_search,
             content=content,
             engine=engine,
             case_sensitive=case_sensitive,
+            threshold=threshold,
+            fuzziness=None,
             export=None,
             format_=None,
         )
@@ -311,6 +329,26 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(case_sensitive_disable)
 
     @staticmethod
+    def _settings_fuzzy_threshold_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Search > Fuzzy Threshold",
+                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(fuzzy_threshold_show)
+            elif choice == "2":
+                presets = ", ".join(SearchSettings.FUZZY_PRESETS)
+                threshold = Prompt.ask(
+                    f"Threshold ({presets}, or a similarity above 0 up to 1)", console=console
+                )
+                InteractiveMenu._run_safely(fuzzy_threshold_set, threshold=threshold)
+
+    @staticmethod
     def _settings_search_menu() -> None:
         while True:
             console.print()
@@ -321,10 +359,11 @@ class InteractiveMenu:
                     ("2", "Export Format"),
                     ("3", "Engine"),
                     ("4", "Case Sensitive"),
+                    ("5", "Fuzzy Threshold"),
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -335,6 +374,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_search_engine_menu()
             elif choice == "4":
                 InteractiveMenu._settings_case_sensitive_menu()
+            elif choice == "5":
+                InteractiveMenu._settings_fuzzy_threshold_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

@@ -24,8 +24,14 @@ class ExactSearchEngine:
         self._storage = storage
 
     def search(
-        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+        self,
+        query: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool = False,
+        threshold: float | None = None,
     ) -> list[SearchMatch]:
+        SearchEngineHelpers.require_no_threshold(self.name, threshold)
         if not query:
             return []
         pattern = ExactSearchEngine._exact_pattern(query)

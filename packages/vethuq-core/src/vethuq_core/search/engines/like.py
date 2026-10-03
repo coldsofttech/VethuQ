@@ -22,8 +22,14 @@ class LikeSearchEngine:
         self._storage = storage
 
     def search(
-        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+        self,
+        query: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool = False,
+        threshold: float | None = None,
     ) -> list[SearchMatch]:
+        SearchEngineHelpers.require_no_threshold(self.name, threshold)
         return SearchEngineHelpers.search_substring_pages(
             self._storage,
             query,
