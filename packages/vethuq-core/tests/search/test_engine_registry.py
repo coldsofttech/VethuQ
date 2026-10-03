@@ -18,7 +18,15 @@ class TestSearchEngines:
         class Broken:
             name = "broken"
 
-            def search(self, query, *, context_chars=None, case_sensitive=False, threshold=None):
+            def search(
+                self,
+                query,
+                *,
+                context_chars=None,
+                case_sensitive=False,
+                threshold=None,
+                distance=None,
+            ):
                 raise SearchEngineUnavailable
 
         engine = FallbackSearchEngine(Broken(), SearchEngines.get(storage))

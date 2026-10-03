@@ -425,7 +425,7 @@ class TestSearchEngines:
         result = runner.invoke(app, ["search", "Museum", "--engine", "fuzzy"])
 
         assert result.exit_code == 0
-        assert "Results: 1 match (engine: fuzzy, threshold 0.80)" in result.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 80%)" in result.stdout
         assert "similarity 83%" in result.stdout
         assert "Muzeum" in result.stdout
 
@@ -443,8 +443,8 @@ class TestSearchEngines:
 
         assert "No matches found." in balanced.stdout
         assert "--fuzziness loose" in balanced.stdout  # the hint towards a looser setting
-        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in loose.stdout
-        assert "Results: 1 match (engine: fuzzy, threshold 0.70)" in numeric.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 65%)" in loose.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 70%)" in numeric.stdout
 
     def test_fuzzy_uses_the_stored_threshold_and_engine(self, use_temp_db):
         db_path = use_temp_db()
@@ -459,7 +459,7 @@ class TestSearchEngines:
         result = runner.invoke(app, ["search", "Museum"])
         overridden = runner.invoke(app, ["search", "Museum", "--fuzziness", "strict"])
 
-        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in result.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 65%)" in result.stdout
         assert "No matches found." in overridden.stdout
 
     @pytest.mark.parametrize(
@@ -468,7 +468,7 @@ class TestSearchEngines:
             (["--engine", "like", "--threshold", "0.8"], "Only the fuzzy engine"),
             (["--engine", "full-text", "--fuzziness", "loose"], "Only the fuzzy engine"),
             (["--engine", "fuzzy", "--threshold", "0"], "above 0"),
-            (["--engine", "fuzzy", "--threshold", "2"], "above 0"),
+            (["--engine", "fuzzy", "--threshold", "150"], "above 0"),
             (["--engine", "fuzzy", "--fuzziness", "sloppy"], "not one of"),
             (["--engine", "fuzzy", "--fuzziness", "loose", "--threshold", "0.7"], "not both"),
         ],
@@ -518,3 +518,127 @@ class TestSearchEngines:
         payload = json.loads(output.read_text())
         assert (payload["engine"], payload["threshold"]) == ("fuzzy", 0.75)
         assert payload["matches"][0]["score"] > 0.8
+
+    _CONTRACT = "The payment is due within thirty days, subject to the termination clause."
+
+    def test_proximity_finds_terms_close_together(self, use_temp_db):
+        _seed_indexed_pdf(use_temp_db(), "/docs/contract.pdf", self._CONTRACT)
+
+        result = runner.invoke(app, ["search", "payment termination", "--engine", "proximity"])
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: proximity, within 10 words)" in result.stdout
+        assert "payment is due within thirty days, subject to the termination" in _flatten(
+            result.stdout.replace("|", " ")
+        )
+
+    def test_proximity_distance_flag_accepts_numbers_and_presets(self, use_temp_db):
+        # 8 words between the terms
+        _seed_indexed_pdf(use_temp_db(), "/docs/contract.pdf", self._CONTRACT)
+        base = ["search", "payment termination", "--engine", "proximity"]
+
+        tight = runner.invoke(app, [*base, "--distance", "tight"])
+        seven = runner.invoke(app, [*base, "--distance", "7"])
+        eight = runner.invoke(app, [*base, "--distance", "8"])
+        loose = runner.invoke(app, [*base, "--distance", "loose"])
+
+        assert "No matches found." in tight.stdout
+        assert "--distance loose" in tight.stdout  # the hint towards a looser distance
+        assert "No matches found." in seven.stdout
+        assert "within 8 words" in eight.stdout
+        assert "within 30 words" in loose.stdout
+
+    def test_proximity_uses_the_stored_distance_and_engine(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/contract.pdf", self._CONTRACT)
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_engine(storage, "proximity")
+            SearchSettings.set_proximity_distance(storage, "tight")
+        finally:
+            storage.close()
+
+        stored = runner.invoke(app, ["search", "payment termination"])
+        overridden = runner.invoke(app, ["search", "payment termination", "--distance", "12"])
+
+        assert "No matches found." in stored.stdout
+        assert "within 12 words" in overridden.stdout
+
+    def test_proximity_needs_two_terms(self, use_temp_db):
+        _seed_indexed_pdf(use_temp_db(), "/docs/contract.pdf", self._CONTRACT)
+
+        result = runner.invoke(app, ["search", "payment", "--engine", "proximity"])
+
+        assert result.exit_code == 2
+        assert "at least two" in _flatten(result.output)
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            (["--engine", "like", "--distance", "5"], "Only the proximity engine"),
+            (["--engine", "fuzzy", "--distance", "loose"], "Only the proximity engine"),
+            (["--engine", "proximity", "--distance", "0"], "from 1 to 100"),
+            (["--engine", "proximity", "--distance", "101"], "from 1 to 100"),
+            (["--engine", "proximity", "--distance", "nope"], "from 1 to 100"),
+            (["--engine", "proximity", "--threshold", "80%"], "Only the fuzzy engine"),
+            (["--engine", "proximity", "--case-sensitive"], "always case-insensitive"),
+            (["--engine", "fuzzy", "--distance", "5"], "Only the proximity engine"),
+        ],
+    )
+    def test_rejects_unusable_distance_options(self, use_temp_db, args, message):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "payment termination", *args])
+
+        assert result.exit_code == 2
+        assert message in _flatten(result.output)
+
+    def test_stored_distance_is_ignored_by_other_engines(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/contract.pdf", self._CONTRACT)
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_proximity_distance(storage, "tight")
+        finally:
+            storage.close()
+
+        result = runner.invoke(app, ["search", "payment", "--engine", "like"])
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: like)" in result.stdout
+
+    def test_proximity_export_records_the_distance(self, use_temp_db, tmp_path):
+        _seed_indexed_pdf(use_temp_db(), "/docs/contract.pdf", self._CONTRACT)
+        output = tmp_path / "out.json"
+
+        result = runner.invoke(
+            app,
+            [
+                "search",
+                "payment termination",
+                "--engine",
+                "proximity",
+                "--distance",
+                "12",
+                "--export",
+                str(output),
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(output.read_text())
+        assert (payload["engine"], payload["distance"]) == ("proximity", 12)
+        assert "payment is due" in payload["matches"][0]["matched_text"]
+
+    def test_fuzzy_threshold_accepts_percentages(self, use_temp_db):
+        _seed_indexed_pdf(use_temp_db(), "/docs/museum.pdf", "Visit the Museurn today")
+        base = ["search", "Museum", "--engine", "fuzzy", "--threshold"]
+
+        percent = runner.invoke(app, [*base, "70%"])
+        whole = runner.invoke(app, [*base, "70"])
+        ratio = runner.invoke(app, [*base, "0.7"])
+        strict = runner.invoke(app, [*base, "75%"])
+
+        for result in (percent, whole, ratio):
+            assert "Results: 1 match (engine: fuzzy, threshold 70%)" in result.stdout
+        assert "No matches found." in strict.stdout

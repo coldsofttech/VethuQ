@@ -58,6 +58,12 @@ class SearchEngines:
         return FuzzySearchEngine(storage)
 
     @staticmethod
+    def _proximity_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.proximity import ProximitySearchEngine
+
+        return ProximitySearchEngine(storage)
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines, sorted."""
         return sorted(SearchEngines._factories)
@@ -67,3 +73,4 @@ SearchEngines.register("like", SearchEngines._like_factory)
 SearchEngines.register("exact", SearchEngines._exact_factory)
 SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)
+SearchEngines.register("proximity", SearchEngines._proximity_factory)

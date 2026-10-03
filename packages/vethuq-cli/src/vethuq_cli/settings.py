@@ -28,6 +28,10 @@ fuzzy_app = typer.Typer(help="Configure the `fuzzy` search engine.")
 fuzzy_threshold_app = typer.Typer(
     help="Configure how close a word must be to your query for `fuzzy` search to match it."
 )
+proximity_app = typer.Typer(help="Configure the `proximity` search engine.")
+proximity_distance_app = typer.Typer(
+    help="Configure how many words may separate your first and last word for `proximity` search."
+)
 case_sensitive_app = typer.Typer(
     help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
@@ -70,6 +74,8 @@ search_app.add_typer(search_engine_app, name="engine")
 search_app.add_typer(case_sensitive_app, name="case-sensitive")
 search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
+search_app.add_typer(proximity_app, name="proximity")
+proximity_app.add_typer(proximity_distance_app, name="distance")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -276,7 +282,7 @@ def fuzzy_threshold_show() -> None:
         value = SearchSettings.get_fuzzy_threshold(storage)
         console.print(
             Text.assemble(
-                "Search fuzzy threshold: ", (setting, Theme.VALUE), f" (similarity {value:.2f})"
+                "Search fuzzy threshold: ", (setting, Theme.VALUE), f" (similarity {value:.0%})"
             )
         )
     finally:
@@ -289,16 +295,16 @@ def fuzzy_threshold_set(
         ...,
         metavar="THRESHOLD",
         help=(
-            f"One of: {', '.join(SearchSettings.FUZZY_PRESETS)} - or a similarity above 0 and "
-            "up to 1 (e.g. 0.75)."
+            f"One of: {', '.join(SearchSettings.FUZZY_PRESETS)} - or a percentage (e.g. 75%) "
+            "or a similarity above 0 and up to 1 (e.g. 0.75)."
         ),
     ),
 ) -> None:
     """Set the minimum similarity `search --engine fuzzy` accepts when none is given.
 
-    `strict` (0.90) finds little beyond plurals and other one-letter variants of longer
-    words; `balanced` (0.80, the default) also catches a typo in a longer word; `loose`
-    (0.65) catches heavier OCR damage such as `Museurn` for `Museum`, with more noise.
+    `strict` (90%) finds little beyond plurals and other one-letter variants of longer
+    words; `balanced` (80%, the default) also catches a typo in a longer word; `loose`
+    (65%) catches heavier OCR damage such as `Museurn` for `Museum`, with more noise.
     """
     storage = open_storage()
     try:
@@ -310,6 +316,54 @@ def fuzzy_threshold_set(
         console.print(
             Text.assemble(
                 "Search fuzzy threshold set to ", (threshold.strip().lower(), Theme.VALUE), "."
+            )
+        )
+    finally:
+        storage.close()
+
+
+@proximity_distance_app.command("show")
+def proximity_distance_show() -> None:
+    """Show the most words `search --engine proximity` allows between its first and last word."""
+    storage = open_storage()
+    try:
+        setting = SearchSettings.get_proximity_distance_setting(storage)
+        value = SearchSettings.get_proximity_distance(storage)
+        console.print(
+            Text.assemble(
+                "Search proximity distance: ", (setting, Theme.VALUE), f" ({value} words)"
+            )
+        )
+    finally:
+        storage.close()
+
+
+@proximity_distance_app.command("set")
+def proximity_distance_set(
+    distance: str = typer.Argument(
+        ...,
+        metavar="DISTANCE",
+        help=(
+            f"One of: {', '.join(SearchSettings.PROXIMITY_PRESETS)} - or a number of words from "
+            f"1 to {SearchSettings.PROXIMITY_MAX_DISTANCE}."
+        ),
+    ),
+) -> None:
+    """Set the most words `search --engine proximity` allows between its first and last word.
+
+    `tight` (3 words) finds terms in the same phrase; `medium` (10, the default) in the same
+    sentence or clause; `loose` (30) in the same paragraph. A number from 1 to 100 also works.
+    """
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_proximity_distance(storage, distance)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            Text.assemble(
+                "Search proximity distance set to ", (distance.strip().lower(), Theme.VALUE), "."
             )
         )
     finally:

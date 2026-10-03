@@ -26,7 +26,7 @@ from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import Search as _Search
-from vethuq._core.search import SearchMatch, SearchOptionError
+from vethuq._core.search import SearchMatch, SearchOptionError, SearchQueryError
 from vethuq._core.settings import DbSettings as _DbSettings
 from vethuq._core.settings import GpuSettings as _GpuSettings
 from vethuq._core.settings import IndexSettings as _IndexSettings
@@ -60,6 +60,8 @@ OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
+SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
+SEARCH_PROXIMITY_MAX_DISTANCE = _SearchSettings.PROXIMITY_MAX_DISTANCE
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
@@ -73,6 +75,8 @@ __all__ = [
     "SEARCH_ENGINES",
     "SEARCH_EXPORT_FORMATS",
     "SEARCH_FUZZY_PRESETS",
+    "SEARCH_PROXIMITY_MAX_DISTANCE",
+    "SEARCH_PROXIMITY_PRESETS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
     "ConfidenceMetric",
@@ -107,6 +111,9 @@ __all__ = [
     "SearchFuzzyThresholdSettings",
     "SearchMatch",
     "SearchOptionError",
+    "SearchProximityDistanceSettings",
+    "SearchProximitySettings",
+    "SearchQueryError",
     "SearchSettings",
     "Settings",
     "SettingsError",
@@ -401,8 +408,8 @@ class SearchFuzzyThresholdSettings:
     """
 
     def get(self) -> str:
-        """The stored threshold, as set: a name from `SEARCH_FUZZY_PRESETS` or a number
-        as text. `"balanced"` by default."""
+        """The stored threshold, as set: a name from `SEARCH_FUZZY_PRESETS`, or a percentage
+        or similarity as text (e.g. `"75%"`). `"balanced"` by default."""
         storage = _open_storage()
         try:
             return _SearchSettings.get_fuzzy_threshold_setting(storage)
@@ -410,8 +417,9 @@ class SearchFuzzyThresholdSettings:
             storage.close()
 
     def set(self, threshold: str | float) -> None:
-        """Set the default threshold: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 0.90,
-        `"balanced"` 0.80, `"loose"` 0.65) or a similarity above 0 and up to 1.
+        """Set the default threshold: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%,
+        `"balanced"` 80%, `"loose"` 65%), a percentage (`"75%"`, or a whole number such as
+        `75`) or a similarity above 0 and up to 1 (`0.75`).
 
         Raises `InvalidSettingValueError` for anything else.
         """
@@ -430,6 +438,43 @@ class SearchFuzzySettings:
         self.threshold = SearchFuzzyThresholdSettings()
 
 
+class SearchProximityDistanceSettings:
+    """How many words may separate a `proximity` search's first and last term.
+
+    Not instantiated directly — use `Vethuq().settings.search.proximity.distance`.
+    """
+
+    def get(self) -> str:
+        """The stored distance, as set: a name from `SEARCH_PROXIMITY_PRESETS` or a number
+        of words as text. `"medium"` (10 words) by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_proximity_distance_setting(storage)
+        finally:
+            storage.close()
+
+    def set(self, distance: str | int) -> None:
+        """Set the default distance: a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3 words,
+        `"medium"` 10, `"loose"` 30) or a number of words from 1 to
+        `SEARCH_PROXIMITY_MAX_DISTANCE`.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_proximity_distance(storage, str(distance))
+        finally:
+            storage.close()
+
+
+class SearchProximitySettings:
+    """Configure the `proximity` search engine. Not instantiated directly — use
+    `Vethuq().settings.search.proximity`."""
+
+    def __init__(self) -> None:
+        self.distance = SearchProximityDistanceSettings()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
@@ -439,6 +484,7 @@ class SearchSettings:
         self.engine = SearchEngineSettings()
         self.case_sensitive = SearchCaseSensitiveSettings()
         self.fuzzy = SearchFuzzySettings()
+        self.proximity = SearchProximitySettings()
 
 
 class RemovedRetentionSettings:
@@ -805,14 +851,15 @@ class Search:
         engine: str | None = None,
         case_sensitive: bool | None = None,
         threshold: float | str | None = None,
+        distance: int | str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `content`.
 
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
-        page in text order) - or best match first for the `full-text` and `fuzzy` engines.
-        Only successfully indexed documents are considered. `context_chars`
-        defaults to `Vethuq().settings.search.snippet` if not given.
+        page in text order) - or best match first for the `full-text`, `fuzzy` and
+        `proximity` engines. Only successfully indexed documents are considered.
+        `context_chars` defaults to `Vethuq().settings.search.snippet` if not given.
 
         `engine` is one of `SEARCH_ENGINES` and defaults to
         `Vethuq().settings.search.engine`: `like` finds `content` anywhere,
@@ -825,16 +872,23 @@ class Search:
         anything with a digit must match exactly). `case_sensitive`
         defaults to `Vethuq().settings.search.case_sensitive` and only `like`
         and `fuzzy` act on it - `exact` is always case-sensitive and
-        `full-text` never is. `threshold` (`fuzzy` only) is the minimum
-        similarity between `content`'s words and the words found: a name
-        from `SEARCH_FUZZY_PRESETS` or a number above 0 and up to 1, defaulting
-        to `Vethuq().settings.search.fuzzy.threshold`. Raises `SearchOptionError`
-        for an unknown engine, an invalid `threshold`, or an explicit
-        `case_sensitive` or `threshold` the engine can't honour.
+        `full-text` and `proximity` never are. `threshold` (`fuzzy` only)
+        is the minimum similarity between `content`'s words and the words found: a
+        name from `SEARCH_FUZZY_PRESETS`, a percentage (`"80%"`) or a number above 0
+        and up to 1, defaulting to `Vethuq().settings.search.fuzzy.threshold`.
+        `proximity` finds passages where all of `content`'s terms - at least two words
+        or `"quoted phrases"`, in any order - sit within `distance` words of each other
+        (`distance` is the most words between the first and last term): a name from
+        `SEARCH_PROXIMITY_PRESETS` or a number from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`,
+        defaulting to `Vethuq().settings.search.proximity.distance`; one
+        `SearchMatch` per passage. Raises `SearchOptionError` for an unknown engine, an
+        invalid `threshold` or `distance`, or an explicit `case_sensitive`, `threshold`
+        or `distance` the engine can't honour, and `SearchQueryError` for a
+        `proximity` query of fewer than two terms.
         """
         storage = _open_storage()
         try:
-            options = _Search.resolve_options(storage, engine, case_sensitive, threshold)
+            options = _Search.resolve_options(storage, engine, case_sensitive, threshold, distance)
             return _Search.indexed_content(
                 storage,
                 content,
@@ -842,6 +896,7 @@ class Search:
                 engine=options.engine,
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
+                distance=options.distance,
             )
         finally:
             storage.close()
@@ -856,13 +911,15 @@ class Search:
         engine: str | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> Path:
         """Write `matches` for `query` to `output` as JSON or HTML.
 
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
-        `engine`, `case_sensitive` and (for `fuzzy`) `threshold` the search ran
-        with to record them in the file.
+        `engine`, `case_sensitive` and (for `fuzzy` or
+        `proximity`) `threshold` or `distance` the search ran with to record them
+        in the file.
         """
         storage = _open_storage()
         try:
@@ -878,6 +935,7 @@ class Search:
             engine=engine,
             case_sensitive=case_sensitive,
             threshold=threshold,
+            distance=distance,
         )
         return output_path
 

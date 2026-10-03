@@ -55,6 +55,8 @@ from vethuq_cli.settings import (
     log_level_show,
     log_retention_set,
     log_retention_show,
+    proximity_distance_set,
+    proximity_distance_show,
     removed_retention_set,
     removed_retention_show,
     retry_set,
@@ -128,31 +130,36 @@ class InteractiveMenu:
             default_engine = SearchSettings.get_engine(storage)
             default_case_sensitive = SearchSettings.is_case_sensitive(storage)
             default_threshold = SearchSettings.get_fuzzy_threshold_setting(storage)
+            default_distance = SearchSettings.get_proximity_distance_setting(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
         # Only `like` and `fuzzy` have a choice to make: `exact` is always
-        # case-sensitive and `full-text` never is, so asking would have no effect.
+        # case-sensitive while `full-text` and `proximity` never are, so asking would have
+        # no effect.
         case_sensitive: bool | None = None
         if engine in ("like", "fuzzy"):
             case_sensitive = Confirm.ask(
                 "Case-sensitive?", console=console, default=default_case_sensitive
             )
-        threshold: float | None = None
+        threshold: str | None = None
         if engine == "fuzzy":
             presets = ", ".join(SearchSettings.FUZZY_PRESETS)
-            answer = Prompt.ask(
-                f"Fuzziness ({presets}, or a similarity above 0 up to 1)",
+            threshold = Prompt.ask(
+                f"Fuzziness ({presets}, a percentage or a similarity 0-1)",
                 console=console,
                 default=default_threshold,
             )
-            try:
-                threshold = SearchSettings.parse_fuzzy_threshold(answer)
-            except ValueError as exc:
-                error_console.print(f"Error: {exc}", style="bold red")
-                return
+        distance: str | None = None
+        if engine == "proximity":
+            presets = ", ".join(SearchSettings.PROXIMITY_PRESETS)
+            distance = Prompt.ask(
+                f"Distance ({presets}, or words 1-{SearchSettings.PROXIMITY_MAX_DISTANCE})",
+                console=console,
+                default=default_distance,
+            )
         InteractiveMenu._run_safely(
             run_search,
             content=content,
@@ -160,6 +167,7 @@ class InteractiveMenu:
             case_sensitive=case_sensitive,
             threshold=threshold,
             fuzziness=None,
+            distance=distance,
             export=None,
             format_=None,
         )
@@ -344,9 +352,30 @@ class InteractiveMenu:
             elif choice == "2":
                 presets = ", ".join(SearchSettings.FUZZY_PRESETS)
                 threshold = Prompt.ask(
-                    f"Threshold ({presets}, or a similarity above 0 up to 1)", console=console
+                    f"Threshold ({presets}, a percentage or a similarity 0-1)", console=console
                 )
                 InteractiveMenu._run_safely(fuzzy_threshold_set, threshold=threshold)
+
+    @staticmethod
+    def _settings_proximity_distance_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Search > Proximity Distance",
+                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(proximity_distance_show)
+            elif choice == "2":
+                presets = ", ".join(SearchSettings.PROXIMITY_PRESETS)
+                distance = Prompt.ask(
+                    f"Distance ({presets}, or words 1-{SearchSettings.PROXIMITY_MAX_DISTANCE})",
+                    console=console,
+                )
+                InteractiveMenu._run_safely(proximity_distance_set, distance=distance)
 
     @staticmethod
     def _settings_search_menu() -> None:
@@ -360,10 +389,11 @@ class InteractiveMenu:
                     ("3", "Engine"),
                     ("4", "Case Sensitive"),
                     ("5", "Fuzzy Threshold"),
+                    ("6", "Proximity Distance"),
                     ("0", "Back"),
                 ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "5", "6", "0"])
             if choice == "0":
                 return
             if choice == "1":
@@ -376,6 +406,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_case_sensitive_menu()
             elif choice == "5":
                 InteractiveMenu._settings_fuzzy_threshold_menu()
+            elif choice == "6":
+                InteractiveMenu._settings_proximity_distance_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

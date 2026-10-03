@@ -20,9 +20,15 @@ class SearchEngineHelpers:
 
     @staticmethod
     def require_no_threshold(engine: str, threshold: float | None) -> None:
-        """Reject a similarity `threshold` for an engine that only matches literally."""
+        """Reject a similarity `threshold` for an engine that isn't fuzzy."""
         if threshold is not None:
             raise ValueError(f"The {engine} engine has no similarity threshold; only fuzzy does.")
+
+    @staticmethod
+    def require_no_distance(engine: str, distance: int | None) -> None:
+        """Reject a word `distance` for an engine that isn't proximity."""
+        if distance is not None:
+            raise ValueError(f"The {engine} engine has no word distance; only proximity does.")
 
     @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:

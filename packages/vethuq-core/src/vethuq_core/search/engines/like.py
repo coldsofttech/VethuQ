@@ -28,8 +28,10 @@ class LikeSearchEngine:
         context_chars: int | None = None,
         case_sensitive: bool = False,
         threshold: float | None = None,
+        distance: int | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
+        SearchEngineHelpers.require_no_distance(self.name, distance)
         return SearchEngineHelpers.search_substring_pages(
             self._storage,
             query,

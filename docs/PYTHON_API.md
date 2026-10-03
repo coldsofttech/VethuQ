@@ -112,13 +112,13 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
 `client.settings.search.export_format` if not given, and must be one of
 `SEARCH_EXPORT_FORMATS`. Pass the `engine`, `case_sensitive` and (for
-`fuzzy`) `threshold` the search
+`fuzzy` or `proximity`) `threshold` or `distance` the search
 ran with to record them in the file.
 
 ```python
@@ -126,12 +126,12 @@ matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
 order, occurrences within a page in text order) — or best match first for
-the `full-text` and `fuzzy` engines. Only successfully indexed documents are
+the `full-text`, `fuzzy` and `proximity` engines. Only successfully indexed documents are
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
@@ -147,18 +147,27 @@ if not given.
   (`Muzeum`, `Museurn` for `Museum`), closest first. Every word must be matched;
   words under 4 letters and words containing a digit must match exactly.
   `SearchMatch.score` is the found word's similarity, 0–1 (1.0 = identical)
+- `"proximity"` — passages where all of `content`'s terms (at least two words or
+  `"quoted phrases"`, in any order) sit within `distance` words of each other, one
+  `SearchMatch` per passage spanning its first to its last term, on pages ranked by
+  relevance (`SearchMatch.score`)
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
 only `"like"` and `"fuzzy"` act on it (`"exact"` is always case-sensitive,
-`"full-text"` never is; for `"fuzzy"` a difference in case counts as one
-edit). `threshold` (`"fuzzy"` only) is the minimum similarity between
+`"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
+counts as one edit). `threshold` (`"fuzzy"` only) is the minimum similarity between
 `content`'s words and the words found — `1 − edits ÷ length of the longer
-word`, at most 2 edits: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 0.90,
-`"balanced"` 0.80, `"loose"` 0.65) or a number above 0 and up to 1, defaulting
-to `client.settings.search.fuzzy.threshold`. Raises `SearchOptionError` (a
-`ValueError`; its `option` says which argument) for an unknown engine, an
-invalid `threshold`, or an explicit `case_sensitive` or `threshold` the engine
-can't honour.
+word`, at most 2 edits: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%,
+`"balanced"` 80%, `"loose"` 65%), a percentage (`"80%"`) or a number above 0 and up
+to 1, defaulting to `client.settings.search.fuzzy.threshold`. `distance`
+(`"proximity"` only) is the most words between a passage's first and last term — other
+terms in between count: a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3, `"medium"`
+10, `"loose"` 30) or a number from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`, defaulting to
+`client.settings.search.proximity.distance`. Raises `SearchOptionError` (a
+`ValueError`; its `option` says which argument) for an unknown engine, an invalid
+`threshold` or `distance`, or an explicit `case_sensitive`, `threshold` or `distance`
+the engine can't honour, and `SearchQueryError` (also a `ValueError`) for a `"proximity"`
+query of fewer than two terms.
 
 ```python
 for match in client.search.run("invoice"):
@@ -221,13 +230,23 @@ client.search.run(
 ```python
 client.search.run("Museum", engine="fuzzy")  # finds "Muzeum", "Musuem", "Museums"
 client.search.run("Museum", engine="fuzzy", threshold="loose")  # also "Museurn"
-client.search.run("Museum", engine="fuzzy", threshold=0.7)  # a number instead of a name
+client.search.run("Museum", engine="fuzzy", threshold="70%")  # a percentage instead of a name
 client.search.run(
     "museum", engine="fuzzy", case_sensitive=True
 )  # a difference in case counts as one edit
 client.search.run(
     "Museum", engine="like", threshold=0.7
 )  # raises SearchOptionError: only fuzzy has a threshold
+```
+
+**`"proximity"`** finds passages where all your words sit close together, one
+`SearchMatch` per passage:
+
+```python
+client.search.run("payment termination", engine="proximity")  # within 10 words
+client.search.run("payment termination", engine="proximity", distance="loose")  # 30 words
+client.search.run("late fee", engine="proximity", distance=5)
+client.search.run("payment", engine="proximity")  # raises SearchQueryError: needs two terms
 ```
 
 ## `client.settings`
@@ -301,7 +320,23 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 
 - `get()` — default engine `search` uses (`"like"` by default)
 - `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"like"`, `"exact"`,
-  `"full-text"`, `"fuzzy"`); raises `InvalidSettingValueError` otherwise
+  `"full-text"`, `"fuzzy"`, `"proximity"`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.fuzzy.threshold`
+
+- `get()` — the stored default threshold for the `fuzzy` engine, as set: a name from
+  `SEARCH_FUZZY_PRESETS`, or a percentage or similarity as text (`"balanced"` by default)
+- `set(threshold)` — a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%, `"balanced"`
+  80%, `"loose"` 65%), a percentage (`"75%"`, or a whole number such as `75`) or a
+  similarity above 0 and up to 1 (`0.75`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.proximity.distance`
+
+- `get()` — the stored default distance for the `proximity` engine, as set: a name from
+  `SEARCH_PROXIMITY_PRESETS` or a number of words as text (`"medium"`, 10 words, by default)
+- `set(distance)` — a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3 words, `"medium"`
+  10, `"loose"` 30) or a number of words from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`;
+  raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 
@@ -436,7 +471,7 @@ One occurrence of the query on a page, returned by `client.search.run`:
 - `before`, `matched`, `after` (the match split out for highlighting)
 - `truncated_before`, `truncated_after`
 - `source` (`"native"`, `"ocr"` or `"mixed"` — how the page's text was obtained)
-- `score` (higher is better; the `full-text` engine's relevance or the `fuzzy` engine's word similarity, otherwise `None`)
+- `score` (higher is better; the `full-text` and `proximity` engines' relevance or the `fuzzy` engine's word similarity, otherwise `None`)
 - `duplicate_of_path` (set if this file's content matched an already-indexed file)
 
 ## `Source`

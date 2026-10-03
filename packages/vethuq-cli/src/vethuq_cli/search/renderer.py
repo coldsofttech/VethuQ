@@ -22,7 +22,9 @@ class ResultRenderer:
         if options.case_sensitive:
             parts.append("case-sensitive")
         if options.threshold is not None:
-            parts.append(f"threshold {options.threshold:.2f}")
+            parts.append(f"threshold {options.threshold:.0%}")
+        if options.distance is not None:
+            parts.append(f"within {options.distance} words")
         return ", ".join(parts)
 
     @staticmethod

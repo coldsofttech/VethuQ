@@ -358,7 +358,7 @@ class TestSearchEngineSettings:
 
         assert result.exit_code == 0
         assert "balanced" in result.stdout
-        assert "0.80" in result.stdout
+        assert "80%" in result.stdout
 
     def test_fuzzy_threshold_set_preset_and_number_then_show(self, use_temp_db):
         use_temp_db()
@@ -367,7 +367,7 @@ class TestSearchEngineSettings:
         loose = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", "loose"])
         assert loose.exit_code == 0
         shown = runner.invoke(app, show)
-        assert "loose" in shown.stdout and "0.65" in shown.stdout
+        assert "loose" in shown.stdout and "65%" in shown.stdout
 
         number = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", "0.75"])
         assert number.exit_code == 0
@@ -382,3 +382,45 @@ class TestSearchEngineSettings:
 
         shown = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "show"])
         assert "balanced" in shown.stdout
+
+    def test_fuzzy_threshold_set_accepts_a_percentage(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", "75%"])
+        shown = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "show"])
+
+        assert result.exit_code == 0
+        assert "75%" in shown.stdout
+
+    def test_proximity_distance_show_defaults_to_medium(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "proximity", "distance", "show"])
+
+        assert result.exit_code == 0
+        assert "medium" in result.stdout and "10 words" in result.stdout
+
+    def test_proximity_distance_set_preset_and_number_then_show(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "proximity", "distance", "show"]
+
+        loose = runner.invoke(app, ["settings", "search", "proximity", "distance", "set", "loose"])
+        assert loose.exit_code == 0
+        shown = runner.invoke(app, show)
+        assert "loose" in shown.stdout and "30 words" in shown.stdout
+
+        number = runner.invoke(app, ["settings", "search", "proximity", "distance", "set", "15"])
+        assert number.exit_code == 0
+        assert "15 words" in runner.invoke(app, show).stdout
+
+    def test_proximity_distance_set_rejects_invalid_values(self, use_temp_db):
+        use_temp_db()
+
+        for value in ("nope", "0", "101", "2.5"):
+            result = runner.invoke(
+                app, ["settings", "search", "proximity", "distance", "set", value]
+            )
+            assert result.exit_code == 1
+
+        shown = runner.invoke(app, ["settings", "search", "proximity", "distance", "show"])
+        assert "medium" in shown.stdout

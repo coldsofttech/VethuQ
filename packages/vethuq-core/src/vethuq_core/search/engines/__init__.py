@@ -5,6 +5,7 @@ from vethuq_core.search.engines.base import (
     SearchEngine,
     SearchEngineUnavailable,
     SearchMatch,
+    SearchQueryError,
 )
 from vethuq_core.search.engines.registry import SearchEngines
 
@@ -14,4 +15,5 @@ __all__ = [
     "SearchEngineUnavailable",
     "SearchEngines",
     "SearchMatch",
+    "SearchQueryError",
 ]

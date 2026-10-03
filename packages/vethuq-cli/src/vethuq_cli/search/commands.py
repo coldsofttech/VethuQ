@@ -7,7 +7,13 @@ from pathlib import Path
 import typer
 from rich.prompt import Prompt
 from rich.text import Text
-from vethuq_core.search import Export, Search, SearchOptionError, SearchOptions
+from vethuq_core.search import (
+    Export,
+    Search,
+    SearchOptionError,
+    SearchOptions,
+    SearchQueryError,
+)
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_core.storage import Storage, open_storage
 
@@ -23,6 +29,8 @@ _NO_MATCH_HINTS = {
     "Try `--engine like` to match part of a word.",
     "fuzzy": "`fuzzy` only finds whole words close to yours (words under 4 letters and "
     "numbers must match exactly). Try `--fuzziness loose` or `--engine like`.",
+    "proximity": "`proximity` needs every word within the distance of the others, as whole "
+    "words. Try `--distance loose` or `--engine full-text`.",
 }
 
 
@@ -30,8 +38,9 @@ def _resolve_options(
     storage: Storage,
     engine: str | None,
     case_sensitive: bool | None,
-    threshold: float | None,
+    threshold: str | None,
     fuzziness: str | None,
+    distance: str | None,
 ) -> SearchOptions:
     """`Search.resolve_options`, with an unusable combination reported as a usage error.
 
@@ -48,14 +57,16 @@ def _resolve_options(
                 f"{fuzziness!r} is not one of {', '.join(SearchSettings.FUZZY_PRESETS)}.",
                 param_hint="--fuzziness",
             )
-        threshold = preset
+        threshold = str(preset)
     try:
-        return Search.resolve_options(storage, engine, case_sensitive, threshold)
+        return Search.resolve_options(storage, engine, case_sensitive, threshold, distance)
     except SearchOptionError as exc:
         if exc.option == "engine":
             hint = "--engine"
         elif exc.option == "threshold":
             hint = "--fuzziness" if fuzziness is not None else "--threshold"
+        elif exc.option == "distance":
+            hint = "--distance"
         else:
             hint = "--case-sensitive" if case_sensitive else "--no-case-sensitive"
         raise typer.BadParameter(str(exc), param_hint=hint) from exc
@@ -69,8 +80,9 @@ def search(
         help=(
             "How to match: 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
-            "first) or 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads). Defaults to `vethuq settings search engine`."
+            "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
+            "misreads) or 'proximity' (all your words near each other). Defaults to "
+            "`vethuq settings search engine`."
         ),
     ),
     case_sensitive: bool | None = typer.Option(
@@ -78,15 +90,17 @@ def search(
         "--case-sensitive/--no-case-sensitive",
         help=(
             "Match case. Only 'like' and 'fuzzy' honour it (default: `vethuq settings "
-            "search case-sensitive`); 'exact' is always case-sensitive and 'full-text' never is."
+            "search case-sensitive`); 'exact' is always case-sensitive, 'full-text' and "
+            "'proximity' never are."
         ),
     ),
-    threshold: float | None = typer.Option(
+    threshold: str | None = typer.Option(
         None,
         "--threshold",
         help=(
-            "Fuzzy only: the minimum similarity, above 0 and up to 1, between your words and "
-            "the words found (default: `vethuq settings search fuzzy threshold`)."
+            "Fuzzy only: the minimum similarity between your words and the words found, as a "
+            "percentage (80%) or a number above 0 and up to 1 (0.8). Default: `vethuq settings "
+            "search fuzzy threshold`."
         ),
     ),
     fuzziness: str | None = typer.Option(
@@ -95,6 +109,15 @@ def search(
         help=(
             "Fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' (0.80) or "
             "'loose' (0.65)."
+        ),
+    ),
+    distance: str | None = typer.Option(
+        None,
+        "--distance",
+        help=(
+            "Proximity only: the most words between your first and last word - a number from "
+            "1 to 100, or 'tight' (3), 'medium' (10) or 'loose' (30). Default: `vethuq "
+            "settings search proximity distance`."
         ),
     ),
     export: str | None = typer.Option(
@@ -121,7 +144,11 @@ def search(
     best matches first; `fuzzy` finds words close to yours - typos and OCR
     misreads such as `Musuem` or `Museurn` for `Museum` - as close as
     `--threshold`/`--fuzziness` allows (words under 4 letters and anything
-    with a digit must match exactly), closest first. Results open in a
+    with a digit must match exactly), closest first; `proximity` finds
+    passages where all your words - at least two, any order, "quote a phrase"
+    to keep words together - sit within `--distance` words of each other,
+    e.g. `payment` and `termination` in the same clause, with one result per
+    passage. Results open in a
     pager at the top - scroll (e.g. the down arrow) to reveal more, `e` to
     export what's been found and close the pager, `q` to close without
     exporting. A file with several matching pages prints its file name as a
@@ -136,14 +163,18 @@ def search(
     """
     storage = open_storage()
     try:
-        options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness)
-        matches = Search.indexed_content(
-            storage,
-            content,
-            engine=options.engine,
-            case_sensitive=options.case_sensitive,
-            threshold=options.threshold,
-        )
+        options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness, distance)
+        try:
+            matches = Search.indexed_content(
+                storage,
+                content,
+                engine=options.engine,
+                case_sensitive=options.case_sensitive,
+                threshold=options.threshold,
+                distance=options.distance,
+            )
+        except SearchQueryError as exc:
+            raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
         if not matches:
             console.print("No matches found.", style=Theme.NOTICE)
             if options.engine in _NO_MATCH_HINTS:
@@ -165,6 +196,7 @@ def search(
                 engine=options.engine,
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
+                distance=options.distance,
             )
             console.print(
                 Text.assemble(
@@ -195,6 +227,7 @@ def search(
                 engine=options.engine,
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
+                distance=options.distance,
             )
             console.print(
                 Text.assemble(

@@ -173,11 +173,11 @@ A test enforces that no core module outside `db/` and `storage/` imports
 `vethuq_core.search.engines`:
 
 - `SearchEngine` (a `Protocol`, in `search/engines/base.py`) — `name` and
-  `search(query, *, context_chars=None, case_sensitive=False, threshold=None) -> list[SearchMatch]`.
+  `search(query, *, context_chars=None, case_sensitive=False, threshold=None, distance=None) -> list[SearchMatch]`.
   An engine may raise `SearchEngineUnavailable` when it can't serve queries.
 - `SearchEngines.get(storage, name=None)` (`search/engines/registry.py`) — builds
   the engine registered under `name` (default `like`) on a `Storage`.
-- Four engines are registered (`SearchSettings.ENGINES` lists their names;
+- Five engines are registered (`SearchSettings.ENGINES` lists their names;
   shared helpers live in `SearchEngineHelpers`, `search/engines/common.py`):
   - `like` (`search/engines/like.py`) — substring match anywhere, even inside a
     word; case-insensitive unless `case_sensitive`. Narrows candidate pages via
@@ -202,14 +202,27 @@ A test enforces that no core module outside `db/` and `storage/` imports
     trigrams) and otherwise examines every indexed page; each candidate's words
     are then scored in Python (`similarity`), so hits keep their exact spans and
     `SearchMatch.score` is the word's similarity. `SearchSettings.FUZZY_PRESETS`
-    names the thresholds (`strict`, `balanced`, `loose`).
+    names the thresholds (`strict`, `balanced`, `loose`); a threshold may also be
+    given as a percentage or a similarity (`SearchSettings.parse_fuzzy_threshold`).
+  - `proximity` (`search/engines/proximity.py`) — passages where all of the
+    query's terms (two or more words or `"phrases"`, parsed by
+    `FullTextSearchEngine.parse_terms`) sit within N words of each other, in any
+    order. FTS5's `NEAR(t1 t2 ..., N)` over the word index selects and ranks pages
+    (N counts the words between the first and last term, other terms included);
+    each term is then located again with `highlight()`
+    (`Storage.get_pdf_term_highlights` / `get_image_term_highlights`) and
+    `ProximitySearchEngine.find_clusters` turns the spans into passages, applying
+    the same rule and merging overlaps, so each `SearchMatch` is one passage from
+    first term to last. `SearchSettings.PROXIMITY_PRESETS` names the distances
+    (`tight` 3, `medium` 10, `loose` 30); `parse_proximity_distance` also takes
+    1-100. Always case-insensitive; fewer than two terms is a `SearchQueryError`.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
-`Search.resolve_options` picks the engine, case sensitivity and (fuzzy only)
-threshold from arguments and the `search_engine` / `search_case_sensitive` /
-`search_fuzzy_threshold` settings, rejecting (with `SearchOptionError`)
-combinations an engine can't honour.
+`Search.resolve_options` picks the engine, case sensitivity, (fuzzy only)
+threshold and (proximity only) distance from arguments and the `search_engine` /
+`search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
+settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected
