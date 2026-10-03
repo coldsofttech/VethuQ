@@ -112,29 +112,49 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
 `client.settings.search.export_format` if not given, and must be one of
-`SEARCH_EXPORT_FORMATS`.
+`SEARCH_EXPORT_FORMATS`. Pass the `engine` and `case_sensitive` the search
+ran with to record them in the file.
 
 ```python
 matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None)`
 
-Search indexed OCR text for `content`, case-insensitively. Returns one
-`SearchMatch` per occurrence, ordered by file path (pages of the same
-PDF stay in page order, occurrences within a page in text order). Only
-successfully indexed documents are considered. `context_chars` defaults to `client.settings.search.snippet`
+Search indexed OCR text for `content`. Returns one `SearchMatch` per
+occurrence, ordered by file path (pages of the same PDF stay in page
+order, occurrences within a page in text order) — or best match first for
+the `full-text` engine. Only successfully indexed documents are
+considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
+
+`engine` is one of `SEARCH_ENGINES` and defaults to
+`client.settings.search.engine`:
+
+- `"like"` — `content` anywhere, even inside a word, ignoring case
+- `"exact"` — `content` as typed: same case, as a whole word
+- `"full-text"` — pages containing `content`'s words (any case, English word
+  forms; `"quote a phrase"`, end a word with `*` for a prefix), ranked by
+  relevance (`SearchMatch.score`)
+
+`case_sensitive` defaults to `client.settings.search.case_sensitive`, and
+only `"like"` acts on it (`"exact"` is always case-sensitive, `"full-text"`
+never is). Raises `SearchOptionError` (a `ValueError`; its `option` says
+which argument) for an unknown engine or an explicit `case_sensitive` the
+engine can't honour.
 
 ```python
 for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
+
+client.search.run("Museum", engine="exact")
+client.search.run("amount due", engine="full-text")
 ```
 
 ## `client.settings`
@@ -197,6 +217,18 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 
 - `get()` — times a file's OCR is retried after a transient failure (3 by default)
 - `set(attempts)` — raises `InvalidSettingValueError` if `attempts` is negative
+
+### `client.settings.search.case_sensitive`
+
+- `get()` — whether `search` matches case by default (`False` by default; only
+  the `like` engine acts on it)
+- `set(enabled)`
+
+### `client.settings.search.engine`
+
+- `get()` — default engine `search` uses (`"like"` by default)
+- `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"like"`, `"exact"`,
+  `"full-text"`); raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 
@@ -330,6 +362,8 @@ One occurrence of the query on a page, returned by `client.search.run`:
 - `page_number`, `total_pages` (both `None` for a non-paginated file, e.g. an image)
 - `before`, `matched`, `after` (the match split out for highlighting)
 - `truncated_before`, `truncated_after`
+- `source` (`"native"`, `"ocr"` or `"mixed"` — how the page's text was obtained)
+- `score` (relevance, higher is better; only set by the `full-text` engine, otherwise `None`)
 - `duplicate_of_path` (set if this file's content matched an already-indexed file)
 
 ## `Source`

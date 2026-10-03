@@ -39,5 +39,24 @@ class SearchEngines:
 
         return LikeSearchEngine(storage)
 
+    @staticmethod
+    def _exact_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.exact import ExactSearchEngine
+
+        return ExactSearchEngine(storage)
+
+    @staticmethod
+    def _fulltext_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.fulltext import FullTextSearchEngine
+
+        return FullTextSearchEngine(storage)
+
+    @staticmethod
+    def available() -> list[str]:
+        """Names of the registered engines, sorted."""
+        return sorted(SearchEngines._factories)
+
 
 SearchEngines.register("like", SearchEngines._like_factory)
+SearchEngines.register("exact", SearchEngines._exact_factory)
+SearchEngines.register("full-text", SearchEngines._fulltext_factory)

@@ -15,6 +15,23 @@ class Migration:
 
     @staticmethod
     def schema(conn: sqlite3.Connection, *, from_version: int) -> None:
+        if from_version < 28:
+            # Before v28 the trigram indexes were named `<table>_fts`; they are now
+            # `<table>_trigram`, next to the word indexes `<table>_words`. Drop the old
+            # ones, if any (rebuilt below under the new names).
+            #
+            # `Db._SCHEMA` just created the new indexes and triggers, but the indexes are
+            # still empty until the v28 step below rebuilds them. Until then an earlier
+            # step updating `pdf_pages`/`image_pages` rows (the v27 `char_count` backfill)
+            # would fire their UPDATE trigger, which 'delete's entries that were never
+            # indexed and corrupts the index. Drop the new triggers here too; `Db`
+            # restores them afterwards.
+            for table in ("pdf_pages", "image_pages"):
+                for suffix in ("ai", "ad", "au"):
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_fts_{suffix}")
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_trigram_{suffix}")
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_words_{suffix}")
+                conn.execute(f"DROP TABLE IF EXISTS {table}_fts")
         if from_version < 3:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
             if "source" not in columns:
@@ -472,15 +489,6 @@ class Migration:
             conn.execute("DROP TABLE document_index")
             conn.execute("ALTER TABLE document_index_new RENAME TO document_index")
             conn.execute("PRAGMA foreign_keys = ON")
-        if from_version < 25:
-            # `pdf_pages_fts`/`image_pages_fts` were just created (empty) by `Db._SCHEMA`,
-            # which runs unconditionally before this migration - pages written before
-            # this version never fired their INSERT triggers, so index them in one go.
-            # 'rebuild' (unlike a plain INSERT ... SELECT) is idempotent, so it's safe
-            # even if an index was already populated.
-            conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
-            conn.execute("INSERT INTO image_pages_fts(image_pages_fts) VALUES ('rebuild')")
-
         if from_version < 26:
             # Adds 'unsupported' to the file_type and status CHECK constraints, so files with no
             # registered reader (.txt, .csv, ...) can be recorded with an error
@@ -541,3 +549,14 @@ class Migration:
                         f"ALTER TABLE {table} ADD COLUMN char_count INTEGER NOT NULL DEFAULT 0"
                     )
                 conn.execute(f"UPDATE {table} SET char_count = LENGTH(ocr_text)")
+
+        if from_version < 28:
+            # The trigram and word indexes were just created (empty) by `Db._SCHEMA`, and
+            # pages written before this version never fired their INSERT triggers.
+            # 'rebuild' re-reads every row from the content table; unlike a plain
+            # INSERT ... SELECT it is idempotent. This also covers databases that predate
+            # the trigram indexes (v25).
+            for table in ("pdf_pages", "image_pages"):
+                for suffix in ("trigram", "words"):
+                    index = f"{table}_{suffix}"
+                    conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")

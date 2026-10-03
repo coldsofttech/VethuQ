@@ -391,7 +391,7 @@ class Document:
         """Return indexed `pdf_pages` rows whose `ocr_text` matches `like_pattern`.
 
         `like_pattern` is a caller-escaped `LIKE` pattern (see
-        `LikeSearchEngine._like_pattern`), matched against `pdf_pages_fts` -
+        `SearchEngineHelpers.like_pattern`), matched against `pdf_pages_trigram` -
         a trigram-tokenized FTS5 index kept in sync with `pdf_pages` by triggers
         (see `vethuq_core.db.connection`) - rather than `pdf_pages` itself, so the
         match is resolved through the trigram index instead of a full table scan.
@@ -400,12 +400,12 @@ class Document:
             "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
             "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM pdf_pages_fts "
-            "JOIN pdf_pages pp ON pp.id = pdf_pages_fts.rowid "
+            "FROM pdf_pages_trigram "
+            "JOIN pdf_pages pp ON pp.id = pdf_pages_trigram.rowid "
             "JOIN document_index carrier ON carrier.id = pp.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE pdf_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "WHERE pdf_pages_trigram.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY di.file_path, pp.page_number",
             (like_pattern,),
@@ -415,20 +415,68 @@ class Document:
     def search_indexed_image_pages(
         conn: sqlite3.Connection, like_pattern: str
     ) -> list[sqlite3.Row]:
-        """Like `search_indexed_pdf_pages`, but for `image_pages`/`image_pages_fts`."""
+        """Like `search_indexed_pdf_pages`, but for `image_pages`/`image_pages_trigram`."""
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
             "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM image_pages_fts "
-            "JOIN image_pages ip ON ip.id = image_pages_fts.rowid "
+            "FROM image_pages_trigram "
+            "JOIN image_pages ip ON ip.id = image_pages_trigram.rowid "
             "JOIN document_index carrier ON carrier.id = ip.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE image_pages_fts.ocr_text LIKE ? ESCAPE '\\' "
+            "WHERE image_pages_trigram.ocr_text LIKE ? ESCAPE '\\' "
             "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY di.file_path",
             (like_pattern,),
+        ).fetchall()
+
+    @staticmethod
+    def search_fulltext_pdf_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
+        """Return indexed `pdf_pages` rows matching the FTS5 `match_expr`, best match first.
+
+        Queries `pdf_pages_words` - the word-based (`unicode61` + `porter`) index kept in sync
+        with `pdf_pages` by triggers - with `MATCH`. `highlighted_text` is the page's text
+        with every matched word wrapped in control characters 0x02...0x03 (FTS5's own
+        `highlight()`, so stemmed and prefix matches are marked exactly as the index
+        matched them), and `score` is the negated BM25 rank (higher is better).
+        Otherwise shaped like `search_indexed_pdf_pages`.
+        """
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, "
+            "highlight(pdf_pages_words, 0, char(2), char(3)) AS highlighted_text, "
+            "-bm25(pdf_pages_words) AS score, "
+            "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM pdf_pages_words "
+            "JOIN pdf_pages pp ON pp.id = pdf_pages_words.rowid "
+            "JOIN document_index carrier ON carrier.id = pp.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            "WHERE pdf_pages_words MATCH ? "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "ORDER BY score DESC, di.file_path, pp.page_number",
+            (match_expr,),
+        ).fetchall()
+
+    @staticmethod
+    def search_fulltext_image_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
+        """Like `search_fulltext_pdf_pages`, but for `image_pages`/`image_pages_words`."""
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, "
+            "highlight(image_pages_words, 0, char(2), char(3)) AS highlighted_text, "
+            "-bm25(image_pages_words) AS score, "
+            "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM image_pages_words "
+            "JOIN image_pages ip ON ip.id = image_pages_words.rowid "
+            "JOIN document_index carrier ON carrier.id = ip.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            "WHERE image_pages_words MATCH ? "
+            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY score DESC, di.file_path",
+            (match_expr,),
         ).fetchall()
 
     @staticmethod

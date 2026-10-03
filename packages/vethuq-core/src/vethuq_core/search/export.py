@@ -44,36 +44,70 @@ class Export:
         return datetime.now().astimezone().strftime("%c %Z").strip()
 
     @staticmethod
-    def search_results(matches: list[SearchMatch], query: str, output: Path, format_: str) -> None:
-        """Write `matches` for `query` to `output` as `format_` ('json' or 'html')."""
+    def search_results(
+        matches: list[SearchMatch],
+        query: str,
+        output: Path,
+        format_: str,
+        *,
+        engine: str | None = None,
+        case_sensitive: bool = False,
+    ) -> None:
+        """Write `matches` for `query` to `output` as `format_` ('json' or 'html').
+
+        `engine` and `case_sensitive` record how the search was run, so the export
+        can be reproduced; they're omitted from the file when `engine` is None.
+        """
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
         if format_ == "json":
-            Export._write_json(matches, query, output)
+            Export._write_json(matches, query, output, engine, case_sensitive)
         else:
-            Export._write_html(matches, query, output)
+            Export._write_html(matches, query, output, engine, case_sensitive)
 
     @staticmethod
-    def _write_json(matches: list[SearchMatch], query: str, output: Path) -> None:
-        payload = {
-            "query": query,
-            "generated_at": Export._generated_at(),
-            "result_count": len(matches),
-            "matches": [
-                {
-                    "file_name": match.file_name,
-                    "file_path": match.file_path,
-                    "page_number": match.page_number,
-                    "total_pages": match.total_pages,
-                    "matched_text": Export._matched_text(match),
-                }
-                for match in matches
-            ],
+    def _match_entry(match: SearchMatch) -> dict[str, object]:
+        entry: dict[str, object] = {
+            "file_name": match.file_name,
+            "file_path": match.file_path,
+            "page_number": match.page_number,
+            "total_pages": match.total_pages,
+            "matched_text": Export._matched_text(match),
         }
+        if match.score is not None:
+            entry["score"] = match.score
+        return entry
+
+    @staticmethod
+    def _write_json(
+        matches: list[SearchMatch],
+        query: str,
+        output: Path,
+        engine: str | None,
+        case_sensitive: bool,
+    ) -> None:
+        payload: dict[str, object] = {"query": query}
+        if engine is not None:
+            payload["engine"] = engine
+            payload["case_sensitive"] = case_sensitive
+        payload["generated_at"] = Export._generated_at()
+        payload["result_count"] = len(matches)
+        payload["matches"] = [Export._match_entry(match) for match in matches]
         output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     @staticmethod
-    def _write_html(matches: list[SearchMatch], query: str, output: Path) -> None:
+    def _write_html(
+        matches: list[SearchMatch],
+        query: str,
+        output: Path,
+        engine: str | None,
+        case_sensitive: bool,
+    ) -> None:
+        search_mode = ""
+        if engine is not None:
+            search_mode = f" &middot; engine: {html.escape(engine)}"
+            if case_sensitive:
+                search_mode += ", case-sensitive"
         rows = []
         for match in matches:
             page = str(match.page_number) if match.page_number is not None else "-"
@@ -100,6 +134,7 @@ class Export:
             .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
             .replace("{{QUERY}}", html.escape(query))
             .replace("{{RESULT_COUNT}}", str(len(matches)))
+            .replace("{{SEARCH_MODE}}", search_mode)
             .replace("{{GENERATED_AT}}", html.escape(Export._generated_at()))
             .replace("{{ROWS}}", "\n".join(rows))
         )

@@ -21,6 +21,7 @@ from vethuq_core.settings import (
     OcrSettings,
     SearchSettings,
 )
+from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.db import integrity_check as db_integrity_check
@@ -34,6 +35,9 @@ from vethuq_cli.index.commands import stop as index_stop
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import search as run_search
 from vethuq_cli.settings import (
+    case_sensitive_disable,
+    case_sensitive_enable,
+    case_sensitive_show,
     engine_set,
     engine_show,
     export_format_set,
@@ -53,6 +57,8 @@ from vethuq_cli.settings import (
     removed_retention_show,
     retry_set,
     retry_show,
+    search_engine_set,
+    search_engine_show,
     snippet_set,
     snippet_show,
     stability_check_set,
@@ -115,7 +121,30 @@ class InteractiveMenu:
         if not content:
             console.print("Nothing to search.", style="bright_black")
             return
-        InteractiveMenu._run_safely(run_search, content=content, export=None, format_=None)
+        storage = open_storage()
+        try:
+            default_engine = SearchSettings.get_engine(storage)
+            default_case_sensitive = SearchSettings.is_case_sensitive(storage)
+        finally:
+            storage.close()
+        engine = Prompt.ask(
+            "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
+        )
+        # Only `like` has a choice to make: `exact` is always case-sensitive and
+        # `full-text` never is, so asking would be a question with no effect.
+        case_sensitive: bool | None = None
+        if engine == "like":
+            case_sensitive = Confirm.ask(
+                "Case-sensitive?", console=console, default=default_case_sensitive
+            )
+        InteractiveMenu._run_safely(
+            run_search,
+            content=content,
+            engine=engine,
+            case_sensitive=case_sensitive,
+            export=None,
+            format_=None,
+        )
 
     @staticmethod
     def _sources_menu() -> None:
@@ -248,19 +277,64 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(export_format_set, format_=format_)
 
     @staticmethod
+    def _settings_search_engine_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Search > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(search_engine_show)
+            elif choice == "2":
+                engine = Prompt.ask("Engine", console=console, choices=list(SearchSettings.ENGINES))
+                InteractiveMenu._run_safely(search_engine_set, engine=engine)
+
+    @staticmethod
+    def _settings_case_sensitive_menu() -> None:
+        while True:
+            console.print()
+            InteractiveMenu._print_menu(
+                "Settings > Search > Case Sensitive",
+                [("1", "Show"), ("2", "Enable"), ("3", "Disable"), ("0", "Back")],
+            )
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "0"])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(case_sensitive_show)
+            elif choice == "2":
+                InteractiveMenu._run_safely(case_sensitive_enable)
+            elif choice == "3":
+                InteractiveMenu._run_safely(case_sensitive_disable)
+
+    @staticmethod
     def _settings_search_menu() -> None:
         while True:
             console.print()
             InteractiveMenu._print_menu(
-                "Settings > Search", [("1", "Snippet"), ("2", "Export Format"), ("0", "Back")]
+                "Settings > Search",
+                [
+                    ("1", "Snippet"),
+                    ("2", "Export Format"),
+                    ("3", "Engine"),
+                    ("4", "Case Sensitive"),
+                    ("0", "Back"),
+                ],
             )
-            choice = InteractiveMenu._prompt_choice(["1", "2", "0"])
+            choice = InteractiveMenu._prompt_choice(["1", "2", "3", "4", "0"])
             if choice == "0":
                 return
             if choice == "1":
                 InteractiveMenu._settings_snippet_menu()
             elif choice == "2":
                 InteractiveMenu._settings_export_format_menu()
+            elif choice == "3":
+                InteractiveMenu._settings_search_engine_menu()
+            elif choice == "4":
+                InteractiveMenu._settings_case_sensitive_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

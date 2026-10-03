@@ -312,3 +312,41 @@ class TestStabilityCheck:
         result = runner.invoke(app, ["settings", "index", "stability-check", "set", "--", "-1"])
 
         assert result.exit_code == 1
+
+
+class TestSearchEngineSettings:
+    def test_engine_show_defaults_to_like(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "engine", "show"])
+
+        assert result.exit_code == 0
+        assert "like" in result.stdout
+
+    def test_engine_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "search", "engine", "set", "full-text"])
+        assert set_result.exit_code == 0
+
+        show_result = runner.invoke(app, ["settings", "search", "engine", "show"])
+        assert "full-text" in show_result.stdout
+
+    def test_engine_set_rejects_unknown_engine(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "engine", "set", "nope"])
+
+        assert result.exit_code == 1
+
+    def test_case_sensitive_show_enable_disable(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "case-sensitive", "show"]
+
+        assert "disabled" in runner.invoke(app, show).stdout
+        assert runner.invoke(app, ["settings", "search", "case-sensitive", "enable"]).exit_code == 0
+        assert "enabled" in runner.invoke(app, show).stdout
+        assert (
+            runner.invoke(app, ["settings", "search", "case-sensitive", "disable"]).exit_code == 0
+        )
+        assert "disabled" in runner.invoke(app, show).stdout

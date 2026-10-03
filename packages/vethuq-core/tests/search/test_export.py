@@ -132,3 +132,34 @@ class TestExportTemplates:
 
     def test_the_stylesheet_takes_every_color_from_the_palette(self):
         assert re.findall(r"#[0-9a-fA-F]{3,6}\b", Export.template("export.css")) == []
+
+
+class TestExportSearchMode:
+    def test_json_export_records_engine_and_score(self, tmp_path: Path):
+        output = tmp_path / "out.json"
+        ranked = SearchMatch(**{**_match().__dict__, "score": 1.5})
+
+        Export.search_results(
+            [ranked], "due", output, "json", engine="full-text", case_sensitive=False
+        )
+
+        payload = json.loads(output.read_text())
+        assert payload["engine"] == "full-text"
+        assert payload["case_sensitive"] is False
+        assert payload["matches"][0]["score"] == 1.5
+
+    def test_json_export_omits_engine_and_score_when_unknown(self, tmp_path: Path):
+        output = tmp_path / "out.json"
+
+        Export.search_results([_match()], "due", output, "json")
+
+        payload = json.loads(output.read_text())
+        assert "engine" not in payload and "case_sensitive" not in payload
+        assert "score" not in payload["matches"][0]
+
+    def test_html_export_shows_engine_and_case_sensitivity(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match()], "due", output, "html", engine="like", case_sensitive=True)
+
+        assert "engine: like, case-sensitive" in output.read_text()

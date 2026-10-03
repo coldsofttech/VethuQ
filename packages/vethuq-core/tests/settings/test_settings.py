@@ -66,6 +66,24 @@ class TestSearchSettings:
         with pytest.raises(ValueError, match="non-negative"):
             SearchSettings.set_snippet_context_chars(storage, -1)
 
+    def test_search_engine_defaults_to_like(self, storage: Storage):
+        assert SearchSettings.get_engine(storage) == "like"
+
+    def test_set_search_engine_roundtrip(self, storage: Storage):
+        SearchSettings.set_engine(storage, "full-text")
+        assert SearchSettings.get_engine(storage) == "full-text"
+
+    def test_set_search_engine_rejects_unknown_engine(self, storage: Storage):
+        with pytest.raises(ValueError):
+            SearchSettings.set_engine(storage, "nope")
+
+    def test_search_case_sensitive_defaults_to_disabled_and_roundtrips(self, storage: Storage):
+        assert SearchSettings.is_case_sensitive(storage) is False
+        SearchSettings.set_case_sensitive(storage, True)
+        assert SearchSettings.is_case_sensitive(storage) is True
+        SearchSettings.set_case_sensitive(storage, False)
+        assert SearchSettings.is_case_sensitive(storage) is False
+
 
 class TestIndexSettings:
     def test_thread_workers_defaults_to_disabled(self, storage: Storage):

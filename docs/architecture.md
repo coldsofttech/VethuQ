@@ -173,19 +173,35 @@ A test enforces that no core module outside `db/` and `storage/` imports
 `vethuq_core.search.engines`:
 
 - `SearchEngine` (a `Protocol`, in `search/engines/base.py`) — `name` and
-  `search(query, *, context_chars=None) -> list[SearchMatch]`. An engine may
-  raise `SearchEngineUnavailable` when it can't serve queries.
+  `search(query, *, context_chars=None, case_sensitive=False) -> list[SearchMatch]`.
+  An engine may raise `SearchEngineUnavailable` when it can't serve queries.
 - `SearchEngines.get(storage, name=None)` (`search/engines/registry.py`) — builds
   the engine registered under `name` (default `like`) on a `Storage`.
-- `LikeSearchEngine` (`search/engines/like.py`) — the current `LIKE`-based
-  implementation.
+- Three engines are registered (`SearchSettings.ENGINES` lists their names;
+  shared helpers live in `SearchEngineHelpers`, `search/engines/common.py`):
+  - `like` (`search/engines/like.py`) — substring match anywhere, even inside a
+    word; case-insensitive unless `case_sensitive`. Narrows candidate pages via
+    the trigram indexes (`pdf_pages_trigram`/`image_pages_trigram`) queried with `LIKE`.
+  - `exact` (`search/engines/exact.py`) — the query as typed: case-sensitive and
+    as a whole word (`Museum` doesn't match `museum` or `Museums`). Shares the
+    trigram narrowing with `like`.
+  - `full-text` (`search/engines/fulltext.py`) — whole-word, stemmed, ranked by
+    BM25 (`SearchMatch.score`). Queries the word indexes
+    (`pdf_pages_words`/`image_pages_words`, `unicode61` + `porter`, added in schema
+    v28 and kept in sync by triggers) with `MATCH`; the query becomes a safe
+    expression via `FullTextSearchEngine.build_match_expression` (`"phrase"`,
+    `prefix*`, all terms required), and matches are located with FTS5's
+    `highlight()`. Always case-insensitive.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
-Adding an engine (e.g. FTS5 `MATCH`, #24) means writing a `SearchEngine` and
-calling `SearchEngines.register(name, factory)`; engines coexist, so it can be
-selected by name or chained in front of `like` as a fallback. Callers are
-unchanged.
+`Search.resolve_options` picks the engine and case sensitivity from arguments
+and the `search_engine` / `search_case_sensitive` settings, rejecting (with
+`SearchOptionError`) combinations an engine can't honour.
+
+Adding an engine means writing a `SearchEngine` and calling
+`SearchEngines.register(name, factory)`; engines coexist, so it can be selected
+by name or chained in front of another as a fallback. Callers are unchanged.
 
 ### Background indexing: worker threads
 
