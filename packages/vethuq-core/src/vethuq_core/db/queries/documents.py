@@ -432,6 +432,65 @@ class Document:
         ).fetchall()
 
     @staticmethod
+    def search_candidate_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        """Return indexed `pdf_pages` rows that may hold a fuzzy match.
+
+        Shaped like `search_indexed_pdf_pages`.
+
+        `match_expr` is an FTS5 expression over the trigram index `pdf_pages_trigram`
+        that every page that could match satisfies (a superset the caller then
+        verifies); None means no such narrowing is possible, so every indexed
+        page is returned. The expression is built by the caller from word
+        characters only, never from raw user input.
+        """
+        source = (
+            "pdf_pages_trigram JOIN pdf_pages pp ON pp.id = pdf_pages_trigram.rowid "
+            if match_expr is not None
+            else "pdf_pages pp "
+        )
+        where = "pdf_pages_trigram MATCH ? AND " if match_expr is not None else ""
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
+            "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            f"FROM {source}"
+            "JOIN document_index carrier ON carrier.id = pp.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            f"WHERE {where}"
+            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "ORDER BY di.file_path, pp.page_number",
+            (match_expr,) if match_expr is not None else (),
+        ).fetchall()
+
+    @staticmethod
+    def search_candidate_image_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        """Like `search_candidate_pdf_pages`, but for `image_pages`/`image_pages_trigram`."""
+        source = (
+            "image_pages_trigram JOIN image_pages ip ON ip.id = image_pages_trigram.rowid "
+            if match_expr is not None
+            else "image_pages ip "
+        )
+        where = "image_pages_trigram MATCH ? AND " if match_expr is not None else ""
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
+            "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            f"FROM {source}"
+            "JOIN document_index carrier ON carrier.id = ip.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            f"WHERE {where}"
+            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY di.file_path",
+            (match_expr,) if match_expr is not None else (),
+        ).fetchall()
+
+    @staticmethod
     def search_fulltext_pdf_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
         """Return indexed `pdf_pages` rows matching the FTS5 `match_expr`, best match first.
 

@@ -173,11 +173,11 @@ A test enforces that no core module outside `db/` and `storage/` imports
 `vethuq_core.search.engines`:
 
 - `SearchEngine` (a `Protocol`, in `search/engines/base.py`) — `name` and
-  `search(query, *, context_chars=None, case_sensitive=False) -> list[SearchMatch]`.
+  `search(query, *, context_chars=None, case_sensitive=False, threshold=None) -> list[SearchMatch]`.
   An engine may raise `SearchEngineUnavailable` when it can't serve queries.
 - `SearchEngines.get(storage, name=None)` (`search/engines/registry.py`) — builds
   the engine registered under `name` (default `like`) on a `Storage`.
-- Three engines are registered (`SearchSettings.ENGINES` lists their names;
+- Four engines are registered (`SearchSettings.ENGINES` lists their names;
   shared helpers live in `SearchEngineHelpers`, `search/engines/common.py`):
   - `like` (`search/engines/like.py`) — substring match anywhere, even inside a
     word; case-insensitive unless `case_sensitive`. Narrows candidate pages via
@@ -192,12 +192,24 @@ A test enforces that no core module outside `db/` and `storage/` imports
     expression via `FullTextSearchEngine.build_match_expression` (`"phrase"`,
     `prefix*`, all terms required), and matches are located with FTS5's
     `highlight()`. Always case-insensitive.
+  - `fuzzy` (`search/engines/fuzzy.py`) — whole words within a similarity
+    threshold of the query's words, every word required, closest page first.
+    Similarity is `1 − edits ÷ longer word` with optimal-string-alignment edits
+    (a swap counts once), at most `MAX_EDITS` (2); words under
+    `MIN_FUZZY_LENGTH` (4) and words with a digit must match exactly.
+    Candidate pages come from the trigram index via `narrowing_expression`,
+    which only narrows where it is provably lossless (an edit spoils at most 3
+    trigrams) and otherwise examines every indexed page; each candidate's words
+    are then scored in Python (`similarity`), so hits keep their exact spans and
+    `SearchMatch.score` is the word's similarity. `SearchSettings.FUZZY_PRESETS`
+    names the thresholds (`strict`, `balanced`, `loose`).
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
-`Search.resolve_options` picks the engine and case sensitivity from arguments
-and the `search_engine` / `search_case_sensitive` settings, rejecting (with
-`SearchOptionError`) combinations an engine can't honour.
+`Search.resolve_options` picks the engine, case sensitivity and (fuzzy only)
+threshold from arguments and the `search_engine` / `search_case_sensitive` /
+`search_fuzzy_threshold` settings, rejecting (with `SearchOptionError`)
+combinations an engine can't honour.
 
 Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected

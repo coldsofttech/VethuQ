@@ -199,3 +199,47 @@ class TestInteractiveSearchEngines:
         assert "Search engine set to exact." in result.stdout
         assert "Search engine: exact" in result.stdout
         assert "Search will match case by default." in result.stdout
+
+    def test_fuzzy_asks_for_case_and_fuzziness(self, use_temp_db):
+        _seed_page(use_temp_db(), "Visit the Museurn today")
+
+        # Search > text > engine (fuzzy) > case-sensitive? no > fuzziness loose, then exit.
+        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nloose\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in result.stdout
+
+    def test_fuzzy_accepts_a_number_and_defaults_to_the_stored_threshold(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_page(db_path, "Visit the Museurn today")
+
+        numeric = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n0.7\n8\n")
+        assert "threshold 0.70" in numeric.stdout
+
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_fuzzy_threshold(storage, "loose")
+        finally:
+            storage.close()
+        # Enter accepts the stored default (loose).
+        default = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n\n8\n")
+        assert "threshold 0.65" in default.stdout
+
+    def test_fuzzy_rejects_an_invalid_fuzziness_answer(self, use_temp_db):
+        _seed_page(use_temp_db(), "Visit the Museum today")
+
+        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nsloppy\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results:" not in result.output
+        assert "threshold must be" in result.output
+
+    def test_settings_fuzzy_threshold_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Fuzzy Threshold > Set loose; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n5\n2\nloose\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search fuzzy threshold set to loose." in result.stdout
+        assert "Search fuzzy threshold: loose" in result.stdout

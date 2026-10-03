@@ -14,8 +14,13 @@ class SearchSettings:
     EXPORT_FORMATS = ("json", "html")
     ENGINE_KEY = "search_engine"
     DEFAULT_ENGINE = "like"
-    ENGINES = ("like", "exact", "full-text")
+    ENGINES = ("like", "exact", "full-text", "fuzzy")
     CASE_SENSITIVE_KEY = "search_case_sensitive"
+    FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
+    DEFAULT_FUZZY_THRESHOLD = "balanced"
+    # Minimum similarity (0-1] between a query word and a page word for the `fuzzy`
+    # engine to count it as a match, by name.
+    FUZZY_PRESETS = {"strict": 0.90, "balanced": 0.80, "loose": 0.65}
 
     @staticmethod
     def get_snippet_context_chars(storage: Storage) -> int:
@@ -71,11 +76,59 @@ class SearchSettings:
     def is_case_sensitive(storage: Storage) -> bool:
         """Whether `search` matches case-sensitively by default. Disabled by default.
 
-        Only the `like` engine acts on it: `exact` is always case-sensitive and
-        `full-text` never is.
+        Only the `like` and `fuzzy` engines act on it: `exact` is always case-sensitive
+        and `full-text` never is.
         """
         return Settings.get(storage, SearchSettings.CASE_SENSITIVE_KEY) == "true"
 
     @staticmethod
     def set_case_sensitive(storage: Storage, enabled: bool) -> None:
         Settings.set(storage, SearchSettings.CASE_SENSITIVE_KEY, "true" if enabled else "false")
+
+    @staticmethod
+    def parse_fuzzy_threshold(value: str | float) -> float:
+        """Resolve a fuzzy threshold - a preset name or a similarity in (0, 1] - to that similarity.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        if isinstance(value, str):
+            preset = SearchSettings.FUZZY_PRESETS.get(value.strip().lower())
+            if preset is not None:
+                return preset
+            try:
+                number = float(value)
+            except ValueError:
+                raise InvalidSettingValueError(
+                    f"threshold must be a number above 0 and up to 1, or one of "
+                    f"{tuple(SearchSettings.FUZZY_PRESETS)}"
+                ) from None
+        else:
+            number = float(value)
+        if not 0 < number <= 1:
+            raise InvalidSettingValueError("threshold must be above 0 and at most 1")
+        return number
+
+    @staticmethod
+    def get_fuzzy_threshold_setting(storage: Storage) -> str:
+        """The stored fuzzy threshold as set - a preset name or a number. 'balanced' by default."""
+        value = Settings.get(storage, SearchSettings.FUZZY_THRESHOLD_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_FUZZY_THRESHOLD
+        try:
+            SearchSettings.parse_fuzzy_threshold(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_FUZZY_THRESHOLD
+        return value
+
+    @staticmethod
+    def get_fuzzy_threshold(storage: Storage) -> float:
+        """Minimum word similarity the `fuzzy` engine accepts by default (0.80 is 'balanced')."""
+        return SearchSettings.parse_fuzzy_threshold(
+            SearchSettings.get_fuzzy_threshold_setting(storage)
+        )
+
+    @staticmethod
+    def set_fuzzy_threshold(storage: Storage, value: str) -> None:
+        """Store the default fuzzy threshold: a preset name or a similarity in (0, 1]."""
+        SearchSettings.parse_fuzzy_threshold(value)  # validate
+        Settings.set(storage, SearchSettings.FUZZY_THRESHOLD_KEY, value.strip().lower())

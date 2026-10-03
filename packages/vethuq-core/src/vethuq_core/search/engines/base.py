@@ -52,7 +52,12 @@ class SearchEngine(Protocol):
         ...
 
     def search(
-        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+        self,
+        query: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool = False,
+        threshold: float | None = None,
     ) -> list[SearchMatch]:
         """Return one `SearchMatch` per occurrence of `query`.
 
@@ -61,8 +66,10 @@ class SearchEngine(Protocol):
         the snippet context either side of the match; None means the user's
         setting. `case_sensitive` asks for a case-sensitive match: engines that
         always match case-sensitively ignore it, and an engine that can't
-        honour it raises `ValueError`. An empty `query` matches nothing.
-        May raise `SearchEngineUnavailable`.
+        honour it raises `ValueError`. `threshold` is the minimum word
+        similarity (0-1] a tolerant engine accepts, None meaning the user's
+        setting; an engine that isn't tolerant raises `ValueError` if given
+        one. An empty `query` matches nothing. May raise `SearchEngineUnavailable`.
         """
         ...
 
@@ -79,13 +86,24 @@ class FallbackSearchEngine:
         return f"{self._primary.name}->{self._fallback.name}"
 
     def search(
-        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+        self,
+        query: str,
+        *,
+        context_chars: int | None = None,
+        case_sensitive: bool = False,
+        threshold: float | None = None,
     ) -> list[SearchMatch]:
         try:
             return self._primary.search(
-                query, context_chars=context_chars, case_sensitive=case_sensitive
+                query,
+                context_chars=context_chars,
+                case_sensitive=case_sensitive,
+                threshold=threshold,
             )
         except SearchEngineUnavailable:
             return self._fallback.search(
-                query, context_chars=context_chars, case_sensitive=case_sensitive
+                query,
+                context_chars=context_chars,
+                case_sensitive=case_sensitive,
+                threshold=threshold,
             )

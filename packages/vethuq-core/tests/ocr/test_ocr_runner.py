@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -5,6 +6,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 from conftest import PaddleStub
+from vethuq_core.logs import Logs
 from vethuq_core.ocr import Deepening, Ocr
 from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Sources
@@ -69,6 +71,36 @@ class TestOcr:
         assert page["ocr_text"].split("\n") == ["hello", "DIRECTOR"]
         assert (page["ocr_phase"], page["ocr_angles"]) == (2, "0,90,180,270")
         assert engine.predict.call_count == 1 + len(Deepening.PHASE_ANGLES[2])
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_logs_each_angle_before_reading_it(
+        self, mock_get_engine, conn, storage: Storage, tmp_path
+    ):
+        engine = PaddleStub()
+        engine.predict.return_value = _result("hello")
+        mock_get_engine.return_value = engine
+        OcrSettings.set_engine(storage, "moderate")
+        folder = tmp_path / "src"
+        folder.mkdir()
+        _write_png(folder / "a.png")
+        source = Sources.add(storage, folder)
+        messages: list[str] = []
+
+        class Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                messages.append(record.getMessage())
+
+        logger = Logs.get_logger("index")
+        handler = Capture()
+        logger.addHandler(handler)
+        try:
+            Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
+        finally:
+            logger.removeHandler(handler)
+
+        reads = [m for m in messages if m.startswith("Deeper read:")]
+        assert [m.rsplit("angle=", 1)[1] for m in reads] == ["90", "180", "270"]
+        assert all("a.png" in m and "phase=2" in m for m in reads)
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_deep_engine_reads_every_angle_and_is_not_repeated(
@@ -141,6 +173,37 @@ class TestOcr:
         assert calls[:3] == ["a.png", "angle", "b.png"], calls
         # Nothing was lost: both files end up fully moderate-indexed.
         assert _image_page(conn, "a.png")["ocr_angles"] == "0,90,180,270"
+        assert _image_page(conn, "b.png")["ocr_angles"] == "0,90,180,270"
+
+    @patch("vethuq_core.ocr.engines.Engines.get")
+    def test_modified_file_gets_its_quick_pass_before_deeper_work_resumes(
+        self, mock_get_engine, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(Deepening, "QUICK_WORK_CHECK_SECONDS", 0.0)
+        folder = tmp_path / "src"
+        folder.mkdir()
+        _write_png(folder / "a.png")
+        _write_png(folder / "b.png", width=50)
+        calls: list[str] = []
+
+        def predict(image):
+            calls.append(Path(image).name if isinstance(image, str) else "angle")
+            # Right after the first rotated pass - when both files already had their quick
+            # pass this run - b.png is edited in place.
+            if calls == ["a.png", "b.png", "angle"]:
+                _write_png(folder / "b.png", width=60)
+            return _result("hello")
+
+        engine = PaddleStub()
+        engine.predict.side_effect = predict
+        mock_get_engine.return_value = engine
+        OcrSettings.set_engine(storage, "moderate")
+        source = Sources.add(storage, folder)
+
+        Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
+
+        # The edited b.png jumps the queue: re-read quickly before any more angle passes.
+        assert calls[:4] == ["a.png", "b.png", "angle", "b.png"], calls
         assert _image_page(conn, "b.png")["ocr_angles"] == "0,90,180,270"
 
     @patch("vethuq_core.ocr.engines.Engines.get")

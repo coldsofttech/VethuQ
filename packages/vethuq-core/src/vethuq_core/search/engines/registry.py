@@ -52,6 +52,12 @@ class SearchEngines:
         return FullTextSearchEngine(storage)
 
     @staticmethod
+    def _fuzzy_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.fuzzy import FuzzySearchEngine
+
+        return FuzzySearchEngine(storage)
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines, sorted."""
         return sorted(SearchEngines._factories)
@@ -60,3 +66,4 @@ class SearchEngines:
 SearchEngines.register("like", SearchEngines._like_factory)
 SearchEngines.register("exact", SearchEngines._exact_factory)
 SearchEngines.register("full-text", SearchEngines._fulltext_factory)
+SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)

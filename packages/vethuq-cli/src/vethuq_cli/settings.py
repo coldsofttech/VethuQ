@@ -24,6 +24,10 @@ search_app = typer.Typer(help="Configure `search` behavior.")
 snippet_app = typer.Typer(help="Configure how much context `search` shows around a match.")
 export_format_app = typer.Typer(help="Configure the default format `search --export` writes to.")
 search_engine_app = typer.Typer(help="Configure the default engine `search` matches with.")
+fuzzy_app = typer.Typer(help="Configure the `fuzzy` search engine.")
+fuzzy_threshold_app = typer.Typer(
+    help="Configure how close a word must be to your query for `fuzzy` search to match it."
+)
 case_sensitive_app = typer.Typer(
     help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
@@ -64,6 +68,8 @@ search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
 search_app.add_typer(search_engine_app, name="engine")
 search_app.add_typer(case_sensitive_app, name="case-sensitive")
+search_app.add_typer(fuzzy_app, name="fuzzy")
+fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -241,7 +247,7 @@ def case_sensitive_show() -> None:
 
 @case_sensitive_app.command("enable")
 def case_sensitive_enable() -> None:
-    """Make `search` match case by default (the 'like' engine; `--no-case-sensitive` overrides)."""
+    """Make `search` match case by default ('like'/'fuzzy'; `--no-case-sensitive` overrides)."""
     storage = open_storage()
     try:
         SearchSettings.set_case_sensitive(storage, True)
@@ -257,6 +263,55 @@ def case_sensitive_disable() -> None:
     try:
         SearchSettings.set_case_sensitive(storage, False)
         console.print("Search will ignore case by default.")
+    finally:
+        storage.close()
+
+
+@fuzzy_threshold_app.command("show")
+def fuzzy_threshold_show() -> None:
+    """Show the minimum similarity `search --engine fuzzy` accepts when none is given."""
+    storage = open_storage()
+    try:
+        setting = SearchSettings.get_fuzzy_threshold_setting(storage)
+        value = SearchSettings.get_fuzzy_threshold(storage)
+        console.print(
+            Text.assemble(
+                "Search fuzzy threshold: ", (setting, Theme.VALUE), f" (similarity {value:.2f})"
+            )
+        )
+    finally:
+        storage.close()
+
+
+@fuzzy_threshold_app.command("set")
+def fuzzy_threshold_set(
+    threshold: str = typer.Argument(
+        ...,
+        metavar="THRESHOLD",
+        help=(
+            f"One of: {', '.join(SearchSettings.FUZZY_PRESETS)} - or a similarity above 0 and "
+            "up to 1 (e.g. 0.75)."
+        ),
+    ),
+) -> None:
+    """Set the minimum similarity `search --engine fuzzy` accepts when none is given.
+
+    `strict` (0.90) finds little beyond plurals and other one-letter variants of longer
+    words; `balanced` (0.80, the default) also catches a typo in a longer word; `loose`
+    (0.65) catches heavier OCR damage such as `Museurn` for `Museum`, with more noise.
+    """
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_fuzzy_threshold(storage, threshold)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            Text.assemble(
+                "Search fuzzy threshold set to ", (threshold.strip().lower(), Theme.VALUE), "."
+            )
+        )
     finally:
         storage.close()
 

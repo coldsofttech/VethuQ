@@ -135,7 +135,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine like|exact|full-text] [--case-sensitive|--no-case-sensitive]`
+## `search <content> [--engine like|exact|full-text|fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -146,20 +146,37 @@ documents with status `indexed` are searched. `--engine` chooses how
 | `like` | `content` anywhere, even inside a word; ignores case unless `--case-sensitive` | `museum`, `Museum`, `mus`, `seu` ✓ — `Museums`, `euma` ✗ |
 | `exact` | `content` as typed: same case, as a whole word (always case-sensitive) | `Museum` ✓ — `museum`, `Museums`, `mus` ✗ |
 | `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
+| `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 
 For `full-text`, all the words must appear on the page (`"amount due"` in
 quotes must appear as that phrase), and a trailing `*` makes a word a prefix
 (`mus*` finds `museum`). Punctuation and words like `AND` or `NEAR` are
 searched as plain text, not operators.
 
+`fuzzy` matches whole words at a time, and every word of `content` must be
+matched. Two words are *similar* when `1 − edits ÷ length of the longer word`
+reaches the threshold, where an edit is an insertion, deletion, substitution
+or swap of two neighbouring letters, and at most 2 edits are ever allowed.
+Words under 4 letters and any word containing a digit (identifiers, amounts,
+dates) must match exactly — a near-miss there is a different thing, not a
+typo. `--threshold` takes a number above 0 and up to 1; `--fuzziness` takes
+a name for one: `strict` (0.90 — little beyond plurals), `balanced` (0.80,
+the default — also a typo in a longer word) or `loose` (0.65 — heavier OCR
+damage such as `Museurn`, with more noise). Give one or the other; the
+default comes from `vethuq settings search fuzzy threshold`. Each result
+shows its similarity, and `--threshold`/`--fuzziness` are errors with any
+other engine (a stored threshold is just not applied there).
+
 `--case-sensitive` / `--no-case-sensitive` overrides
-`vethuq settings search case-sensitive`, and only `like` acts on it:
+`vethuq settings search case-sensitive`, and only `like` and `fuzzy` act on it
+(for `fuzzy` a difference in case counts as one edit):
 `exact` is always case-sensitive and `full-text` never is, so asking for
 the opposite explicitly (`--engine exact --no-case-sensitive`,
 `--engine full-text --case-sensitive`) is an error, while a stored
 preference the engine can't honour is simply not applied. The header of
-the results shows which engine (and case-sensitivity) produced them, and
-an empty `exact` or `full-text` search suggests trying `--engine like`.
+the results shows which engine (with its case-sensitivity and threshold)
+produced them, and an empty `exact`, `full-text` or `fuzzy` search suggests
+a looser search.
 Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, and press `q` to close
 it. Each file with a match prints its path once, followed by a
@@ -247,8 +264,16 @@ vethuq search english --engine full-text --no-case-sensitive    # same as the fi
 vethuq search english --engine full-text --case-sensitive       # error: always case-insensitive
 ```
 
-To make an engine or case-sensitivity the default for every search, see
-`vethuq settings search engine` and `vethuq settings search case-sensitive`
+**`fuzzy`** finds words close to yours, closest first:
+
+```bash
+vethuq search Museum --engine fuzzy                   # finds "Muzeum", "Musuem", "Museums"
+vethuq search Museum --engine fuzzy --fuzziness loose # also "Museurn"
+vethuq search Museum --engine fuzzy --threshold 0.7   # a number instead of a name
+```
+
+To make an engine, case-sensitivity or fuzzy threshold the default for every search, see
+`vethuq settings search engine`, `case-sensitive` and `fuzzy threshold`
 below. In PowerShell, put a quoted phrase inside single quotes, as in the
 `'"english institute"'` example.
 
@@ -392,7 +417,7 @@ vethuq settings search export-format show
 ### `search engine set <engine>|show`
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one
-of `like` (the default), `exact` or `full-text`.
+of `like` (the default), `exact`, `full-text` or `fuzzy`.
 
 ```bash
 vethuq settings search engine set full-text
@@ -402,13 +427,26 @@ vethuq settings search engine show
 ### `search case-sensitive enable|disable|show`
 
 Configure whether `vethuq search` matches case by default. Disabled by
-default. Only the `like` engine acts on it; `--case-sensitive` /
+default. Only the `like` and `fuzzy` engines act on it; `--case-sensitive` /
 `--no-case-sensitive` overrides it for one search.
 
 ```bash
 vethuq settings search case-sensitive enable
 vethuq settings search case-sensitive disable
 vethuq settings search case-sensitive show
+```
+
+### `search fuzzy threshold set <threshold>|show`
+
+Configure how close a word must be to your query for `vethuq search
+--engine fuzzy` to match it, when `--threshold`/`--fuzziness` isn't given:
+`strict` (0.90), `balanced` (0.80, the default), `loose` (0.65), or a
+similarity above 0 and up to 1.
+
+```bash
+vethuq settings search fuzzy threshold set loose
+vethuq settings search fuzzy threshold set 0.75
+vethuq settings search fuzzy threshold show
 ```
 
 ### `search snippet set <chars>|show`

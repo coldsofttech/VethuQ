@@ -18,6 +18,7 @@ between).
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import signal
@@ -29,6 +30,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import IO
 
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
@@ -74,6 +76,14 @@ class IndexState:
     engine: str = "quick"
     phase: int = 1
     deepened_pages: int = 0
+    # Why a run ended as "failed" when the worker couldn't say so itself (it died).
+    error: str | None = None
+
+    @property
+    def heartbeat_age_seconds(self) -> float:
+        """Seconds since the worker last refreshed this state (see `IndexRunner._Heartbeat`)."""
+        updated = datetime.fromisoformat(self.updated_at)
+        return (datetime.now(UTC) - updated).total_seconds()
 
     @property
     def is_active(self) -> bool:
@@ -139,6 +149,17 @@ class IndexRunner:
     _STOP_TIMEOUT_SECONDS = 5.0
     _PAUSE_POLL_SECONDS = 1.0
     _INTERRUPTED_MESSAGE = "Interrupted: a previous index run did not finish cleanly."
+    _DIED_MESSAGE = (
+        "The index worker exited unexpectedly; see the index log for the last thing it did."
+    )
+    # Where the worker's `faulthandler` writes the Python stack if the process dies on a native
+    # fault (an access violation inside an OCR library, say) - nothing else survives that.
+    _CRASH_FILENAME = "index.crash.log"
+    # The worker refreshes its state this often even while it's busy on one long file, so a
+    # state that has gone quiet for `STALE_HEARTBEAT_SECONDS` (well over a heartbeat, in case
+    # a native OCR call holds the interpreter for a while) belongs to a worker that is hung.
+    HEARTBEAT_SECONDS = 5.0
+    STALE_HEARTBEAT_SECONDS = 120.0
     # Bundled next to the desktop/CLI exes by the installer build. A frozen exe
     # can't be asked to run `-m vethuq_core.index.runner` (it would just start
     # the app again), so frozen builds spawn this dedicated worker exe instead.
@@ -160,6 +181,96 @@ class IndexRunner:
     def log_path(db_path: Path | None = None) -> Path:
         """Path to the index log (`index.log`), which records runs, worker threads and crashes."""
         return Paths.logs_dir(db_path or default_db_path()) / Logs.COMPONENTS["index"]
+
+    @staticmethod
+    def crash_log_path(db_path: Path | None = None) -> Path:
+        """Path to the worker's crash trace (`index.crash.log`); empty unless it died hard."""
+        return Paths.logs_dir(db_path or default_db_path()) / IndexRunner._CRASH_FILENAME
+
+    @staticmethod
+    def _enable_crash_trace(db_path: Path) -> IO[str] | None:
+        """Point `faulthandler` at the crash trace file for this worker; returns the open file.
+
+        The file is kept open for the worker's whole life (faulthandler writes through its
+        descriptor from the fault handler itself). A trace left by an earlier worker that nobody
+        has reported yet is moved into the index log first. Never raises: without a trace file the
+        worker simply runs as before.
+        """
+        IndexRunner._collect_crash_trace(db_path)
+        try:
+            handle = open(IndexRunner.crash_log_path(db_path), "w", encoding="utf-8")  # noqa: SIM115
+            faulthandler.enable(file=handle, all_threads=True)
+        except (OSError, RuntimeError):
+            IndexRunner._logger.warning("Could not enable the crash trace", exc_info=True)
+            return None
+        return handle
+
+    @staticmethod
+    def _disable_crash_trace(db_path: Path, handle: IO[str] | None) -> None:
+        """Stop tracing and tidy up: a trace file that stayed empty means a clean exit."""
+        if handle is None:
+            return
+        faulthandler.disable()
+        handle.close()
+        path = IndexRunner.crash_log_path(db_path)
+        try:
+            if path.stat().st_size == 0:
+                path.unlink()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _collect_crash_trace(db_path: Path) -> str | None:
+        """Move a crash trace left by a dead worker into the index log; return its first line.
+
+        Returns None (and leaves nothing behind) when there is no trace. The trace holds only
+        Python frames - file paths, line numbers and function names - never document text.
+        """
+        path = IndexRunner.crash_log_path(db_path)
+        try:
+            trace = path.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return None
+        if not trace:
+            path.unlink(missing_ok=True)
+            return None
+        IndexRunner._logger.error("The index worker died on a fault; its trace follows:\n%s", trace)
+        path.unlink(missing_ok=True)
+        return trace.splitlines()[0].strip()
+
+    class _Heartbeat:
+        """Refreshes the state file's `updated_at` on a timer while the worker runs.
+
+        Progress is only written when a file or page starts or finishes, so a long
+        OCR pass would otherwise look the same as a worker that has hung. Shares the
+        worker's `state_lock`, so a refresh never interleaves with a progress write.
+        """
+
+        def __init__(self, db_path: Path, state: IndexState, state_lock: threading.Lock) -> None:
+            self._db_path = db_path
+            self._state = state
+            self._state_lock = state_lock
+            self._stopped = threading.Event()
+            self._thread = threading.Thread(target=self._beat, name="index-heartbeat", daemon=True)
+
+        def start(self) -> None:
+            self._thread.start()
+
+        def stop(self) -> None:
+            """Stop refreshing and wait for any refresh in flight; safe to call twice."""
+            self._stopped.set()
+            if self._thread.is_alive():
+                self._thread.join(timeout=IndexRunner.HEARTBEAT_SECONDS)
+
+        def _beat(self) -> None:
+            while not self._stopped.wait(IndexRunner.HEARTBEAT_SECONDS):
+                with self._state_lock:
+                    if self._stopped.is_set():
+                        return
+                    try:
+                        IndexRunner._write_state(self._db_path, self._state)
+                    except OSError:
+                        IndexRunner._logger.warning("Could not refresh the index heartbeat")
 
     @staticmethod
     def _atomic_write(path: Path, text: str) -> None:
@@ -211,21 +322,75 @@ class IndexRunner:
             pass
 
     @staticmethod
-    def read_state(db_path: Path | None = None) -> IndexState | None:
+    def read_state(db_path: Path | None = None, *, raw: bool = False) -> IndexState | None:
         """Return the most recent run's live/last-known state, if one exists.
 
         The state file isn't durable history (that's `index_runs`) - it's just
         scratch progress for the current/last run - so a file left behind by an
         older version of this code, in a since-changed format, is treated the
         same as no state at all rather than raised as an error.
+
+        A worker that died without recording its end (a crash, a kill) leaves its
+        state saying "running" forever, so unless `raw` is True a state that claims
+        to be active is checked against the worker's process: if nothing is alive
+        behind it, the run is recorded as failed (here and in `index history`) and
+        returned as such. `raw` returns the file as written, for the code that does
+        its own reconciling.
         """
-        path = IndexRunner._state_path(db_path or default_db_path())
+        db_path = db_path or default_db_path()
+        path = IndexRunner._state_path(db_path)
         if not path.exists():
             return None
         try:
-            return IndexState.from_json(path.read_text(encoding="utf-8"))
+            state = IndexState.from_json(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, TypeError, KeyError):
             return None
+        if not raw and state.is_active and not IndexRunner._worker_alive(db_path, state):
+            IndexRunner._record_died(db_path, state)
+        return state
+
+    @staticmethod
+    def _worker_alive(db_path: Path, state: IndexState) -> bool:
+        """Whether a process is still behind `state` - the locked launcher or the worker itself.
+
+        The lock holds the pid the launcher spawned, which can differ from the worker's own
+        (`state.pid`) when the launcher is a shim, so either one being alive counts.
+        """
+        locked, _ = IndexRunner.is_running(db_path)
+        return locked or IndexRunner._is_pid_running(state.pid)
+
+    @staticmethod
+    def _record_died(db_path: Path, state: IndexState) -> None:
+        """Mark the run behind a dead worker as failed, in `state` and on disk.
+
+        The stale lock is left in place: `start_run` clears it on the next run, which also
+        resets any file the dead worker left claimed.
+        """
+        # Read-only callers (`index status`) haven't set the index log up, and this is a fact
+        # the log should hold.
+        Logs.setup("index", db_path)
+        IndexRunner._logger.warning(
+            "Index run %d (worker pid=%d) is gone without having finished; marking it failed",
+            state.run_id,
+            state.pid,
+        )
+        fault = IndexRunner._collect_crash_trace(db_path)
+        state.error = (
+            f"The index worker crashed ({fault}); the fault trace is in the index log."
+            if fault
+            else IndexRunner._DIED_MESSAGE
+        )
+        state.current_files = []
+        try:
+            IndexRunner._mark_run_ended(db_path, state, "failed")
+        except Exception:  # noqa: BLE001 - reporting must not fail because bookkeeping did
+            IndexRunner._logger.exception("Could not record the dead index run %d", state.run_id)
+            state.status = "failed"
+
+    @staticmethod
+    def is_stalled(state: IndexState) -> bool:
+        """Whether an active run's worker is alive but has stopped refreshing its state (hung)."""
+        return state.is_active and state.heartbeat_age_seconds > IndexRunner.STALE_HEARTBEAT_SECONDS
 
     @staticmethod
     def _write_state(db_path: Path, state: IndexState) -> None:
@@ -372,8 +537,8 @@ class IndexRunner:
         point where it's confirmed nothing is still working on it - so it's
         retried on the next run instead of its claim blocking it forever.
         """
-        state = IndexRunner.read_state(db_path)
-        if state is not None and state.status == "running":
+        state = IndexRunner.read_state(db_path, raw=True)
+        if state is not None and state.is_active:
             IndexRunner._mark_run_ended(db_path, state, "failed")
         else:
             storage = open_storage(db_path)
@@ -450,7 +615,7 @@ class IndexRunner:
             IndexRunner._force_kill(pid)
             force_killed = True
 
-        state = IndexRunner.read_state(db_path)
+        state = IndexRunner.read_state(db_path, raw=True)
         if state is not None:
             IndexRunner._mark_run_ended(db_path, state, "stopped")
         IndexRunner._lock_path(db_path).unlink(missing_ok=True)
@@ -545,6 +710,7 @@ class IndexRunner:
         started_at = datetime.now(UTC).isoformat()
         run_id: int | None = None
         stopped = False
+        heartbeat: IndexRunner._Heartbeat | None = None
         mode = "restart" if restart else "run"
         try:
             sources = IndexRunner.resolve_targets(storage, target)
@@ -595,6 +761,8 @@ class IndexRunner:
             IndexRunner._write_state(db_path, state)
 
             state_lock = threading.Lock()
+            heartbeat = IndexRunner._Heartbeat(db_path, state, state_lock)
+            heartbeat.start()
 
             def on_file_start(file_path: str) -> None:
                 IndexRunner._logger.info("Processing %s", file_path)
@@ -682,6 +850,7 @@ class IndexRunner:
                 on_unit_done=on_unit_done,
             )
 
+            heartbeat.stop()
             final_status = "stopped" if stopped else "completed"
             IndexRunner._logger.info(
                 "Index run %d %s: processed=%d failed=%d",
@@ -692,6 +861,8 @@ class IndexRunner:
             )
             IndexRunner._mark_run_ended(db_path, state, final_status)
         except Exception:  # noqa: BLE001 - record the crash, then re-raise for the process exit code
+            if heartbeat is not None:
+                heartbeat.stop()
             IndexRunner._logger.exception("Index run crashed")
             if run_id is not None:
                 storage.fail_index_run(run_id, datetime.now(UTC).isoformat())
@@ -702,12 +873,14 @@ class IndexRunner:
                 IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
             )
             storage.commit()
-            crashed_state = IndexRunner.read_state(db_path)
+            crashed_state = IndexRunner.read_state(db_path, raw=True)
             if crashed_state is not None:
                 crashed_state.status = "failed"
                 IndexRunner._write_state(db_path, crashed_state)
             raise
         finally:
+            if heartbeat is not None:
+                heartbeat.stop()
             IndexRunner._lock_path(db_path).unlink(missing_ok=True)
             IndexRunner._control_path(db_path).unlink(missing_ok=True)
             storage.close()
@@ -719,9 +892,11 @@ class IndexRunner:
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"
         Logs.setup("index", db_path)
         IndexRunner._logger.info("Index worker pid=%d started", os.getpid())
+        crash_trace = IndexRunner._enable_crash_trace(db_path)
         try:
             IndexRunner._run_worker(db_path, target, restart=mode == "restart")
         finally:
+            IndexRunner._disable_crash_trace(db_path, crash_trace)
             IndexRunner._logger.info("Index worker pid=%d exiting", os.getpid())
 
 

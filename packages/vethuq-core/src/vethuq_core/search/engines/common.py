@@ -19,6 +19,12 @@ class SearchEngineHelpers:
         return SearchSettings.get_snippet_context_chars(storage)
 
     @staticmethod
+    def require_no_threshold(engine: str, threshold: float | None) -> None:
+        """Reject a similarity `threshold` for an engine that only matches literally."""
+        if threshold is not None:
+            raise ValueError(f"The {engine} engine has no similarity threshold; only fuzzy does.")
+
+    @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:
         """Total page count of every PDF with OCR pages, keyed by its carrier document id."""
         return {

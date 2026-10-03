@@ -350,3 +350,35 @@ class TestSearchEngineSettings:
             runner.invoke(app, ["settings", "search", "case-sensitive", "disable"]).exit_code == 0
         )
         assert "disabled" in runner.invoke(app, show).stdout
+
+    def test_fuzzy_threshold_show_defaults_to_balanced(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "show"])
+
+        assert result.exit_code == 0
+        assert "balanced" in result.stdout
+        assert "0.80" in result.stdout
+
+    def test_fuzzy_threshold_set_preset_and_number_then_show(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "fuzzy", "threshold", "show"]
+
+        loose = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", "loose"])
+        assert loose.exit_code == 0
+        shown = runner.invoke(app, show)
+        assert "loose" in shown.stdout and "0.65" in shown.stdout
+
+        number = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", "0.75"])
+        assert number.exit_code == 0
+        assert "0.75" in runner.invoke(app, show).stdout
+
+    def test_fuzzy_threshold_set_rejects_invalid_values(self, use_temp_db):
+        use_temp_db()
+
+        for value in ("nope", "0", "1.5"):
+            result = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "set", value])
+            assert result.exit_code == 1
+
+        shown = runner.invoke(app, ["settings", "search", "fuzzy", "threshold", "show"])
+        assert "balanced" in shown.stdout

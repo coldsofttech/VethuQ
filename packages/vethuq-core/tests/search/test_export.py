@@ -163,3 +163,22 @@ class TestExportSearchMode:
         Export.search_results([_match()], "due", output, "html", engine="like", case_sensitive=True)
 
         assert "engine: like, case-sensitive" in output.read_text()
+
+    def test_json_export_records_threshold_only_when_given(self, tmp_path: Path):
+        with_threshold = tmp_path / "with.json"
+        without = tmp_path / "without.json"
+
+        Export.search_results(
+            [_match()], "due", with_threshold, "json", engine="fuzzy", threshold=0.8
+        )
+        Export.search_results([_match()], "due", without, "json", engine="like")
+
+        assert json.loads(with_threshold.read_text())["threshold"] == 0.8
+        assert "threshold" not in json.loads(without.read_text())
+
+    def test_html_export_shows_threshold(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match()], "due", output, "html", engine="fuzzy", threshold=0.65)
+
+        assert "engine: fuzzy, threshold 0.65" in output.read_text()

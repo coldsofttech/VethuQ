@@ -417,3 +417,104 @@ class TestSearchEngines:
         payload = json.loads(output.read_text())
         assert payload["engine"] == "exact"
         assert payload["case_sensitive"] is True
+
+    def test_fuzzy_engine_finds_misspellings_and_shows_similarity(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Muzeum today")
+
+        result = runner.invoke(app, ["search", "Museum", "--engine", "fuzzy"])
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: fuzzy, threshold 0.80)" in result.stdout
+        assert "similarity 83%" in result.stdout
+        assert "Muzeum" in result.stdout
+
+    def test_fuzzy_threshold_and_fuzziness_flags(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museurn today")
+
+        balanced = runner.invoke(app, ["search", "Museum", "--engine", "fuzzy"])
+        loose = runner.invoke(
+            app, ["search", "Museum", "--engine", "fuzzy", "--fuzziness", "loose"]
+        )
+        numeric = runner.invoke(
+            app, ["search", "Museum", "--engine", "fuzzy", "--threshold", "0.7"]
+        )
+
+        assert "No matches found." in balanced.stdout
+        assert "--fuzziness loose" in balanced.stdout  # the hint towards a looser setting
+        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in loose.stdout
+        assert "Results: 1 match (engine: fuzzy, threshold 0.70)" in numeric.stdout
+
+    def test_fuzzy_uses_the_stored_threshold_and_engine(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museurn today")
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_engine(storage, "fuzzy")
+            SearchSettings.set_fuzzy_threshold(storage, "loose")
+        finally:
+            storage.close()
+
+        result = runner.invoke(app, ["search", "Museum"])
+        overridden = runner.invoke(app, ["search", "Museum", "--fuzziness", "strict"])
+
+        assert "Results: 1 match (engine: fuzzy, threshold 0.65)" in result.stdout
+        assert "No matches found." in overridden.stdout
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            (["--engine", "like", "--threshold", "0.8"], "Only the fuzzy engine"),
+            (["--engine", "full-text", "--fuzziness", "loose"], "Only the fuzzy engine"),
+            (["--engine", "fuzzy", "--threshold", "0"], "above 0"),
+            (["--engine", "fuzzy", "--threshold", "2"], "above 0"),
+            (["--engine", "fuzzy", "--fuzziness", "sloppy"], "not one of"),
+            (["--engine", "fuzzy", "--fuzziness", "loose", "--threshold", "0.7"], "not both"),
+        ],
+    )
+    def test_rejects_unusable_threshold_options(self, use_temp_db, args, message):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "museum", *args])
+
+        assert result.exit_code == 2
+        assert message in _flatten(result.output)
+
+    def test_stored_threshold_is_ignored_by_other_engines(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_fuzzy_threshold(storage, "loose")
+        finally:
+            storage.close()
+
+        result = runner.invoke(app, ["search", "museum", "--engine", "like"])
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: like)" in result.stdout
+
+    def test_fuzzy_export_records_the_threshold(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Muzeum today")
+        output = tmp_path / "out.json"
+
+        result = runner.invoke(
+            app,
+            [
+                "search",
+                "Museum",
+                "--engine",
+                "fuzzy",
+                "--threshold",
+                "0.75",
+                "--export",
+                str(output),
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(output.read_text())
+        assert (payload["engine"], payload["threshold"]) == ("fuzzy", 0.75)
+        assert payload["matches"][0]["score"] > 0.8

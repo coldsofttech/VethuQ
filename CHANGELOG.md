@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- If the index worker crashes hard (for example inside the OCR library), the fault trace now lands in `index.log` and `index status` names the crash; deeper OCR passes also log each page and angle before reading it.
+- `vethuq search --engine fuzzy` finds words close to yours, so typos and OCR misreads like `Muzeum` or `Museurn` still find `Museum`; set how close with `--threshold` or `--fuzziness strict|balanced|loose`, or store a default with `vethuq settings search fuzzy threshold`.
 - `vethuq search` can now match exactly as typed (`--engine exact`) or by whole words with the best matches first (`--engine full-text`), and `--case-sensitive` makes the default search care about capitals; choose the defaults with `vethuq settings search engine` and `case-sensitive`.
 - Logs no longer record what you searched for (`vethuq search` logs `<query omitted>`; a failed search logs only the query's length), and a test now fails the build if any log call references document text or search queries (`ocr_text`, `native_text`, `query`, ...).
 - Logs now cover scanning and processing per area: `index.log` records each source scan (start, files found, outcome), duplicate skips, per-attempt retries, and OCR, native-extraction and indexing failures with file, page, engine and exception; `database.log` records database open/schema/write failures and search failures (with the query and engine).
@@ -82,6 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `vethuq index status` no longer shows a run as "running" after its worker has died: it now reports it as failed with the reason, and flags a worker that has stopped responding.
+- A file edited while an index run was already working through it now gets its quick re-scan first, instead of waiting behind the moderate/deep passes.
 - Re-indexing a document (e.g. after removing and re-adding its source) no longer leaves stale page text from the previous run alongside the new results.
 - `vethuq index run` now also checks already-indexed sources for files added since the last run, instead of only ever looking at sources it hasn't touched yet.
 - Commands that don't do OCR (e.g. `vethuq settings gpu status`) no longer print unrelated OCR-engine startup messages.

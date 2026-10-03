@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 
 import vethuq_core.db as db_module
@@ -9,6 +10,12 @@ from vethuq_core.sources import Sources
 from vethuq_core.storage.sqlite import SqliteStorage
 
 runner = CliRunner()
+
+
+def _flatten(output: str) -> str:
+    """Collapse the panel's border and wrapped, colour-coded text back onto one plain line."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return " ".join(plain.replace("\u2502", " ").split())
 
 
 class _FakeProcess:
@@ -165,7 +172,8 @@ class TestStatus:
         assert result.exit_code == 0
         assert "No index run has been started yet." in result.stdout
 
-    def test_status_shows_progress(self, use_temp_db):
+    def test_status_shows_progress(self, use_temp_db, monkeypatch):
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
         db_path = use_temp_db()
         now = datetime.now(UTC).isoformat()
         state = index_runner_module.IndexState(
@@ -242,7 +250,8 @@ class TestStatus:
         assert "Status" in result.stdout
         assert "completed" in result.stdout
 
-    def test_status_shows_eta_from_processing_metrics(self, use_temp_db, tmp_path):
+    def test_status_shows_eta_from_processing_metrics(self, use_temp_db, tmp_path, monkeypatch):
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
         db_path = use_temp_db()
         folder = tmp_path / "docs"
         folder.mkdir()
@@ -284,6 +293,68 @@ class TestStatus:
         # 2 pending images * 10s average = 20s.
         assert "ETA" in result.stdout
         assert "~20s" in result.stdout
+
+    def test_status_reports_a_dead_worker_as_failed_not_running(self, use_temp_db, monkeypatch):
+        db_path = use_temp_db()
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        now = datetime.now(UTC).isoformat()
+        IndexRunner._write_state(
+            db_path,
+            index_runner_module.IndexState(
+                run_id=1,
+                pid=1,
+                target=None,
+                mode="run",
+                status="running",
+                total_files=2,
+                processed_files=1,
+                failed_files=0,
+                thread_workers_setting="1",
+                workers=1,
+                current_files=["a.png"],
+                started_at=now,
+                updated_at=now,
+            ),
+        )
+
+        result = runner.invoke(app, ["index", "status"])
+
+        assert result.exit_code == 0
+        assert "failed" in result.stdout
+        assert "exited unexpectedly" in _flatten(result.stdout)
+        assert "running" not in result.stdout
+
+    def test_status_warns_when_a_live_worker_has_gone_quiet(self, use_temp_db, monkeypatch):
+        db_path = use_temp_db()
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
+        now = datetime.now(UTC).isoformat()
+        state = index_runner_module.IndexState(
+            run_id=1,
+            pid=1,
+            target=None,
+            mode="run",
+            status="running",
+            total_files=2,
+            processed_files=1,
+            failed_files=0,
+            thread_workers_setting="1",
+            workers=1,
+            current_files=[],
+            started_at=now,
+            updated_at=now,
+        )
+        IndexRunner._write_state(db_path, state)
+        quiet = IndexRunner._state_path(db_path)
+        quiet.write_text(
+            quiet.read_text(encoding="utf-8").replace(
+                state.updated_at, "2000-01-01T00:00:00+00:00"
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["index", "status"])
+
+        assert "may be hung" in _flatten(result.stdout)
 
     def test_status_detail_for_target(self, use_temp_db, tmp_path):
         db_path = use_temp_db()

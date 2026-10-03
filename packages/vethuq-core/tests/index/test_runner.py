@@ -1,5 +1,8 @@
+import faulthandler
 import json
 import sqlite3
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +11,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.index import IndexRunner
 from vethuq_core.index import runner as index_runner
+from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending
 from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import Storage
@@ -670,6 +674,215 @@ class TestWait:
         monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
 
         assert IndexRunner.wait(77) is None
+
+
+class TestDeadWorker:
+    def test_dead_worker_reads_as_failed_and_is_recorded(self, db_path, conn, monkeypatch):
+        _write_running_state(db_path, conn, pid=999)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+
+        state = IndexRunner.read_state(db_path)
+
+        assert state is not None
+        assert (state.status, state.error) == ("failed", IndexRunner._DIED_MESSAGE)
+        assert IndexRunner.read_state(db_path, raw=True).status == "failed"
+        assert conn.execute("SELECT status FROM index_runs").fetchone()["status"] == "failed"
+
+    def test_live_worker_stays_running(self, db_path, conn, monkeypatch):
+        _write_running_state(db_path, conn, pid=999)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: True)
+
+        state = IndexRunner.read_state(db_path)
+
+        assert state is not None
+        assert (state.status, state.error) == ("running", None)
+
+    def test_a_live_launcher_counts_even_when_the_worker_pid_differs(
+        self, db_path, conn, monkeypatch
+    ):
+        _write_running_state(db_path, conn, pid=999)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "555")
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: pid == 555)
+
+        assert IndexRunner.read_state(db_path).status == "running"
+
+    def test_raw_read_leaves_a_dead_state_untouched(self, db_path, conn, monkeypatch):
+        _write_running_state(db_path, conn, pid=999)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+
+        assert IndexRunner.read_state(db_path, raw=True).status == "running"
+        assert conn.execute("SELECT status FROM index_runs").fetchone()["status"] == "running"
+
+    def test_a_finished_state_is_never_second_guessed(self, db_path, monkeypatch):
+        IndexRunner._write_state(db_path, _state(999, "completed"))
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+
+        state = IndexRunner.read_state(db_path)
+
+        assert (state.status, state.error) == ("completed", None)
+
+    def test_wait_ends_with_the_failed_state_when_the_worker_dies(self, db_path, monkeypatch):
+        monkeypatch.setattr(Db, "default_db_path", staticmethod(lambda: db_path))
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        monkeypatch.setattr(index_runner.time, "sleep", lambda _seconds: None)
+        IndexRunner._write_state(db_path, _state(77, "running"))
+
+        final = IndexRunner.wait(77)
+
+        assert final is not None and final.status == "failed"
+
+    def test_is_stalled_only_for_an_active_run_gone_quiet(self):
+        quiet = _state(1, "running")
+        quiet.updated_at = "2000-01-01T00:00:00+00:00"
+        finished = _state(1, "completed")
+        finished.updated_at = "2000-01-01T00:00:00+00:00"
+
+        assert IndexRunner.is_stalled(quiet) is True
+        assert IndexRunner.is_stalled(_state(1, "running")) is False
+        assert IndexRunner.is_stalled(finished) is False
+
+
+class TestCrashTrace:
+    TRACE = (
+        "Windows fatal exception: access violation\n\n"
+        "Current thread 0x00005664 (most recent call first):\n"
+        '  File "static_infer.py", line 261 in __call__\n'
+    )
+
+    @staticmethod
+    def _index_log(db_path) -> str:
+        Logs.setup("index", db_path)
+        path = IndexRunner.log_path(db_path)
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def test_a_trace_is_moved_into_the_index_log_and_removed(self, db_path):
+        Logs.setup("index", db_path)
+        IndexRunner.crash_log_path(db_path).write_text(self.TRACE, encoding="utf-8")
+
+        first_line = IndexRunner._collect_crash_trace(db_path)
+
+        assert first_line == "Windows fatal exception: access violation"
+        assert not IndexRunner.crash_log_path(db_path).exists()
+        log = self._index_log(db_path)
+        assert "static_infer.py" in log and "access violation" in log
+
+    def test_no_trace_means_nothing_to_collect(self, db_path):
+        assert IndexRunner._collect_crash_trace(db_path) is None
+        IndexRunner.crash_log_path(db_path).write_text("  \n", encoding="utf-8")
+        assert IndexRunner._collect_crash_trace(db_path) is None
+        assert not IndexRunner.crash_log_path(db_path).exists()
+
+    def test_a_dead_worker_with_a_trace_reports_the_crash(self, db_path, conn, monkeypatch):
+        _write_running_state(db_path, conn, pid=999)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner.crash_log_path(db_path).write_text(self.TRACE, encoding="utf-8")
+
+        state = IndexRunner.read_state(db_path)
+
+        assert state is not None and state.status == "failed"
+        assert "access violation" in (state.error or "")
+        assert "index log" in (state.error or "")
+        assert "static_infer.py" in self._index_log(db_path)
+
+    def test_a_dead_worker_is_recorded_in_the_index_log(self, db_path, conn, monkeypatch):
+        _write_running_state(db_path, conn, pid=999)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+
+        state = IndexRunner.read_state(db_path)
+
+        assert state is not None and state.error == IndexRunner._DIED_MESSAGE
+        assert "marking it failed" in self._index_log(db_path)
+
+    def test_the_worker_traces_to_the_crash_file_and_cleans_up_on_a_clean_exit(self, db_path):
+        was_enabled = faulthandler.is_enabled()
+        try:
+            handle = IndexRunner._enable_crash_trace(db_path)
+
+            assert handle is not None
+            assert faulthandler.is_enabled()
+            assert IndexRunner.crash_log_path(db_path).exists()
+
+            IndexRunner._disable_crash_trace(db_path, handle)
+
+            assert not faulthandler.is_enabled()
+            assert not IndexRunner.crash_log_path(db_path).exists()
+        finally:
+            if was_enabled:
+                faulthandler.enable()
+
+    def test_starting_a_worker_reports_a_trace_the_last_one_left(self, db_path):
+        was_enabled = faulthandler.is_enabled()
+        Logs.setup("index", db_path)
+        IndexRunner.crash_log_path(db_path).write_text(self.TRACE, encoding="utf-8")
+        try:
+            handle = IndexRunner._enable_crash_trace(db_path)
+            IndexRunner._disable_crash_trace(db_path, handle)
+        finally:
+            if was_enabled:
+                faulthandler.enable()
+
+        assert "static_infer.py" in self._index_log(db_path)
+
+
+class TestHeartbeat:
+    def test_refreshes_the_state_until_stopped(self, db_path, monkeypatch):
+        monkeypatch.setattr(IndexRunner, "HEARTBEAT_SECONDS", 0.01)
+        state = _state(1, "running")
+        state.updated_at = "2000-01-01T00:00:00+00:00"
+        IndexRunner._write_state(db_path, state)
+        stale_at = IndexRunner.read_state(db_path, raw=True).updated_at
+        heartbeat = IndexRunner._Heartbeat(db_path, state, threading.Lock())
+
+        heartbeat.start()
+        deadline = time.monotonic() + 5
+        while (
+            IndexRunner.read_state(db_path, raw=True).updated_at == stale_at
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+        heartbeat.stop()
+
+        refreshed = IndexRunner.read_state(db_path, raw=True).updated_at
+        assert refreshed != stale_at
+        time.sleep(0.05)
+        assert IndexRunner.read_state(db_path, raw=True).updated_at == refreshed
+
+    def test_stop_is_safe_to_repeat(self, db_path):
+        heartbeat = IndexRunner._Heartbeat(db_path, _state(1, "running"), threading.Lock())
+        heartbeat.start()
+
+        heartbeat.stop()
+        heartbeat.stop()
+
+    def test_worker_keeps_beating_through_one_long_step(
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(IndexRunner, "HEARTBEAT_SECONDS", 0.01)
+        _register_source(storage, tmp_path)
+        conn.close()
+        writes: list[str] = []
+        real_write = IndexRunner._write_state
+
+        def counting_write(path, state):
+            writes.append(state.status)
+            real_write(path, state)
+
+        monkeypatch.setattr(IndexRunner, "_write_state", staticmethod(counting_write))
+
+        def one_long_step(storage, resolve_sources, **_kwargs):
+            before = len(writes)
+            time.sleep(0.3)
+            assert len(writes) - before >= 3  # beats, with no file progress in between
+            return []
+
+        with (
+            patch.object(Pending, "file_count", return_value=1),
+            patch.object(Ocr, "run_phased", side_effect=one_long_step),
+        ):
+            IndexRunner._run_worker(db_path, None)
+
+        final = IndexRunner.read_state(db_path, raw=True)
+        assert final is not None and final.status == "completed"
 
 
 class TestIndexRun:

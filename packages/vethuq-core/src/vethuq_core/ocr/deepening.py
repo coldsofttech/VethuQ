@@ -340,6 +340,15 @@ class Deepening:
                         Deepening.start_document_phase(storage, unit)
                         storage.commit()
                     tracked = True
+                # Logged before the read: a native crash inside the OCR library leaves no
+                # other trace of which page and angle it died on.
+                _logger.info(
+                    "Deeper read: file=%s page=%d phase=%d angle=%d",
+                    unit.file_path,
+                    unit.page_number,
+                    unit.phase,
+                    angle,
+                )
                 texts, scores = Deepening.read_at_angle(storage, arrays, angle)
                 peak_rss = max(peak_rss, process.memory_info().rss)
                 with db_lock:

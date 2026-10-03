@@ -117,6 +117,18 @@ class StatePanel:
             files_text = Text("\n".join(f"• {Path(f).name}" for f in state.current_files))
             table.add_row(label, files_text)
 
+        if state.error:
+            table.add_row("Error", Text(state.error, style=Theme.ERROR))
+        if IndexRunner.is_stalled(state):
+            stalled = StatePanel.format_duration(state.heartbeat_age_seconds)
+            table.add_row(
+                "Warning",
+                Text(
+                    f"No sign of life for {stalled} - the worker may be hung.",
+                    style=Theme.WARNING,
+                ),
+            )
+
         if state.status == "running":
             by_phase = Eta.phase_seconds(storage, state)
             if by_phase:
