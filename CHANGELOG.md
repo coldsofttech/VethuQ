@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `vethuq search` now runs every engine at once by default and lists each page once, ranked by how strictly it matched (Exact, Contains, Near, Word, then Similar) and labelled with how it was found. Press `h` in the results pager for what each label means. Pick a single engine with `--engine`; `client.search.run_pages` returns the ranked pages.
+- `vethuq search --engine lexical` finds your text anywhere in a page (mid-word included) and lists the best-matching pages first; it needs at least three characters. In the default combined search it appears as a "Relevant" label.
+- `vethuq search` now runs every engine at once by default and lists each page once, ranked by how strictly it matched (Exact, Contains, Relevant, Near, Word, then Similar) and labelled with how it was found. Press `h` in the results pager for what each label means. Pick a single engine with `--engine`; `client.search.run_pages` returns the ranked pages.
 - `vethuq source list <id-or-path>` lists the files under a source with their id and index status; add `--detail` for timestamps, OCR phases and more. Also in the interactive menu (Sources > List Files). `--export <file> [--format json|html]` writes any `source list` form (sources, files, or files with `--detail`) to a file, like `search --export`. Sort with `--sort asc|desc` and `--sort-by filename|id|status` (ascending by filename by default).
 - `client.sources.files(path_or_id)` returns the files under a source with their status and detail.
 - If the index worker crashes hard (for example inside the OCR library), the fault trace now lands in `index.log` and `index status` names the crash; deeper OCR passes also log each page and angle before reading it.
@@ -29,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Search now returns every occurrence of a query within a page, not just the first.
 - Each indexed page now records its text's character count; existing databases are updated automatically.
 - Database access now goes through a storage interface, so the CLI, desktop app and Python library no longer handle raw database connections.
-- Search now runs behind a `SearchEngine` interface, so the current `LIKE`-based engine and future ones (e.g. FTS5) can be selected or chained as fallbacks.
+- Search now runs behind a `SearchEngine` interface, so engines can be selected or chained as fallbacks. Searches now find candidate pages through the FTS5 index, falling back to plain matching only for queries under three characters.
 - `vethuq logs <database|index|ui|cli>` shows the latest log entries, with `--tail`, `--follow`, `--level`, `--date` and `--export`; it's also in the interactive menu and `client.logs.tail` in the Python library.
 - VethuQ now writes separate daily log files for the database, indexing, desktop app and CLI. Choose how verbose they are and how many days are kept with `vethuq settings logs level|retention` (also `client.settings.logs` in the Python library).
 - VethuQ's data folder is now organised into `db/`, `run/` and `logs/`; an existing database is moved into `db/` automatically.

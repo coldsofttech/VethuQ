@@ -681,7 +681,7 @@ class TestSearchAll:
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
         assert "Search Results: 1 page (engine: all)" in lines
-        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Word, Similar" in lines
+        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Similar" in lines
 
     def test_ranks_pages_exact_then_contains_then_word_then_similar(self, use_temp_db):
         db_path = use_temp_db()
@@ -779,7 +779,13 @@ class TestSearchAll:
         assert payload["engine"] == "all"
         assert [m["engine"] for m in payload["matches"]] == ["exact", "fuzzy"]
         assert "Muzeum" in payload["matches"][1]["matched_text"]
-        assert payload["matches"][0]["matched_by"] == ["exact", "like", "full-text", "fuzzy"]
+        assert payload["matches"][0]["matched_by"] == [
+            "exact",
+            "like",
+            "lexical",
+            "full-text",
+            "fuzzy",
+        ]
         html_text = as_html.read_text()
         assert "engine: all" in html_text
         assert ">Exact<" in html_text and ">Similar 83%<" in html_text

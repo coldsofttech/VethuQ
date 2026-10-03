@@ -15,13 +15,6 @@ from vethuq_cli.theme import Theme
 class ResultRenderer:
     TITLE = "Search Results"
     ACCENT_STYLES = [Theme.PRIMARY, Theme.ACCENT]
-    MEANINGS = {
-        "exact": "your text exactly as typed - same case, as a whole word",
-        "like": "your text anywhere, even inside a longer word, ignoring case",
-        "proximity": "all your words (two or more) close together, within the distance setting",
-        "full-text": "all your words as whole words, any case and word form (e.g. plurals)",
-        "fuzzy": "a word close to yours, tolerating typos and OCR misreads (the % is how close)",
-    }
     HITS_PER_PAGE = 3  # boxes shown per page in the combined search; the rest are counted
 
     @staticmethod
@@ -55,7 +48,7 @@ class ResultRenderer:
         table.add_column(style=f"bold {Theme.PRIMARY}", no_wrap=True)
         table.add_column(style="bright_black")
         for engine in Ranking.TIERS:
-            table.add_row(f"[{Ranking.BADGES[engine]}]", ResultRenderer.MEANINGS[engine])
+            table.add_row(f"[{Ranking.BADGES[engine]}]", Ranking.MEANINGS[engine])
         footer = Text(
             "Ranked strictest first; a page's label is its strictest match and `also:` "
             "lists the other ways it was found.",

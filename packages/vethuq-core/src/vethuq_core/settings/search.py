@@ -15,7 +15,7 @@ class SearchSettings:
     ENGINE_KEY = "search_engine"
     DEFAULT_ENGINE = "all"
     ENGINE_ALL = "all"  # not an engine: runs every engine and ranks the pages together
-    ENGINES = (ENGINE_ALL, "like", "exact", "full-text", "fuzzy", "proximity")
+    ENGINES = (ENGINE_ALL, "like", "lexical", "exact", "full-text", "fuzzy", "proximity")
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
     DEFAULT_FUZZY_THRESHOLD = "balanced"

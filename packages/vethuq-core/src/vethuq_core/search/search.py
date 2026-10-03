@@ -161,7 +161,7 @@ class Search:
         """Search with every engine and return the pages found, best first (see `ranking`).
 
         Pages are ranked by how strict the strictest engine that found them is - Exact,
-        Contains, Near, Word, then Similar - and within that by the engine's own signal.
+        Contains, Relevant, Near, Word, then Similar - and within that by the engine's own signal.
         Each page lists its hits, best first, each labelled with the engine that found it.
         `case_sensitive` reaches the engines that can honour it, `threshold` (0-1) is the
         fuzzy engine's and `distance` the proximity engine's, each defaulting to the

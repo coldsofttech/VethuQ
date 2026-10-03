@@ -298,6 +298,8 @@ def search_engine_show() -> None:
         "Engines:\n\n"
         "like (the default) - finds your text anywhere, even inside a word, ignoring case "
         'unless case-sensitive. `mus` finds "Museum". Results are ordered by file path.\n\n'
+        "lexical - finds your text anywhere, even inside a word, like `like`, but lists the "
+        "best-matching pages first. Needs at least 3 characters.\n\n"
         "exact - finds your text exactly as typed: same case, as a whole word. `Museum` "
         'finds "Museum" but not "museum" or "Museums". Always case-sensitive.\n\n'
         "full-text - finds pages containing all your words, in any order, ignoring case and "

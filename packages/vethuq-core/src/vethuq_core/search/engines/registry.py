@@ -40,6 +40,12 @@ class SearchEngines:
         return LikeSearchEngine(storage)
 
     @staticmethod
+    def _lexical_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.lexical import LexicalSearchEngine
+
+        return LexicalSearchEngine(storage)
+
+    @staticmethod
     def _exact_factory(storage: Storage) -> SearchEngine:
         from vethuq_core.search.engines.exact import ExactSearchEngine
 
@@ -70,6 +76,7 @@ class SearchEngines:
 
 
 SearchEngines.register("like", SearchEngines._like_factory)
+SearchEngines.register("lexical", SearchEngines._lexical_factory)
 SearchEngines.register("exact", SearchEngines._exact_factory)
 SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)

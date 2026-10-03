@@ -5,9 +5,9 @@ relevance, a word similarity, no score at all. Rather than blend the numbers,
 pages are ranked by *match quality* - how strict the strictest engine that found
 them is - and only ordered by an engine's own signal within a tier:
 
-    Exact > Contains > Near > Word > Similar
+    Exact > Contains > Relevant > Near > Word > Similar
 
-(`exact` > `like` > `proximity` > `full-text` > `fuzzy`.) `proximity` outranks
+(`exact` > `like` > `lexical` > `proximity` > `full-text` > `fuzzy`.) `proximity` outranks
 `full-text` because every page it finds, `full-text` finds too: both need all the
 terms, so ranking them the other way round would leave "the words are close
 together" with no way to raise a page.
@@ -37,7 +37,7 @@ class PageResult:
     ordered by their engine's strictness, then by position in the page; each hit
     carries its own `engine` and `matched_by`. `score` is what the page was ordered
     by within its tier: the number of hits (`exact`, `like`), its BM25 relevance
-    (`proximity`, `full-text`) or its best word similarity (`fuzzy`).
+    (`lexical`, `proximity`, `full-text`) or its best word similarity (`fuzzy`).
     """
 
     file_id: int
@@ -55,15 +55,26 @@ class PageResult:
 
 class Ranking:
     # Strictest first: the order pages are ranked in, and `matched_by` is listed in.
-    TIERS = ("exact", "like", "proximity", "full-text", "fuzzy")
+    TIERS = ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
 
     # What each engine is called to users, in the CLI and the UI alike.
     BADGES = {
         "exact": "Exact",
         "like": "Contains",
+        "lexical": "Relevant",
         "proximity": "Near",
         "full-text": "Word",
         "fuzzy": "Similar",
+    }
+
+    # What each badge means in plain language, shared by the CLI and the UI.
+    MEANINGS = {
+        "exact": "your text exactly as typed - same case, as a whole word",
+        "like": "your text anywhere, even inside a longer word, ignoring case",
+        "lexical": "your text anywhere, even inside a longer word, best-matching pages first",
+        "proximity": "all your words (two or more) close together, within the distance setting",
+        "full-text": "all your words as whole words, any case and word form (e.g. plurals)",
+        "fuzzy": "a word close to yours, tolerating typos and OCR misreads (the % is how close)",
     }
 
     @staticmethod
@@ -166,7 +177,7 @@ class Ranking:
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
         search = SearchEngines.get(storage, engine).search
-        if engine == "like":
+        if engine in ("like", "lexical"):
             return search(query, context_chars=chars, case_sensitive=case_sensitive)
         if engine == "fuzzy":
             return search(
@@ -188,11 +199,11 @@ class Ranking:
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first.
 
-        Each engine applies the options it can: `case_sensitive` reaches `like` and
-        `fuzzy` (`exact` always matches case, `full-text` and `proximity` never do),
+        Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`
+        and `fuzzy` (`exact` always matches case, `full-text` and `proximity` never do),
         `threshold` only `fuzzy` and `distance` only `proximity`, each defaulting to the
         user's setting. An engine that can't search the query (`proximity` needs two
-        terms) is skipped rather than failing the search.
+        terms, `lexical` three characters) is skipped rather than failing the search.
         """
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         runs: dict[str, list[SearchMatch]] = {}

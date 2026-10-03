@@ -252,11 +252,21 @@ class _DocumentStoreMixin:
     def list_phase_rows(self, logical_document_id: int) -> list[sqlite3.Row]:
         return Document.list_phase_rows(self._conn, logical_document_id)
 
-    def search_indexed_pdf_pages(self, like_pattern: str) -> list[sqlite3.Row]:
-        return Document.search_indexed_pdf_pages(self._conn, like_pattern)
+    def search_indexed_pdf_pages(
+        self, like_pattern: str, match_expr: str | None = None
+    ) -> list[sqlite3.Row]:
+        return Document.search_indexed_pdf_pages(self._conn, like_pattern, match_expr)
 
-    def search_indexed_image_pages(self, like_pattern: str) -> list[sqlite3.Row]:
-        return Document.search_indexed_image_pages(self._conn, like_pattern)
+    def search_indexed_image_pages(
+        self, like_pattern: str, match_expr: str | None = None
+    ) -> list[sqlite3.Row]:
+        return Document.search_indexed_image_pages(self._conn, like_pattern, match_expr)
+
+    def search_lexical_pdf_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_lexical_pdf_pages(self._conn, match_expr)
+
+    def search_lexical_image_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_lexical_image_pages(self._conn, match_expr)
 
     def search_candidate_pdf_pages(self, match_expr: str | None) -> list[sqlite3.Row]:
         return Document.search_candidate_pdf_pages(self._conn, match_expr)

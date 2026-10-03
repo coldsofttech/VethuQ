@@ -81,6 +81,20 @@ class SearchEngineHelpers:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return f"%{escaped}%"
 
+    # Shortest query the trigram index can serve; shorter ones fall back to `LIKE`.
+    TRIGRAM_MIN_CHARS = 3
+
+    @staticmethod
+    def trigram_match(query: str) -> str | None:
+        """`query` as a quoted FTS5 phrase for the trigram index, or None if under 3 characters.
+
+        The trigram tokenizer matches a phrase as a case-insensitive substring, so
+        quoting (with `"` doubled) makes the query literal text, never FTS5 syntax.
+        """
+        if len(query) < SearchEngineHelpers.TRIGRAM_MIN_CHARS:
+            return None
+        return '"' + query.replace('"', '""') + '"'
+
     @staticmethod
     def search_substring_pages(
         storage: Storage,
@@ -92,11 +106,12 @@ class SearchEngineHelpers:
     ) -> list[SearchMatch]:
         """Find `query` on indexed pages, one `SearchMatch` per span `find` yields for a page.
 
-        Candidate pages are narrowed with `LIKE` over the trigram-tokenized
+        Candidate pages are narrowed with an FTS5 `MATCH` over the trigram-tokenized
         `pdf_pages_trigram`/`image_pages_trigram` indexes (kept in sync with
         `pdf_pages`/`image_pages` by triggers - see `vethuq_core.db.connection`),
         so a query landing mid-word still finds its page, without a full
-        Python-side scan of every indexed page. That narrowing is
+        Python-side scan of every indexed page. Only a query too short for the
+        trigram index (under 3 characters) falls back to `LIKE`. That narrowing is
         case-insensitive and a superset of every substring-based engine's
         matches, so `find` - which receives each candidate page's text with
         newlines flattened to spaces, and returns the `(start, end)` spans it
@@ -113,11 +128,12 @@ class SearchEngineHelpers:
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(storage)
         pattern = SearchEngineHelpers.like_pattern(query)
+        match_expr = SearchEngineHelpers.trigram_match(query)
 
         matches: list[SearchMatch] = []
         for row in (
-            *storage.search_indexed_pdf_pages(pattern),
-            *storage.search_indexed_image_pages(pattern),
+            *storage.search_indexed_pdf_pages(pattern, match_expr),
+            *storage.search_indexed_image_pages(pattern, match_expr),
         ):
             page_number = row["page_number"]
             text = row["ocr_text"].replace("\n", " ")

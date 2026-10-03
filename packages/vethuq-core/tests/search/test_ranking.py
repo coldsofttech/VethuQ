@@ -12,10 +12,11 @@ class TestRanking:
         return {page.file_name: page for page in Search.indexed_pages(storage, query, **kwargs)}
 
     def test_tiers_and_badges(self):
-        assert Ranking.TIERS == ("exact", "like", "proximity", "full-text", "fuzzy")
+        assert Ranking.TIERS == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
         assert [Ranking.BADGES[e] for e in Ranking.TIERS] == [
             "Exact",
             "Contains",
+            "Relevant",
             "Near",
             "Word",
             "Similar",
@@ -55,7 +56,7 @@ class TestRanking:
         (page,) = Search.indexed_pages(storage, "payment termination")
 
         assert page.engine == "exact"
-        assert page.matched_by == ("exact", "like", "proximity", "full-text", "fuzzy")
+        assert page.matched_by == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
 
     def test_engines_finding_the_same_words_give_one_hit_labelled_by_the_strictest(
         self, conn: sqlite3.Connection, storage: Storage
@@ -67,7 +68,7 @@ class TestRanking:
         (hit,) = page.hits
         assert (hit.engine, hit.matched) == ("exact", "Museum")
         # one word, so proximity had nothing to do and was skipped without failing the search
-        assert hit.matched_by == ("exact", "like", "full-text", "fuzzy")
+        assert hit.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
         assert Ranking.hit_badge(hit) == "Exact"
 
     def test_different_words_stay_separate_hits_best_first(
@@ -82,7 +83,7 @@ class TestRanking:
             ("Muzeum", "fuzzy"),
         ]
         assert Ranking.hit_badge(page.hits[1]) == "Similar 83%"
-        assert page.matched_by == ("exact", "like", "full-text", "fuzzy")
+        assert page.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
 
     def test_hits_that_overlap_merge_into_their_union(
         self, conn: sqlite3.Connection, storage: Storage
@@ -94,7 +95,7 @@ class TestRanking:
 
         (hit,) = page.hits
         assert (hit.matched, hit.engine) == ("museums", "like")
-        assert hit.matched_by == ("like", "full-text", "fuzzy")
+        assert hit.matched_by == ("like", "lexical", "full-text", "fuzzy")
         assert (hit.before, hit.after) == ("two ", " here")
         assert page.engine == "like"
 
@@ -169,15 +170,16 @@ class TestRanking:
         assert all(0.8 <= p.score <= 1 for p in pages[1:])
 
     def test_agreement_breaks_ties(self, conn: sqlite3.Connection, storage: Storage):
-        # Both pages are Contains-tier with one hit; only one is also found by full-text and fuzzy.
+        # Both pages are Contains-tier with one hit; only one is also found by
+        # full-text and fuzzy (and, with `like`, by lexical).
         SearchData.seed_page(conn, "the museumgoers", "/d/a_alone.pdf")
         SearchData.seed_page(conn, "the Museum", "/d/z_agreed.pdf")
 
         pages = Search.indexed_pages(storage, "museum")
 
         assert [(p.file_name, p.engine, len(p.matched_by)) for p in pages] == [
-            ("z_agreed.pdf", "like", 3),
-            ("a_alone.pdf", "like", 1),
+            ("z_agreed.pdf", "like", 4),
+            ("a_alone.pdf", "like", 2),
         ]
 
     def test_case_sensitive_reaches_like_and_fuzzy_but_never_breaks_the_others(
