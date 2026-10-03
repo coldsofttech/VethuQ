@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
+from vethuq_core.fspath import FsPath
 from vethuq_core.readers.reader import DocumentReader, JpgReader, PdfReader, PngReader
 
 
@@ -52,13 +54,24 @@ class Readers:
     @staticmethod
     def iter_files(path: Path) -> Iterator[Path]:
         """Yield `path` (if it's a supported file) or every supported file beneath it."""
-        if path.is_file():
+        if FsPath.extended(path).is_file():
             if Readers.is_supported(path):
                 yield path
             return
-        for candidate in path.rglob("*"):
-            if candidate.is_file() and Readers.is_supported(candidate):
+        for candidate in Readers._walk(path):
+            if Readers.is_supported(candidate):
                 yield candidate
+
+    @staticmethod
+    def _walk(root: Path) -> Iterator[Path]:
+        """Every file beneath `root` as a normal (not extended-length) path, long ones included."""
+        extended_root = FsPath.extended(root)
+        for dir_path, _, names in os.walk(extended_root):
+            folder = root / Path(dir_path).relative_to(extended_root)
+            for name in names:
+                candidate = folder / name
+                if FsPath.extended(candidate).is_file():
+                    yield candidate
 
     @staticmethod
     def is_hidden(file_path: Path, root: Path) -> bool:
@@ -71,22 +84,18 @@ class Readers:
             return True
         if file_path.name.lower() in Readers._JUNK_FILE_NAMES:
             return True
-        attributes = getattr(file_path.stat(), "st_file_attributes", 0)
+        attributes = getattr(FsPath.extended(file_path).stat(), "st_file_attributes", 0)
         return bool(attributes & Readers._WINDOWS_HIDDEN_ATTRIBUTE)
 
     @staticmethod
     def iter_unsupported_files(path: Path) -> Iterator[Path]:
         """Yield `path` (if it's an unsupported, non-hidden file) or every such file beneath it."""
-        if path.is_file():
+        if FsPath.extended(path).is_file():
             if not Readers.is_supported(path) and not Readers.is_hidden(path, path.parent):
                 yield path
             return
-        for candidate in path.rglob("*"):
-            if (
-                candidate.is_file()
-                and not Readers.is_supported(candidate)
-                and not Readers.is_hidden(candidate, path)
-            ):
+        for candidate in Readers._walk(path):
+            if not Readers.is_supported(candidate) and not Readers.is_hidden(candidate, path):
                 yield candidate
 
     @staticmethod

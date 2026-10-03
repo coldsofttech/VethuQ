@@ -11,6 +11,7 @@ from importlib import resources
 from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
+from vethuq_core.fspath import FsPath
 from vethuq_core.search.engines import Ranking
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
@@ -39,7 +40,7 @@ class Export:
 
     @staticmethod
     def _file_uri(file_path: str) -> str:
-        return Path(file_path).resolve().as_uri()
+        return FsPath.plain(FsPath.extended(file_path).resolve()).as_uri()
 
     @staticmethod
     def _generated_at() -> str:
@@ -114,7 +115,7 @@ class Export:
         payload["generated_at"] = Export._generated_at()
         payload["result_count"] = len(matches)
         payload["matches"] = [Export._match_entry(match) for match in matches]
-        output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     @staticmethod
     def _write_html(

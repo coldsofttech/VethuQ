@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vethuq_core.fspath import FsPath
 from vethuq_core.readers.errors import (
     CorruptedFileError,
     FileRemovedError,
@@ -86,7 +87,7 @@ class PdfReader(DocumentReader):
         import pymupdf
 
         try:
-            doc = pymupdf.open(file_path)
+            doc = pymupdf.open(FsPath.extended(file_path))
         except (FileNotFoundError, pymupdf.FileNotFoundError) as exc:
             raise FileRemovedError(file_path) from exc
         except Exception as exc:  # noqa: BLE001 - pymupdf raises several types for a bad file
@@ -150,8 +151,23 @@ class ImageReader(DocumentReader):
         yield ReadPage(
             native_text="",
             image_regions=(),
-            render=lambda region: str(file_path),
+            render=lambda region: ImageReader.render_image(file_path),
         )
+
+    @staticmethod
+    def render_image(file_path: Path) -> str | np.ndarray:
+        """What an OCR engine takes for this image: its path, or - when the path is too
+        long for the engine's own file access - the decoded pixels."""
+        if FsPath.extended(file_path) == file_path:
+            return str(file_path)
+        import cv2
+        import numpy as np
+
+        data = np.frombuffer(FsPath.extended(file_path).read_bytes(), dtype=np.uint8)
+        image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if image is None:
+            raise CorruptedFileError(file_path)
+        return image
 
 
 class PngReader(ImageReader):
