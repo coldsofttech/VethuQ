@@ -202,6 +202,42 @@ class Document:
         ).rowcount
 
     @staticmethod
+    def find_index_row_for_reindex(
+        conn: sqlite3.Connection, *, row_id: int | None = None, file_path: str | None = None
+    ) -> sqlite3.Row | None:
+        """The tracked (non-'removed') row for a document id or an exact file path."""
+        if row_id is not None:
+            return conn.execute(
+                "SELECT id, source_id, file_path, status FROM document_index "
+                "WHERE id = ? AND status != 'removed'",
+                (row_id,),
+            ).fetchone()
+        return conn.execute(
+            "SELECT id, source_id, file_path, status FROM document_index "
+            "WHERE file_path = ? AND status != 'removed'",
+            (file_path,),
+        ).fetchone()
+
+    @staticmethod
+    def reset_index_for_reindex(
+        conn: sqlite3.Connection, source_id: int, file_path: str | None = None
+    ) -> int:
+        """Send indexed/failed rows of a source (or just one file's) back to 'pending'.
+
+        The rows keep their documents, so the next run reprocesses them in place
+        instead of creating new logical documents. Returns how many were reset.
+        """
+        query = (
+            "UPDATE document_index SET status = 'pending', error_message = NULL "
+            "WHERE source_id = ? AND status IN ('indexed', 'error')"
+        )
+        params: tuple[object, ...] = (source_id,)
+        if file_path is not None:
+            query += " AND file_path = ?"
+            params += (file_path,)
+        return conn.execute(query, params).rowcount
+
+    @staticmethod
     def list_tracked_index_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
         return conn.execute(
             "SELECT id, document_id, file_path, sha256 FROM document_index "

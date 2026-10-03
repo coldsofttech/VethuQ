@@ -150,6 +150,14 @@ class _DocumentStoreMixin:
     def fail_stuck_processing_document_index(self, message: str, now: str) -> int:
         return Document.fail_stuck_processing_index(self._conn, message, now)
 
+    def find_document_index_row_for_reindex(
+        self, *, row_id: int | None = None, file_path: str | None = None
+    ) -> sqlite3.Row | None:
+        return Document.find_index_row_for_reindex(self._conn, row_id=row_id, file_path=file_path)
+
+    def reset_document_index_for_reindex(self, source_id: int, file_path: str | None = None) -> int:
+        return Document.reset_index_for_reindex(self._conn, source_id, file_path)
+
     def list_tracked_document_index_rows(self, source_id: int) -> list[sqlite3.Row]:
         return Document.list_tracked_index_rows(self._conn, source_id)
 

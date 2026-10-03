@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
 from rich.prompt import Confirm
 from rich.text import Text
+from typer._click.core import Context
+from typer.core import TyperGroup
 from vethuq_core.index import (
     AlreadyRunningError,
+    AmbiguousFileError,
     DatabaseIntegrityError,
+    FileNotTrackedError,
     IndexRunner,
     IndexRunnerError,
+    Reindex,
     StaleLockError,
 )
 from vethuq_core.ocr import Document
@@ -67,7 +73,10 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
 
-    verb = "restart" if restart else "index run"
+    _report_started(pid, "restart" if restart else "index run", wait=wait)
+
+
+def _report_started(pid: int, verb: str, *, wait: bool) -> None:
     started = Text.assemble((f"Started background {verb} (pid {pid}).", Theme.OK))
     if not wait:
         started.append("\n\nCheck progress with '", style="white")
@@ -128,6 +137,81 @@ def restart(
     instead to also pick up new files.
     """
     _start_and_report(target, force=force, wait=wait, restart=True)
+
+
+class _ImplicitSourceGroup(TyperGroup):
+    """`reindex <source>` means `reindex source <source>`; `file` is reserved for `reindex file`."""
+
+    def parse_args(self, ctx: Context, args: list[str]) -> list[str]:
+        if args and not args[0].startswith("-") and args[0] not in self.commands:
+            args = ["source", *args]
+        return super().parse_args(ctx, args)
+
+
+reindex_app = typer.Typer(
+    cls=_ImplicitSourceGroup,
+    help=(
+        "Re-index everything under a source ('vethuq index reindex <source id or path>'), "
+        "or one file ('vethuq index reindex file <id or path>')."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(reindex_app, name="reindex")
+
+
+def _start_reindex(starter: Callable[[], int], verb: str, *, wait: bool) -> None:
+    try:
+        pid = starter()
+    except (
+        AlreadyRunningError,
+        AmbiguousFileError,
+        FileNotTrackedError,
+        StaleLockError,
+        DatabaseIntegrityError,
+        SourceNotFoundError,
+    ) as exc:
+        error_console.print(str(exc), style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    _report_started(pid, verb, wait=wait)
+
+
+@reindex_app.command("source", hidden=True)
+def reindex_source(
+    target: str = typer.Argument(..., help="Source id or path to re-index."),
+    wait: bool = typer.Option(
+        False, "--wait", help="Block until the run finishes, printing progress as it goes."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
+    ),
+) -> None:
+    """Re-index every file under a source, not just failed ones.
+
+    Files are OCR'd again and their existing documents updated in place, so
+    nothing is duplicated. Use 'vethuq index reindex file' for a single file.
+    """
+    _start_reindex(lambda: Reindex.start_source(target, force=force), "reindex", wait=wait)
+
+
+@reindex_app.command("file")
+def reindex_file(
+    file: str = typer.Argument(..., help="File id or path to re-index."),
+    source: str | None = typer.Option(
+        None,
+        "--source",
+        help="Source id or path - required when the file sits under more than one source.",
+    ),
+    wait: bool = typer.Option(
+        False, "--wait", help="Block until the run finishes, printing progress as it goes."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
+    ),
+) -> None:
+    """Re-index a single file, updating its existing document in place."""
+    _start_reindex(
+        lambda: Reindex.start_file(file, source=source, force=force), "reindex", wait=wait
+    )
 
 
 @app.command("status")

@@ -1,0 +1,60 @@
+import re
+
+import vethuq_core.db as db_module
+from typer.testing import CliRunner
+from vethuq_cli.main import app
+from vethuq_core.index import runner as index_runner_module
+from vethuq_core.sources import Sources
+from vethuq_core.storage.sqlite import SqliteStorage
+
+runner = CliRunner()
+
+
+class _FakeProcess:
+    def __init__(self, pid: int):
+        self.pid = pid
+
+
+def _flatten(output: str) -> str:
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return " ".join(plain.replace("│", " ").split())
+
+
+def _add_source(db_path, folder):
+    conn = db_module.Db.connect(db_path)
+    try:
+        return Sources.add(SqliteStorage(conn), folder).id
+    finally:
+        conn.close()
+
+
+class TestReindexCommands:
+    def test_source_argument_without_subcommand_starts_a_reindex(
+        self, use_temp_db, tmp_path, monkeypatch
+    ):
+        db_path = use_temp_db()
+        source_id = _add_source(db_path, tmp_path)
+        monkeypatch.setattr(
+            index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(123)
+        )
+
+        result = runner.invoke(app, ["index", "reindex", str(source_id)])
+
+        assert result.exit_code == 0
+        assert "Started background reindex (pid 123)" in _flatten(result.stdout)
+
+    def test_unknown_source_is_an_error(self, use_temp_db, monkeypatch):
+        use_temp_db()
+
+        result = runner.invoke(app, ["index", "reindex", "999"])
+
+        assert result.exit_code == 1
+
+    def test_file_not_tracked_is_an_error(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _add_source(db_path, tmp_path)
+
+        result = runner.invoke(app, ["index", "reindex", "file", str(tmp_path / "x.pdf")])
+
+        assert result.exit_code == 1
+        assert "isn't tracked" in _flatten(result.output)

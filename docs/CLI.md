@@ -86,6 +86,20 @@ vethuq index restart
 vethuq index restart ./path/to/folder-or-file
 ```
 
+### `reindex <source> [--wait] [--force]` / `reindex file <id-or-path> [--source <id-or-path>] [--wait] [--force]`
+
+Re-index everything under a source, or one file, regardless of whether it
+already succeeded. Files are OCR'd again and their existing documents are
+updated in place, so no duplicate logical documents appear. Refused while
+another index run is active. `file` is reserved: address a source literally
+named `file` by its id. If a file sits under more than one source,
+`reindex file` fails and asks for `--source`.
+
+```bash
+vethuq index reindex 3
+vethuq index reindex file ./docs/invoice.pdf --source 3
+```
+
 ### `run [source] [--wait] [--force]`
 
 Start OCR indexing as a background process and return immediately. A

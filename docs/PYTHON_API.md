@@ -64,6 +64,17 @@ Pause or resume the currently running background index. Raises
 Retry only previously-failed files, in the background. Same arguments and
 return value as `run`.
 
+### `reindex(target, *, force=False, wait=False)`
+
+Re-index every file under a source, not just failed ones, updating existing
+documents in place. Same errors and return value as `run`.
+
+### `reindex_file(file, *, source=None, force=False, wait=False)`
+
+Re-index one file by document id or path. Raises `FileNotTrackedError` if it
+isn't tracked and `AmbiguousFileError` if it sits under several sources and
+`source` isn't given.
+
 ### `run(target=None, *, force=False, wait=False)`
 
 Start OCR indexing on registered sources. `target` is a source id or path;
