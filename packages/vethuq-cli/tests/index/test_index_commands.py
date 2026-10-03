@@ -59,6 +59,22 @@ class TestRun:
 
         assert result.exit_code == 0
         assert "Started background index run (pid 123)" in result.stdout
+        assert "Recovered from" not in result.stdout
+
+    def test_run_reports_recovery_after_stale_lock(self, use_temp_db, tmp_path, monkeypatch):
+        db_path = use_temp_db()
+        _add_pending_source(db_path, tmp_path)
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        monkeypatch.setattr(
+            index_runner_module.subprocess, "Popen", lambda *a, **k: _FakeProcess(123)
+        )
+
+        result = runner.invoke(app, ["index", "run"])
+
+        assert result.exit_code == 0
+        assert "Recovered from a previous run" in result.stdout
+        assert "Started background index run (pid 123)" in result.stdout
 
     def test_run_wait_keeps_polling_until_state_appears(self, use_temp_db, tmp_path, monkeypatch):
         db_path = use_temp_db()

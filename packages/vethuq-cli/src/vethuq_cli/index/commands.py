@@ -26,6 +26,14 @@ from vethuq_cli.theme import Theme
 app = typer.Typer(help="Run OCR indexing on registered sources.")
 
 
+def _report_recovery(actions: list[str]) -> None:
+    """Tell the user what was recovered from a previous run that didn't exit cleanly."""
+    text = Text("Recovered from a previous run that didn't exit cleanly:", style="white")
+    for action in actions:
+        text.append(f"\n  - {action}", style="white")
+    console.print(IndexPanel.message(text, Theme.NOTICE))
+
+
 def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
     if target is None:
         storage = open_storage()
@@ -47,7 +55,9 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
             return
 
     try:
-        pid = IndexRunner.start_run(target, force=force, restart=restart)
+        pid = IndexRunner.start_run(
+            target, force=force, restart=restart, on_recovery=_report_recovery
+        )
     except (
         AlreadyRunningError,
         StaleLockError,

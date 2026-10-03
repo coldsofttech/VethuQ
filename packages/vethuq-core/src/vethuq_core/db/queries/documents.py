@@ -185,8 +185,9 @@ class Document:
         return cursor.rowcount > 0
 
     @staticmethod
-    def fail_stuck_processing_index(conn: sqlite3.Connection, message: str, now: str) -> None:
+    def fail_stuck_processing_index(conn: sqlite3.Connection, message: str, now: str) -> int:
         """Reset every row still claimed ('processing') back to 'error', so it's retried.
+        Returns how many rows were reset.
 
         Called only once the caller is certain nothing is still actively working
         on these rows (a crashed/force-killed run being reconciled at the next
@@ -194,11 +195,11 @@ class Document:
         otherwise a claim (see `upsert_index`) would hold a row in 'processing'
         forever, since nothing else ever moves it to 'indexed' or 'error'.
         """
-        conn.execute(
+        return conn.execute(
             "UPDATE document_index SET status = 'error', error_message = ?, completed_at = ? "
             "WHERE status = 'processing'",
             (message, now),
-        )
+        ).rowcount
 
     @staticmethod
     def list_tracked_index_rows(conn: sqlite3.Connection, source_id: int) -> list[sqlite3.Row]:
