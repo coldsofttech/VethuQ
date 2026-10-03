@@ -10,10 +10,13 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 from datetime import date
 from pathlib import Path
 
+from vethuq._core.db.backup import Backup as _Backup
+from vethuq._core.db.backup import BackupError, BackupInfo
 from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
 from vethuq._core.db.integrity import IntegrityCheckResult
 from vethuq._core.index import (
     AlreadyRunningError,
+    DatabaseIntegrityError,
     IndexRun,
     IndexRunnerError,
     IndexState,
@@ -68,6 +71,7 @@ SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
 SEARCH_PROXIMITY_MAX_DISTANCE = _SearchSettings.PROXIMITY_MAX_DISTANCE
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
+BACKUP_VALUES = _DbSettings.BACKUP_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
 LOG_COMPONENTS = tuple(_Logs.COMPONENTS)
@@ -76,6 +80,7 @@ engine_badge = _Ranking.engine_badge
 hit_badge = _Ranking.hit_badge
 
 __all__ = [
+    "BACKUP_VALUES",
     "ENGINE_BADGES",
     "ENGINE_MEANINGS",
     "ENGINE_TIERS",
@@ -90,7 +95,11 @@ __all__ = [
     "SEARCH_PROXIMITY_PRESETS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
+    "BackupError",
+    "BackupInfo",
+    "BackupSettings",
     "ConfidenceMetric",
+    "DatabaseIntegrityError",
     "DB_PATH",
     "Db",
     "DbSettings",
@@ -735,6 +744,62 @@ class IntegrityCheckSettings:
             storage.close()
 
 
+class BackupSettings:
+    """Whether a compressed database backup is taken automatically when the database is opened.
+    Not instantiated directly — use `Vethuq().settings.db.backup`."""
+
+    def get(self) -> str:
+        """'enable' (the default) or 'disable' (only `Db.backup_create` takes backups)."""
+        storage = _open_storage()
+        try:
+            return _DbSettings.get_backup(storage)
+        finally:
+            storage.close()
+
+    def set(self, value: str) -> None:
+        """Enable or disable automatic backups; `value` must be one of `BACKUP_VALUES`.
+
+        Raises `InvalidSettingValueError` otherwise.
+        """
+        storage = _open_storage()
+        try:
+            _DbSettings.set_backup(storage, value)
+        finally:
+            storage.close()
+
+    def get_interval_minutes(self) -> int:
+        """Minutes between automatic backups. 1 day by default."""
+        storage = _open_storage()
+        try:
+            return _DbSettings.get_backup_interval_minutes(storage)
+        finally:
+            storage.close()
+
+    def set_interval_minutes(self, minutes: int) -> None:
+        """Set, in minutes, how often automatic backups are taken (at least 1)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.set_backup_interval_minutes(storage, minutes)
+        finally:
+            storage.close()
+
+    def get_retention_days(self) -> int:
+        """Days automatic backups are kept before being pruned. 7 by default."""
+        storage = _open_storage()
+        try:
+            return _DbSettings.get_backup_retention_days(storage)
+        finally:
+            storage.close()
+
+    def set_retention_days(self, days: int) -> None:
+        """Set how many days automatic backups are kept (at least 1)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.set_backup_retention_days(storage, days)
+        finally:
+            storage.close()
+
+
 class LogLevelSettings:
     """Verbosity of VethuQ's log files. Not instantiated directly — use
     `Vethuq().settings.logs.level`."""
@@ -797,6 +862,7 @@ class DbSettings:
 
     def __init__(self) -> None:
         self.integrity_check = IntegrityCheckSettings()
+        self.backup = BackupSettings()
 
 
 class OcrSettings:
@@ -1056,6 +1122,56 @@ class Db:
             return _IntegrityCheck.run(storage)
         finally:
             storage.close()
+
+    def backup_create(self, name: str | None = None) -> BackupInfo:
+        """Take a compressed backup of the database now and return it.
+
+        A named snapshot is never deleted automatically. Raises `BackupError` if the
+        name is invalid or taken, or the database fails its integrity check.
+        """
+        return _Backup.create(_default_db_path(), name)
+
+    def backup_list(self) -> list[BackupInfo]:
+        """Every database backup, newest first."""
+        return _Backup.entries(_default_db_path())
+
+    def backup_delete(self, name: str) -> None:
+        """Delete one backup by name. Raises `BackupError` if there is none."""
+        _Backup.delete(_default_db_path(), name)
+
+    def restore(self, name_or_path: str) -> BackupInfo | None:
+        """Replace the database with a backup (by name, or the path of a `.db.gz` file).
+
+        The backup is verified first, and the current database is saved as a
+        'safety' backup, which is returned. Raises `BackupError` on any problem,
+        or `IndexRunnerError` if an index run is active.
+        """
+        self._require_idle()
+        return _Backup.restore(_default_db_path(), name_or_path)
+
+    def reset(self) -> BackupInfo | None:
+        """Delete the database and all its data (a fresh one is created on next use).
+
+        The current database is saved as a 'safety' backup first, which is returned.
+        Raises `IndexRunnerError` if an index run is active.
+        """
+        self._require_idle()
+        return _Backup.reset(_default_db_path())
+
+    def repair(self) -> IntegrityCheckResult:
+        """Rebuild the database's indexes (`REINDEX`) and return the fresh integrity result.
+
+        Fixes index-only corruption; if `ok` is still False, restore a backup or
+        reset. Raises `IndexRunnerError` if an index run is active.
+        """
+        self._require_idle()
+        result, _ = _Backup.repair(_default_db_path())
+        return result
+
+    @staticmethod
+    def _require_idle() -> None:
+        if _IndexRunner.is_running(_default_db_path())[0]:
+            raise IndexRunnerError("An index run is in progress; stop it first.")
 
 
 class Vethuq:

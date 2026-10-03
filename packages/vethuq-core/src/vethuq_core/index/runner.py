@@ -32,7 +32,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
-from vethuq_core.db.integrity import IntegrityCheck
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
@@ -586,21 +585,22 @@ class IndexRunner:
         """
         storage = open_storage(db_path)
         try:
-            result = IntegrityCheck.run(storage)
+            messages = storage.run_integrity_check_pragma()
         finally:
             storage.close()
-        if result.ok:
-            IndexRunner._logger.info("Database integrity verified after recovery: %s", reason)
+        database_logger = Logs.get_logger("database")
+        if messages == ["ok"]:
+            database_logger.info("Database integrity verified after recovery: %s", reason)
             return
-        IndexRunner._logger.error(
-            "Database integrity check failed after recovery (%s): %s",
-            reason,
-            "; ".join(result.errors),
+        database_logger.error(
+            "Database integrity check failed after recovery (%s): %s", reason, "; ".join(messages)
         )
         raise DatabaseIntegrityError(
             f"The database failed its integrity check after recovering because {reason}. "
-            "Run 'vethuq db integrity-check' for details.",
-            result.errors,
+            "Run 'vethuq db integrity-check' for details, then 'vethuq db repair', or "
+            "'vethuq db restore <name>' (see 'vethuq db backup list'). 'vethuq db reset' "
+            "clears everything as a last resort.",
+            messages,
         )
 
     @staticmethod

@@ -17,6 +17,7 @@ from vethuq_core.ocr import Ocr, Pending
 from vethuq_core.paths import Paths
 from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import Storage
+from vethuq_core.storage.sqlite import SqliteStorage
 
 
 @pytest.fixture
@@ -380,12 +381,12 @@ class TestStartRun:
         assert pid == 555
 
     def test_start_run_checks_integrity_after_clearing_stale_lock(self, db_path, monkeypatch):
-        from vethuq_core.db.integrity import IntegrityCheck
-
         calls = []
-        real_run = IntegrityCheck.run
+        real = SqliteStorage.run_integrity_check_pragma
         monkeypatch.setattr(
-            IntegrityCheck, "run", staticmethod(lambda s: calls.append(1) or real_run(s))
+            SqliteStorage,
+            "run_integrity_check_pragma",
+            lambda self: calls.append(1) or real(self),
         )
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
         IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
@@ -396,10 +397,10 @@ class TestStartRun:
         assert calls
 
     def test_start_run_skips_integrity_check_without_stale_lock(self, db_path, monkeypatch):
-        from vethuq_core.db.integrity import IntegrityCheck
-
         calls = []
-        monkeypatch.setattr(IntegrityCheck, "run", staticmethod(lambda s: calls.append(1)))
+        monkeypatch.setattr(
+            SqliteStorage, "run_integrity_check_pragma", lambda self: calls.append(1) or ["ok"]
+        )
         monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
 
         IndexRunner.start_run(None, db_path=db_path)
@@ -407,13 +408,7 @@ class TestStartRun:
         assert not calls
 
     def test_start_run_aborts_when_integrity_check_fails_after_recovery(self, db_path, monkeypatch):
-        from vethuq_core.db.integrity import IntegrityCheck, IntegrityCheckResult
-
-        monkeypatch.setattr(
-            IntegrityCheck,
-            "run",
-            staticmethod(lambda s: IntegrityCheckResult(ok=False, errors=["bad page"])),
-        )
+        monkeypatch.setattr(SqliteStorage, "run_integrity_check_pragma", lambda self: ["bad page"])
         monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
         IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
         popen_calls = []
@@ -423,6 +418,7 @@ class TestStartRun:
             IndexRunner.start_run(None, db_path=db_path)
 
         assert excinfo.value.errors == ["bad page"]
+        assert "db restore" in str(excinfo.value)
         assert not popen_calls
         assert not IndexRunner._lock_path(db_path).exists()
 

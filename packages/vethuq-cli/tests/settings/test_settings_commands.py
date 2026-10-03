@@ -424,3 +424,34 @@ class TestSearchEngineSettings:
 
         shown = runner.invoke(app, ["settings", "search", "proximity", "distance", "show"])
         assert "medium" in shown.stdout
+
+
+class TestBackupSettings:
+    def test_defaults(self, use_temp_db):
+        use_temp_db()
+
+        assert "enable" in runner.invoke(app, ["settings", "db", "backup", "show"]).stdout
+        assert "1440" in runner.invoke(app, ["settings", "db", "backup", "interval", "show"]).stdout
+        assert "7" in runner.invoke(app, ["settings", "db", "backup", "retention", "show"]).stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        assert runner.invoke(app, ["settings", "db", "backup", "set", "disable"]).exit_code == 0
+        assert (
+            runner.invoke(app, ["settings", "db", "backup", "interval", "set", "60"]).exit_code == 0
+        )
+        assert (
+            runner.invoke(app, ["settings", "db", "backup", "retention", "set", "14"]).exit_code
+            == 0
+        )
+
+        assert "disable" in runner.invoke(app, ["settings", "db", "backup", "show"]).stdout
+        assert "60" in runner.invoke(app, ["settings", "db", "backup", "interval", "show"]).stdout
+        assert "14" in runner.invoke(app, ["settings", "db", "backup", "retention", "show"]).stdout
+
+    def test_rejects_invalid_values(self, use_temp_db):
+        use_temp_db()
+
+        for args in (["set", "auto"], ["interval", "set", "0"], ["retention", "set", "0"]):
+            assert runner.invoke(app, ["settings", "db", "backup", *args]).exit_code == 1

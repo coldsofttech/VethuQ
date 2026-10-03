@@ -65,6 +65,16 @@ integrity_check_interval_app = typer.Typer(
     help="Configure, in minutes, how often automatic integrity checks run when "
     "'integrity-check' is 'auto'."
 )
+backup_app = typer.Typer(
+    help="Configure whether a compressed database backup is taken automatically when "
+    "VethuQ opens the database."
+)
+backup_interval_app = typer.Typer(
+    help="Configure, in minutes, how often automatic database backups are taken."
+)
+backup_retention_app = typer.Typer(
+    help="Configure how many days automatic database backups are kept."
+)
 engine_app = typer.Typer(
     help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
 )
@@ -94,6 +104,9 @@ ocr_app.add_typer(engine_app, name="engine")
 app.add_typer(db_app, name="db")
 db_app.add_typer(integrity_check_app, name="integrity-check")
 integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
+db_app.add_typer(backup_app, name="backup")
+backup_app.add_typer(backup_interval_app, name="interval")
+backup_app.add_typer(backup_retention_app, name="retention")
 app.add_typer(logs_app, name="logs")
 logs_app.add_typer(log_level_app, name="level")
 logs_app.add_typer(log_retention_app, name="retention")
@@ -896,6 +909,152 @@ def integrity_check_interval_set(
                     (" minutes.", "white"),
                 ),
                 "Integrity Check Interval",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_app.command("show")
+def backup_show() -> None:
+    """Show whether automatic database backups are enabled."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Automatic backup: ", "white"),
+                    (str(value), Theme.VALUE),
+                    ("", "white"),
+                ),
+                "Backup",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_app.command("set")
+def backup_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(DbSettings.BACKUP_VALUES)}."
+    ),
+) -> None:
+    """Set whether automatic database backups are enabled."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Backup",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_interval_app.command("show")
+def backup_interval_show() -> None:
+    """Show how often, in minutes, automatic database backups are taken."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup_interval_minutes(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup interval: ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" minutes", "white"),
+                ),
+                "Backup Interval",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_interval_app.command("set")
+def backup_interval_set(
+    value: int = typer.Argument(..., help="Minutes between automatic database backups."),
+) -> None:
+    """Set how often, in minutes, automatic database backups are taken."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup_interval_minutes(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup Interval set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" minutes.", "white"),
+                ),
+                "Backup Interval",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_retention_app.command("show")
+def backup_retention_show() -> None:
+    """Show how many days automatic database backups are kept."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup_retention_days(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup retention: ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" days", "white"),
+                ),
+                "Backup Retention",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_retention_app.command("set")
+def backup_retention_set(
+    value: int = typer.Argument(..., help="Days automatic database backups are kept."),
+) -> None:
+    """Set how many days automatic database backups are kept."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup_retention_days(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup Retention set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" days.", "white"),
+                ),
+                "Backup Retention",
                 Theme.OK,
             )
         )

@@ -328,6 +328,7 @@ END;
             conn.close()
             raise
 
+        from vethuq_core.db.backup import Backup
         from vethuq_core.db.integrity import IntegrityCheck
         from vethuq_core.sources import Sources
         from vethuq_core.storage.sqlite import SqliteStorage
@@ -342,6 +343,7 @@ END;
                 purged_documents,
             )
         IntegrityCheck.maybe_run(storage)
+        Backup.maybe_run_auto(storage, path)
         return conn
 
     @staticmethod

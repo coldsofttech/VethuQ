@@ -25,7 +25,13 @@ from vethuq_core.settings import (
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.db import backup_create as db_backup_create
+from vethuq_cli.db import backup_delete as db_backup_delete
+from vethuq_cli.db import backup_list as db_backup_list
 from vethuq_cli.db import integrity_check as db_integrity_check
+from vethuq_cli.db import repair as db_repair
+from vethuq_cli.db import reset as db_reset
+from vethuq_cli.db import restore as db_restore
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
 from vethuq_cli.index.commands import restart as index_restart
@@ -36,6 +42,12 @@ from vethuq_cli.index.commands import stop as index_stop
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import search as run_search
 from vethuq_cli.settings import (
+    backup_interval_set,
+    backup_interval_show,
+    backup_retention_set,
+    backup_retention_show,
+    backup_set,
+    backup_show,
     case_sensitive_disable,
     case_sensitive_enable,
     case_sensitive_show,
@@ -599,6 +611,59 @@ class InteractiveMenu:
                 InteractiveMenu._settings_integrity_check_interval_menu()
 
     @staticmethod
+    def _settings_backup_interval_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Db > Backup > Interval",
+                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(backup_interval_show)
+            elif choice == "2":
+                minutes = IntPrompt.ask("Minutes between automatic backups", console=console)
+                InteractiveMenu._run_safely(backup_interval_set, value=minutes)
+
+    @staticmethod
+    def _settings_backup_retention_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Db > Backup > Retention",
+                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(backup_retention_show)
+            elif choice == "2":
+                days = IntPrompt.ask("Days automatic backups are kept", console=console)
+                InteractiveMenu._run_safely(backup_retention_set, value=days)
+
+    @staticmethod
+    def _settings_backup_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Db > Backup",
+                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("4", "Retention"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(backup_show)
+            elif choice == "2":
+                value = Prompt.ask(
+                    "Take a compressed backup automatically when the database is opened",
+                    console=console,
+                    choices=list(DbSettings.BACKUP_VALUES),
+                )
+                InteractiveMenu._run_safely(backup_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._settings_backup_interval_menu()
+            elif choice == "4":
+                InteractiveMenu._settings_backup_retention_menu()
+
+    @staticmethod
     def _settings_engine_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -687,12 +752,14 @@ class InteractiveMenu:
     def _settings_db_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Db", [("1", "Integrity Check"), ("0", "Back")]
+                "Settings > Db", [("1", "Integrity Check"), ("2", "Backup"), ("0", "Back")]
             )
             if choice == "0":
                 return
             if choice == "1":
                 InteractiveMenu._settings_integrity_check_menu()
+            elif choice == "2":
+                InteractiveMenu._settings_backup_menu()
 
     @staticmethod
     def _settings_log_level_menu() -> None:
@@ -787,13 +854,50 @@ class InteractiveMenu:
                 InteractiveMenu._settings_location_menu()
 
     @staticmethod
+    def _db_backup_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Db > Backup",
+                [("1", "Create"), ("2", "List"), ("3", "Delete"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                name = Prompt.ask("Name for the snapshot (blank for a timestamp)", console=console)
+                InteractiveMenu._run_safely(db_backup_create, name=name.strip() or None)
+            elif choice == "2":
+                InteractiveMenu._run_safely(db_backup_list)
+            elif choice == "3":
+                name = Prompt.ask("Name of the backup to delete", console=console)
+                InteractiveMenu._run_safely(db_backup_delete, name=name, force=False)
+
+    @staticmethod
     def _db_menu() -> None:
         while True:
-            choice = InteractiveMenu._select("Db", [("1", "Integrity Check"), ("0", "Back")])
+            choice = InteractiveMenu._select(
+                "Db",
+                [
+                    ("1", "Integrity Check"),
+                    ("2", "Backup"),
+                    ("3", "Restore"),
+                    ("4", "Repair"),
+                    ("5", "Reset"),
+                    ("0", "Back"),
+                ],
+            )
             if choice == "0":
                 return
             if choice == "1":
                 InteractiveMenu._run_safely(db_integrity_check)
+            elif choice == "2":
+                InteractiveMenu._db_backup_menu()
+            elif choice == "3":
+                source = Prompt.ask("Backup name or file path to restore", console=console)
+                InteractiveMenu._run_safely(db_restore, source=source, force=False)
+            elif choice == "4":
+                InteractiveMenu._run_safely(db_repair)
+            elif choice == "5":
+                InteractiveMenu._run_safely(db_reset, force=False)
 
     @staticmethod
     def _logs_menu() -> None:

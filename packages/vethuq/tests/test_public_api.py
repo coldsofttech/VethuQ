@@ -481,3 +481,53 @@ def test_logs_tail_reads_a_component_log(client: vethuq.Vethuq, tmp_path: Path):
 def test_logs_tail_raises_when_there_is_no_log(client: vethuq.Vethuq):
     with pytest.raises(vethuq.LogNotFoundError):
         client.logs.tail("ui")
+
+
+def test_db_backup_create_list_restore_and_delete(client: vethuq.Vethuq):
+    client.db.integrity_check()
+
+    info = client.db.backup_create("snap")
+    assert info.name == "snap"
+    assert "snap" in [b.name for b in client.db.backup_list()]
+
+    safety = client.db.restore("snap")
+    assert safety is not None and safety.kind == "safety"
+
+    client.db.backup_delete("snap")
+    assert "snap" not in [b.name for b in client.db.backup_list()]
+
+
+def test_db_backup_rejects_bad_names(client: vethuq.Vethuq):
+    client.db.integrity_check()
+
+    with pytest.raises(vethuq.BackupError):
+        client.db.backup_create("bad name")
+
+
+def test_db_repair_passes_on_a_healthy_database(client: vethuq.Vethuq):
+    client.db.integrity_check()
+
+    assert client.db.repair().ok
+
+
+def test_db_reset_removes_the_database(client: vethuq.Vethuq):
+    client.db.integrity_check()
+
+    assert client.db.reset() is not None
+
+
+def test_backup_settings_defaults_and_roundtrip(client: vethuq.Vethuq):
+    backup = client.settings.db.backup
+    assert backup.get() == "enable"
+    assert backup.get_interval_minutes() == 24 * 60
+    assert backup.get_retention_days() == 7
+
+    backup.set("disable")
+    backup.set_interval_minutes(60)
+    backup.set_retention_days(14)
+
+    assert backup.get() == "disable"
+    assert backup.get_interval_minutes() == 60
+    assert backup.get_retention_days() == 14
+    with pytest.raises(vethuq.InvalidSettingValueError):
+        backup.set("auto")

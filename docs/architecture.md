@@ -296,7 +296,7 @@ Each log file has one owner (`vethuq_core.logs.Logs`):
 
 | File           | Logger            | Covers                                                                                                            |
 | -------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `database.log` | `vethuq.database` | schema creation and migrations, pre-migration backup, purges of removed sources/documents, integrity checks, connection/schema/write failures, search failures |
+| `database.log` | `vethuq.database` | schema creation and migrations, pre-migration backup, automatic/manual backups, restore/reset/repair, purges of removed sources/documents, integrity checks, connection/schema/write failures, search failures |
 | `index.log`    | `vethuq.index`    | index worker start/exit, source scans, index runs (start/end/crash), OCR/extraction/indexing failures (file, page, engine, exception), every OCR worker thread (the thread name is on each line), stop/stale-lock handling |
 | `ui.log`       | `vethuq.ui`       | the desktop app                                                                                                   |
 | `cli.log`      | `vethuq.cli`      | each `vethuq` command's start and finish (exit code, duration) and CLI-level errors                                                             |
