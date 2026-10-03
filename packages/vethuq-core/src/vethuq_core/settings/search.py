@@ -12,6 +12,10 @@ class SearchSettings:
     EXPORT_FORMAT_KEY = "search_export_format"
     DEFAULT_EXPORT_FORMAT = "json"
     EXPORT_FORMATS = ("json", "html")
+    ENGINE_KEY = "search_engine"
+    DEFAULT_ENGINE = "like"
+    ENGINES = ("like", "exact", "full-text")
+    CASE_SENSITIVE_KEY = "search_case_sensitive"
 
     @staticmethod
     def get_snippet_context_chars(storage: Storage) -> int:
@@ -50,3 +54,28 @@ class SearchSettings:
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise InvalidSettingValueError(f"format must be one of {SearchSettings.EXPORT_FORMATS}")
         Settings.set(storage, SearchSettings.EXPORT_FORMAT_KEY, format_)
+
+    @staticmethod
+    def get_engine(storage: Storage) -> str:
+        """Default engine `search` uses when none is given. 'like' by default."""
+        value = Settings.get(storage, SearchSettings.ENGINE_KEY)
+        return value if value in SearchSettings.ENGINES else SearchSettings.DEFAULT_ENGINE
+
+    @staticmethod
+    def set_engine(storage: Storage, engine: str) -> None:
+        if engine not in SearchSettings.ENGINES:
+            raise InvalidSettingValueError(f"engine must be one of {SearchSettings.ENGINES}")
+        Settings.set(storage, SearchSettings.ENGINE_KEY, engine)
+
+    @staticmethod
+    def is_case_sensitive(storage: Storage) -> bool:
+        """Whether `search` matches case-sensitively by default. Disabled by default.
+
+        Only the `like` engine acts on it: `exact` is always case-sensitive and
+        `full-text` never is.
+        """
+        return Settings.get(storage, SearchSettings.CASE_SENSITIVE_KEY) == "true"
+
+    @staticmethod
+    def set_case_sensitive(storage: Storage, enabled: bool) -> None:
+        Settings.set(storage, SearchSettings.CASE_SENSITIVE_KEY, "true" if enabled else "false")

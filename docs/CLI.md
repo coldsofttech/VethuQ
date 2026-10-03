@@ -135,11 +135,32 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content>`
+## `search <content> [--engine like|exact|full-text] [--case-sensitive|--no-case-sensitive]`
 
-Search indexed content for `content` (case-insensitive substring match)
-and print matching pages. Only documents with status `indexed` are
-searched. Results open in a pager, starting at the top: scroll (e.g. the
+Search indexed content for `content` and print matching pages. Only
+documents with status `indexed` are searched. `--engine` chooses how
+`content` is matched (default `like`, or `vethuq settings search engine`):
+
+| Engine | Matches | `Museum` in "Visit the Museum" |
+|---|---|---|
+| `like` | `content` anywhere, even inside a word; ignores case unless `--case-sensitive` | `museum`, `Museum`, `mus`, `seu` ✓ — `Museums`, `euma` ✗ |
+| `exact` | `content` as typed: same case, as a whole word (always case-sensitive) | `Museum` ✓ — `museum`, `Museums`, `mus` ✗ |
+| `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
+
+For `full-text`, all the words must appear on the page (`"amount due"` in
+quotes must appear as that phrase), and a trailing `*` makes a word a prefix
+(`mus*` finds `museum`). Punctuation and words like `AND` or `NEAR` are
+searched as plain text, not operators.
+
+`--case-sensitive` / `--no-case-sensitive` overrides
+`vethuq settings search case-sensitive`, and only `like` acts on it:
+`exact` is always case-sensitive and `full-text` never is, so asking for
+the opposite explicitly (`--engine exact --no-case-sensitive`,
+`--engine full-text --case-sensitive`) is an error, while a stored
+preference the engine can't honour is simply not applied. The header of
+the results shows which engine (and case-sensitivity) produced them, and
+an empty `exact` or `full-text` search suggests trying `--engine like`.
+Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, and press `q` to close
 it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every match in
@@ -185,6 +206,51 @@ a time on Enter and doesn't render colors.
 ```bash
 vethuq search "invoice total"
 ```
+
+Examples, assuming a page that reads "Learn English at the English Institute":
+
+**`like`** (the default) finds the text anywhere, even inside a word:
+
+```bash
+vethuq search eng                                   # case-insensitive: finds "English" (twice)
+vethuq search english --engine like                 # case-insensitive: finds "English"
+vethuq search English --case-sensitive              # case-sensitive: finds "English"
+vethuq search english --case-sensitive              # case-sensitive: no match ("english" ≠ "English")
+vethuq search ENGLISH --no-case-sensitive           # case-insensitive, even if the setting is on
+```
+
+**`exact`** finds the text as typed, as a whole word. It is always
+case-sensitive, so `--case-sensitive` is allowed but redundant, and
+`--no-case-sensitive` is an error:
+
+```bash
+vethuq search English --engine exact                # finds "English"
+vethuq search english --engine exact                # no match: wrong case
+vethuq search eng --engine exact                    # no match: only part of a word
+vethuq search "English Institute" --engine exact    # finds the phrase as typed
+vethuq search English --engine exact --case-sensitive       # same as the first example
+vethuq search English --engine exact --no-case-sensitive    # error: always case-sensitive
+```
+
+**`full-text`** finds pages containing the words, in any form, best
+matches first. It is always case-insensitive, so `--no-case-sensitive` is
+allowed but redundant, and `--case-sensitive` is an error:
+
+```bash
+vethuq search english --engine full-text            # finds "English", any case
+vethuq search ENGLISH --engine full-text            # same results
+vethuq search "eng*" --engine full-text             # prefix: finds "English", "engine", "engineering"...
+vethuq search eng --engine full-text                # no match: not a whole word
+vethuq search "english institute" --engine full-text       # both words on the page, any order
+vethuq search '"english institute"' --engine full-text     # the exact phrase, words adjacent and in order
+vethuq search english --engine full-text --no-case-sensitive    # same as the first example
+vethuq search english --engine full-text --case-sensitive       # error: always case-insensitive
+```
+
+To make an engine or case-sensitivity the default for every search, see
+`vethuq settings search engine` and `vethuq settings search case-sensitive`
+below. In PowerShell, put a quoted phrase inside single quotes, as in the
+`'"english institute"'` example.
 
 ## `settings`
 
@@ -321,6 +387,28 @@ given: `json` (the default) or `html`.
 ```bash
 vethuq settings search export-format set html
 vethuq settings search export-format show
+```
+
+### `search engine set <engine>|show`
+
+Configure the engine `vethuq search` uses when `--engine` isn't given: one
+of `like` (the default), `exact` or `full-text`.
+
+```bash
+vethuq settings search engine set full-text
+vethuq settings search engine show
+```
+
+### `search case-sensitive enable|disable|show`
+
+Configure whether `vethuq search` matches case by default. Disabled by
+default. Only the `like` engine acts on it; `--case-sensitive` /
+`--no-case-sensitive` overrides it for one search.
+
+```bash
+vethuq settings search case-sensitive enable
+vethuq settings search case-sensitive disable
+vethuq settings search case-sensitive show
 ```
 
 ### `search snippet set <chars>|show`

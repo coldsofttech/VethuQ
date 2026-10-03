@@ -26,7 +26,7 @@ from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import Search as _Search
-from vethuq._core.search import SearchMatch
+from vethuq._core.search import SearchMatch, SearchOptionError
 from vethuq._core.settings import DbSettings as _DbSettings
 from vethuq._core.settings import GpuSettings as _GpuSettings
 from vethuq._core.settings import IndexSettings as _IndexSettings
@@ -57,6 +57,7 @@ DB_PATH = _default_db_path()
 """Path to VethuQ's local SQLite database (the same one the CLI and desktop app use)."""
 
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
+SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
@@ -68,6 +69,7 @@ __all__ = [
     "LOG_COMPONENTS",
     "LOG_LEVEL_VALUES",
     "OCR_ENGINE_MODES",
+    "SEARCH_ENGINES",
     "SEARCH_EXPORT_FORMATS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
@@ -97,7 +99,10 @@ __all__ = [
     "ProcessingMetric",
     "RemovedRetentionSettings",
     "Search",
+    "SearchCaseSensitiveSettings",
+    "SearchEngineSettings",
     "SearchMatch",
+    "SearchOptionError",
     "SearchSettings",
     "Settings",
     "SettingsError",
@@ -336,12 +341,63 @@ class ExportFormatSettings:
             storage.close()
 
 
+class SearchEngineSettings:
+    """The default engine `search` matches with.
+
+    Not instantiated directly — use `Vethuq().settings.search.engine`.
+    """
+
+    def get(self) -> str:
+        """Default engine `search` uses when none is given. 'like' by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_engine(storage)
+        finally:
+            storage.close()
+
+    def set(self, engine: str) -> None:
+        """Set the default engine `search` uses when none is given.
+
+        `engine` must be one of `SEARCH_ENGINES`; raises `InvalidSettingValueError` otherwise.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_engine(storage, engine)
+        finally:
+            storage.close()
+
+
+class SearchCaseSensitiveSettings:
+    """Whether `search` matches case by default (only the 'like' engine honours it).
+
+    Not instantiated directly — use `Vethuq().settings.search.case_sensitive`.
+    """
+
+    def get(self) -> bool:
+        """Whether `search` matches case-sensitively by default. `False` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.is_case_sensitive(storage)
+        finally:
+            storage.close()
+
+    def set(self, enabled: bool) -> None:
+        """Set whether `search` matches case-sensitively by default."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_case_sensitive(storage, enabled)
+        finally:
+            storage.close()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
     def __init__(self) -> None:
         self.snippet = SnippetSettings()
         self.export_format = ExportFormatSettings()
+        self.engine = SearchEngineSettings()
+        self.case_sensitive = SearchCaseSensitiveSettings()
 
 
 class RemovedRetentionSettings:
@@ -700,28 +756,62 @@ class Search:
     Not instantiated directly — use `Vethuq().search`.
     """
 
-    def run(self, content: str, *, context_chars: int | None = None) -> list[SearchMatch]:
-        """Search indexed OCR text for `content`, case-insensitively.
+    def run(
+        self,
+        content: str,
+        *,
+        context_chars: int | None = None,
+        engine: str | None = None,
+        case_sensitive: bool | None = None,
+    ) -> list[SearchMatch]:
+        """Search indexed OCR text for `content`.
 
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
-        page in text order). Only successfully
-        indexed documents are considered. `context_chars` defaults to
-        `Vethuq().settings.search.snippet` if not given.
+        page in text order) - or best match first for the `full-text` engine.
+        Only successfully indexed documents are considered. `context_chars`
+        defaults to `Vethuq().settings.search.snippet` if not given.
+
+        `engine` is one of `SEARCH_ENGINES` and defaults to
+        `Vethuq().settings.search.engine`: `like` finds `content` anywhere,
+        even inside a word, ignoring case; `exact` finds it as typed - same
+        case, as a whole word; `full-text` finds pages containing its words
+        (any case, English word forms such as plurals; quote a "phrase", end
+        a word with * for a prefix), best matches first. `case_sensitive`
+        defaults to `Vethuq().settings.search.case_sensitive` and only `like`
+        acts on it - `exact` is always case-sensitive and `full-text` never
+        is. Raises `SearchOptionError` for an unknown engine or an explicit
+        `case_sensitive` the engine can't honour.
         """
         storage = _open_storage()
         try:
-            return _Search.indexed_content(storage, content, context_chars=context_chars)
+            resolved_engine, match_case = _Search.resolve_options(storage, engine, case_sensitive)
+            return _Search.indexed_content(
+                storage,
+                content,
+                context_chars=context_chars,
+                engine=resolved_engine,
+                case_sensitive=match_case,
+            )
         finally:
             storage.close()
 
     def export(
-        self, matches: list[SearchMatch], query: str, output: str | Path, format_: str | None = None
+        self,
+        matches: list[SearchMatch],
+        query: str,
+        output: str | Path,
+        format_: str | None = None,
+        *,
+        engine: str | None = None,
+        case_sensitive: bool = False,
     ) -> Path:
         """Write `matches` for `query` to `output` as JSON or HTML.
 
         `format_` defaults to `Vethuq().settings.search.export_format` if
-        not given, and must be one of `SEARCH_EXPORT_FORMATS`.
+        not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
+        `engine` and `case_sensitive` the search ran with to record them in
+        the file.
         """
         storage = _open_storage()
         try:
@@ -729,7 +819,14 @@ class Search:
         finally:
             storage.close()
         output_path = Path(output)
-        _Export.search_results(matches, query, output_path, resolved_format)
+        _Export.search_results(
+            matches,
+            query,
+            output_path,
+            resolved_format,
+            engine=engine,
+            case_sensitive=case_sensitive,
+        )
         return output_path
 
 

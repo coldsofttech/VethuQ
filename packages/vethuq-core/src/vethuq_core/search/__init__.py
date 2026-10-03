@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 from vethuq_core.search.export import Export
-from vethuq_core.search.search import FileMatch, Search, SearchMatch
+from vethuq_core.search.search import FileMatch, Search, SearchMatch, SearchOptionError
 
-__all__ = ["Export", "FileMatch", "Search", "SearchMatch"]
+__all__ = ["Export", "FileMatch", "Search", "SearchMatch", "SearchOptionError"]

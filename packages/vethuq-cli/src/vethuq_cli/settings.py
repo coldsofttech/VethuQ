@@ -23,6 +23,10 @@ gpu_app = typer.Typer(help="Configure whether OCR should use the GPU when availa
 search_app = typer.Typer(help="Configure `search` behavior.")
 snippet_app = typer.Typer(help="Configure how much context `search` shows around a match.")
 export_format_app = typer.Typer(help="Configure the default format `search --export` writes to.")
+search_engine_app = typer.Typer(help="Configure the default engine `search` matches with.")
+case_sensitive_app = typer.Typer(
+    help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
+)
 index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
     help="Configure, in minutes, how long a removed source is kept before it's purged from the DB."
@@ -58,6 +62,8 @@ app.add_typer(gpu_app, name="gpu")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
+search_app.add_typer(search_engine_app, name="engine")
+search_app.add_typer(case_sensitive_app, name="case-sensitive")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -185,6 +191,72 @@ def export_format_set(
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(Text.assemble("Search export format set to ", (format_, Theme.VALUE), "."))
+    finally:
+        storage.close()
+
+
+@search_engine_app.command("show")
+def search_engine_show() -> None:
+    """Show the engine `search` uses when `--engine` isn't given."""
+    storage = open_storage()
+    try:
+        console.print(
+            Text.assemble("Search engine: ", (SearchSettings.get_engine(storage), Theme.VALUE))
+        )
+    finally:
+        storage.close()
+
+
+@search_engine_app.command("set")
+def search_engine_set(
+    engine: str = typer.Argument(
+        ..., metavar="ENGINE", help=f"One of: {', '.join(SearchSettings.ENGINES)}."
+    ),
+) -> None:
+    """Set the engine `search` uses when `--engine` isn't given."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_engine(storage, engine)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(Text.assemble("Search engine set to ", (engine, Theme.VALUE), "."))
+    finally:
+        storage.close()
+
+
+@case_sensitive_app.command("show")
+def case_sensitive_show() -> None:
+    """Show whether `search` matches case by default."""
+    storage = open_storage()
+    try:
+        enabled = SearchSettings.is_case_sensitive(storage)
+        line = Text("Search case-sensitive: ")
+        line.append("enabled" if enabled else "disabled", style=Theme.VALUE)
+        console.print(line)
+    finally:
+        storage.close()
+
+
+@case_sensitive_app.command("enable")
+def case_sensitive_enable() -> None:
+    """Make `search` match case by default (the 'like' engine; `--no-case-sensitive` overrides)."""
+    storage = open_storage()
+    try:
+        SearchSettings.set_case_sensitive(storage, True)
+        console.print("Search will match case by default.")
+    finally:
+        storage.close()
+
+
+@case_sensitive_app.command("disable")
+def case_sensitive_disable() -> None:
+    """Make `search` ignore case by default (the default)."""
+    storage = open_storage()
+    try:
+        SearchSettings.set_case_sensitive(storage, False)
+        console.print("Search will ignore case by default.")
     finally:
         storage.close()
 

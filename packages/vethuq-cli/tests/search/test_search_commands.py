@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -7,8 +8,16 @@ import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
 from vethuq_cli.search.pager import Pager
+from vethuq_core.settings import SearchSettings
+from vethuq_core.storage import open_storage
 
 runner = CliRunner()
+
+
+def _flatten(output: str) -> str:
+    """Collapse Rich's boxed, wrapped, colour-coded error text back onto one plain line."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return " ".join(plain.replace("\u2502", " ").split())
 
 
 def _add_source(conn, path: str = "/docs") -> int:
@@ -92,7 +101,7 @@ class TestSearch:
 
         assert result.exit_code == 0
         lines = result.stdout.splitlines()
-        assert "Results: 1 match" in lines
+        assert "Results: 1 match (engine: like)" in lines
         assert "File: /docs/invoice.pdf" in lines
         assert lines[lines.index("File: /docs/invoice.pdf") - 1] == "invoice.pdf"
         assert "Page: 1 of 1 [ocr]" in lines
@@ -120,7 +129,7 @@ class TestSearch:
         result = runner.invoke(app, ["search", "budget"])
 
         assert result.exit_code == 0
-        assert "Results: 15 matches" in result.stdout
+        assert "Results: 15 matches (engine: like)" in result.stdout
         assert "Show more?" not in result.stdout
         assert result.stdout.count("File: ") == 15
 
@@ -223,7 +232,7 @@ class TestSearch:
         result = runner.invoke(app, ["search", "amount due"])
 
         assert result.exit_code == 0
-        assert "Results: 1 match" in result.stdout
+        assert "Results: 1 match (engine: like)" in result.stdout
 
     def test_search_pager_export_prompts_and_writes_file(self, use_temp_db, tmp_path, monkeypatch):
         db_path = use_temp_db()
@@ -283,7 +292,7 @@ class TestSearch:
         lines = result.stdout.splitlines()
         assert lines.count("File: /docs/a.pdf") == 1
         assert lines.count("File: /docs/b.pdf") == 1
-        assert "Results: 3 matches" in result.stdout
+        assert "Results: 3 matches (engine: like)" in result.stdout
 
     @pytest.mark.parametrize("source", ["native", "mixed"])
     def test_search_shows_page_source_tag(self, use_temp_db, source):
@@ -299,3 +308,112 @@ class TestSearch:
         result = runner.invoke(app, ["search", "amount due"])
 
         assert f"Page: 1 of 1 [{source}]" in result.stdout.splitlines()
+
+
+class TestSearchEngines:
+    def test_engine_defaults_to_like_and_shows_it_in_the_header(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        result = runner.invoke(app, ["search", "mus"])
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: like)" in result.stdout
+
+    def test_exact_engine_matches_as_typed(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        hit = runner.invoke(app, ["search", "Museum", "--engine", "exact"])
+        miss = runner.invoke(app, ["search", "museum", "--engine", "exact"])
+
+        assert "Results: 1 match (engine: exact, case-sensitive)" in hit.stdout
+        assert "No matches found." in miss.stdout
+        assert "--engine like" in miss.stdout  # the hint towards a looser engine
+
+    def test_full_text_engine_matches_whole_words_and_prefixes(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        word = runner.invoke(app, ["search", "museums", "--engine", "full-text"])
+        partial = runner.invoke(app, ["search", "mus", "--engine", "full-text"])
+        prefix = runner.invoke(app, ["search", "mus*", "--engine", "full-text"])
+
+        assert "Results: 1 match (engine: full-text)" in word.stdout
+        assert "No matches found." in partial.stdout
+        assert "Results: 1 match (engine: full-text)" in prefix.stdout
+
+    def test_case_sensitive_flag_applies_to_like(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+
+        loose = runner.invoke(app, ["search", "museum"])
+        strict = runner.invoke(app, ["search", "museum", "--case-sensitive"])
+
+        assert "Results: 1 match (engine: like)" in loose.stdout
+        assert "No matches found." in strict.stdout
+
+    def test_rejects_unknown_engine(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "museum", "--engine", "nope"])
+
+        assert result.exit_code == 2
+        assert "full-text" in result.output
+
+    def test_rejects_case_sensitive_full_text(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(
+            app, ["search", "museum", "--engine", "full-text", "--case-sensitive"]
+        )
+
+        assert result.exit_code == 2
+        assert "always case-insensitive" in _flatten(result.output)
+
+    def test_rejects_case_insensitive_exact(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(
+            app, ["search", "museum", "--engine", "exact", "--no-case-sensitive"]
+        )
+
+        assert result.exit_code == 2
+        assert "always case-sensitive" in _flatten(result.output)
+
+    def test_uses_engine_and_case_settings_when_flags_are_omitted(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_engine(storage, "full-text")
+            SearchSettings.set_case_sensitive(storage, True)
+        finally:
+            storage.close()
+
+        from_setting = runner.invoke(app, ["search", "museum"])
+        # A stored case-sensitive preference can't apply to full-text, so it must not
+        # turn every default search into an error - only an explicit flag does.
+        assert from_setting.exit_code == 0
+        assert "Results: 1 match (engine: full-text)" in from_setting.stdout
+
+        overridden = runner.invoke(app, ["search", "Museum", "--engine", "like"])
+        assert "Results: 1 match (engine: like, case-sensitive)" in overridden.stdout
+        turned_off = runner.invoke(
+            app, ["search", "museum", "--engine", "like", "--no-case-sensitive"]
+        )
+        assert "Results: 1 match (engine: like)" in turned_off.stdout
+
+    def test_export_records_engine_and_case_sensitivity(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/museum.pdf", "Visit the Museum today")
+        output = tmp_path / "out.json"
+
+        result = runner.invoke(
+            app, ["search", "Museum", "--engine", "exact", "--export", str(output)]
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(output.read_text())
+        assert payload["engine"] == "exact"
+        assert payload["case_sensitive"] is True

@@ -249,6 +249,12 @@ class _DocumentStoreMixin:
     def search_indexed_image_pages(self, like_pattern: str) -> list[sqlite3.Row]:
         return Document.search_indexed_image_pages(self._conn, like_pattern)
 
+    def search_fulltext_pdf_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_fulltext_pdf_pages(self._conn, match_expr)
+
+    def search_fulltext_image_pages(self, match_expr: str) -> list[sqlite3.Row]:
+        return Document.search_fulltext_image_pages(self._conn, match_expr)
+
     def get_pdf_page_counts_by_document(self) -> list[sqlite3.Row]:
         return Document.get_pdf_page_counts(self._conn)
 

@@ -118,6 +118,8 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.gpu.is_enabled() is False
     assert client.settings.search.snippet.get() == 80
     assert client.settings.search.export_format.get() == "json"
+    assert client.settings.search.engine.get() == "like"
+    assert client.settings.search.case_sensitive.get() is False
     assert client.settings.index.removed_retention.get() == 7 * 24 * 60
     assert client.settings.ocr.retry.get() == 3
     assert client.settings.index.thread_workers.get() == "0"
@@ -147,6 +149,8 @@ def test_settings_gpu_enable_and_disable(client: vethuq.Vethuq):
 def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.search.snippet.set(120)
     client.settings.search.export_format.set("html")
+    client.settings.search.engine.set("full-text")
+    client.settings.search.case_sensitive.set(True)
     client.settings.index.removed_retention.set(30)
     client.settings.ocr.retry.set(5)
     client.settings.index.thread_workers.set(vethuq.ThreadWorkersSettings.AUTO)
@@ -158,6 +162,8 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
 
     assert client.settings.search.snippet.get() == 120
     assert client.settings.search.export_format.get() == "html"
+    assert client.settings.search.engine.get() == "full-text"
+    assert client.settings.search.case_sensitive.get() is True
     assert client.settings.index.removed_retention.get() == 30
     assert client.settings.ocr.retry.get() == 5
     assert client.settings.index.thread_workers.get() == vethuq.ThreadWorkersSettings.AUTO
@@ -337,6 +343,55 @@ def test_search_context_chars_limits_surrounding_text(indexed_client: vethuq.Vet
     assert len(match.after) <= 5
     assert match.truncated_before
     assert match.truncated_after
+
+
+def test_search_exact_engine_matches_as_typed(indexed_client: vethuq.Vethuq):
+    assert [m.matched for m in indexed_client.search.run("Invoice", engine="exact")] == ["Invoice"]
+    assert indexed_client.search.run("invoice", engine="exact") == []
+
+
+def test_search_full_text_engine_ranks_and_scores(indexed_client: vethuq.Vethuq):
+    matches = indexed_client.search.run("invoices", engine="full-text")
+
+    assert {m.file_path for m in matches} == {"/docs/invoice.pdf", "/docs/scan.png"}
+    assert all(m.score is not None for m in matches)
+
+
+def test_search_case_sensitive_applies_to_like(indexed_client: vethuq.Vethuq):
+    matches = indexed_client.search.run("INVOICE", case_sensitive=True)
+
+    assert [m.file_path for m in matches] == ["/docs/scan.png"]
+
+
+def test_search_uses_the_configured_engine(indexed_client: vethuq.Vethuq):
+    indexed_client.settings.search.engine.set("exact")
+
+    assert indexed_client.search.run("invoice") == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"engine": "nope"},
+        {"engine": "full-text", "case_sensitive": True},
+        {"engine": "exact", "case_sensitive": False},
+    ],
+)
+def test_search_rejects_unusable_engine_options(indexed_client: vethuq.Vethuq, kwargs):
+    with pytest.raises(vethuq.SearchOptionError):
+        indexed_client.search.run("invoice", **kwargs)
+
+
+def test_search_export_records_engine(indexed_client: vethuq.Vethuq, tmp_path: Path):
+    matches = indexed_client.search.run("Invoice", engine="exact")
+
+    path = indexed_client.search.export(
+        matches, "Invoice", tmp_path / "out.json", "json", engine="exact", case_sensitive=True
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["engine"] == "exact"
+    assert payload["case_sensitive"] is True
 
 
 def test_search_without_matches_returns_empty_list(indexed_client: vethuq.Vethuq):

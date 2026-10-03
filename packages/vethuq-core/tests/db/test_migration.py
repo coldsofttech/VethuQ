@@ -572,7 +572,7 @@ class TestMigration:
         db_path = tmp_path / "vethuq.db"
 
         # Simulate a database created by an older version of this code, at schema
-        # version 24 - before pdf_pages_fts/image_pages_fts existed - with OCR
+        # version 24 - before pdf_pages_trigram/image_pages_trigram existed - with OCR
         # pages already written. Their INSERT triggers never fired for these rows
         # (the triggers didn't exist yet), so connect() must backfill them.
         old_conn = sqlite3.connect(db_path)
@@ -672,21 +672,99 @@ class TestMigration:
         conn = Db.connect(db_path)
         try:
             pdf_hit = conn.execute(
-                "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%arge invoi%'"
+                "SELECT rowid FROM pdf_pages_trigram WHERE ocr_text LIKE '%arge invoi%'"
             ).fetchone()
             assert pdf_hit is not None
 
             image_hit = conn.execute(
-                "SELECT rowid FROM image_pages_fts WHERE ocr_text LIKE '%signature%'"
+                "SELECT rowid FROM image_pages_trigram WHERE ocr_text LIKE '%signature%'"
             ).fetchone()
             assert image_hit is not None
+
+            # The word-based index (added at v28) is rebuilt too, and its sync
+            # triggers are back after the migration - a new page must be indexed.
+            assert conn.execute(
+                "SELECT rowid FROM pdf_pages_words WHERE pdf_pages_words MATCH '\"invoice\"'"
+            ).fetchone()
+            assert conn.execute(
+                "SELECT rowid FROM image_pages_words WHERE image_pages_words MATCH '\"signature\"'"
+            ).fetchone()
+            conn.execute(
+                "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+                "VALUES (1, 2, 'a brand new receipt', 0.9)"
+            )
+            assert conn.execute(
+                "SELECT rowid FROM pdf_pages_words WHERE pdf_pages_words MATCH '\"receipt\"'"
+            ).fetchone()
+            conn.execute("INSERT INTO pdf_pages_words(pdf_pages_words) VALUES ('integrity-check')")
 
             version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
             assert version == Db.SCHEMA_VERSION
         finally:
             conn.close()
 
-    def test_pdf_pages_fts_stays_in_sync_via_triggers(self, tmp_path):
+    def test_connect_renames_legacy_fts_indexes_to_trigram_and_words(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+        conn = Db.connect(db_path)
+        conn.execute(
+            "INSERT INTO sources (path, source_type, status, added_at) "
+            "VALUES ('/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00')"
+        )
+        conn.execute("INSERT INTO documents (created_at) VALUES ('2026-01-01T00:00:00+00:00')")
+        conn.execute(
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (1, 1, '/docs/a.pdf', 'pdf', 'indexed')"
+        )
+        conn.execute(
+            "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
+            "VALUES (1, 1, 'a large invoice', 0.9)"
+        )
+        conn.commit()
+        # Rewind to a v27 database: trigram index under its old `_fts` name, no word index.
+        for suffix in ("ai", "ad", "au"):
+            conn.execute(f"DROP TRIGGER pdf_pages_trigram_{suffix}")
+            conn.execute(f"DROP TRIGGER pdf_pages_words_{suffix}")
+        conn.execute("DROP TABLE pdf_pages_trigram")
+        conn.execute("DROP TABLE pdf_pages_words")
+        conn.execute(
+            "CREATE VIRTUAL TABLE pdf_pages_fts USING fts5("
+            "ocr_text, content='pdf_pages', content_rowid='id', tokenize='trigram')"
+        )
+        conn.execute(
+            "CREATE TRIGGER pdf_pages_fts_au AFTER UPDATE ON pdf_pages BEGIN "
+            "INSERT INTO pdf_pages_fts(pdf_pages_fts, rowid, ocr_text) "
+            "VALUES ('delete', old.id, old.ocr_text); "
+            "INSERT INTO pdf_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text); END"
+        )
+        conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('rebuild')")
+        conn.execute("UPDATE schema_version SET version = 27")
+        conn.commit()
+        conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            names = {
+                row["name"]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE name LIKE 'pdf_pages_%'"
+                )
+            }
+            assert not {n for n in names if n.startswith("pdf_pages_fts")}
+            assert {"pdf_pages_trigram", "pdf_pages_words"} <= names
+            assert conn.execute(
+                "SELECT rowid FROM pdf_pages_trigram WHERE ocr_text LIKE '%arge inv%'"
+            ).fetchone()
+            assert conn.execute(
+                "SELECT rowid FROM pdf_pages_words WHERE pdf_pages_words MATCH '\"invoices\"'"
+            ).fetchone()
+            conn.execute(
+                "INSERT INTO pdf_pages_trigram(pdf_pages_trigram) VALUES ('integrity-check')"
+            )
+            conn.execute("INSERT INTO pdf_pages_words(pdf_pages_words) VALUES ('integrity-check')")
+        finally:
+            conn.close()
+
+    def test_pdf_pages_trigram_stays_in_sync_via_triggers(self, tmp_path):
         conn = Db.connect(tmp_path / "vethuq.db")
         try:
             conn.execute(
@@ -706,7 +784,7 @@ class TestMigration:
 
             assert (
                 conn.execute(
-                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%original%'"
+                    "SELECT rowid FROM pdf_pages_trigram WHERE ocr_text LIKE '%original%'"
                 ).fetchone()
                 is not None
             )
@@ -715,25 +793,27 @@ class TestMigration:
             conn.commit()
             assert (
                 conn.execute(
-                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%original%'"
+                    "SELECT rowid FROM pdf_pages_trigram WHERE ocr_text LIKE '%original%'"
                 ).fetchone()
                 is None
             )
             assert (
                 conn.execute(
-                    "SELECT rowid FROM pdf_pages_fts WHERE ocr_text LIKE '%revised%'"
+                    "SELECT rowid FROM pdf_pages_trigram WHERE ocr_text LIKE '%revised%'"
                 ).fetchone()
                 is not None
             )
 
             conn.execute("DELETE FROM pdf_pages WHERE document_id = 1")
             conn.commit()
-            assert conn.execute("SELECT rowid FROM pdf_pages_fts").fetchone() is None
+            assert conn.execute("SELECT rowid FROM pdf_pages_trigram").fetchone() is None
 
             # An external-content FTS5 index that's fallen out of sync with its
             # content table fails this integrity check - a passing 'integrity-check'
             # command confirms the triggers left it consistent throughout.
-            conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
+            conn.execute(
+                "INSERT INTO pdf_pages_trigram(pdf_pages_trigram) VALUES ('integrity-check')"
+            )
         finally:
             conn.close()
 

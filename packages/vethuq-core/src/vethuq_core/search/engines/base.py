@@ -29,6 +29,7 @@ class SearchMatch:
     truncated_after: bool
     duplicate_of_path: str | None
     source: str = "ocr"  # 'native', 'ocr' or 'mixed' - how the page's text was obtained
+    score: float | None = None  # relevance (higher is better); only ranked engines set it
 
 
 class SearchEngineUnavailable(Exception):
@@ -50,11 +51,17 @@ class SearchEngine(Protocol):
         """Engine label, e.g. `like`."""
         ...
 
-    def search(self, query: str, *, context_chars: int | None = None) -> list[SearchMatch]:
-        """Return one `SearchMatch` per occurrence of `query`, ordered by file path.
+    def search(
+        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+    ) -> list[SearchMatch]:
+        """Return one `SearchMatch` per occurrence of `query`.
 
-        `context_chars` is the snippet context either side of the match;
-        None means the user's setting. An empty `query` matches nothing.
+        Ordered by file path, unless the engine ranks results (then by
+        relevance, best first - see `SearchMatch.score`). `context_chars` is
+        the snippet context either side of the match; None means the user's
+        setting. `case_sensitive` asks for a case-sensitive match: engines that
+        always match case-sensitively ignore it, and an engine that can't
+        honour it raises `ValueError`. An empty `query` matches nothing.
         May raise `SearchEngineUnavailable`.
         """
         ...
@@ -71,8 +78,14 @@ class FallbackSearchEngine:
     def name(self) -> str:
         return f"{self._primary.name}->{self._fallback.name}"
 
-    def search(self, query: str, *, context_chars: int | None = None) -> list[SearchMatch]:
+    def search(
+        self, query: str, *, context_chars: int | None = None, case_sensitive: bool = False
+    ) -> list[SearchMatch]:
         try:
-            return self._primary.search(query, context_chars=context_chars)
+            return self._primary.search(
+                query, context_chars=context_chars, case_sensitive=case_sensitive
+            )
         except SearchEngineUnavailable:
-            return self._fallback.search(query, context_chars=context_chars)
+            return self._fallback.search(
+                query, context_chars=context_chars, case_sensitive=case_sensitive
+            )

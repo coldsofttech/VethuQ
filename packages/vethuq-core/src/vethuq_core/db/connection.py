@@ -27,7 +27,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 27
+    SCHEMA_VERSION = 28
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -171,48 +171,100 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
 -- (content=/content_rowid=) so ocr_text isn't duplicated on disk; the
 -- triggers below are what keep them in sync, since an external-content FTS5
 -- index doesn't update itself.
-CREATE VIRTUAL TABLE IF NOT EXISTS pdf_pages_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS pdf_pages_trigram USING fts5(
     ocr_text,
     content='pdf_pages',
     content_rowid='id',
     tokenize='trigram'
 );
 
-CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_ai AFTER INSERT ON pdf_pages BEGIN
-    INSERT INTO pdf_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+CREATE TRIGGER IF NOT EXISTS pdf_pages_trigram_ai AFTER INSERT ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_trigram(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_ad AFTER DELETE ON pdf_pages BEGIN
-    INSERT INTO pdf_pages_fts(pdf_pages_fts, rowid, ocr_text)
+CREATE TRIGGER IF NOT EXISTS pdf_pages_trigram_ad AFTER DELETE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_trigram(pdf_pages_trigram, rowid, ocr_text)
         VALUES ('delete', old.id, old.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS pdf_pages_fts_au AFTER UPDATE ON pdf_pages BEGIN
-    INSERT INTO pdf_pages_fts(pdf_pages_fts, rowid, ocr_text)
+CREATE TRIGGER IF NOT EXISTS pdf_pages_trigram_au AFTER UPDATE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_trigram(pdf_pages_trigram, rowid, ocr_text)
         VALUES ('delete', old.id, old.ocr_text);
-    INSERT INTO pdf_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+    INSERT INTO pdf_pages_trigram(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
 
-CREATE VIRTUAL TABLE IF NOT EXISTS image_pages_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS image_pages_trigram USING fts5(
     ocr_text,
     content='image_pages',
     content_rowid='id',
     tokenize='trigram'
 );
 
-CREATE TRIGGER IF NOT EXISTS image_pages_fts_ai AFTER INSERT ON image_pages BEGIN
-    INSERT INTO image_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+CREATE TRIGGER IF NOT EXISTS image_pages_trigram_ai AFTER INSERT ON image_pages BEGIN
+    INSERT INTO image_pages_trigram(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS image_pages_fts_ad AFTER DELETE ON image_pages BEGIN
-    INSERT INTO image_pages_fts(image_pages_fts, rowid, ocr_text)
+CREATE TRIGGER IF NOT EXISTS image_pages_trigram_ad AFTER DELETE ON image_pages BEGIN
+    INSERT INTO image_pages_trigram(image_pages_trigram, rowid, ocr_text)
         VALUES ('delete', old.id, old.ocr_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS image_pages_fts_au AFTER UPDATE ON image_pages BEGIN
-    INSERT INTO image_pages_fts(image_pages_fts, rowid, ocr_text)
+CREATE TRIGGER IF NOT EXISTS image_pages_trigram_au AFTER UPDATE ON image_pages BEGIN
+    INSERT INTO image_pages_trigram(image_pages_trigram, rowid, ocr_text)
         VALUES ('delete', old.id, old.ocr_text);
-    INSERT INTO image_pages_fts(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+    INSERT INTO image_pages_trigram(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+-- Word-based full-text index over ocr_text, one per pages table, backing the
+-- `full-text` search engine (the trigram indexes above can't rank or match
+-- whole words). `unicode61` splits on words and folds case, `remove_diacritics
+-- 2` folds accents ("cafe" finds "café"), and `porter` stems English words
+-- ("invoices" finds "invoice"); the same tokenizer runs over the query, so
+-- text in other languages still matches itself. External-content tables kept
+-- in sync by triggers, exactly like the trigram ones.
+
+CREATE VIRTUAL TABLE IF NOT EXISTS pdf_pages_words USING fts5(
+    ocr_text,
+    content='pdf_pages',
+    content_rowid='id',
+    tokenize='porter unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_words_ai AFTER INSERT ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_words_ad AFTER DELETE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_words(pdf_pages_words, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS pdf_pages_words_au AFTER UPDATE ON pdf_pages BEGIN
+    INSERT INTO pdf_pages_words(pdf_pages_words, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+    INSERT INTO pdf_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS image_pages_words USING fts5(
+    ocr_text,
+    content='image_pages',
+    content_rowid='id',
+    tokenize='porter unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER IF NOT EXISTS image_pages_words_ai AFTER INSERT ON image_pages BEGIN
+    INSERT INTO image_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS image_pages_words_ad AFTER DELETE ON image_pages BEGIN
+    INSERT INTO image_pages_words(image_pages_words, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS image_pages_words_au AFTER UPDATE ON image_pages BEGIN
+    INSERT INTO image_pages_words(image_pages_words, rowid, ocr_text)
+        VALUES ('delete', old.id, old.ocr_text);
+    INSERT INTO image_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
 """
 
@@ -349,6 +401,10 @@ END;
             )
             Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
+            if row["version"] < 28:
+                # Restores the word-index triggers `Migration.schema` dropped while it
+                # backfilled the (then still empty) word index - idempotent.
+                conn.executescript(Db._SCHEMA)
             conn.execute("UPDATE schema_version SET version = ?", (Db.SCHEMA_VERSION,))
         # Created after the table (and any migration adding these columns to it)
         # rather than inline in `_SCHEMA`, since that script runs before
