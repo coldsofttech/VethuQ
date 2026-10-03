@@ -147,7 +147,7 @@ class _DocumentStoreMixin:
             modified_at,
         )
 
-    def fail_stuck_processing_document_index(self, message: str, now: str) -> None:
+    def fail_stuck_processing_document_index(self, message: str, now: str) -> int:
         return Document.fail_stuck_processing_index(self._conn, message, now)
 
     def list_tracked_document_index_rows(self, source_id: int) -> list[sqlite3.Row]:

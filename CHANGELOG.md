@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `vethuq db restore <name-or-path>`, `vethuq db repair` and `vethuq db reset` recover a damaged database; each saves the current database as a backup first.
 - After recovering from an interrupted index run, VethuQ now checks the database for corruption and stops with a clear message if it's damaged.
 - Leftover temporary files from an interrupted index run are now cleaned up automatically when the next run starts.
+- When an index run starts after a crash, VethuQ now tells you what it recovered (cleared lock, interrupted run, re-queued files) and records it in the index log.
 - Pressing Ctrl+C during `vethuq index run --wait` or `index restart --wait` (also in the interactive menu) now stops the run cleanly instead of leaving it running.
 - `vethuq settings location set <folder>` moves VethuQ's database, logs and run files to a folder of your choice (asks first; `--force` skips the prompt); `location show` prints where they are (also under Settings > Location in the interactive menu). The `VETHUQ_HOME` environment variable overrides it.
 - `vethuq search --engine lexical` finds your text anywhere in a page (mid-word included) and lists the best-matching pages first; it needs at least three characters. In the default combined search it appears as a "Relevant" label.

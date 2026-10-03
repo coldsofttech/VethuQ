@@ -474,6 +474,77 @@ class TestStartRun:
         assert row["status"] == "error"
         assert row["error_message"] is not None
 
+    def test_start_run_reports_recovery_actions(
+        self, db_path, conn, storage: Storage, tmp_path, monkeypatch
+    ):
+        started_at = datetime.now(UTC).isoformat()
+        conn.execute(
+            "INSERT INTO index_runs (id, mode, status, pid, started_at) "
+            "VALUES (1, 'run', 'running', 999, ?)",
+            (started_at,),
+        )
+        conn.commit()
+        IndexRunner._write_state(
+            db_path,
+            index_runner.IndexState(
+                run_id=1,
+                pid=999,
+                target=None,
+                mode="run",
+                status="running",
+                total_files=3,
+                processed_files=1,
+                failed_files=0,
+                thread_workers_setting="0",
+                workers=1,
+                current_files=[],
+                started_at=started_at,
+                updated_at=started_at,
+            ),
+        )
+        _register_source(storage, tmp_path)
+        _insert_processing_row(conn, "/docs/stuck.pdf")
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+        reported: list[list[str]] = []
+        logged: list[str] = []
+        monkeypatch.setattr(
+            IndexRunner._logger, "info", lambda msg, *args: logged.append(msg % args)
+        )
+
+        IndexRunner.start_run(None, db_path=db_path, on_recovery=reported.append)
+
+        assert len(reported) == 1
+        actions = reported[0]
+        assert any("lock" in action for action in actions)
+        assert any("run 1" in action and "failed" in action for action in actions)
+        assert any("Re-queued 1 file " in action for action in actions)
+        assert any("integrity" in action for action in actions)
+        for action in actions:
+            assert f"Recovery: {action}" in logged
+
+    def test_start_run_reports_only_lock_and_integrity_without_active_run(
+        self, db_path, monkeypatch
+    ):
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+        reported: list[list[str]] = []
+
+        IndexRunner.start_run(None, db_path=db_path, on_recovery=reported.append)
+
+        assert len(reported) == 1
+        assert len(reported[0]) == 2
+
+    def test_start_run_does_not_report_recovery_on_clean_start(self, db_path, monkeypatch):
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+        reported: list[list[str]] = []
+
+        IndexRunner.start_run(None, db_path=db_path, on_recovery=reported.append)
+
+        assert reported == []
+
     def test_start_run_raises_for_unknown_target(self, db_path):
         with pytest.raises(SourceNotFoundError):
             IndexRunner.start_run("does-not-exist", db_path=db_path)

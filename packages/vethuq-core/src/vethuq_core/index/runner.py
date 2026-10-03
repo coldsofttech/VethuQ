@@ -458,12 +458,17 @@ class IndexRunner:
         force: bool = False,
         restart: bool = False,
         db_path: Path | None = None,
+        on_recovery: Callable[[list[str]], None] | None = None,
     ) -> int:
         """Launch OCR indexing as a detached background process. Returns its pid.
 
         When `restart` is True, only files that previously failed are retried
         (see `Quick.run`'s `only_failed`); otherwise new and previously-failed
         files are processed as usual.
+
+        When a previous run left a stale lock, whatever was recovered is written to the index
+        log and, if `on_recovery` is given, passed to it as a list of messages. It isn't called
+        on a clean start.
         """
         db_path = db_path or default_db_path()
         Logs.setup("index", db_path)
@@ -490,7 +495,14 @@ class IndexRunner:
             IndexRunner._logger.warning(
                 "Cleared stale index lock; reconciling the run that left it"
             )
-            IndexRunner._reconcile_orphaned_run(db_path)
+            actions = [
+                "Cleared a lock left behind by a previous run that didn't exit cleanly.",
+                *IndexRunner._reconcile_orphaned_run(db_path),
+            ]
+            for action in actions:
+                IndexRunner._logger.info("Recovery: %s", action)
+            if on_recovery is not None:
+                on_recovery(actions)
 
         storage = open_storage(db_path)
         try:
@@ -529,7 +541,7 @@ class IndexRunner:
         return process.pid
 
     @staticmethod
-    def _reclaim_stuck_processing(db_path: Path) -> None:
+    def _reclaim_stuck_processing(db_path: Path) -> int:
         """Reset every `document_index` row a run's claim left at status='processing'
         back to 'error', so it's retried instead of permanently blocking any future
         claim of that row (see `Document.upsert`).
@@ -540,15 +552,16 @@ class IndexRunner:
         """
         storage = open_storage(db_path)
         try:
-            storage.fail_stuck_processing_document_index(
+            reset = storage.fail_stuck_processing_document_index(
                 IndexRunner._INTERRUPTED_MESSAGE, datetime.now(UTC).isoformat()
             )
             storage.commit()
+            return reset
         finally:
             storage.close()
 
     @staticmethod
-    def _reconcile_orphaned_run(db_path: Path) -> None:
+    def _reconcile_orphaned_run(db_path: Path) -> list[str]:
         """Mark the bookkeeping left by a run that didn't exit cleanly as failed.
 
         Called right after clearing a stale lock, so `index status`/`index history`
@@ -558,9 +571,11 @@ class IndexRunner:
         point where it's confirmed nothing is still working on it - so it's
         retried on the next run instead of its claim blocking it forever.
         """
+        actions: list[str] = []
         state = IndexRunner.read_state(db_path, raw=True)
         if state is not None and state.is_active:
             IndexRunner._mark_run_ended(db_path, state, "failed")
+            actions.append(f"Marked the interrupted index run {state.run_id} as failed.")
         else:
             storage = open_storage(db_path)
             try:
@@ -568,10 +583,17 @@ class IndexRunner:
                 storage.commit()
             finally:
                 storage.close()
-        IndexRunner._reclaim_stuck_processing(db_path)
+        requeued = IndexRunner._reclaim_stuck_processing(db_path)
+        if requeued:
+            actions.append(
+                f"Re-queued {requeued} file{'s' if requeued != 1 else ''} left mid-processing, "
+                "to be retried."
+            )
         IndexRunner._verify_integrity_after_recovery(
             db_path, "the previous run did not exit cleanly"
         )
+        actions.append("Verified the database integrity: no problems found.")
+        return actions
 
     @staticmethod
     def _verify_integrity_after_recovery(db_path: Path, reason: str) -> None:
