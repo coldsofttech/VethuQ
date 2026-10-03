@@ -334,14 +334,8 @@ END;
         from vethuq_core.storage.sqlite import SqliteStorage
 
         storage = SqliteStorage(conn)
-        purged_sources = Sources.purge_expired_sources(storage)
-        purged_documents = Sources.purge_expired_documents(storage)
-        if purged_sources or purged_documents:
-            _logger.info(
-                "Purged %d expired removed source(s) and %d expired removed document(s)",
-                purged_sources,
-                purged_documents,
-            )
+        Sources.purge_expired_sources(storage)
+        Sources.purge_expired_documents(storage)
         IntegrityCheck.maybe_run(storage)
         Backup.maybe_run_auto(storage, path)
         return conn

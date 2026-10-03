@@ -436,6 +436,19 @@ for file in client.sources.files(3):
 Unregister a source by id or path. Raises `SourceNotFoundError` if it
 doesn't exist.
 
+### `purge(path_or_id)`
+
+Permanently delete a removed source (by id or path), or a removed file (by
+path), together with its indexed data — without waiting for the retention
+period. Returns a `PurgeResult` (`kind`, `path`). Raises
+`SourceNotRemovedError` if the source or file is still active, and
+`SourceNotFoundError` if nothing matches.
+
+```python
+client.sources.remove(3)
+client.sources.purge(3)
+```
+
 ## `client.stats`
 
 Accumulated OCR processing/confidence statistics — mirrors `vethuq stats ...`

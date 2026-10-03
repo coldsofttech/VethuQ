@@ -535,3 +535,18 @@ def test_backup_settings_defaults_and_roundtrip(client: vethuq.Vethuq):
     assert backup.get_retention_days() == 14
     with pytest.raises(vethuq.InvalidSettingValueError):
         backup.set("auto")
+
+
+def test_sources_purge_deletes_removed_source_and_refuses_active(
+    client: vethuq.Vethuq, docs_folder: Path
+):
+    source = client.sources.add(docs_folder)
+
+    with pytest.raises(vethuq.SourceNotRemovedError):
+        client.sources.purge(source.id)
+
+    client.sources.remove(source.id)
+    result = client.sources.purge(source.id)
+
+    assert result.path == source.path
+    assert client.sources.list(include_inactive=True) == []

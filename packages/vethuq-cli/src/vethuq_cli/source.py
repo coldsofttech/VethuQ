@@ -22,6 +22,7 @@ from vethuq_core.sources import (
     SourceAlreadyExistsError,
     SourceFile,
     SourceNotFoundError,
+    SourceNotRemovedError,
     SourcePathError,
     Sources,
 )
@@ -377,6 +378,41 @@ def remove(
     console.print(
         SourcePanel.build(
             Text.assemble((f"Removed {source.source_type}: ", Theme.OK), (source.path, "white")),
+            Theme.OK,
+        )
+    )
+
+
+@app.command("purge")
+def purge(
+    path_or_id: str = typer.Argument(
+        ..., help="Removed source id or path, or the path of a removed file."
+    ),
+    force: bool = typer.Option(False, "--force", help="Purge without asking for confirmation."),
+) -> None:
+    """Permanently delete a removed source (or file) and its indexed data now."""
+    storage = open_storage()
+    try:
+        target = Sources.coerce(path_or_id)
+        try:
+            if not force:
+                Sources.check_purgeable(storage, target)
+                prompt = Text.assemble(
+                    "Permanently delete '", (str(path_or_id), Theme.LABEL), "' and its data?"
+                )
+                if not Confirm.ask(prompt, console=console, default=False):
+                    console.print(SourcePanel.build("Aborted.", "bright_black"))
+                    raise typer.Exit(code=0)
+            result = Sources.purge(storage, target)
+        except (SourceNotFoundError, SourceNotRemovedError) as exc:
+            error_console.print(str(exc), style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+    finally:
+        storage.close()
+
+    console.print(
+        SourcePanel.build(
+            Text.assemble((f"Purged {result.kind}: ", Theme.OK), (result.path, "white")),
             Theme.OK,
         )
     )

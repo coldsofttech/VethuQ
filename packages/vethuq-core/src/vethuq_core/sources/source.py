@@ -7,10 +7,12 @@ the actual scanning/OCR/indexing pipeline consumes it separately.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from vethuq_core.logs import Logs
 from vethuq_core.storage import Row, Storage
 
 
@@ -28,6 +30,16 @@ class SourceAlreadyExistsError(SourceError):
 
 class SourceNotFoundError(SourceError):
     """No registered source matches the given id or path."""
+
+
+class SourceNotRemovedError(SourceError):
+    """The source or file is still active, so it can't be purged."""
+
+
+@dataclass(frozen=True)
+class PurgeResult:
+    kind: str  # "file" | "folder" for a source, or "file" for a single removed file
+    path: str
 
 
 @dataclass(frozen=True)
@@ -128,6 +140,8 @@ class SourceFile:
 
 
 class Sources:
+    _logger = Logs.get_logger("database")
+
     @staticmethod
     def coerce(path_or_id: str | Path | int) -> str | Path | int:
         """Treat a string of digits as a source id; anything else is left as given.
@@ -351,11 +365,20 @@ class Sources:
         if not expired:
             return 0
 
-        source_ids = [row["id"] for row in expired]
+        Sources._delete_sources(storage, expired, trigger="retention")
+        return len(expired)
+
+    @staticmethod
+    def _delete_sources(storage: Storage, rows: Sequence[Row], trigger: str) -> None:
+        """Permanently delete the given `sources` rows with their indexed data, then commit.
+
+        `trigger` ('manual' or 'retention') is only recorded in the database log.
+        """
+        source_ids = [row["id"] for row in rows]
         # `vethuq index run <target>` records whichever of a source's id or path
         # the caller typed into index_runs.target - once the source is gone,
         # either form is a dangling reference, so both are cleared.
-        stale_targets = [str(row["id"]) for row in expired] + [row["path"] for row in expired]
+        stale_targets = [str(row["id"]) for row in rows] + [row["path"] for row in rows]
         doomed_rows = storage.list_document_index_rows_for_sources(source_ids)
         doomed_ids = {row["id"] for row in doomed_rows}
         doomed_document_ids = {row["document_id"] for row in doomed_rows}
@@ -373,7 +396,14 @@ class Sources:
         storage.clear_index_run_targets(stale_targets)
 
         storage.commit()
-        return len(expired)
+        for row in rows:
+            Sources._logger.info(
+                "Cleanup (%s): purged source id=%d path=%s (%d indexed file record(s) in total)",
+                trigger,
+                row["id"],
+                row["path"],
+                len(doomed_ids),
+            )
 
     @staticmethod
     def purge_expired_documents(storage: Storage, retention_minutes: int | None = None) -> int:
@@ -399,7 +429,18 @@ class Sources:
         if not expired:
             return 0
 
-        doomed_ids = {row["id"] for row in expired}
+        Sources._delete_document_rows(storage, {row["id"] for row in expired}, trigger="retention")
+        return len(expired)
+
+    @staticmethod
+    def _delete_document_rows(
+        storage: Storage, doomed_ids: set[int], trigger: str, path: str | None = None
+    ) -> None:
+        """Permanently delete the given `document_index` rows with their pages, then commit.
+
+        `trigger` ('manual' or 'retention') and `path` (when it's a single known file) are
+        only recorded in the database log.
+        """
         doomed_document_ids = {
             row["document_id"] for row in storage.list_document_index_rows_by_ids(list(doomed_ids))
         }
@@ -414,4 +455,63 @@ class Sources:
         Sources.refresh_document_paths(storage, doomed_document_ids)
 
         storage.commit()
-        return len(doomed_ids)
+        Sources._logger.info(
+            "Cleanup (%s): purged %d removed file record(s)%s",
+            trigger,
+            len(doomed_ids),
+            f" path={path}" if path else "",
+        )
+
+    @staticmethod
+    def _find_purgeable(
+        storage: Storage, path_or_id: str | Path | int
+    ) -> tuple[PurgeResult, Row | None, int | None]:
+        """Resolve a purge target to `(result, source_row, document_index_id)`; one id is set."""
+        if isinstance(path_or_id, int):
+            source_row = storage.get_source_by_id(path_or_id)
+        else:
+            resolved = str(Path(path_or_id).expanduser().resolve())
+            source_row = storage.get_source_by_path(resolved)
+
+        if source_row is not None:
+            source = Source._from_row(source_row)
+            if source.is_active:
+                raise SourceNotRemovedError(
+                    f"Source is still active: {source.path} - remove it before purging."
+                )
+            return PurgeResult(kind=source.source_type, path=source.path), source_row, None
+
+        if not isinstance(path_or_id, int):
+            file_row = storage.get_document_index_by_path(resolved)
+            if file_row is not None:
+                if file_row["status"] != "removed":
+                    raise SourceNotRemovedError(
+                        f"File is not removed: {resolved} - only removed files can be purged."
+                    )
+                return PurgeResult(kind="file", path=resolved), None, file_row["id"]
+
+        raise SourceNotFoundError(f"No source or file matches: {path_or_id}")
+
+    @staticmethod
+    def check_purgeable(storage: Storage, path_or_id: str | Path | int) -> PurgeResult:
+        """What `purge` would delete, without deleting it; raises the errors `purge` would."""
+        return Sources._find_purgeable(storage, path_or_id)[0]
+
+    @staticmethod
+    def purge(storage: Storage, path_or_id: str | Path | int) -> PurgeResult:
+        """Permanently delete a removed source, or a removed file, on demand.
+
+        `path_or_id` is a source id or path, or the path of a file inside a source.
+        The target must already be in the 'removed' state - whether or not its
+        retention window has elapsed - and anything else (an active source or file)
+        raises SourceNotRemovedError. Raises SourceNotFoundError if nothing matches.
+        """
+        result, source_row, document_index_id = Sources._find_purgeable(storage, path_or_id)
+        if source_row is not None:
+            Sources._delete_sources(storage, [source_row], trigger="manual")
+        else:
+            assert document_index_id is not None
+            Sources._delete_document_rows(
+                storage, {document_index_id}, trigger="manual", path=result.path
+            )
+        return result

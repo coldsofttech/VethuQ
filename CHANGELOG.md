@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq source purge <id-or-path>` permanently deletes a removed source or file now, instead of waiting for the retention period (asks first; `--force` skips the prompt). Also `client.sources.purge`.
+- Every cleanup of removed sources and files, manual or automatic, is now recorded in the database log (`vethuq logs database`).
 - VethuQ now backs up the database automatically (once a day, kept for 7 days); manage backups with `vethuq db backup create|list|delete` and tune them under `vethuq settings db backup`.
 - `vethuq settings location backups set <folder>` keeps database backups somewhere else, such as another drive. Upgrading the database now saves its pre-upgrade backup in the same place.
 - `vethuq db restore <name-or-path>`, `vethuq db repair` and `vethuq db reset` recover a damaged database; each saves the current database as a backup first.

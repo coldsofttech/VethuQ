@@ -677,6 +677,22 @@ vethuq source remove 3
 vethuq source remove ./path/to/folder-or-file
 ```
 
+### `purge <id-or-path> [--force]`
+
+Permanently delete a source you've already removed, together with its
+indexed data, without waiting for the retention period (see
+`vethuq settings index removed-retention`). It also accepts the path of a
+removed file inside a source. Asks for confirmation first unless `--force`
+is given. A source or file that is still active is refused — run
+`source remove` first. Every cleanup, manual or automatic after the retention
+period, is recorded in the database log (`vethuq logs database`) with when it
+ran, what was removed and how many records.
+
+```bash
+vethuq source purge 3
+vethuq source purge ./path/to/folder-or-file --force
+```
+
 ## `stats`
 
 ### `reset [--force]`
