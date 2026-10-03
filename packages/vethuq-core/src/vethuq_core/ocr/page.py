@@ -6,7 +6,7 @@ from pathlib import Path
 
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines import Engines, OcrResult
-from vethuq_core.readers import PageResult, Reader, ReadPage, UnreadableFileError
+from vethuq_core.readers import DocumentReader, PageResult, ReadPage, UnreadableFileError
 from vethuq_core.storage import Storage
 
 _logger = Logs.get_logger("index")
@@ -72,7 +72,7 @@ class PageOcr:
         return PageOcr.page_result(Engines.get(storage).recognize(page.render(None)))
 
     @staticmethod
-    def ocr_document(storage: Storage, reader: Reader, file_path: Path) -> list[PageResult]:
+    def ocr_document(storage: Storage, reader: DocumentReader, file_path: Path) -> list[PageResult]:
         """Extract every page of `file_path`, logging what failed and where.
 
         A failure while the reader produces a page (opening the file, its native

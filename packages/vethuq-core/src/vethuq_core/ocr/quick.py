@@ -22,9 +22,9 @@ from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.readers import (
+    DocumentReader,
     FileRemovedError,
     PageResult,
-    Reader,
     Readers,
     UnreadableFileError,
 )
@@ -47,7 +47,7 @@ class Quick:
 
     @staticmethod
     def run_with_retries(
-        storage: Storage, reader: Reader, file_path: Path
+        storage: Storage, reader: DocumentReader, file_path: Path
     ) -> tuple[list[PageResult] | None, int, Exception | None]:
         """Retry OCR itself (no DB writes) up to the configured attempt count.
 

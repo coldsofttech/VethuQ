@@ -9,13 +9,13 @@ import pymupdf
 import pytest
 from vethuq_core.ocr import Quick
 from vethuq_core.readers import (
+    DocumentReader,
     ImagePageStorage,
     ImageReader,
     JpgReader,
     PdfPageStorage,
     PdfReader,
     PngReader,
-    Reader,
     Readers,
     ReadPage,
 )
@@ -141,7 +141,7 @@ class TestReaderIsolation:
         subprocess.run([sys.executable, "-c", code], check=True)
 
 
-class _TextReader(Reader):
+class _TextReader(DocumentReader):
     """A stand-in new format: a .txt file is a single page of native text."""
 
     file_type = "image"  # the schema's file_type set is fixed, so reuse an existing label

@@ -9,11 +9,11 @@ from vethuq_core.readers.errors import (
     UnreadableFileError,
 )
 from vethuq_core.readers.reader import (
+    DocumentReader,
     ImageReader,
     JpgReader,
     PdfReader,
     PngReader,
-    Reader,
     ReadPage,
     Region,
 )
@@ -38,7 +38,7 @@ __all__ = [
     "PdfReader",
     "PngReader",
     "ReadPage",
-    "Reader",
+    "DocumentReader",
     "Readers",
     "Region",
     "UnreadableFileError",

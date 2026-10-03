@@ -1,6 +1,6 @@
 """How a document's extracted pages are persisted, independent of how they were read.
 
-A `Reader` declares which `PageStorage` holds its pages, so the indexing pipeline
+A `DocumentReader` declares which `PageStorage` holds its pages, so the indexing pipeline
 never branches on a file type to decide where pages go or how their confidence is
 aggregated.
 """
