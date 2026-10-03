@@ -6,6 +6,22 @@ import sqlite3
 
 
 class Document:
+    SEARCH_INDEXES = (
+        "pdf_pages_trigram",
+        "pdf_pages_words",
+        "image_pages_trigram",
+        "image_pages_words",
+    )
+
+    @staticmethod
+    def rebuild_search_index(conn: sqlite3.Connection, index: str) -> int:
+        """Re-read every stored page into the FTS5 table `index`; returns its page count."""
+        if index not in Document.SEARCH_INDEXES:
+            raise ValueError(f"Unknown search index: {index}")
+        conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
+        table = index.rsplit("_", 1)[0]
+        return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
     @staticmethod
     def get_id_for_index_row(
         conn: sqlite3.Connection, document_index_id: int

@@ -158,6 +158,12 @@ class _DocumentStoreMixin:
     def reset_document_index_for_reindex(self, source_id: int, file_path: str | None = None) -> int:
         return Document.reset_index_for_reindex(self._conn, source_id, file_path)
 
+    def search_index_names(self) -> tuple[str, ...]:
+        return Document.SEARCH_INDEXES
+
+    def rebuild_search_index(self, index: str) -> int:
+        return Document.rebuild_search_index(self._conn, index)
+
     def list_tracked_document_index_rows(self, source_id: int) -> list[sqlite3.Row]:
         return Document.list_tracked_index_rows(self._conn, source_id)
 

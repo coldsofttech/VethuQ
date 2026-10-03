@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 
+from vethuq_core.db.queries.documents import Document
+
 
 class Migration:
     @staticmethod
@@ -556,7 +558,5 @@ class Migration:
             # 'rebuild' re-reads every row from the content table; unlike a plain
             # INSERT ... SELECT it is idempotent. This also covers databases that predate
             # the trigram indexes (v25).
-            for table in ("pdf_pages", "image_pages"):
-                for suffix in ("trigram", "words"):
-                    index = f"{table}_{suffix}"
-                    conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
+            for index in Document.SEARCH_INDEXES:
+                Document.rebuild_search_index(conn, index)

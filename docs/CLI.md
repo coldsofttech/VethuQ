@@ -100,6 +100,21 @@ vethuq index reindex 3
 vethuq index reindex file ./docs/invoice.pdf --source 3
 ```
 
+### `rebuild-search [--force]`
+
+Rebuild the full-text search tables from the page text already stored in the
+database; files are not re-read or re-OCR'd. Use it if search results look
+incomplete or out of date. Asks for confirmation unless `--force` is given,
+shows progress while it runs, then a panel with one row per table (rebuilt or
+failed, with its page count). A table that fails doesn't stop the others;
+the command then exits non-zero. Refused while an index run is active.
+Results are also recorded in the index log.
+
+```bash
+vethuq index rebuild-search
+vethuq index rebuild-search --force
+```
+
 ### `run [source] [--wait] [--force]`
 
 Start OCR indexing as a background process and return immediately. A

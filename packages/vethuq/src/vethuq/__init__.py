@@ -7,6 +7,7 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 `packages/vethuq/scripts/merge_sources.py` — not committed, not a public API.
 """
 
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
@@ -22,10 +23,12 @@ from vethuq._core.index import (
     IndexRun,
     IndexRunnerError,
     IndexState,
+    SearchIndexRebuildResult,
     StaleLockError,
 )
 from vethuq._core.index import IndexRunner as _IndexRunner
 from vethuq._core.index import Reindex as _Reindex
+from vethuq._core.index import SearchIndexRebuild as _SearchIndexRebuild
 from vethuq._core.logs import LogNotFoundError
 from vethuq._core.logs import Logs as _Logs
 from vethuq._core.ocr import Document as _Document
@@ -137,6 +140,7 @@ __all__ = [
     "SearchEngineSettings",
     "SearchFuzzySettings",
     "SearchFuzzyThresholdSettings",
+    "SearchIndexRebuildResult",
     "SearchMatch",
     "SearchOptionError",
     "SearchProximityDistanceSettings",
@@ -292,6 +296,18 @@ class Index:
         """
         pid = _Reindex.start_file(file, source=source, force=force)
         return _IndexRunner.wait(pid) if wait else pid
+
+    def rebuild_search(
+        self, *, on_progress: Callable[[str, int, int], None] | None = None
+    ) -> SearchIndexRebuildResult:
+        """Rebuild the full-text search tables from the page text already stored.
+
+        No file is re-read or re-OCR'd. `on_progress(index, position, total)` is
+        called before each table is rebuilt. A table that fails is reported in the
+        result's `failed` and the others still rebuild. Raises `AlreadyRunningError`
+        while an index run is active.
+        """
+        return _SearchIndexRebuild.run(on_progress=on_progress)
 
     def status(self, target: str | int | None = None) -> IndexState | list[DocumentResult] | None:
         """Show background index run progress, or per-file detail for one source.

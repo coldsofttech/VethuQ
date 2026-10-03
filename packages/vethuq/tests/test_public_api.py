@@ -166,6 +166,17 @@ def test_db_integrity_check_passes_on_a_healthy_database(client: vethuq.Vethuq):
     assert result.errors == []
 
 
+def test_index_rebuild_search_rebuilds_every_table_and_reports_progress(client: vethuq.Vethuq):
+    seen = []
+
+    result = client.index.rebuild_search(on_progress=lambda *args: seen.append(args))
+
+    assert isinstance(result, vethuq.SearchIndexRebuildResult)
+    assert result.ok is True
+    assert len(result.rebuilt) == 4
+    assert [position for _, position, _ in seen] == [1, 2, 3, 4]
+
+
 def test_settings_gpu_enable_and_disable(client: vethuq.Vethuq):
     client.settings.gpu.enable()
     assert client.settings.gpu.is_enabled() is True

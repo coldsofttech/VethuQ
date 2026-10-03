@@ -34,6 +34,7 @@ from vethuq_cli.db import reset as db_reset
 from vethuq_cli.db import restore as db_restore
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
+from vethuq_cli.index.commands import rebuild_search as index_rebuild_search
 from vethuq_cli.index.commands import reindex_file as index_reindex_file
 from vethuq_cli.index.commands import reindex_source as index_reindex_source
 from vethuq_cli.index.commands import restart as index_restart
@@ -321,6 +322,7 @@ class InteractiveMenu:
                     ("7", "History"),
                     ("8", "Reindex source"),
                     ("9", "Reindex file"),
+                    ("10", "Rebuild search index"),
                     ("0", "Back"),
                 ],
             )
@@ -383,6 +385,8 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(
                     index_reindex_file, file=file, source=source or None, wait=wait, force=False
                 )
+            elif choice == "10":
+                InteractiveMenu._run_safely(index_rebuild_search, force=False)
 
     @staticmethod
     def _settings_gpu_menu() -> None:

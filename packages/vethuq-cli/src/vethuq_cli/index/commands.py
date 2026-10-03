@@ -19,6 +19,7 @@ from vethuq_core.index import (
     IndexRunner,
     IndexRunnerError,
     Reindex,
+    SearchIndexRebuild,
     StaleLockError,
 )
 from vethuq_core.ocr import Document
@@ -212,6 +213,60 @@ def reindex_file(
     _start_reindex(
         lambda: Reindex.start_file(file, source=source, force=force), "reindex", wait=wait
     )
+
+
+@app.command("rebuild-search")
+def rebuild_search(
+    force: bool = typer.Option(False, "--force", help="Rebuild without asking for confirmation."),
+) -> None:
+    """Rebuild the full-text search tables from the page text already stored.
+
+    Files are not re-read or re-OCR'd. Use this if search results look incomplete
+    or out of date.
+    """
+
+    if not force and not Confirm.ask(
+        "Rebuild the search index? Search may be slow or incomplete until it finishes.",
+        console=console,
+        default=False,
+    ):
+        console.print(IndexPanel.message("Aborted.", "bright_black"))
+        raise typer.Exit(code=0)
+
+    with console.status("Rebuilding search index...", spinner_style=Theme.PRIMARY) as spinner:
+
+        def progress(index: str, position: int, total: int) -> None:
+            spinner.update(f"[{position}/{total}] Rebuilding {index}...")
+
+        try:
+            result = SearchIndexRebuild.run(on_progress=progress)
+        except (AlreadyRunningError, StaleLockError, DatabaseIntegrityError) as exc:
+            error_console.print(str(exc), style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+
+    table = IndexPanel.new_table()
+    table.add_column("Index")
+    table.add_column("Status")
+    table.add_column("Pages", justify="right")
+    table.add_column("Details")
+    for index in [*result.rebuilt, *result.failed]:
+        if index in result.failed:
+            table.add_row(
+                index,
+                Text("failed", style=Theme.ERROR),
+                "",
+                Text(result.failed[index], style=Theme.ERROR),
+            )
+        else:
+            table.add_row(index, Text("rebuilt", style=Theme.OK), str(result.rebuilt[index]), "")
+    border = Theme.DANGER if result.failed else Theme.OK
+    table.caption = Text.assemble(
+        (f"{len(result.rebuilt)} rebuilt, {len(result.failed)} failed", border),
+        (f" in {result.seconds:.1f}s.", "white"),
+    )
+    console.print(IndexPanel.table(table, "Search Index Rebuild", border_style=border))
+    if result.failed:
+        raise typer.Exit(code=1)
 
 
 @app.command("status")
