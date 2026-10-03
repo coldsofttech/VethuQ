@@ -99,10 +99,10 @@ class TestDataFolderNotWritable:
         assert "permissions" in excinfo.value.hint
 
     def test_folder_that_rejects_writes_is_reported(self, tmp_path, monkeypatch):
-        def deny(self, *args, **kwargs):
+        def deny(*args, **kwargs):
             raise PermissionError(13, "Permission denied")
 
-        monkeypatch.setattr("pathlib.Path.write_bytes", deny)
+        monkeypatch.setattr("tempfile.TemporaryFile", deny)
 
         with pytest.raises(DataFolderNotWritableError):
             Paths.ensure_writable(tmp_path / "db")

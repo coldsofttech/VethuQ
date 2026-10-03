@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 from platformdirs import user_config_dir, user_data_dir
@@ -98,11 +99,12 @@ class Paths:
     @staticmethod
     def ensure_writable(folder: Path) -> None:
         """Create `folder` and prove it can be written to, or raise `DataFolderNotWritableError`."""
-        probe = folder / ".write-test"
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            probe.write_bytes(b"")
-            probe.unlink()
+            # A uniquely named, self-deleting file: several processes (e.g. parallel test
+            # workers) can probe the same folder at once without clashing over one name.
+            with tempfile.TemporaryFile(dir=folder):
+                pass
         except OSError as exc:
             raise DataFolderNotWritableError(
                 f"VethuQ can't write to its data folder {folder} ({exc.strerror or exc}).",
