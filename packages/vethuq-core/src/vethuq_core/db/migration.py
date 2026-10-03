@@ -560,3 +560,14 @@ class Migration:
             # the trigram indexes (v25).
             for index in Document.SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)
+
+        if from_version < 29:
+            # `reindex_pending` marks a file a full re-index has queued: it keeps its status
+            # (and so its searchable pages) until it is reprocessed, instead of being reset
+            # to 'pending'.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+            if "reindex_pending" not in columns:
+                conn.execute(
+                    "ALTER TABLE document_index "
+                    "ADD COLUMN reindex_pending INTEGER NOT NULL DEFAULT 0"
+                )

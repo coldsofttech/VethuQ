@@ -236,6 +236,7 @@ class Quick:
                 only_new_files
                 and existing is not None
                 and existing["status"] == "indexed"
+                and not existing["reindex_pending"]
                 and not Document.has_content_changed(file_path, existing)
             ):
                 continue
@@ -379,6 +380,11 @@ class Quick:
 
         if duplicate_source_id is not None:
             with db_lock, storage.transaction():
+                # A duplicate carries no pages of its own. A file re-indexed after having
+                # been the original (its twin was reprocessed first and now holds the text)
+                # still has its old pages, which would otherwise show up twice in search.
+                storage.delete_pdf_pages_for_document(document_id)
+                storage.delete_image_pages_for_document(document_id)
                 Document.mark_duplicate(storage, document_id)
             _logger.info(
                 "Duplicate content, OCR skipped: file=%s document_id=%d duplicate_of_source_id=%d",
