@@ -242,7 +242,7 @@ def rebuild_search(
             result = SearchIndexRebuild.run(on_progress=progress)
         except (AlreadyRunningError, StaleLockError, DatabaseIntegrityError) as exc:
             error_console.print(str(exc), style=Theme.ERROR)
-            raise typer.Exit(code=1) from exc
+            raise typer.Exit(code=getattr(exc, "exit_code", 1)) from exc
 
     table = IndexPanel.new_table()
     table.add_column("Index")

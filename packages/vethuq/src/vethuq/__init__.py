@@ -15,6 +15,14 @@ from vethuq._core.db.backup import Backup as _Backup
 from vethuq._core.db.backup import BackupError, BackupInfo
 from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
 from vethuq._core.db.integrity import IntegrityCheckResult
+from vethuq._core.errors import (
+    CorruptDatabaseError,
+    DataFolderNotWritableError,
+    InvalidConfigError,
+    OcrModelMissingError,
+    SchemaVersionError,
+    StartupError,
+)
 from vethuq._core.index import (
     AlreadyRunningError,
     AmbiguousFileError,
@@ -108,6 +116,12 @@ __all__ = [
     "AlreadyRunningError",
     "AmbiguousFileError",
     "BackupError",
+    "CorruptDatabaseError",
+    "DataFolderNotWritableError",
+    "InvalidConfigError",
+    "OcrModelMissingError",
+    "SchemaVersionError",
+    "StartupError",
     "BackupInfo",
     "BackupSettings",
     "ConfidenceMetric",

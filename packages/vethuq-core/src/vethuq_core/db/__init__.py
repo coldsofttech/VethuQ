@@ -8,10 +8,8 @@ calling `conn.execute`/`conn.executemany`/`conn.executescript` itself.
 
 from __future__ import annotations
 
-from vethuq_core.db.connection import (
-    Db,
-    SchemaVersionError,
-)
+from vethuq_core.db.connection import Db
+from vethuq_core.errors import SchemaVersionError
 
 __all__ = [
     "Db",

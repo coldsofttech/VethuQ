@@ -603,12 +603,29 @@ The registered-source model returned by `sources.add`/`sources.list`/
 
 ## Errors
 
+`StartupError` is the base class for problems that stop VethuQ starting or running:
+`InvalidConfigError`, `DataFolderNotWritableError`, `CorruptDatabaseError`,
+`OcrModelMissingError`, `SchemaVersionError` and `StaleLockError`. Each has a `message` (what is
+wrong), a `hint` (what to do) and the `exit_code` the CLI exits with; `str(error)` joins the
+message and hint. `import vethuq` itself raises one of these if the settings or data folder
+are unusable, and `client.index.run(...)` raises `OcrModelMissingError` if the OCR engine isn't
+installed. See [docs/troubleshooting.md](troubleshooting.md) for what each means and how to fix
+it.
+
+```python
+try:
+    client = vethuq.Vethuq()
+    client.db.integrity_check()
+except vethuq.StartupError as exc:
+    print(exc.message, "-", exc.hint)
+```
+
 `SourceError` is the base class for `SourceAlreadyExistsError`,
 `SourceNotFoundError`, and `SourcePathError` — catch `SourceError` to
 handle any of them generically, or a specific subclass to handle one case.
 
 `IndexRunnerError` is the base class for `AlreadyRunningError` and
-`StaleLockError`, raised by the indexing methods above.
+`StaleLockError` (which is also a `StartupError`), raised by the indexing methods above.
 
 `SettingsError` is the base class for `InvalidSettingValueError`, raised by
 the `set(...)` methods under `client.settings` when given an invalid value

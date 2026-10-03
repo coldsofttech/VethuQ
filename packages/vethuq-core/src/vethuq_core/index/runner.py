@@ -32,6 +32,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
+from vethuq_core.errors import CorruptDatabaseError
+from vethuq_core.errors import StaleLockError as _StaleLockError
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
@@ -49,11 +51,11 @@ class AlreadyRunningError(IndexRunnerError):
     """A background index run is already active."""
 
 
-class StaleLockError(IndexRunnerError):
+class StaleLockError(IndexRunnerError, _StaleLockError):
     """A lock file exists but its process is no longer running."""
 
 
-class DatabaseIntegrityError(IndexRunnerError):
+class DatabaseIntegrityError(IndexRunnerError, CorruptDatabaseError):
     """The database failed its integrity check after recovering from an abnormal termination."""
 
     def __init__(self, message: str, errors: list[str]) -> None:
@@ -472,6 +474,10 @@ class IndexRunner:
         """
         db_path = db_path or default_db_path()
         Logs.setup("index", db_path)
+        # The worker is detached, so a missing OCR engine would only ever reach its log.
+        from vethuq_core.ocr.engines.paddle import PaddleOcrEngine
+
+        PaddleOcrEngine.check_installed()
         running, pid = IndexRunner.is_running(db_path)
         if running:
             raise AlreadyRunningError(f"An index run is already in progress (pid {pid}).")

@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import sv_ttk
+from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
+from vethuq_ui.dialogs import show_error
 from vethuq_ui.index_controls import IndexControls
 from vethuq_ui.logging_setup import UiLogging
 from vethuq_ui.ribbon import Ribbon, RibbonActions
@@ -23,7 +25,11 @@ class MainWindow(tk.Tk):
     def __init__(self, storage: Storage | None = None, db_path: Path | None = None) -> None:
         UiLogging.configure(db_path)
         super().__init__()
-        self.storage = storage or open_storage(db_path)
+        try:
+            self.storage = storage or open_storage(db_path)
+        except StartupError:
+            super().destroy()  # don't leave an empty window behind the error dialog
+            raise
         self._db_path = db_path
         _logger.info("VethuQ UI started")
 
@@ -97,7 +103,15 @@ class MainWindow(tk.Tk):
 
 
 def main() -> None:
-    window = MainWindow()
+    try:
+        window = MainWindow()
+    except StartupError as exc:
+        _logger.error("%s", exc)
+        root = tk.Tk()
+        root.withdraw()
+        show_error(root, "VethuQ can't start", str(exc))
+        root.destroy()
+        raise SystemExit(exc.exit_code) from None
     window.mainloop()
 
 

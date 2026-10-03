@@ -10,8 +10,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
+from vethuq_core.errors import StartupError
 from vethuq_core.logs import Logs
-from vethuq_core.storage import SchemaVersionError, default_db_path
+from vethuq_core.storage import default_db_path
 from vethuq_core.version import VersionInfo
 
 from vethuq_cli.console import console, error_console
@@ -71,16 +72,18 @@ def main(
 class Cli:
     @staticmethod
     def run() -> None:
-        """Console-script entry point: run `app`, reporting an unsupported database cleanly."""
+        """Console-script entry point: run `app`, reporting startup errors cleanly."""
         started = time.monotonic()
         code: int | str | None = 0
         try:
             app()
-        except SchemaVersionError as exc:
+        except StartupError as exc:
             _logger.error("%s", exc)
-            error_console.print(f"Error: {exc}", style="bold red")
-            code = 1
-            raise SystemExit(1) from None
+            error_console.print(f"Error: {exc.message}", style="bold red")
+            if exc.hint:
+                error_console.print(f"What to do: {exc.hint}")
+            code = exc.exit_code
+            raise SystemExit(exc.exit_code) from None
         except SystemExit as exc:  # typer/click exit through SystemExit, even on success
             code = exc.code
             raise
