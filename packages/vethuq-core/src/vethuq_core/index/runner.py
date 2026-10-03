@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
+from vethuq_core.db.integrity import IntegrityCheck
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
@@ -51,6 +52,14 @@ class AlreadyRunningError(IndexRunnerError):
 
 class StaleLockError(IndexRunnerError):
     """A lock file exists but its process is no longer running."""
+
+
+class DatabaseIntegrityError(IndexRunnerError):
+    """The database failed its integrity check after recovering from an abnormal termination."""
+
+    def __init__(self, message: str, errors: list[str]) -> None:
+        super().__init__(message)
+        self.errors = errors
 
 
 @dataclass
@@ -561,6 +570,38 @@ class IndexRunner:
             finally:
                 storage.close()
         IndexRunner._reclaim_stuck_processing(db_path)
+        IndexRunner._verify_integrity_after_recovery(
+            db_path, "the previous run did not exit cleanly"
+        )
+
+    @staticmethod
+    def _verify_integrity_after_recovery(db_path: Path, reason: str) -> None:
+        """Run the database integrity check now, right after recovering from `reason`.
+
+        An abnormal termination is the most likely way for the database to be
+        damaged, so this runs regardless of the `integrity_check` schedule.
+        Raises `DatabaseIntegrityError` on failure so the caller stops instead of
+        writing more into a database that may be corrupt; the recovery itself
+        (stale lock cleared, run marked failed) has already been completed.
+        """
+        storage = open_storage(db_path)
+        try:
+            result = IntegrityCheck.run(storage)
+        finally:
+            storage.close()
+        if result.ok:
+            IndexRunner._logger.info("Database integrity verified after recovery: %s", reason)
+            return
+        IndexRunner._logger.error(
+            "Database integrity check failed after recovery (%s): %s",
+            reason,
+            "; ".join(result.errors),
+        )
+        raise DatabaseIntegrityError(
+            f"The database failed its integrity check after recovering because {reason}. "
+            "Run 'vethuq db integrity-check' for details.",
+            result.errors,
+        )
 
     @staticmethod
     def _mark_run_ended(db_path: Path, state: IndexState, status: str) -> None:
@@ -639,6 +680,9 @@ class IndexRunner:
             # file off mid-processing, leaving its row claimed with no run left
             # to ever finish it.
             IndexRunner._reclaim_stuck_processing(db_path)
+            IndexRunner._verify_integrity_after_recovery(
+                db_path, "the index run had to be force-killed"
+            )
 
     @staticmethod
     def wait(

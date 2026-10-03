@@ -379,6 +379,53 @@ class TestStartRun:
 
         assert pid == 555
 
+    def test_start_run_checks_integrity_after_clearing_stale_lock(self, db_path, monkeypatch):
+        from vethuq_core.db.integrity import IntegrityCheck
+
+        calls = []
+        real_run = IntegrityCheck.run
+        monkeypatch.setattr(
+            IntegrityCheck, "run", staticmethod(lambda s: calls.append(1) or real_run(s))
+        )
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+
+        IndexRunner.start_run(None, db_path=db_path)
+
+        assert calls
+
+    def test_start_run_skips_integrity_check_without_stale_lock(self, db_path, monkeypatch):
+        from vethuq_core.db.integrity import IntegrityCheck
+
+        calls = []
+        monkeypatch.setattr(IntegrityCheck, "run", staticmethod(lambda s: calls.append(1)))
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: _FakeProcess(555))
+
+        IndexRunner.start_run(None, db_path=db_path)
+
+        assert not calls
+
+    def test_start_run_aborts_when_integrity_check_fails_after_recovery(self, db_path, monkeypatch):
+        from vethuq_core.db.integrity import IntegrityCheck, IntegrityCheckResult
+
+        monkeypatch.setattr(
+            IntegrityCheck,
+            "run",
+            staticmethod(lambda s: IntegrityCheckResult(ok=False, errors=["bad page"])),
+        )
+        monkeypatch.setattr(IndexRunner, "_is_pid_running", lambda pid: False)
+        IndexRunner._atomic_write(IndexRunner._lock_path(db_path), "999")
+        popen_calls = []
+        monkeypatch.setattr(index_runner.subprocess, "Popen", lambda *a, **k: popen_calls.append(1))
+
+        with pytest.raises(index_runner.DatabaseIntegrityError) as excinfo:
+            IndexRunner.start_run(None, db_path=db_path)
+
+        assert excinfo.value.errors == ["bad page"]
+        assert not popen_calls
+        assert not IndexRunner._lock_path(db_path).exists()
+
     def test_start_run_reconciles_orphaned_run_as_failed(self, db_path, conn, monkeypatch):
         started_at = datetime.now(UTC).isoformat()
         conn.execute(

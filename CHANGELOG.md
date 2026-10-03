@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- After recovering from an interrupted index run, VethuQ now checks the database for corruption and stops with a clear message if it's damaged.
 - Leftover temporary files from an interrupted index run are now cleaned up automatically when the next run starts.
 - Pressing Ctrl+C during `vethuq index run --wait` or `index restart --wait` (also in the interactive menu) now stops the run cleanly instead of leaving it running.
 - `vethuq settings location set <folder>` moves VethuQ's database, logs and run files to a folder of your choice (asks first; `--force` skips the prompt); `location show` prints where they are (also under Settings > Location in the interactive menu). The `VETHUQ_HOME` environment variable overrides it.

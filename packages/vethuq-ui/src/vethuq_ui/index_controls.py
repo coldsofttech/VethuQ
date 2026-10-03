@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vethuq_core.index import (
     AlreadyRunningError,
+    DatabaseIntegrityError,
     IndexRunner,
     IndexRunnerError,
     IndexState,
@@ -61,6 +62,8 @@ class IndexControls:
             # happen (no target is passed), but is one of start_run's
             # declared errors.
             pass
+        except DatabaseIntegrityError as exc:
+            show_error(self._window, "Database integrity check failed", str(exc))
 
     def start_polling(self) -> None:
         self._window.after(self.POLL_INTERVAL_MS, self.poll)
@@ -90,7 +93,12 @@ class IndexControls:
     def start_targeted_run(self, source_id: str, *, restart: bool) -> None:
         try:
             IndexRunner.start_run(source_id, restart=restart, db_path=self._db_path)
-        except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
+        except (
+            AlreadyRunningError,
+            StaleLockError,
+            DatabaseIntegrityError,
+            SourceNotFoundError,
+        ) as exc:
             show_error(self._window, "Could not start indexing", str(exc))
         else:
             self._refresh_sources()
