@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The app now rescans your sources every few seconds while it is open, picking up new files and sources automatically.
 - `vethuq --version` shows the CLI version, Python version, platform and database schema version. Also available as `client.version`.
 - Startup problems (invalid settings, an unwritable data folder, a damaged database, missing OCR models) now show a plain-language message with what to do, and exit with a distinct non-zero code.
 - `vethuq index rebuild-search` rebuilds the search index from the text already stored, with progress and a clear report if anything fails. Asks first (`--force` skips); also in the interactive Index menu and as `client.index.rebuild_search`.

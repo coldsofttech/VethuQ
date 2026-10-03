@@ -40,8 +40,11 @@ class IndexControls:
         self._refresh_sources = refresh_sources
         self._closing = False
 
-    def launch_or_attach(self) -> None:
+    def launch_or_attach(self, *, quiet: bool = False) -> None:
         """Start background indexing, unless a run is already in progress.
+
+        `quiet` is for the periodic rescan from `poll`: a failure there is
+        swallowed rather than re-shown as a dialog every poll interval.
 
         A run could already be going if this app instance crashed and
         relaunched, or if `vethuq index run` was started from the CLI - in
@@ -63,7 +66,8 @@ class IndexControls:
             # declared errors.
             pass
         except DatabaseIntegrityError as exc:
-            show_error(self._window, "Database integrity check failed", str(exc))
+            if not quiet:
+                show_error(self._window, "Database integrity check failed", str(exc))
 
     def start_polling(self) -> None:
         self._window.after(self.POLL_INTERVAL_MS, self.poll)
@@ -75,6 +79,9 @@ class IndexControls:
             self._refresh_sources()
         else:
             self._status_bar.set_idle()
+            if not self._closing:
+                # Nothing running: rescan to pick up new files and sources.
+                self.launch_or_attach(quiet=True)
         self.update_buttons(state)
         if not self._closing:
             self._window.after(self.POLL_INTERVAL_MS, self.poll)
