@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,8 +15,9 @@ runner = CliRunner()
 
 
 def _flatten(output: str) -> str:
-    """Collapse Rich's boxed, wrapped error text back onto one line."""
-    return " ".join(output.replace("\u2502", " ").split())
+    """Collapse Rich's boxed, wrapped, colour-coded error text back onto one plain line."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return " ".join(plain.replace("\u2502", " ").split())
 
 
 def _add_source(conn, path: str = "/docs") -> int:
