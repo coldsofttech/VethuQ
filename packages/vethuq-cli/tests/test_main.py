@@ -22,3 +22,19 @@ class TestCliRun:
         err = capsys.readouterr().err
         assert "newer" in err
         assert "Traceback" not in err
+
+
+class TestVersionOption:
+    def test_prints_cli_python_platform_and_schema(self, use_temp_db):
+        from typer.testing import CliRunner
+
+        use_temp_db()
+        result = CliRunner().invoke(main_module.app, ["--version"])
+
+        assert result.exit_code == 0
+        assert "VethuQ CLI" in result.stdout
+        assert "Python " in result.stdout
+        assert "Platform " in result.stdout
+        assert "Database schema" in result.stdout
+        assert str(Db.SCHEMA_VERSION) in result.stdout
+        assert "Version" in result.stdout
