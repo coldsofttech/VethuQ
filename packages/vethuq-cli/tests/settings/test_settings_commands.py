@@ -1,5 +1,9 @@
+import re
+
 from typer.testing import CliRunner
 from vethuq_cli.main import app
+from vethuq_core.db.backup import Backup
+from vethuq_core.storage import open_storage
 
 runner = CliRunner()
 
@@ -424,3 +428,90 @@ class TestSearchEngineSettings:
 
         shown = runner.invoke(app, ["settings", "search", "proximity", "distance", "show"])
         assert "medium" in shown.stdout
+
+
+class TestBackupSettings:
+    def test_defaults(self, use_temp_db):
+        use_temp_db()
+
+        assert "enable" in runner.invoke(app, ["settings", "db", "backup", "show"]).stdout
+        assert "1440" in runner.invoke(app, ["settings", "db", "backup", "interval", "show"]).stdout
+        assert "7" in runner.invoke(app, ["settings", "db", "backup", "retention", "show"]).stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        assert runner.invoke(app, ["settings", "db", "backup", "set", "disable"]).exit_code == 0
+        assert (
+            runner.invoke(app, ["settings", "db", "backup", "interval", "set", "60"]).exit_code == 0
+        )
+        assert (
+            runner.invoke(app, ["settings", "db", "backup", "retention", "set", "14"]).exit_code
+            == 0
+        )
+
+        assert "disable" in runner.invoke(app, ["settings", "db", "backup", "show"]).stdout
+        assert "60" in runner.invoke(app, ["settings", "db", "backup", "interval", "show"]).stdout
+        assert "14" in runner.invoke(app, ["settings", "db", "backup", "retention", "show"]).stdout
+
+    def test_rejects_invalid_values(self, use_temp_db):
+        use_temp_db()
+
+        for args in (["set", "auto"], ["interval", "set", "0"], ["retention", "set", "0"]):
+            assert runner.invoke(app, ["settings", "db", "backup", *args]).exit_code == 1
+
+
+def _flat(text: str) -> str:
+    """Panel output with borders and whitespace removed, so a long path folded across lines
+    still matches."""
+    return re.sub(r"[│\s]", "", text)
+
+
+class TestBackupsLocation:
+    def test_show_defaults_to_next_to_the_database(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "location", "backups", "show"])
+
+        assert result.exit_code == 0
+        assert "backups" in _flat(result.stdout)
+        assert "thedefault" in _flat(result.stdout)
+
+    def test_set_moves_backups_and_show_reflects_it(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        open_storage().close()
+        Backup.create(db_path, "keep")
+        target = tmp_path / "elsewhere"
+
+        set_result = runner.invoke(
+            app, ["settings", "location", "backups", "set", str(target), "--force"]
+        )
+        show_result = runner.invoke(app, ["settings", "location", "backups", "show"])
+
+        assert set_result.exit_code == 0
+        assert (target / "keep.db.gz").exists()
+        assert "elsewhere" in _flat(show_result.stdout)
+
+    def test_set_asks_first(self, use_temp_db, tmp_path):
+        use_temp_db()
+        open_storage().close()
+
+        result = runner.invoke(
+            app, ["settings", "location", "backups", "set", str(tmp_path / "x")], input="n\n"
+        )
+
+        assert result.exit_code == 1
+        assert not (tmp_path / "x").exists()
+
+    def test_reset_returns_to_the_default(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        open_storage().close()
+        runner.invoke(
+            app,
+            ["settings", "location", "backups", "set", str(tmp_path / "elsewhere"), "--force"],
+        )
+
+        result = runner.invoke(app, ["settings", "location", "backups", "reset"])
+
+        assert result.exit_code == 0
+        assert Backup.directory(db_path) == db_path.parent / "backups"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from vethuq_core.index.eta import Eta
 from vethuq_core.index.runner import (
     AlreadyRunningError,
+    DatabaseIntegrityError,
     IndexRun,
     IndexRunner,
     IndexRunnerError,
@@ -14,6 +15,7 @@ from vethuq_core.index.runner import (
 
 __all__ = [
     "AlreadyRunningError",
+    "DatabaseIntegrityError",
     "Eta",
     "IndexRun",
     "IndexRunner",

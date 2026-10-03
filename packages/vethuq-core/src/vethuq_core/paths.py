@@ -2,6 +2,7 @@
 
     <data root>/            (e.g. %APPDATA%\\VethuQ on Windows)
         db/                 vethuq.db (+ -wal / -shm)
+        db/backups/         compressed database backups (default; can be relocated)
         run/                index.lock, index.control, index_state.json
         logs/               database.log, index.log, ui.log, cli.log
 
@@ -37,6 +38,8 @@ class Paths:
     ENV_VAR = "VETHUQ_HOME"
     LOCATION_FILENAME = "location.json"
     LOCATION_KEY = "location"
+    BACKUPS_KEY = "backups"
+    BACKUPS_DIRNAME = "backups"
     _DATA_DIRNAMES = (DB_DIRNAME, RUN_DIRNAME, LOGS_DIRNAME)
 
     @staticmethod
@@ -56,14 +59,39 @@ class Paths:
         return Path(value).expanduser() if value else None
 
     @staticmethod
-    def configured_location() -> Path | None:
-        """The data root saved by `vethuq settings location set`, if any."""
+    def _read_pointer() -> dict[str, str]:
+        """The saved settings from `location.json` (empty if missing or unreadable)."""
         try:
             data = json.loads(Paths.location_file().read_text(encoding="utf-8"))
-            value = data.get(Paths.LOCATION_KEY)
-        except (OSError, ValueError, AttributeError):
-            return None
-        return Path(value) if isinstance(value, str) and value.strip() else None
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {k: v for k, v in data.items() if isinstance(v, str) and v.strip()}
+
+    @staticmethod
+    def _write_pointer(data: dict[str, str]) -> None:
+        """Persist `data` atomically, or remove the file once nothing is left to store."""
+        file = Paths.location_file()
+        if not data:
+            file.unlink(missing_ok=True)
+            return
+        file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(file)
+
+    @staticmethod
+    def configured_location() -> Path | None:
+        """The data root saved by `vethuq settings location set`, if any."""
+        value = Paths._read_pointer().get(Paths.LOCATION_KEY)
+        return Path(value) if value else None
+
+    @staticmethod
+    def configured_backups_location() -> Path | None:
+        """The backups folder saved by `vethuq settings location backups set`, if any."""
+        value = Paths._read_pointer().get(Paths.BACKUPS_KEY)
+        return Path(value) if value else None
 
     @staticmethod
     def resolve_data_root() -> Path:
@@ -78,16 +106,26 @@ class Paths:
     @staticmethod
     def save_location(path: Path) -> None:
         """Persist `path` as the data root (atomically, so a crash can't leave a torn file)."""
-        file = Paths.location_file()
-        file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = file.with_suffix(".tmp")
-        tmp.write_text(json.dumps({Paths.LOCATION_KEY: str(path)}), encoding="utf-8")
-        tmp.replace(file)
+        Paths._write_pointer({**Paths._read_pointer(), Paths.LOCATION_KEY: str(path)})
 
     @staticmethod
     def clear_location() -> None:
-        """Forget the saved location so the platform default applies again."""
-        Paths.location_file().unlink(missing_ok=True)
+        """Forget the saved data root so the platform default applies again."""
+        data = Paths._read_pointer()
+        data.pop(Paths.LOCATION_KEY, None)
+        Paths._write_pointer(data)
+
+    @staticmethod
+    def save_backups_location(path: Path) -> None:
+        """Persist `path` as the folder backups are kept in."""
+        Paths._write_pointer({**Paths._read_pointer(), Paths.BACKUPS_KEY: str(path)})
+
+    @staticmethod
+    def clear_backups_location() -> None:
+        """Forget the saved backups folder so backups go back to `db/backups`."""
+        data = Paths._read_pointer()
+        data.pop(Paths.BACKUPS_KEY, None)
+        Paths._write_pointer(data)
 
     @staticmethod
     def plan_move(source: Path, target: Path) -> list[Path]:
@@ -163,6 +201,14 @@ class Paths:
         """Folder for runtime coordination files (lock, control, state); created on demand."""
         path = Paths.data_root(db_path) / Paths.RUN_DIRNAME
         path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def backups_dir(db_path: Path, *, create: bool = True) -> Path:
+        """Folder for database backups: the configured one, else `db/backups` next to the db."""
+        path = Paths.configured_backups_location() or db_path.parent / Paths.BACKUPS_DIRNAME
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
         return path
 
     @staticmethod

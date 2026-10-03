@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- VethuQ now backs up the database automatically (once a day, kept for 7 days); manage backups with `vethuq db backup create|list|delete` and tune them under `vethuq settings db backup`.
+- `vethuq settings location backups set <folder>` keeps database backups somewhere else, such as another drive. Upgrading the database now saves its pre-upgrade backup in the same place.
+- `vethuq db restore <name-or-path>`, `vethuq db repair` and `vethuq db reset` recover a damaged database; each saves the current database as a backup first.
+- After recovering from an interrupted index run, VethuQ now checks the database for corruption and stops with a clear message if it's damaged.
 - Leftover temporary files from an interrupted index run are now cleaned up automatically when the next run starts.
 - Pressing Ctrl+C during `vethuq index run --wait` or `index restart --wait` (also in the interactive menu) now stops the run cleanly instead of leaving it running.
 - `vethuq settings location set <folder>` moves VethuQ's database, logs and run files to a folder of your choice (asks first; `--force` skips the prompt); `location show` prints where they are (also under Settings > Location in the interactive menu). The `VETHUQ_HOME` environment variable overrides it.

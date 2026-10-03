@@ -53,7 +53,9 @@ Each result shows the file it was found in and a snippet of the matching text, w
 
 Text that's rotated or sideways (labels on a drawing, a photographed page, a stamp at an angle) is found in extra passes that run in the background. Every file is indexed quickly first, so it's searchable right away, and deeper passes then add more text while indexing carries on. Choose how thorough they are with `vethuq settings index engine set <quick|moderate|deep>` — `quick` (the default) reads upright text only, `moderate` also looks at 90°, 180° and 270° rotations, and `deep` also tries every 15°. New files always get their quick pass before any deeper work continues.
 
-By default VethuQ keeps its database and logs in your user data folder (`%APPDATA%\VethuQ` on Windows). To keep them somewhere else, run `vethuq settings location set <folder>` — it shows what will move and asks before doing it (add `--force` to skip the question). `vethuq settings location show` tells you where they are now.
+VethuQ backs up its database for you: the first time it opens each day it saves a compressed copy (kept for 7 days) in a `backups` folder next to the database. If something ever goes wrong, `vethuq db backup list` shows what is there, `vethuq db restore <name>` brings one back, `vethuq db repair` fixes a damaged index, and `vethuq db reset` starts over. If an indexing run is cut short and VethuQ finds the database damaged afterwards, it stops and tells you which of these to use. `vethuq db backup create <name>` saves a snapshot you name yourself.
+
+By default VethuQ keeps its database and logs in your user data folder (`%APPDATA%\VethuQ` on Windows). To keep them somewhere else, run `vethuq settings location set <folder>` — it shows what will move and asks before doing it (add `--force` to skip the question). `vethuq settings location show` tells you where they are now. Backups can live somewhere else (another drive, say) with `vethuq settings location backups set <folder>`.
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 

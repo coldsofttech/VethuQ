@@ -328,6 +328,7 @@ END;
             conn.close()
             raise
 
+        from vethuq_core.db.backup import Backup
         from vethuq_core.db.integrity import IntegrityCheck
         from vethuq_core.sources import Sources
         from vethuq_core.storage.sqlite import SqliteStorage
@@ -342,25 +343,25 @@ END;
                 purged_documents,
             )
         IntegrityCheck.maybe_run(storage)
+        Backup.maybe_run_auto(storage, path)
         return conn
 
     @staticmethod
     def _backup_before_migration(conn: sqlite3.Connection, db_path: Path) -> None:
-        """Snapshot the pre-migration database to `<db_path>.bkp`.
+        """Back up the pre-migration database as a `safety-premigration-...` backup.
 
-        Goes through SQLite's own backup API rather than copying `db_path` on
-        disk, so the snapshot is consistent even though - under WAL - some
-        already-committed data may currently live only in the `-wal` file rather
-        than in `db_path` itself. Runs before `Migration.schema` so a failed or
-        bad migration can be rolled back to this pre-migration copy.
+        Goes through the regular backup system (compressed, in the backups folder,
+        pruned with the other automatic backups) and SQLite's own backup API on the
+        already-open connection, so the copy is consistent even though - under WAL -
+        some already-committed data may currently live only in the `-wal` file. Runs
+        before `Migration.schema` so a failed or bad migration can be rolled back to it.
         """
-        backup_path = Path(f"{db_path}.bkp")
-        _logger.info("Backing up database to %s before migration", backup_path)
-        backup_conn = sqlite3.connect(backup_path)
-        try:
-            conn.backup(backup_conn)
-        finally:
-            backup_conn.close()
+        from vethuq_core.db.backup import Backup
+
+        _logger.info("Backing up database before migration")
+        Backup.create(
+            db_path, prefix=f"{Backup.SAFETY_PREFIX}premigration-", require_ok=False, conn=conn
+        )
 
     @staticmethod
     def _check_schema_not_newer(conn: sqlite3.Connection) -> None:

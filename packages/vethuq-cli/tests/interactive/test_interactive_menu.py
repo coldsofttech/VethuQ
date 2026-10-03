@@ -113,6 +113,22 @@ class TestInteractiveMenu:
         assert result.exit_code == 0
         assert "Integrity check: " in result.stdout
 
+    def test_settings_db_backup_show_navigation(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n5\n2\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Automatic backup: " in result.stdout
+
+    def test_db_backup_create_and_list_navigation(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="6\n2\n1\nsnap\n\n2\n\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "snap" in result.stdout
+
     def test_settings_logs_level_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 

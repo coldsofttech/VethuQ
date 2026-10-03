@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 from rich.text import Text
+from vethuq_core.db.backup import Backup, BackupError
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.paths import Paths
 from vethuq_core.settings import (
@@ -18,7 +19,7 @@ from vethuq_core.settings import (
     SearchSettings,
     SourceSettings,
 )
-from vethuq_core.storage import open_storage
+from vethuq_core.storage import default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -65,6 +66,16 @@ integrity_check_interval_app = typer.Typer(
     help="Configure, in minutes, how often automatic integrity checks run when "
     "'integrity-check' is 'auto'."
 )
+backup_app = typer.Typer(
+    help="Configure whether a compressed database backup is taken automatically when "
+    "VethuQ opens the database."
+)
+backup_interval_app = typer.Typer(
+    help="Configure, in minutes, how often automatic database backups are taken."
+)
+backup_retention_app = typer.Typer(
+    help="Configure how many days automatic database backups are kept."
+)
 engine_app = typer.Typer(
     help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
 )
@@ -72,8 +83,10 @@ logs_app = typer.Typer(help="Configure logging.")
 log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
 log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
 location_app = typer.Typer(help="Configure where VethuQ keeps its database, logs and run files.")
+backups_location_app = typer.Typer(help="Configure where database backups are kept.")
 app.add_typer(gpu_app, name="gpu")
 app.add_typer(location_app, name="location")
+location_app.add_typer(backups_location_app, name="backups")
 app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
@@ -94,6 +107,9 @@ ocr_app.add_typer(engine_app, name="engine")
 app.add_typer(db_app, name="db")
 db_app.add_typer(integrity_check_app, name="integrity-check")
 integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
+db_app.add_typer(backup_app, name="backup")
+backup_app.add_typer(backup_interval_app, name="interval")
+backup_app.add_typer(backup_retention_app, name="retention")
 app.add_typer(logs_app, name="logs")
 logs_app.add_typer(log_level_app, name="level")
 logs_app.add_typer(log_retention_app, name="retention")
@@ -903,6 +919,152 @@ def integrity_check_interval_set(
         storage.close()
 
 
+@backup_app.command("show")
+def backup_show() -> None:
+    """Show whether automatic database backups are enabled."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Automatic backup: ", "white"),
+                    (str(value), Theme.VALUE),
+                    ("", "white"),
+                ),
+                "Backup",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_app.command("set")
+def backup_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(DbSettings.BACKUP_VALUES)}."
+    ),
+) -> None:
+    """Set whether automatic database backups are enabled."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Backup",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_interval_app.command("show")
+def backup_interval_show() -> None:
+    """Show how often, in minutes, automatic database backups are taken."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup_interval_minutes(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup interval: ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" minutes", "white"),
+                ),
+                "Backup Interval",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_interval_app.command("set")
+def backup_interval_set(
+    value: int = typer.Argument(..., help="Minutes between automatic database backups."),
+) -> None:
+    """Set how often, in minutes, automatic database backups are taken."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup_interval_minutes(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup Interval set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" minutes.", "white"),
+                ),
+                "Backup Interval",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_retention_app.command("show")
+def backup_retention_show() -> None:
+    """Show how many days automatic database backups are kept."""
+    storage = open_storage()
+    try:
+        value = DbSettings.get_backup_retention_days(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup retention: ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" days", "white"),
+                ),
+                "Backup Retention",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@backup_retention_app.command("set")
+def backup_retention_set(
+    value: int = typer.Argument(..., help="Days automatic database backups are kept."),
+) -> None:
+    """Set how many days automatic database backups are kept."""
+    storage = open_storage()
+    try:
+        try:
+            DbSettings.set_backup_retention_days(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Backup Retention set to ", "white"),
+                    (str(value), Theme.VALUE),
+                    (" days.", "white"),
+                ),
+                "Backup Retention",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
 @engine_app.command("show")
 def engine_show() -> None:
     """Show how thoroughly OCR looks for rotated text."""
@@ -1154,6 +1316,97 @@ def location_set(
                 ("Location set to ", "white"), (str(target), Theme.VALUE), (".", "white"), note
             ),
             "Location",
+            Theme.OK,
+        )
+    )
+
+
+@backups_location_app.command("show")
+def backups_location_show() -> None:
+    """Show where database backups are kept."""
+    folder = Paths.backups_dir(default_db_path(), create=False)
+    source = (
+        "set by 'vethuq settings location backups set'"
+        if Paths.configured_backups_location()
+        else "the default, next to the database"
+    )
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location: ", "white"),
+                (str(folder), Theme.VALUE),
+                (f"\n({source})", "white"),
+            ),
+            "Backups Location",
+            Theme.PRIMARY,
+        )
+    )
+
+
+@backups_location_app.command("set")
+def backups_location_set(
+    path: str = typer.Argument(..., help="Folder to keep database backups in."),
+    force: bool = typer.Option(False, "--force", help="Move the backups without asking first."),
+) -> None:
+    """Keep database backups in PATH from now on, moving the existing ones there.
+
+    Shows what will change and asks for confirmation unless --force is given.
+    """
+    db_path = default_db_path()
+    target = Path(path).expanduser().absolute()
+    current = Paths.backups_dir(db_path)
+    if not force:
+        count = len(Backup.entries(db_path))
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("This will move ", "white"),
+                    (f"{count} backup(s)", Theme.VALUE),
+                    (" from ", "white"),
+                    (str(current), Theme.VALUE),
+                    (" to ", "white"),
+                    (str(target), Theme.VALUE),
+                    (" and keep new backups there from now on.", "white"),
+                ),
+                "Change Backups Location",
+                Theme.WARNING,
+            )
+        )
+        if not typer.confirm("Continue?"):
+            raise typer.Exit(code=1)
+    try:
+        Backup.move_directory(db_path, target)
+    except BackupError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location set to ", "white"), (str(target), Theme.VALUE), (".", "white")
+            ),
+            "Backups Location",
+            Theme.OK,
+        )
+    )
+
+
+@backups_location_app.command("reset")
+def backups_location_reset() -> None:
+    """Go back to keeping database backups next to the database, moving them back."""
+    db_path = default_db_path()
+    try:
+        Backup.reset_directory(db_path)
+    except BackupError as exc:
+        error_console.print(f"Error: {exc}", style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    console.print(
+        SettingsPanel.build(
+            Text.assemble(
+                ("Backups location reset to ", "white"),
+                (str(Paths.backups_dir(db_path)), Theme.VALUE),
+                (".", "white"),
+            ),
+            "Backups Location",
             Theme.OK,
         )
     )

@@ -30,6 +30,17 @@ if not result.ok:
     print(result.errors)
 ```
 
+### Backup, restore, reset and repair
+
+- `backup_create(name=None)` — take a compressed backup now and return a `BackupInfo` (`name`, `path`, `size`, `created_at`, `kind` of `"auto"`, `"safety"` or `"manual"`); raises `BackupError` for a bad or taken name, or if the database fails its integrity check
+- `backup_list()` — every backup, newest first
+- `backup_delete(name)` — raises `BackupError` if there is no such backup
+- `restore(name_or_path)` — replace the database with a backup; returns the `"safety"` backup of what it replaced
+- `reset()` — delete the database and all its data; returns the `"safety"` backup
+- `repair()` — rebuild the indexes and return a fresh `IntegrityCheckResult`
+
+`restore`, `reset` and `repair` raise `IndexRunnerError` while an index run is active.
+
 ## `client.index`
 
 Indexing runs in the background, the same way as `vethuq index run`. See
@@ -284,6 +295,14 @@ Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
 - `set(value)` — `value` must be one of `INTEGRITY_CHECK_VALUES` (`"enable"`, `"disable"`, `"auto"`); raises `InvalidSettingValueError` otherwise
 - `get_interval_minutes()` — minutes between automatic checks when `"auto"` (1 day by default)
 - `set_interval_minutes(minutes)` — raises `InvalidSettingValueError` if `minutes` is negative
+
+### `client.settings.db.backup`
+
+- `get()` / `set(value)` — automatic backups, one of `BACKUP_VALUES` (`"enable"` by default, `"disable"`)
+- `get_interval_minutes()` / `set_interval_minutes(minutes)` — minutes between automatic backups (1 day by default, at least 1)
+- `get_retention_days()` / `set_retention_days(days)` — days automatic backups are kept (7 by default, at least 1)
+
+Invalid values raise `InvalidSettingValueError`.
 
 ### `client.settings.gpu`
 

@@ -10,6 +10,7 @@ from rich.prompt import Confirm
 from rich.text import Text
 from vethuq_core.index import (
     AlreadyRunningError,
+    DatabaseIntegrityError,
     IndexRunner,
     IndexRunnerError,
     StaleLockError,
@@ -47,7 +48,12 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
 
     try:
         pid = IndexRunner.start_run(target, force=force, restart=restart)
-    except (AlreadyRunningError, StaleLockError, SourceNotFoundError) as exc:
+    except (
+        AlreadyRunningError,
+        StaleLockError,
+        DatabaseIntegrityError,
+        SourceNotFoundError,
+    ) as exc:
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
 
