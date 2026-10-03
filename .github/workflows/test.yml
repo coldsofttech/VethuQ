@@ -7,10 +7,14 @@ on:
 
 jobs:
   test:
+    name: test (${{ matrix.package }}, ${{ matrix.os }}, py${{ matrix.python-version }})
     strategy:
+      # One leg failing shouldn't hide how the others did.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12"]
+        package: [vethuq, vethuq-cli, vethuq-core, vethuq-ui]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,19 +31,19 @@ jobs:
       - name: Merge vethuq-core/vethuq-cli into packages/vethuq
         run: uv run python packages/vethuq/scripts/merge_sources.py
 
-      - name: Run tests
+      - name: Run ${{ matrix.package }} tests
         shell: bash
         env:
-          # Coverage is measured on one leg only - it slows every job down and
-          # the report is the same regardless of OS/Python version.
-          COV_ARGS: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && '--cov --cov-report=xml' || '' }}
+          # Coverage is measured on one OS/Python pair only - it slows every job down and
+          # the report is the same regardless of OS/Python version. One report per package.
+          COV_ARGS: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && format('--cov --cov-report=xml:coverage-{0}.xml', matrix.package) || '' }}
         run: |
           set +e
-          uv run pytest -n auto $COV_ARGS
+          uv run pytest -n auto $COV_ARGS packages/${{ matrix.package }}
           code=$?
-          # pytest exits 5 when no tests were collected — not a failure this early in the project.
+          # pytest exits 5 when a package has no tests (vethuq-ui has none yet) - not a failure.
           if [ $code -eq 5 ]; then
-            echo "No tests collected yet, skipping."
+            echo "No tests collected for ${{ matrix.package }}, skipping."
             exit 0
           fi
           exit $code
