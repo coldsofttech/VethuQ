@@ -736,3 +736,74 @@ class TestMigration:
             conn.execute("INSERT INTO pdf_pages_fts(pdf_pages_fts) VALUES ('integrity-check')")
         finally:
             conn.close()
+
+    def test_connect_migrates_document_index_allows_unsupported(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+
+        # A schema 25 database: file_type/status CHECKs don't allow 'unsupported' yet.
+        old_conn = sqlite3.connect(db_path)
+        old_conn.executescript(
+            """
+            CREATE TABLE schema_version (version INTEGER NOT NULL);
+            INSERT INTO schema_version (version) VALUES (25);
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                added_at TEXT NOT NULL,
+                last_scanned_at TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                removed_at TEXT
+            );
+            CREATE TABLE documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE document_index (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id),
+                document_id INTEGER NOT NULL REFERENCES documents(id),
+                file_path TEXT NOT NULL UNIQUE,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'indexed', 'error', 'removed')),
+                error_message TEXT,
+                indexed_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                file_size_bytes INTEGER,
+                sha256 TEXT,
+                mtime REAL,
+                created_at TEXT,
+                modified_at TEXT,
+                removed_at TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                peak_memory_mb REAL,
+                cpu_percent REAL
+            );
+            INSERT INTO sources (id, path, source_type, status, added_at)
+                VALUES (1, '/docs', 'folder', 'indexed', '2026-01-01T00:00:00+00:00');
+            INSERT INTO documents (id, created_at) VALUES (1, '2026-01-01T00:00:00+00:00');
+            INSERT INTO document_index (id, source_id, document_id, file_path, file_type, status)
+                VALUES (1, 1, 1, '/docs/a.pdf', 'pdf', 'indexed');
+            """
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            assert (
+                conn.execute("SELECT status FROM document_index WHERE id = 1").fetchone()["status"]
+                == "indexed"
+            )
+            conn.execute(
+                "INSERT INTO document_index "
+                "(source_id, document_id, file_path, file_type, status, error_message) "
+                "VALUES (1, 1, '/docs/notes.txt', 'unsupported', 'unsupported', "
+                "'Unsupported file format: .txt')"
+            )
+            conn.commit()
+        finally:
+            conn.close()

@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Identical copies of a file are now recognised as one document, and OCR progress is tracked per document rather than per file copy.
 - Searching is now faster on large libraries, and still matches text anywhere within a word, case-insensitively.
 - Indexing now reports why a file couldn't be read — removed mid-run, password-protected, or corrupted — instead of a generic failure, and doesn't retry it.
+- Files VethuQ can't read, such as `.txt` or `.csv`, are now listed as "Unsupported file format" instead of being silently ignored.
 
 ### Fixed
 

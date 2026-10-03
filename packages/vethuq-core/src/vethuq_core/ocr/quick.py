@@ -135,7 +135,8 @@ class Quick:
     ) -> list[str]:
         """Run OCR over supported files under `source` and index the results.
 
-        Unsupported files are silently skipped. Per-file OCR failures are recorded
+        Unsupported files are never OCR'd but are recorded as 'unsupported' rows (see
+        `Document.record_unsupported`). Per-file OCR failures are recorded
         on that file's `document_index` row (status='error') without aborting the
         rest of the source; `sources.status` reflects the overall outcome.
 
@@ -175,15 +176,22 @@ class Quick:
         had_error = False
         processed_paths: list[str] = []
         disk_files = list(Readers.iter_files(root))
+        unsupported_files = [] if only_failed else list(Readers.iter_unsupported_files(root))
 
         renamed_paths: set[str] = set()
         if only_new_files and not only_failed:
             with storage.transaction():
-                renamed_paths = Document.reconcile_renamed_and_removed(storage, source, disk_files)
+                renamed_paths = Document.reconcile_renamed_and_removed(
+                    storage, source, disk_files + unsupported_files
+                )
             for new_path in sorted(renamed_paths):
                 processed_paths.append(new_path)
                 if on_file_done is not None:
                     on_file_done(new_path)
+
+        Document.record_unsupported(
+            storage, source, [path for path in unsupported_files if str(path) not in renamed_paths]
+        )
 
         for file_path in disk_files:
             if should_stop is not None and should_stop():
@@ -485,15 +493,24 @@ class Quick:
         pending: list[PendingFile] = []
         for source in sources:
             only_new_files = source.status != "pending"
+            renamed_paths: set[str] = set()
+            unsupported_files = (
+                [] if only_failed else list(Readers.iter_unsupported_files(Path(source.path)))
+            )
             if only_new_files and not only_failed:
                 disk_files = list(Readers.iter_files(Path(source.path)))
                 with storage.transaction():
                     renamed_paths = Document.reconcile_renamed_and_removed(
-                        storage, source, disk_files
+                        storage, source, disk_files + unsupported_files
                     )
                 for renamed_path in sorted(renamed_paths):
                     if on_file_done is not None:
                         on_file_done(renamed_path, True)
+            Document.record_unsupported(
+                storage,
+                source,
+                [path for path in unsupported_files if str(path) not in renamed_paths],
+            )
             for file_path, file_type in Pending.iter_files(
                 storage,
                 source,

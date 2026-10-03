@@ -333,7 +333,7 @@ class TestQuick:
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
 
     @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_skips_unsupported_files(
+    def test_run_ocr_records_unsupported_files_without_ocr(
         self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         engine = PaddleStub()
@@ -343,14 +343,34 @@ class TestQuick:
         folder = tmp_path / "docs"
         folder.mkdir()
         (folder / "notes.txt").write_text("not ocr-able")
+        (folder / ".hidden.csv").write_text("a,b")
+        (folder / "Thumbs.db").write_bytes(b"junk")
         (folder / "scan.jpg").write_bytes(b"fake jpg bytes")
         source = Sources.add(storage, folder)
 
         Quick.run(storage, source)
 
-        docs = conn.execute("SELECT file_path FROM document_index").fetchall()
-        assert len(docs) == 1
-        assert docs[0]["file_path"].endswith("scan.jpg")
+        rows = {
+            Path(row["file_path"]).name: row
+            for row in conn.execute("SELECT * FROM document_index").fetchall()
+        }
+        assert set(rows) == {"notes.txt", "scan.jpg"}
+        assert rows["scan.jpg"]["status"] == "indexed"
+        assert rows["notes.txt"]["file_type"] == "unsupported"
+        assert rows["notes.txt"]["status"] == "unsupported"
+        assert rows["notes.txt"]["error_message"] == "Unsupported file format: .txt"
+        assert conn.execute("SELECT status FROM sources").fetchone()["status"] == "indexed"
+
+        # A re-run leaves the unsupported row alone, and `only_failed` never retries it.
+        Quick.run(storage, source, only_new_files=True)
+        Quick.run(storage, source, only_failed=True)
+        assert conn.execute("SELECT COUNT(*) FROM document_index").fetchone()[0] == 2
+        assert (
+            conn.execute(
+                "SELECT status FROM document_index WHERE file_type = 'unsupported'"
+            ).fetchone()["status"]
+            == "unsupported"
+        )
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_records_error_without_aborting(

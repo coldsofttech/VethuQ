@@ -248,6 +248,16 @@ class Document:
         )
 
     @staticmethod
+    def mark_unsupported(
+        conn: sqlite3.Connection, document_id: int, message: str, now: str
+    ) -> None:
+        conn.execute(
+            "UPDATE document_index SET status = 'unsupported', error_message = ?, "
+            "completed_at = ? WHERE id = ?",
+            (message, now, document_id),
+        )
+
+    @staticmethod
     def get_index_metrics_stats(conn: sqlite3.Connection, document_id: int) -> sqlite3.Row:
         row = conn.execute(
             "SELECT started_at, completed_at, peak_memory_mb, cpu_percent, file_size_bytes "

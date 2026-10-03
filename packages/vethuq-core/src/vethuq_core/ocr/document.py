@@ -275,6 +275,34 @@ class Document:
         return claimed_paths
 
     @staticmethod
+    def record_unsupported(storage: Storage, source: Source, file_paths: list[Path]) -> None:
+        """Record files no reader handles as 'unsupported' `document_index` rows.
+
+        They're never OCR'd, so this is only bookkeeping that makes them visible
+        (file_type and status 'unsupported', with an "Unsupported file format"
+        message). A file that already has such a row is left alone, since re-recording
+        can't change the outcome, and none of this affects the source's own status or
+        `only_failed` retries.
+        """
+        for file_path in file_paths:
+            existing = storage.get_document_index_by_path(str(file_path))
+            if existing is not None and existing["status"] in ("unsupported", "processing"):
+                continue
+            try:
+                with storage.transaction():
+                    claim = Document.upsert(
+                        storage, source.id, file_path, Readers.UNSUPPORTED_FILE_TYPE
+                    )
+                    if claim is not None:
+                        Document.mark_unsupported(
+                            storage,
+                            claim[0],
+                            f"Unsupported file format: {file_path.suffix or file_path.name}",
+                        )
+            except FileNotFoundError:
+                continue
+
+    @staticmethod
     def mark_indexed(storage: Storage, document_id: int) -> None:
         storage.mark_document_index_indexed(document_id, datetime.now(UTC).isoformat())
 
@@ -287,6 +315,10 @@ class Document:
         to link here beyond the status itself.
         """
         storage.mark_document_index_indexed(document_id, datetime.now(UTC).isoformat())
+
+    @staticmethod
+    def mark_unsupported(storage: Storage, document_id: int, message: str) -> None:
+        storage.mark_document_index_unsupported(document_id, message, datetime.now(UTC).isoformat())
 
     @staticmethod
     def mark_error(storage: Storage, document_id: int, message: str) -> None:
