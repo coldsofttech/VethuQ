@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Windows installer now lets you choose to install for all users (administrator rights, Program Files) or for the current user only (no administrator rights, your profile). The CLI, PATH option and uninstall work for both.
 - The app now rescans your sources every few seconds while it is open, picking up new files and sources automatically.
 - Identical files always resolve to the same document and the same original, whatever the scan order, worker count or re-indexing; now covered by tests.
 - `vethuq --version` shows the CLI version, Python version, platform and database schema version. Also available as `client.version`.

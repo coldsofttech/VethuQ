@@ -12,6 +12,14 @@
 ; PyInstaller analyses, choosing CLI-only still installs a few UI-only
 ; library files (sv_ttk, tcl/tk) - a few MB, not worth re-splitting the
 ; build to avoid.
+;
+; Install scope: the wizard asks "Install for all users" or "Install for me
+; only" (PrivilegesRequiredOverridesAllowed=dialog). All users needs
+; administrator rights (UAC prompt) and installs to Program Files; current
+; user needs none and installs to %LOCALAPPDATA%\Programs. {autopf},
+; {autodesktop}, the Start menu group, the uninstall entry and the PATH
+; change (HKLM vs HKCU) all follow the chosen scope, so the CLI, PATH option
+; and uninstall work for both.
 ; Built by scripts/dev/release.py --desktop and .github/workflows/release-desktop.yml.
 
 #define MyAppName "VethuQ"
@@ -31,6 +39,8 @@ AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 LicenseFile=..\..\..\LICENSE
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\..\..\dist
@@ -93,7 +103,27 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 [Code]
 const
-  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  UserEnvironmentKey = 'Environment';
+
+{ PATH lives in HKLM for an all-users install, HKCU for a per-user one.
+  IsAdminInstallMode is also valid while uninstalling (it reflects the scope
+  the app was installed in). }
+function EnvRootKey: Integer;
+begin
+  if IsAdminInstallMode then
+    Result := HKEY_LOCAL_MACHINE
+  else
+    Result := HKEY_CURRENT_USER;
+end;
+
+function EnvironmentKey: string;
+begin
+  if IsAdminInstallMode then
+    Result := SystemEnvironmentKey
+  else
+    Result := UserEnvironmentKey;
+end;
 
 function SendMessageTimeoutA(
   hWnd: Longint; Msg: Longint; wParam: Longint; lParam: AnsiString;
@@ -120,7 +150,7 @@ procedure EnvAddPath(const Path: string);
 var
   Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if not RegQueryStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     Paths := '';
 
   if EnvPathContains(Paths, Path) then
@@ -130,7 +160,7 @@ begin
     Paths := Paths + ';';
   Paths := Paths + Path;
 
-  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if RegWriteStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     RefreshEnvironment;
 end;
 
@@ -139,7 +169,7 @@ var
   Paths: string;
   P: Integer;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if not RegQueryStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     exit;
 
   P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
@@ -148,7 +178,7 @@ begin
 
   Delete(Paths, P - 1, Length(Path) + 1);
 
-  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if RegWriteStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     RefreshEnvironment;
 end;
 
