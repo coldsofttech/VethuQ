@@ -13,6 +13,7 @@ from pathlib import Path
 
 from vethuq_core.db import Db
 from vethuq_core.db.queries import Document, Index, Integrity, Ocr, Settings, Source, Stats
+from vethuq_core.storage.base import SearchIndexRebuildError
 
 
 class _SourceStoreMixin:
@@ -157,6 +158,15 @@ class _DocumentStoreMixin:
 
     def reset_document_index_for_reindex(self, source_id: int, file_path: str | None = None) -> int:
         return Document.reset_index_for_reindex(self._conn, source_id, file_path)
+
+    def search_index_names(self) -> tuple[str, ...]:
+        return Document.SEARCH_INDEXES
+
+    def rebuild_search_index(self, index: str) -> int:
+        try:
+            return Document.rebuild_search_index(self._conn, index)
+        except sqlite3.Error as exc:
+            raise SearchIndexRebuildError(str(exc)) from exc
 
     def list_tracked_document_index_rows(self, source_id: int) -> list[sqlite3.Row]:
         return Document.list_tracked_index_rows(self._conn, source_id)

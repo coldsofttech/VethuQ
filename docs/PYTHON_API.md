@@ -75,6 +75,14 @@ Re-index one file by document id or path. Raises `FileNotTrackedError` if it
 isn't tracked and `AmbiguousFileError` if it sits under several sources and
 `source` isn't given.
 
+### `rebuild_search(*, on_progress=None)`
+
+Rebuild the full-text search tables from the page text already stored, without
+re-reading any file. `on_progress(index, position, total)` is called before each
+table. Returns a `SearchIndexRebuildResult`; a table that fails is listed in
+`failed` and the others still rebuild. Raises `AlreadyRunningError` while an
+index run is active. Unlike the CLI, it doesn't ask for confirmation.
+
 ### `run(target=None, *, force=False, wait=False)`
 
 Start OCR indexing on registered sources. `target` is a source id or path;
@@ -527,6 +535,13 @@ A background run's live/last-known progress, returned by `index.run`/
 - `thread_workers_setting`, `workers` (current effective worker count)
 - `current_files` (files being processed right now)
 - `started_at`, `updated_at`
+
+## `SearchIndexRebuildResult`
+
+The outcome of `index.rebuild_search`:
+
+- `rebuilt` (table name → page count), `failed` (table name → error message)
+- `seconds` (time taken), `ok` (`True` when nothing failed)
 
 ## `IntegrityCheckResult`
 

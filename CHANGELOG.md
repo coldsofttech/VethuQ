@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `vethuq index rebuild-search` rebuilds the search index from the text already stored, with progress and a clear report if anything fails. Asks first (`--force` skips); also in the interactive Index menu and as `client.index.rebuild_search`.
 - `vethuq index reindex <source>` and `vethuq index reindex file <id-or-path>` re-index a whole source or a single file from scratch without creating duplicates; if a file sits under several sources, pass `--source`. Also in the interactive Index menu and as `client.index.reindex` / `reindex_file`.
 - `vethuq source purge <id-or-path>` permanently deletes a removed source or file now, instead of waiting for the retention period (asks first; `--force` skips the prompt). Also `client.sources.purge`.
 - Every cleanup of removed sources and files, manual or automatic, is now recorded in the database log (`vethuq logs database`).

@@ -15,6 +15,10 @@ from contextlib import AbstractContextManager
 from typing import Any, Protocol
 
 
+class SearchIndexRebuildError(Exception):
+    """Rebuilding one search index failed; the message is the database's own."""
+
+
 class Row(Protocol):
     """A result row, addressable by column name or position (like `sqlite3.Row`)."""
 
@@ -119,6 +123,10 @@ class DocumentStore(Protocol):
     def reset_document_index_for_reindex(
         self, source_id: int, file_path: str | None = None
     ) -> int: ...
+
+    def search_index_names(self) -> tuple[str, ...]: ...
+
+    def rebuild_search_index(self, index: str) -> int: ...
 
     def list_tracked_document_index_rows(self, source_id: int) -> Sequence[Row]: ...
 
