@@ -1,4 +1,4 @@
-"""The ribbon's Settings tab: OCR, Index, Location and Help."""
+"""The ribbon's Settings tab: OCR, Index, Search, Location and Help."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from vethuq_core.settings import GpuSettings, IndexSettings, OcrSettings
+from vethuq_core.settings import GpuSettings, IndexSettings, OcrSettings, SearchSettings
 from vethuq_core.storage import Storage
 
 from vethuq_ui.icons import get_icon
@@ -67,6 +67,31 @@ class SettingsTab(ttk.Frame):
             self.stale_lock_icon_name,
             "\N{OPEN LOCK}",
             "Stale lock",
+        )
+
+        self._separator()
+
+        search_group = RibbonGroup.build(self, "Search", launcher=actions.show_search_settings)
+        self._add_button(
+            search_group,
+            actions.show_search_export_format,
+            self.export_format_icon_name,
+            "\N{FLOPPY DISK}",
+            "Export",
+        )
+        self._add_button(
+            search_group,
+            actions.show_search_engine,
+            self.search_engine_icon_name,
+            "\N{LEFT-POINTING MAGNIFYING GLASS}",
+            "Engine",
+        )
+        self._add_button(
+            search_group,
+            actions.show_search_snippet,
+            self.snippet_icon_name,
+            "\N{MEMO}",
+            "Snippet",
         )
 
         self._separator()
@@ -137,6 +162,18 @@ class SettingsTab(ttk.Frame):
     def stale_lock_icon_name(self) -> str:
         off = IndexSettings.get_stale_lock(self._storage) == "disable"
         return self._variant("stale-lock", "stale-lock-disable", off)
+
+    def export_format_icon_name(self) -> str:
+        return f"export-format-{SearchSettings.get_export_format(self._storage)}"
+
+    def search_engine_icon_name(self) -> str:
+        engine = SearchSettings.get_engine(self._storage)
+        # An engine without its own icon yet shows the plain search-engine icon.
+        return self._variant("search-engine", f"search-engine-{engine}", True)
+
+    def snippet_icon_name(self) -> str:
+        off = SearchSettings.get_snippet_context_chars(self._storage) == 0
+        return self._variant("search-snippet", "search-snippet-disable", off)
 
     def refresh_icons(self) -> None:
         """Re-read the settings that pick an icon and update their buttons."""

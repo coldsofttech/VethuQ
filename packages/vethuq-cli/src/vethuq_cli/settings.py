@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -19,7 +20,7 @@ from vethuq_core.settings import (
     SearchSettings,
     SourceSettings,
 )
-from vethuq_core.storage import default_db_path, open_storage
+from vethuq_core.storage import Storage, default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -51,9 +52,6 @@ normalize_leetspeak_app = typer.Typer(
 noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
 noise_fuzzy_noise_app = typer.Typer(
     help="Configure how much stray punctuation and whitespace `noise-fuzzy` search skips."
-)
-case_sensitive_app = typer.Typer(
-    help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
 index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
@@ -105,7 +103,6 @@ app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
 search_app.add_typer(search_engine_app, name="engine")
-search_app.add_typer(case_sensitive_app, name="case-sensitive")
 search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 search_app.add_typer(proximity_app, name="proximity")
@@ -402,56 +399,125 @@ def search_engine_set(
         storage.close()
 
 
-@case_sensitive_app.command("show")
-def case_sensitive_show() -> None:
-    """Show whether `search` matches case by default."""
-    storage = open_storage()
-    try:
-        enabled = SearchSettings.is_case_sensitive(storage)
-        console.print(
-            SettingsPanel.build(
-                Text.assemble(
-                    ("Search case-sensitive: ", "white"),
-                    ("enabled" if enabled else "disabled", Theme.VALUE),
-                ),
-                "Case Sensitive",
-                Theme.PRIMARY,
+class ResetPanel:
+    @staticmethod
+    def run(reset: Callable[[Storage], None], title: str, label: str, default: object) -> None:
+        """Reset one setting through `reset` and say what it went back to."""
+        storage = open_storage()
+        try:
+            reset(storage)
+            console.print(
+                SettingsPanel.build(
+                    Text.assemble(
+                        (f"{label} reset to the default (", "white"),
+                        (str(default), Theme.VALUE),
+                        (").", "white"),
+                    ),
+                    title,
+                    Theme.OK,
+                )
             )
-        )
-    finally:
-        storage.close()
+        finally:
+            storage.close()
 
 
-@case_sensitive_app.command("enable")
-def case_sensitive_enable() -> None:
-    """Make `search` match case by default (`--no-case-sensitive` overrides).
-
-    Acted on by the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' engines. The same as
-    `settings search normalize case` set to `match` / `ignore`.
-    """
-    storage = open_storage()
-    try:
-        SearchSettings.set_case_sensitive(storage, True)
-        console.print(
-            SettingsPanel.build("Search will match case by default.", "Case Sensitive", Theme.OK)
-        )
-    finally:
-        storage.close()
+@snippet_app.command("reset")
+def snippet_reset() -> None:
+    """Reset how many characters of context `search` shows around a match to the default."""
+    ResetPanel.run(
+        SearchSettings.reset_snippet_context_chars,
+        "Snippet",
+        "Snippet context",
+        f"{SearchSettings.DEFAULT_SNIPPET_CONTEXT_CHARS} characters",
+    )
 
 
-@case_sensitive_app.command("disable")
-def case_sensitive_disable() -> None:
-    """Make `search` ignore case by default (the default)."""
-    storage = open_storage()
-    try:
-        SearchSettings.set_case_sensitive(storage, False)
-        console.print(
-            SettingsPanel.build(
-                "Search will ignore case by default.", "Case Sensitive", "bright_black"
-            )
-        )
-    finally:
-        storage.close()
+@export_format_app.command("reset")
+def export_format_reset() -> None:
+    """Reset the default format `search --export` writes to."""
+    ResetPanel.run(
+        SearchSettings.reset_export_format,
+        "Export Format",
+        "Export format",
+        SearchSettings.DEFAULT_EXPORT_FORMAT,
+    )
+
+
+@search_engine_app.command("reset")
+def search_engine_reset() -> None:
+    """Reset the default search engine."""
+    ResetPanel.run(
+        SearchSettings.reset_engine,
+        "Search Engine",
+        "Search engine",
+        SearchSettings.DEFAULT_ENGINE,
+    )
+
+
+@fuzzy_threshold_app.command("reset")
+def fuzzy_threshold_reset() -> None:
+    """Reset the default fuzzy threshold."""
+    ResetPanel.run(
+        SearchSettings.reset_fuzzy_threshold,
+        "Fuzzy Threshold",
+        "Fuzzy threshold",
+        SearchSettings.DEFAULT_FUZZY_THRESHOLD,
+    )
+
+
+@proximity_distance_app.command("reset")
+def proximity_distance_reset() -> None:
+    """Reset the default proximity distance."""
+    ResetPanel.run(
+        SearchSettings.reset_proximity_distance,
+        "Proximity Distance",
+        "Proximity distance",
+        SearchSettings.DEFAULT_PROXIMITY_DISTANCE,
+    )
+
+
+@normalize_case_app.command("reset")
+def normalize_case_reset() -> None:
+    """Reset case handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_case,
+        "Normalize Case",
+        "Case handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@normalize_unicode_app.command("reset")
+def normalize_unicode_reset() -> None:
+    """Reset Unicode handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_unicode,
+        "Normalize Unicode",
+        "Unicode handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@normalize_leetspeak_app.command("reset")
+def normalize_leetspeak_reset() -> None:
+    """Reset leetspeak handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_leetspeak,
+        "Normalize Leetspeak",
+        "Leetspeak handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@noise_fuzzy_noise_app.command("reset")
+def noise_fuzzy_noise_reset() -> None:
+    """Reset how much noise `noise-fuzzy` search skips to the default."""
+    ResetPanel.run(
+        SearchSettings.reset_noise_level,
+        "Noise-Fuzzy Noise",
+        "Noise level",
+        SearchSettings.DEFAULT_NOISE,
+    )
 
 
 @fuzzy_threshold_app.command("show")

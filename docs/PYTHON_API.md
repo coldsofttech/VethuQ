@@ -229,7 +229,7 @@ are never rejected.
   `SearchMatch.score` is 1.0 for text as typed and falls with each edit, look-alike and
   noise character. No minimum query length
 
-`case_sensitive` defaults to `client.settings.search.case_sensitive`, and
+`case_sensitive` defaults to `client.settings.search.normalize.case` being `"match"`, and
 only `"like"`, `"lexical"`, `"fuzzy"` and `"noise-fuzzy"` act on it (`"exact"` is always case-sensitive,
 `"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
 counts as one edit). `threshold` (`"fuzzy"` and `"noise-fuzzy"` only) is the minimum similarity between
@@ -381,7 +381,7 @@ client.search.run("hello", engine="like", noise="low")  # raises SearchOptionErr
 
 ## `client.settings`
 
-Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
+Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md). Each setting below also has a `reset()` that puts it back to its default.
 
 ### `client.settings.db.integrity_check`
 
@@ -447,13 +447,6 @@ Invalid values raise `InvalidSettingValueError`.
 
 - `get()` — times a file's OCR is retried after a transient failure (3 by default)
 - `set(attempts)` — raises `InvalidSettingValueError` if `attempts` is negative
-
-### `client.settings.search.case_sensitive`
-
-- `get()` — whether `search` matches case by default (`False` by default; only
-  the `like`, `lexical`, `fuzzy` and `noise-fuzzy` engines act on it; the same as
-  `client.settings.search.normalize.case` being `"match"`)
-- `set(enabled)`
 
 ### `client.settings.search.engine`
 

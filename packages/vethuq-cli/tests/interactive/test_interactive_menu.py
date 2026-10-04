@@ -316,16 +316,19 @@ class TestInteractiveSearchEngines:
 
         assert "Results: 1 match (engine: full-text)" in result.stdout
 
-    def test_settings_search_engine_and_case_sensitive_navigation(self, use_temp_db):
+    def test_settings_search_engine_and_normalize_case_navigation(self, use_temp_db):
         use_temp_db()
 
-        # Settings > Search > Engine > Set exact; Show; back. Case Sensitive > Enable; Show; back.
-        result = runner.invoke(app, [], input="4\n2\n3\n2\nexact\n1\n0\n4\n2\n1\n0\n0\n0\n10\n")
+        # Settings > Search > Engine > Set exact; Show; back. Normalize > Case > Set match; Show;
+        # back out of every menu.
+        steps = ["4", "2", "3", "2", "exact", "1", "0", "6", "1", "2", "match", "1"]
+        steps += ["0", "0", "0", "0", "10"]
+        result = runner.invoke(app, [], input="\n".join(steps) + "\n")
 
         assert result.exit_code == 0
         assert "Search engine set to exact." in result.stdout
         assert "Search engine: exact" in result.stdout
-        assert "Search will match case by default." in result.stdout
+        assert "Search case set to match" in result.stdout
 
     def test_fuzzy_asks_for_case_and_fuzziness(self, use_temp_db):
         _seed_page(use_temp_db(), "Visit the Museurn today")
@@ -365,7 +368,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Fuzzy Threshold > Set loose; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n5\n2\nloose\n1\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n4\n2\nloose\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search fuzzy threshold set to loose." in result.stdout
@@ -375,7 +378,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Leetspeak > Set extended; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\nextended\n1\n0\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n6\n2\n2\nextended\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search leetspeak set to extended." in result.stdout
@@ -385,7 +388,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Case > Set match; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n1\n2\nmatch\n1\n0\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n6\n1\n2\nmatch\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search case set to match." in result.stdout
@@ -395,7 +398,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Unicode > Set full; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n3\n2\nfull\n1\n0\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n6\n3\n2\nfull\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search unicode set to full." in result.stdout
@@ -404,7 +407,7 @@ class TestInteractiveSearchEngines:
     def test_settings_normalize_rejects_an_unknown_value(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\ninsane\n0\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n6\n2\n2\ninsane\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "off, basic, standard, extended" in result.output
@@ -436,7 +439,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Noise Level > Set high; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n8\n2\nhigh\n1\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n7\n2\nhigh\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search noise level set to high." in result.stdout
@@ -514,7 +517,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Proximity Distance > Set tight; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n6\n2\ntight\n1\n0\n0\n0\n10\n")
+        result = runner.invoke(app, [], input="4\n2\n5\n2\ntight\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search proximity distance set to tight." in result.stdout

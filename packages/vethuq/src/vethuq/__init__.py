@@ -170,7 +170,6 @@ __all__ = [
     "ProcessingMetric",
     "RemovedRetentionSettings",
     "Search",
-    "SearchCaseSensitiveSettings",
     "SearchEngineSettings",
     "SearchFuzzySettings",
     "SearchFuzzyThresholdSettings",
@@ -476,6 +475,14 @@ class SnippetSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the snippet context to the default (80 characters)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_snippet_context_chars(storage)
+        finally:
+            storage.close()
+
 
 class ExportFormatSettings:
     """The default format `search --export` writes to.
@@ -500,6 +507,14 @@ class ExportFormatSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_export_format(storage, format_)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the export format to the default ('json')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_export_format(storage)
         finally:
             storage.close()
 
@@ -530,26 +545,11 @@ class SearchEngineSettings:
             storage.close()
 
 
-class SearchCaseSensitiveSettings:
-    """Whether `search` matches case by default (the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy'
-    engines honour it). The same as `settings.search.normalize.case` being `"match"`.
-
-    Not instantiated directly — use `Vethuq().settings.search.case_sensitive`.
-    """
-
-    def get(self) -> bool:
-        """Whether `search` matches case-sensitively by default. `False` by default."""
+    def reset(self) -> None:
+        """Reset the default search engine to 'all'."""
         storage = _open_storage()
         try:
-            return _SearchSettings.is_case_sensitive(storage)
-        finally:
-            storage.close()
-
-    def set(self, enabled: bool) -> None:
-        """Set whether `search` matches case-sensitively by default."""
-        storage = _open_storage()
-        try:
-            _SearchSettings.set_case_sensitive(storage, enabled)
+            _SearchSettings.reset_engine(storage)
         finally:
             storage.close()
 
@@ -579,6 +579,14 @@ class SearchFuzzyThresholdSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_fuzzy_threshold(storage, str(threshold))
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the fuzzy threshold to the default ('balanced')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_fuzzy_threshold(storage)
         finally:
             storage.close()
 
@@ -619,6 +627,14 @@ class SearchProximityDistanceSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the proximity distance to the default ('medium')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_proximity_distance(storage)
+        finally:
+            storage.close()
+
 
 class SearchProximitySettings:
     """Configure the `proximity` search engine. Not instantiated directly — use
@@ -655,6 +671,14 @@ class SearchNormalizeCaseSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset case handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_case(storage)
+        finally:
+            storage.close()
+
 
 class SearchNormalizeLeetspeakSettings:
     """Whether `search` reads look-alike characters (`3` for `e`, `@` for `a`) as the letters.
@@ -685,6 +709,14 @@ class SearchNormalizeLeetspeakSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset leetspeak handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_leetspeak(storage)
+        finally:
+            storage.close()
+
 
 class SearchNormalizeUnicodeSettings:
     """Whether `search` treats characters that are written differently as the same.
@@ -711,6 +743,14 @@ class SearchNormalizeUnicodeSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_unicode(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset Unicode handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_unicode(storage)
         finally:
             storage.close()
 
@@ -751,6 +791,14 @@ class SearchNoiseLevelSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the noise level to the default ('low')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_noise_level(storage)
+        finally:
+            storage.close()
+
 
 class SearchNoiseFuzzySettings:
     """Configure the `noise-fuzzy` search engine. Not instantiated directly — use
@@ -767,7 +815,6 @@ class SearchSettings:
         self.snippet = SnippetSettings()
         self.export_format = ExportFormatSettings()
         self.engine = SearchEngineSettings()
-        self.case_sensitive = SearchCaseSensitiveSettings()
         self.fuzzy = SearchFuzzySettings()
         self.proximity = SearchProximitySettings()
         self.normalize = SearchNormalizeSettings()
@@ -1284,7 +1331,7 @@ class Search:
         compatibility forms, so `cafe` finds `café` - for `like`, `fuzzy` and `noise-fuzzy`, and
         for `exact` only when passed here; the other engines raise `SearchOptionError`. A search
         with it on reads every page rather than using the text indexes. `case_sensitive`
-        defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
+        defaults to `Vethuq().settings.search.normalize.case` and only `like`,
         `lexical`, `fuzzy` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
         `full-text` and `proximity` never are. `threshold` (`fuzzy` and `noise-fuzzy` only)
         is the minimum similarity between `content`'s words and the words found: a

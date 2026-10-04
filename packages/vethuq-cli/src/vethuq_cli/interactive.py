@@ -58,14 +58,13 @@ from vethuq_cli.settings import (
     backups_location_reset,
     backups_location_set,
     backups_location_show,
-    case_sensitive_disable,
-    case_sensitive_enable,
-    case_sensitive_show,
     engine_reset,
     engine_set,
     engine_show,
+    export_format_reset,
     export_format_set,
     export_format_show,
+    fuzzy_threshold_reset,
     fuzzy_threshold_set,
     fuzzy_threshold_show,
     gpu_disable,
@@ -82,14 +81,19 @@ from vethuq_cli.settings import (
     log_level_show,
     log_retention_set,
     log_retention_show,
+    noise_fuzzy_noise_reset,
     noise_fuzzy_noise_set,
     noise_fuzzy_noise_show,
+    normalize_case_reset,
     normalize_case_set,
     normalize_case_show,
+    normalize_leetspeak_reset,
     normalize_leetspeak_set,
     normalize_leetspeak_show,
+    normalize_unicode_reset,
     normalize_unicode_set,
     normalize_unicode_show,
+    proximity_distance_reset,
     proximity_distance_set,
     proximity_distance_show,
     removed_retention_reset,
@@ -98,8 +102,10 @@ from vethuq_cli.settings import (
     retry_reset,
     retry_set,
     retry_show,
+    search_engine_reset,
     search_engine_set,
     search_engine_show,
+    snippet_reset,
     snippet_set,
     snippet_show,
     stability_check_reset,
@@ -464,7 +470,8 @@ class InteractiveMenu:
     def _settings_snippet_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Snippet", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Snippet",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
             )
             if choice == "0":
                 return
@@ -475,12 +482,15 @@ class InteractiveMenu:
                     "Characters of context on each side of a match", console=console
                 )
                 InteractiveMenu._run_safely(snippet_set, chars=chars)
+            elif choice == "3":
+                InteractiveMenu._run_safely(snippet_reset)
 
     @staticmethod
     def _settings_export_format_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Export Format", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Export Format",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
             )
             if choice == "0":
                 return
@@ -491,12 +501,15 @@ class InteractiveMenu:
                     "Format", console=console, choices=list(SearchSettings.EXPORT_FORMATS)
                 )
                 InteractiveMenu._run_safely(export_format_set, format_=format_)
+            elif choice == "3":
+                InteractiveMenu._run_safely(export_format_reset)
 
     @staticmethod
     def _settings_search_engine_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Engine",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
             )
             if choice == "0":
                 return
@@ -505,28 +518,15 @@ class InteractiveMenu:
             elif choice == "2":
                 engine = Prompt.ask("Engine", console=console, choices=list(SearchSettings.ENGINES))
                 InteractiveMenu._run_safely(search_engine_set, engine=engine)
-
-    @staticmethod
-    def _settings_case_sensitive_menu() -> None:
-        while True:
-            choice = InteractiveMenu._select(
-                "Settings > Search > Case Sensitive",
-                [("1", "Show"), ("2", "Enable"), ("3", "Disable"), ("0", "Back")],
-            )
-            if choice == "0":
-                return
-            if choice == "1":
-                InteractiveMenu._run_safely(case_sensitive_show)
-            elif choice == "2":
-                InteractiveMenu._run_safely(case_sensitive_enable)
             elif choice == "3":
-                InteractiveMenu._run_safely(case_sensitive_disable)
+                InteractiveMenu._run_safely(search_engine_reset)
 
     @staticmethod
     def _settings_fuzzy_threshold_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Fuzzy Threshold", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Fuzzy Threshold",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
             )
             if choice == "0":
                 return
@@ -538,13 +538,15 @@ class InteractiveMenu:
                     f"Threshold ({presets}, a percentage or a similarity 0-1)", console=console
                 )
                 InteractiveMenu._run_safely(fuzzy_threshold_set, threshold=threshold)
+            elif choice == "3":
+                InteractiveMenu._run_safely(fuzzy_threshold_reset)
 
     @staticmethod
     def _settings_proximity_distance_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Proximity Distance",
-                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -557,6 +559,8 @@ class InteractiveMenu:
                     console=console,
                 )
                 InteractiveMenu._run_safely(proximity_distance_set, distance=distance)
+            elif choice == "3":
+                InteractiveMenu._run_safely(proximity_distance_reset)
 
     @staticmethod
     def _settings_normalize_value_menu(
@@ -564,10 +568,13 @@ class InteractiveMenu:
         values: tuple[str, ...],
         show: Callable[..., None],
         set_: Callable[..., None],
+        reset: Callable[..., None],
         argument: str,
     ) -> None:
         while True:
-            choice = InteractiveMenu._select(title, [("1", "Show"), ("2", "Set"), ("0", "Back")])
+            choice = InteractiveMenu._select(
+                title, [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+            )
             if choice == "0":
                 return
             if choice == "1":
@@ -575,6 +582,8 @@ class InteractiveMenu:
             elif choice == "2":
                 value = Prompt.ask(f"Value ({', '.join(values)})", console=console)
                 InteractiveMenu._run_safely(set_, **{argument: value})
+            elif choice == "3":
+                InteractiveMenu._run_safely(reset)
 
     @staticmethod
     def _settings_normalize_menu() -> None:
@@ -591,6 +600,7 @@ class InteractiveMenu:
                     SearchSettings.CASE_VALUES,
                     normalize_case_show,
                     normalize_case_set,
+                    normalize_case_reset,
                     "case",
                 )
             elif choice == "2":
@@ -599,6 +609,7 @@ class InteractiveMenu:
                     SearchSettings.LEETSPEAK_VALUES,
                     normalize_leetspeak_show,
                     normalize_leetspeak_set,
+                    normalize_leetspeak_reset,
                     "leetspeak",
                 )
             elif choice == "3":
@@ -607,6 +618,7 @@ class InteractiveMenu:
                     SearchSettings.UNICODE_VALUES,
                     normalize_unicode_show,
                     normalize_unicode_set,
+                    normalize_unicode_reset,
                     "unicode",
                 )
 
@@ -614,7 +626,8 @@ class InteractiveMenu:
     def _settings_noise_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Noise Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Noise Level",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
             )
             if choice == "0":
                 return
@@ -624,6 +637,8 @@ class InteractiveMenu:
                 levels = ", ".join(SearchSettings.NOISE_LEVELS)
                 level = Prompt.ask(f"Noise ({levels})", console=console)
                 InteractiveMenu._run_safely(noise_fuzzy_noise_set, noise=level)
+            elif choice == "3":
+                InteractiveMenu._run_safely(noise_fuzzy_noise_reset)
 
     @staticmethod
     def _settings_search_menu() -> None:
@@ -634,11 +649,10 @@ class InteractiveMenu:
                     ("1", "Snippet"),
                     ("2", "Export Format"),
                     ("3", "Engine"),
-                    ("4", "Case Sensitive"),
-                    ("5", "Fuzzy Threshold"),
-                    ("6", "Proximity Distance"),
-                    ("7", "Normalize"),
-                    ("8", "Noise Level"),
+                    ("4", "Fuzzy Threshold"),
+                    ("5", "Proximity Distance"),
+                    ("6", "Normalize"),
+                    ("7", "Noise Level"),
                     ("0", "Back"),
                 ],
             )
@@ -651,14 +665,12 @@ class InteractiveMenu:
             elif choice == "3":
                 InteractiveMenu._settings_search_engine_menu()
             elif choice == "4":
-                InteractiveMenu._settings_case_sensitive_menu()
-            elif choice == "5":
                 InteractiveMenu._settings_fuzzy_threshold_menu()
-            elif choice == "6":
+            elif choice == "5":
                 InteractiveMenu._settings_proximity_distance_menu()
-            elif choice == "7":
+            elif choice == "6":
                 InteractiveMenu._settings_normalize_menu()
-            elif choice == "8":
+            elif choice == "7":
                 InteractiveMenu._settings_noise_menu()
 
     @staticmethod

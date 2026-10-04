@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `vethuq settings gpu reset`, `settings ocr retry reset`, `settings ocr engine reset` and `settings index removed-retention|stability-check|thread-workers|stale-lock reset` put those settings back to their defaults. In the desktop app, GPU, OCR retry, OCR engine and the four index settings each have a settings window with a Reset button.
+- Every setting now has a `reset` command (for example `vethuq settings gpu reset` or `vethuq settings search engine reset`) that puts it back to its default; `client.settings...reset()` does the same from Python. In the desktop app, GPU, OCR retry, OCR engine and the four index settings each have a settings window with a Reset button.
 - The desktop app can now change where VethuQ keeps its data and where database backups are kept (Settings > Location). Changing the data location needs a restart.
 - The desktop app has a Settings > About window showing the app and CLI versions, Python, platform, database schema, file types, search engines, OCR engines and languages, with a Copy button. `vethuq --version` now also lists OCR engines and languages.
 - File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq file-types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.
@@ -122,6 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Indexing now reports why a file couldn't be read â€” removed mid-run, password-protected, or corrupted â€” instead of a generic failure, and doesn't retry it.
 - Files VethuQ can't read, such as `.txt` or `.csv`, are now listed as "Unsupported file format" instead of being silently ignored.
 - The Windows installer has new OCR engine and language pages (PaddleOCR and English for now) ahead of the file types and search engines pages, shows the size of each component, and uses the new VethuQ icon (also in the app window, the interactive CLI banner and the shortcuts). Its license is now a formatted page with the logo.
+
+### Removed
+
+- `vethuq settings search case-sensitive` and `client.settings.search.case_sensitive` are gone: use `vethuq settings search normalize case set match|ignore|auto` and `client.settings.search.normalize.case` instead. The `--case-sensitive` option on `search` is unchanged.
 
 ### Changed
 

@@ -414,7 +414,7 @@ of a page where `content` can lie are read, so it doesn't scan every page. A ver
 `content` can't be narrowed that way and is searched through the whole skeleton.
 
 `--case-sensitive` / `--no-case-sensitive` overrides
-`vethuq settings search case-sensitive`, and only `like`, `lexical`, `fuzzy` and `noise-fuzzy` act on it
+`vethuq settings search normalize case`, and only `like`, `lexical`, `fuzzy` and `noise-fuzzy` act on it
 (for `fuzzy` a difference in case counts as one edit):
 `exact` is always case-sensitive while `full-text` and `proximity` never are,
 so asking for the opposite explicitly (`--engine exact --no-case-sensitive`,
@@ -556,6 +556,8 @@ below. In PowerShell, put a quoted phrase inside single quotes, as in the
 `'"english institute"'` example.
 
 ## `settings`
+
+Most settings below also have a `reset` subcommand (for example `vethuq settings gpu reset` or `vethuq settings search engine reset`) that puts that one setting back to its default. Settings that follow each search engine's own default, like `normalize case`, go back to `auto`.
 
 ### `db integrity-check`
 
@@ -722,18 +724,6 @@ of `all` (the default — every engine, ranked together), `like`, `exact`,
 ```bash
 vethuq settings search engine set full-text
 vethuq settings search engine show
-```
-
-### `search case-sensitive enable|disable|show`
-
-Configure whether `vethuq search` matches case by default. Disabled by
-default. Only the `like`, `lexical`, `fuzzy` and `noise-fuzzy` engines act on it (it is the same setting as `normalize case` being `match`); `--case-sensitive` /
-`--no-case-sensitive` overrides it for one search.
-
-```bash
-vethuq settings search case-sensitive enable
-vethuq settings search case-sensitive disable
-vethuq settings search case-sensitive show
 ```
 
 ### `search fuzzy threshold set <threshold>|show`

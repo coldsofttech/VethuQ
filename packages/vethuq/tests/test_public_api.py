@@ -147,7 +147,6 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.search.snippet.get() == 80
     assert client.settings.search.export_format.get() == "json"
     assert client.settings.search.engine.get() == "all"
-    assert client.settings.search.case_sensitive.get() is False
     assert client.settings.search.normalize.leetspeak.get() == "auto"
     assert client.settings.search.normalize.case.get() == "auto"
     assert client.settings.search.normalize.unicode.get() == "auto"
@@ -189,11 +188,63 @@ def test_settings_gpu_enable_and_disable(client: vethuq.Vethuq):
     assert client.settings.gpu.is_enabled() is False
 
 
+def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
+    search = client.settings.search
+    search.snippet.set(5)
+    search.export_format.set("html")
+    search.engine.set("exact")
+    search.fuzzy.threshold.set("strict")
+    search.proximity.distance.set("tight")
+    search.normalize.case.set("match")
+    search.normalize.leetspeak.set("extended")
+    search.normalize.unicode.set("full")
+    search.noise_fuzzy.noise.set("high")
+    client.settings.gpu.enable()
+    client.settings.ocr.retry.set(9)
+    client.settings.ocr.engine.set("deep")
+    client.settings.index.removed_retention.set(5)
+    client.settings.index.stability_check.set(0)
+    client.settings.index.thread_workers.set("4")
+    client.settings.index.stale_lock.set("disable")
+
+    for setting in (
+        search.snippet,
+        search.export_format,
+        search.engine,
+        search.fuzzy.threshold,
+        search.proximity.distance,
+        search.normalize.case,
+        search.normalize.leetspeak,
+        search.normalize.unicode,
+        search.noise_fuzzy.noise,
+        client.settings.gpu,
+        client.settings.ocr.retry,
+        client.settings.ocr.engine,
+        client.settings.index.removed_retention,
+        client.settings.index.stability_check,
+        client.settings.index.thread_workers,
+        client.settings.index.stale_lock,
+    ):
+        setting.reset()
+
+    assert search.snippet.get() == 80
+    assert search.export_format.get() == "json"
+    assert search.engine.get() == "all"
+    assert search.normalize.case.get() == "auto"
+    assert search.normalize.leetspeak.get() == "auto"
+    assert search.normalize.unicode.get() == "auto"
+    assert search.noise_fuzzy.noise.get() == "low"
+    assert client.settings.gpu.is_enabled() is False
+    assert client.settings.ocr.retry.get() == 3
+    assert client.settings.ocr.engine.get() == "quick"
+    assert client.settings.index.thread_workers.get() == "0"
+    assert client.settings.index.stale_lock.get() == "auto"
+
+
 def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.search.snippet.set(120)
     client.settings.search.export_format.set("html")
     client.settings.search.engine.set("full-text")
-    client.settings.search.case_sensitive.set(True)
     client.settings.search.normalize.leetspeak.set("extended")
     client.settings.search.normalize.case.set("match")
     client.settings.search.normalize.unicode.set("full")
@@ -210,7 +261,6 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     assert client.settings.search.snippet.get() == 120
     assert client.settings.search.export_format.get() == "html"
     assert client.settings.search.engine.get() == "full-text"
-    assert client.settings.search.case_sensitive.get() is True
     assert client.settings.search.normalize.leetspeak.get() == "extended"
     assert client.settings.search.normalize.case.get() == "match"
     assert client.settings.search.normalize.unicode.get() == "full"
@@ -517,13 +567,13 @@ def test_search_unicode_stored_setting_applies_except_to_exact(indexed_client: v
     assert indexed_client.search.run("Invoicé", engine="exact", unicode="full")
 
 
-def test_search_case_setting_applies_like_the_old_one(indexed_client: vethuq.Vethuq):
+def test_search_case_setting_applies_to_like(indexed_client: vethuq.Vethuq):
     indexed_client.settings.search.normalize.case.set("match")
 
-    assert indexed_client.settings.search.case_sensitive.get() is True
+    assert indexed_client.settings.search.normalize.case.get() == "match"
     assert [m.matched for m in indexed_client.search.run("INVOICE", engine="like")] == ["INVOICE"]
 
-    indexed_client.settings.search.case_sensitive.set(False)
+    indexed_client.settings.search.normalize.case.set("ignore")
     assert indexed_client.settings.search.normalize.case.get() == "ignore"
 
 

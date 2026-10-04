@@ -44,6 +44,10 @@ class Stepper(ttk.Frame):
     def value(self) -> float:
         return self._value
 
+    def set(self, value: float) -> None:
+        self._value = value
+        self._refresh()
+
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
         self._label.configure(foreground="" if enabled else "grey")

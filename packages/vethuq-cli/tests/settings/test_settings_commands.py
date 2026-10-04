@@ -343,18 +343,6 @@ class TestSearchEngineSettings:
 
         assert result.exit_code == 1
 
-    def test_case_sensitive_show_enable_disable(self, use_temp_db):
-        use_temp_db()
-        show = ["settings", "search", "case-sensitive", "show"]
-
-        assert "disabled" in runner.invoke(app, show).stdout
-        assert runner.invoke(app, ["settings", "search", "case-sensitive", "enable"]).exit_code == 0
-        assert "enabled" in runner.invoke(app, show).stdout
-        assert (
-            runner.invoke(app, ["settings", "search", "case-sensitive", "disable"]).exit_code == 0
-        )
-        assert "disabled" in runner.invoke(app, show).stdout
-
     def test_fuzzy_threshold_show_defaults_to_balanced(self, use_temp_db):
         use_temp_db()
 
@@ -468,26 +456,6 @@ class TestNormalizeSettings:
         assert leetspeak.exit_code == 1 and "off, basic, standard, extended" in leetspeak.output
         shown = runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "show"])
         assert "auto" in shown.stdout
-
-    def test_the_case_sensitive_commands_are_the_same_setting(self, use_temp_db):
-        use_temp_db()
-
-        runner.invoke(app, ["settings", "search", "case-sensitive", "enable"])
-        assert (
-            "match"
-            in runner.invoke(app, ["settings", "search", "normalize", "case", "show"]).stdout
-        )
-
-        runner.invoke(app, ["settings", "search", "normalize", "case", "set", "ignore"])
-        assert (
-            "disabled"
-            in runner.invoke(app, ["settings", "search", "case-sensitive", "show"]).stdout
-        )
-
-        runner.invoke(app, ["settings", "search", "normalize", "case", "set", "match"])
-        assert (
-            "enabled" in runner.invoke(app, ["settings", "search", "case-sensitive", "show"]).stdout
-        )
 
     def test_unicode_show_set_and_validation(self, use_temp_db):
         use_temp_db()

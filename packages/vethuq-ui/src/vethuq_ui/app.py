@@ -19,6 +19,8 @@ from vethuq_ui.windows.settings.location import LocationWindow
 from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
 from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
 from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
+from vethuq_ui.windows.settings.search.all import SearchSettingsWindow
+from vethuq_ui.windows.settings.search.field_window import SearchFieldWindow
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
@@ -80,6 +82,30 @@ class MainWindow(tk.Tk):
                     self.ribbon.refresh_setting_icons,
                 ),
                 show_ocr_engine=lambda: OcrEngineWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_search_snippet=lambda: SearchFieldWindow.snippet(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_search_export_format=lambda: SearchFieldWindow.export_format(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_search_engine=lambda: SearchFieldWindow.engine(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_search_settings=lambda: SearchSettingsWindow.show(
                     self,
                     self.storage,
                     self.status_bar.show_message,
