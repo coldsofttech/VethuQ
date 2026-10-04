@@ -6,6 +6,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from vethuq_core.db.queries.documents import Document
+from vethuq_core.paths.extensions import Extensions
 
 
 class Migration:
@@ -177,19 +178,20 @@ class Migration:
             conn.execute("ALTER TABLE processing_metrics_new RENAME TO processing_metrics")
 
             # `_ensure_schema` already created `confidence_metrics` via the
-            # `CREATE TABLE IF NOT EXISTS` in `_SCHEMA` before migrations run.
+            # `CREATE TABLE IF NOT EXISTS` in `_SCHEMA` before migrations run. Its rows have
+            # no extension yet; the v30 step below rebuilds the table per extension anyway.
             now = datetime.now(UTC).isoformat()
             conn.execute(
                 "INSERT INTO confidence_metrics "
-                "(file_type, process_type, page_count, avg_confidence, updated_at) "
-                "SELECT 'pdf', source, COUNT(*), AVG(confidence), ? "
+                "(file_type, extension, process_type, page_count, avg_confidence, updated_at) "
+                "SELECT 'pdf', '', source, COUNT(*), AVG(confidence), ? "
                 "FROM pdf_pages GROUP BY source",
                 (now,),
             )
             conn.execute(
                 "INSERT INTO confidence_metrics "
-                "(file_type, process_type, page_count, avg_confidence, updated_at) "
-                "SELECT 'image', 'ocr', COUNT(*), AVG(confidence), ? "
+                "(file_type, extension, process_type, page_count, avg_confidence, updated_at) "
+                "SELECT 'image', '', 'ocr', COUNT(*), AVG(confidence), ? "
                 "FROM image_pages HAVING COUNT(*) > 0",
                 (now,),
             )
@@ -560,3 +562,153 @@ class Migration:
             # the trigram indexes (v25).
             for index in Document.SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)
+
+        if from_version < 29:
+            # `reindex_pending` marks a file a full re-index has queued: it keeps its status
+            # (and so its searchable pages) until it is reprocessed, instead of being reset
+            # to 'pending'.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(document_index)")}
+            if "reindex_pending" not in columns:
+                conn.execute(
+                    "ALTER TABLE document_index "
+                    "ADD COLUMN reindex_pending INTEGER NOT NULL DEFAULT 0"
+                )
+
+        if from_version < 30:
+            Migration._track_metrics_per_extension(conn)
+
+    @staticmethod
+    def _track_metrics_per_extension(conn: sqlite3.Connection) -> None:
+        """Rebuild `processing_metrics` and `confidence_metrics` keyed by file extension.
+
+        They used to average every image together under `image`, blending PNG and JPG. The
+        old running averages can't be split after the fact, so both tables are rebuilt from
+        what is stored: each indexed document's timings (and deeper-phase work) and each
+        stored page's confidence, grouped by the extension of the file's path. History for
+        files that have since been removed is not recoverable and drops out of the averages.
+        """
+        conn.execute("DROP TABLE processing_metrics")
+        conn.execute("DROP TABLE confidence_metrics")
+        conn.execute(
+            """
+            CREATE TABLE processing_metrics (
+                phase INTEGER NOT NULL DEFAULT 1,
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                extension TEXT NOT NULL,
+                size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                document_count INTEGER NOT NULL DEFAULT 0,
+                avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (phase, file_type, extension, size_bucket)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE confidence_metrics (
+                file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                extension TEXT NOT NULL,
+                process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                page_count INTEGER NOT NULL DEFAULT 0,
+                avg_confidence REAL NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (file_type, extension, process_type)
+            )
+            """
+        )
+        now = datetime.now(UTC).isoformat()
+
+        # A document is "carried" by the row that holds its pages; duplicates have none, and
+        # were never OCR'd, so they contributed nothing to the old averages either.
+        carries_pages = (
+            "(EXISTS (SELECT 1 FROM pdf_pages WHERE document_id = {t}.id) "
+            "OR EXISTS (SELECT 1 FROM image_pages WHERE document_id = {t}.id))"
+        )
+
+        # (phase, file_type, extension, size_bucket) -> [documents, duration, memory, cpu]
+        processing: dict[tuple[int, str, str, str], list[float]] = {}
+
+        def fold(phase, file_type, path, size, duration, memory, cpu) -> None:
+            # Keep these thresholds in sync with `Metrics.size_bucket`.
+            size = size or 0
+            bucket = "small" if size < 500_000 else "medium" if size < 3_000_000 else "large"
+            key = (phase, file_type, Extensions.of(path), bucket)
+            totals = processing.setdefault(key, [0, 0.0, 0.0, 0.0])
+            totals[0] += 1
+            totals[1] += duration
+            totals[2] += memory or 0.0
+            totals[3] += cpu or 0.0
+
+        for row in conn.execute(
+            "SELECT di.file_path, di.file_type, di.file_size_bytes, di.started_at, "
+            "di.completed_at, di.peak_memory_mb, di.cpu_percent FROM document_index di "
+            "WHERE di.status = 'indexed' AND di.file_type IN ('pdf', 'image') "
+            "AND di.started_at IS NOT NULL AND di.completed_at IS NOT NULL AND "
+            + carries_pages.format(t="di")
+        ):
+            duration = (
+                datetime.fromisoformat(row["completed_at"])
+                - datetime.fromisoformat(row["started_at"])
+            ).total_seconds()
+            fold(
+                1,
+                row["file_type"],
+                row["file_path"],
+                row["file_size_bytes"],
+                duration,
+                row["peak_memory_mb"],
+                row["cpu_percent"],
+            )
+
+        for row in conn.execute(
+            "SELECT dp.phase, dp.duration_seconds, dp.peak_memory_mb, dp.cpu_percent, "
+            "di.file_path, di.file_type, di.file_size_bytes FROM document_phases dp "
+            "JOIN document_index di ON di.id = ("
+            "  SELECT MIN(c.id) FROM document_index c WHERE c.document_id = dp.document_id "
+            "  AND c.status = 'indexed' AND c.file_type IN ('pdf', 'image') AND "
+            + carries_pages.format(t="c")
+            + ") WHERE dp.completed_at IS NOT NULL AND dp.duration_seconds > 0"
+        ):
+            fold(
+                row["phase"],
+                row["file_type"],
+                row["file_path"],
+                row["file_size_bytes"],
+                row["duration_seconds"],
+                row["peak_memory_mb"],
+                row["cpu_percent"],
+            )
+
+        conn.executemany(
+            "INSERT INTO processing_metrics (phase, file_type, extension, size_bucket, "
+            "document_count, avg_duration_seconds, avg_peak_memory_mb, avg_cpu_percent, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (phase, file_type, extension, bucket, int(n), t / n, m / n, c / n, now)
+                for (phase, file_type, extension, bucket), (n, t, m, c) in processing.items()
+            ],
+        )
+
+        # (file_type, extension, process_type) -> [pages, confidence sum]
+        confidence: dict[tuple[str, str, str], list[float]] = {}
+        for table, process_type_sql in (("pdf_pages", "p.source"), ("image_pages", "'ocr'")):
+            for row in conn.execute(
+                f"SELECT di.file_path, di.file_type, {process_type_sql} AS process_type, "
+                f"COUNT(*) AS pages, SUM(p.confidence) AS total FROM {table} p "
+                f"JOIN document_index di ON di.id = p.document_id "
+                f"GROUP BY di.id, {process_type_sql}"
+            ):
+                key = (row["file_type"], Extensions.of(row["file_path"]), row["process_type"])
+                totals = confidence.setdefault(key, [0, 0.0])
+                totals[0] += row["pages"]
+                totals[1] += row["total"]
+        conn.executemany(
+            "INSERT INTO confidence_metrics (file_type, extension, process_type, page_count, "
+            "avg_confidence, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (file_type, extension, process_type, int(n), total / n, now)
+                for (file_type, extension, process_type), (n, total) in confidence.items()
+            ],
+        )

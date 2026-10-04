@@ -9,15 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.
+- File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq file-types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.
 - `vethuq --version` lists the installed `type-*` packages and records them in the database.
-- Search engines are selectable the same way: `pip install vethuq[search-exact]` (also `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`); `search-like` is the default and is always available. `vethuq search-engines list [--all]` shows what is installed. Engines that are not installed or enabled are left out of the combined `all` search and refused when asked for by name; the Windows installer has a page for them (`/ENGINES=exact,fuzzy` for silent installs). `--version` lists the installed `search-*` packages and records them in the database.
+- `client.file_types.list()` and a "File types" entry in the interactive menu show the installed file types, like `vethuq file-types list`.
+- Running the Windows installer again on an installed VethuQ now offers Change, Repair or Uninstall (also from Apps & Features); changing only the file types no longer reinstalls the app. The file types page has Select all / Unselect all, and the installer shows its own license with the licenses of the bundled software.
+- The Windows installer now lets you choose to install for all users (administrator rights, Program Files) or for the current user only (no administrator rights, your profile). The CLI, PATH option and uninstall work for both.
+- The index run panel now shows how many files were skipped as unsupported, separately from failed ones. Password-protected PDFs now count as unsupported instead of failed.
+- Search engines are selectable the same way: `pip install vethuq[search-exact]` (also `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`); `search-like` is the default and is always available. `vethuq search-engines list [--all]` (also in the interactive menu) shows what is installed. Engines that are not installed or enabled are left out of the combined `all` search and refused when asked for by name; the Windows installer has a page for them (`/ENGINES=exact,fuzzy` for silent installs). `--version` lists the installed `search-*` packages and records them in the database.
 - The app now rescans your sources every few seconds while it is open, picking up new files and sources automatically.
 - Identical files always resolve to the same document and the same original, whatever the scan order, worker count or re-indexing; now covered by tests.
 - `vethuq --version` shows the CLI version, Python version, platform and database schema version. Also available as `client.version`.
 - Startup problems (invalid settings, an unwritable data folder, a damaged database, missing OCR models) now show a plain-language message with what to do, and exit with a distinct non-zero code.
 - `vethuq index rebuild-search` rebuilds the search index from the text already stored, with progress and a clear report if anything fails. Asks first (`--force` skips); also in the interactive Index menu and as `client.index.rebuild_search`.
-- `vethuq index reindex <source>` and `vethuq index reindex file <id-or-path>` re-index a whole source or a single file from scratch without creating duplicates; if a file sits under several sources, pass `--source`. Also in the interactive Index menu and as `client.index.reindex` / `reindex_file`.
+- `vethuq index reindex <source>` and `vethuq index reindex file <id-or-path>` re-index a whole source or a single file from scratch without creating duplicates; if a file sits under several sources, pass `--source`. Re-indexing a source asks first (`--force` skips the prompt), and files stay searchable until they have been reprocessed. Also in the interactive Index menu and as `client.index.reindex` / `reindex_file`.
+- Processing and confidence statistics are now tracked per file extension, so PDF, PNG and JPG are reported separately in `vethuq stats show` and `client.stats` instead of PNG and JPG being blended as `image`. Existing databases are upgraded automatically: the statistics are rebuilt from the files already indexed (history for files since removed is not kept).
 - `vethuq source purge <id-or-path>` permanently deletes a removed source or file now, instead of waiting for the retention period (asks first; `--force` skips the prompt). Also `client.sources.purge`.
 - Files with very long Windows paths (over 260 characters), special characters or non-English names are now scanned, indexed, searched and exported correctly.
 - Files that a link or junction points outside their source are no longer read; they are shown as an error instead.
@@ -115,6 +120,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Without the Windows installer, only PDF is enabled by default; `pip install vethuq[type-png]` or `[type-jpg]` enables the others.
+- A file that was unsupported and later becomes supported (for example after adding a file type) is now found by search after re-indexing.
+- The installed desktop app now runs OCR and indexing: the OCR engine, its models' dependencies and the file type list are now included.
 - Index status no longer fails intermittently on Windows when the progress file is being refreshed at the same moment.
 - Indexing with several workers now treats identical files the same way every time: the first one (by name) is the original and the rest are duplicates, as in a single-worker run.
 - `vethuq index status` no longer shows a run as "running" after its worker has died: it now reports it as failed with the reason, and flags a worker that has stopped responding.

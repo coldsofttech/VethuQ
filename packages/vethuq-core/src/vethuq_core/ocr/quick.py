@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Callable, Collection
@@ -15,7 +16,6 @@ import psutil
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.content_gate import ContentGate
 from vethuq_core.ocr.document import Document
@@ -23,11 +23,13 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import (
     DocumentReader,
     FileRemovedError,
     OutsideSourceError,
     PageResult,
+    PasswordProtectedError,
     Readers,
     UnreadableFileError,
 )
@@ -50,7 +52,10 @@ class Quick:
 
     @staticmethod
     def run_with_retries(
-        storage: Storage, reader: DocumentReader, file_path: Path
+        storage: Storage,
+        reader: DocumentReader,
+        file_path: Path,
+        db_lock: threading.Lock | None = None,
     ) -> tuple[list[PageResult] | None, int, Exception | None]:
         """Retry OCR itself (no DB writes) up to the configured attempt count.
 
@@ -62,7 +67,10 @@ class Quick:
         or a bare `FileNotFoundError`) fails immediately without further attempts,
         since retrying can't change the outcome.
         """
-        max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
+        # The settings read shares the connection with other workers' writes, so
+        # it goes through `db_lock` like every other sqlite access in a batch.
+        with db_lock or contextlib.nullcontext():
+            max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
         attempt = 0
         last_exc: Exception | None = None
         pages: list[PageResult] | None = None
@@ -120,13 +128,20 @@ class Quick:
         ('processing') in that case, for a future run to retry rather than ever
         being readable as 'indexed' with missing pages/metrics.
 
-        Returns whether the document was indexed successfully.
+        A password-protected file is recorded as 'unsupported' (keeping its file type)
+        rather than an error, since nothing is wrong with it that a retry could fix; it
+        counts as processed, not failed.
+
+        Returns whether the document was processed without failing.
         """
         try:
             with storage.transaction():
                 storage.update_document_index_retry_stats(
                     document_id, attempts_used - 1, peak_memory_mb, cpu_percent
                 )
+                if pages is None and isinstance(last_exc, PasswordProtectedError):
+                    Document.mark_unsupported(storage, document_id, str(last_exc))
+                    return True
                 if pages is None:
                     Document.mark_error(storage, document_id, str(last_exc))
                     return False
@@ -236,6 +251,7 @@ class Quick:
                 only_new_files
                 and existing is not None
                 and existing["status"] == "indexed"
+                and not existing["reindex_pending"]
                 and not Document.has_content_changed(file_path, existing)
             ):
                 continue
@@ -379,6 +395,11 @@ class Quick:
 
         if duplicate_source_id is not None:
             with db_lock, storage.transaction():
+                # A duplicate carries no pages of its own. A file re-indexed after having
+                # been the original (its twin was reprocessed first and now holds the text)
+                # still has its old pages, which would otherwise show up twice in search.
+                storage.delete_pdf_pages_for_document(document_id)
+                storage.delete_image_pages_for_document(document_id)
                 Document.mark_duplicate(storage, document_id)
             _logger.info(
                 "Duplicate content, OCR skipped: file=%s document_id=%d duplicate_of_source_id=%d",
@@ -394,7 +415,9 @@ class Quick:
 
         reader = Readers.for_path(file_path)
         if FsPath.is_within(file_path, source.path):
-            pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
+            pages, attempts_used, last_exc = Quick.run_with_retries(
+                storage, reader, file_path, db_lock=db_lock
+            )
         else:
             _logger.warning("File resolves outside its source, skipped: %s", file_path)
             pages, attempts_used = None, 1

@@ -23,6 +23,8 @@ from vethuq._core.errors import (
     SchemaVersionError,
     StartupError,
 )
+from vethuq._core.filetypes import FileTypeInfo
+from vethuq._core.filetypes import FileTypes as _FileTypes
 from vethuq._core.index import (
     AlreadyRunningError,
     AmbiguousFileError,
@@ -99,6 +101,7 @@ hit_badge = _Ranking.hit_badge
 
 __all__ = [
     "VersionDetails",
+    "FileTypeInfo",
     "BACKUP_VALUES",
     "ENGINE_BADGES",
     "ENGINE_MEANINGS",
@@ -985,7 +988,9 @@ class Stats:
     """
 
     def processing(self) -> list[ProcessingMetric]:
-        """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
+        """Return per-(phase, extension, size_bucket) running averages of OCR processing.
+
+        Each file extension (pdf, png, jpg, ...) is reported separately."""
         storage = _open_storage()
         try:
             return _Processing.get_metrics(storage)
@@ -993,7 +998,9 @@ class Stats:
             storage.close()
 
     def confidence(self) -> list[ConfidenceMetric]:
-        """Return per-(file_type, process_type) running averages of OCR confidence."""
+        """Return per-(extension, process_type) running averages of OCR confidence.
+
+        Each file extension (pdf, png, jpg, ...) is reported separately."""
         storage = _open_storage()
         try:
             return _Confidence.get_metrics(storage)
@@ -1257,6 +1264,19 @@ class Db:
             raise IndexRunnerError("An index run is in progress; stop it first.")
 
 
+class FileTypes:
+    """Which file types this install can read (`client.file_types`)."""
+
+    def list(self, include_missing: bool = False) -> list[FileTypeInfo]:
+        """The installed file types; `include_missing` also lists those that are not installed.
+
+        Each `FileTypeInfo` says whether the type is `installed` and `enabled`, and for a type
+        that is not installed carries the `pip install` command in `install_hint`. To add or
+        remove a type, install or reinstall the package (or re-run the Windows installer).
+        """
+        return _FileTypes.infos(include_missing=include_missing)
+
+
 class Vethuq:
     """Client for VethuQ's local database — the same one the CLI and desktop app use.
 
@@ -1267,6 +1287,7 @@ class Vethuq:
     client.settings.gpu.enable()
     client.stats.processing()
     client.search.run("invoice")
+    client.file_types.list()
     client.version.python
     ```
     """
@@ -1279,6 +1300,7 @@ class Vethuq:
         self.search = Search()
         self.logs = Logs()
         self.db = Db()
+        self.file_types = FileTypes()
 
     @property
     def version(self) -> VersionDetails:

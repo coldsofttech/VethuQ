@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from vethuq_core.sources.sorting import SourceSort
 from vethuq_core.sources.source import (
     PhaseTiming,
     PurgeResult,
@@ -25,5 +26,6 @@ __all__ = [
     "SourceNotFoundError",
     "SourceNotRemovedError",
     "SourcePathError",
+    "SourceSort",
     "Sources",
 ]

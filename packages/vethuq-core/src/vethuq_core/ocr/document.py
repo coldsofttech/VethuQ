@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import PageResult, Readers
 from vethuq_core.sources import Source
 from vethuq_core.storage import Row, Storage

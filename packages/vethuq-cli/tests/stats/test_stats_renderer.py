@@ -12,7 +12,8 @@ class TestStatsRenderer:
     def test_processing_panel_normalizes_cpu_percent_by_core_count(self, monkeypatch):
         monkeypatch.setattr(os, "cpu_count", lambda: 4)
         metric = ProcessingMetric(
-            file_type="pdf",
+            file_type="image",
+            extension="png",
             size_bucket="medium",
             document_count=1,
             avg_duration_seconds=1.0,
@@ -26,6 +27,7 @@ class TestStatsRenderer:
         Console(file=buffer, width=120).print(panel)
 
         assert "50%" in buffer.getvalue()
+        assert "png" in buffer.getvalue()
 
     def test_align_widths_matches_the_widest_panel(self):
         narrow = Panel(Text("x"), title="A")

@@ -1,0 +1,13 @@
+[project]
+name = "vethuq-search-full-text"
+version = "0.1.0"
+description = "Marker package: enables the full-text search engine when installed with vethuq[search-full-text]"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_search_full_text"]

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +12,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
+from vethuq_core.formatting import Formatting
 from vethuq_core.ocr import Deepening
 from vethuq_core.search import Export
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
@@ -25,6 +24,7 @@ from vethuq_core.sources import (
     SourceNotRemovedError,
     SourcePathError,
     Sources,
+    SourceSort,
 )
 from vethuq_core.storage import open_storage
 
@@ -100,37 +100,6 @@ class SourceFiles:
     """Rendering of the files under a source: a table, or a panel per file with `--detail`."""
 
     @staticmethod
-    def _timestamp(value: str | None) -> str:
-        if not value:
-            return "-"
-        return datetime.fromisoformat(value).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-
-    @staticmethod
-    def _size(size: int | None) -> str:
-        if size is None:
-            return "-"
-        value = float(size)
-        for unit in ("B", "KB", "MB", "GB"):
-            if value < 1024 or unit == "GB":
-                return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-            value /= 1024
-        return f"{size} B"
-
-    @staticmethod
-    def _seconds(seconds: float | None) -> str:
-        return "-" if seconds is None else f"{seconds:.1f}s"
-
-    @staticmethod
-    def _name(source: Source, file: SourceFile) -> str:
-        """The file's path relative to a folder source (its name, for a file source)."""
-        if source.source_type == "folder":
-            try:
-                return Path(file.file_path).relative_to(source.path).as_posix()
-            except ValueError:
-                pass
-        return Path(file.file_path).name
-
-    @staticmethod
     def _status(file: SourceFile) -> Text:
         return Text(file.status, style=_FILE_STATUS_STYLES.get(file.status, "default"))
 
@@ -144,7 +113,9 @@ class SourceFiles:
         table.add_column("File", no_wrap=False, overflow="fold")
         table.add_column("Status", no_wrap=True)
         for file in files:
-            table.add_row(str(file.id), SourceFiles._name(source, file), SourceFiles._status(file))
+            table.add_row(
+                str(file.id), SourceSort.file_name(source, file), SourceFiles._status(file)
+            )
         return SourcePanel.build(table, Theme.PRIMARY, title=f"Sources / {source.path}")
 
     @staticmethod
@@ -155,12 +126,12 @@ class SourceFiles:
 
         grid.add_row("Status", SourceFiles._status(file))
         grid.add_row("Type", file.file_type)
-        grid.add_row("Size", SourceFiles._size(file.file_size_bytes))
+        grid.add_row("Size", Formatting.size(file.file_size_bytes))
         grid.add_row("Pages", str(file.pages) if file.pages else "-")
-        grid.add_row("Started", SourceFiles._timestamp(file.started_at))
-        grid.add_row("Completed", SourceFiles._timestamp(file.completed_at))
-        grid.add_row("Indexed", SourceFiles._timestamp(file.indexed_at))
-        grid.add_row("Duration", SourceFiles._seconds(file.duration))
+        grid.add_row("Started", Formatting.timestamp(file.started_at))
+        grid.add_row("Completed", Formatting.timestamp(file.completed_at))
+        grid.add_row("Indexed", Formatting.timestamp(file.indexed_at))
+        grid.add_row("Duration", Formatting.seconds(file.duration))
         if file.confidence is not None:
             grid.add_row("Confidence", f"{file.confidence:.0%}")
         if file.ocr_phase is not None:
@@ -171,9 +142,9 @@ class SourceFiles:
             name = Deepening.PHASE_NAMES.get(timing.phase, str(timing.phase)).capitalize()
             grid.add_row(
                 f"{name} phase",
-                f"started {SourceFiles._timestamp(timing.started_at)}, "
-                f"completed {SourceFiles._timestamp(timing.completed_at)}, "
-                f"took {SourceFiles._seconds(timing.duration_seconds)}",
+                f"started {Formatting.timestamp(timing.started_at)}, "
+                f"completed {Formatting.timestamp(timing.completed_at)}, "
+                f"took {Formatting.seconds(timing.duration_seconds)}",
             )
         if file.retry_count:
             grid.add_row("Retries", str(file.retry_count))
@@ -182,42 +153,8 @@ class SourceFiles:
         if file.error_message:
             grid.add_row("Error", Text(file.error_message, style=Theme.ERROR))
 
-        title = f"Sources / [{file.id}] {SourceFiles._name(source, file)}"
+        title = f"Sources / [{file.id}] {SourceSort.file_name(source, file)}"
         return SourcePanel.build(grid, Theme.PRIMARY, title=title)
-
-
-class SourceSort:
-    """`--sort` / `--sort-by` for `source list`."""
-
-    class Order(StrEnum):
-        ASC = "asc"
-        DESC = "desc"
-
-    class By(StrEnum):
-        FILENAME = "filename"
-        ID = "id"
-        STATUS = "status"
-
-    @staticmethod
-    def files(
-        source: Source, files: list[SourceFile], order: SourceSort.Order, by: SourceSort.By
-    ) -> list[SourceFile]:
-        keys = {
-            SourceSort.By.FILENAME: lambda f: SourceFiles._name(source, f).casefold(),
-            SourceSort.By.ID: lambda f: f.id,
-            SourceSort.By.STATUS: lambda f: f.status,
-        }
-        return sorted(files, key=keys[by], reverse=order is SourceSort.Order.DESC)
-
-    @staticmethod
-    def sources(sources: list[Source], order: SourceSort.Order, by: SourceSort.By) -> list[Source]:
-        """For sources, `filename` sorts by the registered path."""
-        keys = {
-            SourceSort.By.FILENAME: lambda s: s.path.casefold(),
-            SourceSort.By.ID: lambda s: s.id,
-            SourceSort.By.STATUS: lambda s: s.status,
-        }
-        return sorted(sources, key=keys[by], reverse=order is SourceSort.Order.DESC)
 
 
 def _resolve_export(storage, export: str | None, format_: str | None) -> tuple[Path, str] | None:

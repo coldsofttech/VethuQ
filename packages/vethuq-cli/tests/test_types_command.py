@@ -20,7 +20,7 @@ class TestTypesList:
     def test_lists_installed_types_only_by_default(self, use_temp_db, monkeypatch):
         use_temp_db()
         _missing_pdf(monkeypatch)
-        result = runner.invoke(app, ["types", "list"])
+        result = runner.invoke(app, ["file-types", "list"])
         assert result.exit_code == 0
         assert "PNG image" in result.output
         assert "PDF" not in result.output
@@ -29,7 +29,7 @@ class TestTypesList:
         use_temp_db()
         _missing_pdf(monkeypatch)
         monkeypatch.setattr(console, "width", 200)  # keep the install hint on one line
-        result = runner.invoke(app, ["types", "list", "--all"])
+        result = runner.invoke(app, ["file-types", "list", "--all"])
         assert result.exit_code == 0
         assert "not installed" in result.output
         assert "pip install vethuq[type-pdf]" in result.output

@@ -1,4 +1,4 @@
-"""`vethuq types ...` commands: which file types this install can read."""
+"""`vethuq file-types ...` commands: which file types this install can read."""
 
 from __future__ import annotations
 

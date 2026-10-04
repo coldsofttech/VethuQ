@@ -101,11 +101,16 @@ vethuq index restart ./path/to/folder-or-file
 ### `reindex <source> [--wait] [--force]` / `reindex file <id-or-path> [--source <id-or-path>] [--wait] [--force]`
 
 Re-index everything under a source, or one file, regardless of whether it
-already succeeded. Files are OCR'd again and their existing documents are
-updated in place, so no duplicate logical documents appear. Refused while
-another index run is active. `file` is reserved: address a source literally
-named `file` by its id. If a file sits under more than one source,
-`reindex file` fails and asks for `--source`.
+already succeeded. `reindex <source>` asks for confirmation first (showing how
+many files will be re-processed); `--force` skips the question and also clears
+a stale lock left by a run that didn't exit cleanly. Files are OCR'd again and
+their existing documents are updated in place, so no duplicate logical
+documents appear. A file's previous content stays searchable until it has been
+reprocessed, and is kept if reprocessing fails (the file is then listed as
+failed; `vethuq index restart` retries it). Progress is reported like any other
+run (`vethuq index status`). Refused while another index run is active. `file`
+is reserved: address a source literally named `file` by its id. If a file sits
+under more than one source, `reindex file` fails and asks for `--source`.
 
 ```bash
 vethuq index reindex 3
@@ -770,8 +775,8 @@ File types are installed as extras: `pip install vethuq[type-pdf]` (PDF is alway
 List the installed file types with their extensions and package name. `--all` also lists the types that are not installed, with the `pip install` command for each.
 
 ```bash
-vethuq types list
-vethuq types list --all
+vethuq file-types list
+vethuq file-types list --all
 ```
 
 ## `search-engines`

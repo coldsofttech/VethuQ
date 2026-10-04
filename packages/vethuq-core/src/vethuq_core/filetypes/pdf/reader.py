@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vethuq_core.fspath import FsPath
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers.errors import (
     CorruptedFileError,
     FileRemovedError,

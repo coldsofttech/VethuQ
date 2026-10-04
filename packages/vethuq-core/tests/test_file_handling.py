@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 from conftest import PaddleStub
-from vethuq_core.fspath import FsPath
 from vethuq_core.ocr import Quick
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import Readers
 from vethuq_core.search import Export
 from vethuq_core.search.search import SearchMatch

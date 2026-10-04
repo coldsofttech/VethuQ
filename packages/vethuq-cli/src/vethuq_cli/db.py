@@ -13,6 +13,7 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.db.backup import Backup, BackupError, BackupInfo
 from vethuq_core.db.integrity import IntegrityCheck
+from vethuq_core.formatting import Formatting
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.storage import default_db_path, open_storage
 
@@ -45,15 +46,6 @@ class DbPanel:
             border_style=border_style,
             expand=True,
         )
-
-    @staticmethod
-    def size(num_bytes: int) -> str:
-        value = float(num_bytes)
-        for unit in ("B", "KB", "MB", "GB"):
-            if value < 1024 or unit == "GB":
-                return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-            value /= 1024
-        return f"{num_bytes} B"
 
     @staticmethod
     def safety_note(safety: BackupInfo | None) -> Text:
@@ -149,7 +141,7 @@ def backup_create(
             Text.assemble(
                 ("Backup created: ", Theme.OK),
                 (info.name, "white"),
-                (f" ({DbPanel.size(info.size)})", "bright_black"),
+                (f" ({Formatting.size(info.size)})", "bright_black"),
             ),
             Theme.OK,
             "Backups",
@@ -175,7 +167,7 @@ def backup_list() -> None:
             info.name,
             info.kind,
             IndexPanel.friendly_time(info.created_at.isoformat()),
-            DbPanel.size(info.size),
+            Formatting.size(info.size),
         )
     console.print(DbPanel.build(table, Theme.PRIMARY, "Backups"))
 
