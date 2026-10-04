@@ -76,7 +76,9 @@ return value as `run`.
 ### `reindex(target, *, force=False, wait=False)`
 
 Re-index every file under a source, not just failed ones, updating existing
-documents in place. Same errors and return value as `run`.
+documents in place; previous content stays searchable until each file has been
+reprocessed. Starts immediately (confirmation is a CLI step). Same errors and
+return value as `run`.
 
 ### `reindex_file(file, *, source=None, force=False, wait=False)`
 

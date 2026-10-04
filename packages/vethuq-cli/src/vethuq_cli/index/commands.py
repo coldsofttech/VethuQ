@@ -176,6 +176,32 @@ def _start_reindex(starter: Callable[[], int], verb: str, *, wait: bool) -> None
     _report_started(pid, verb, wait=wait)
 
 
+def _confirm_reindex_source(target: str) -> None:
+    """Ask before re-indexing a whole source; exits cleanly if the answer is no."""
+    storage = open_storage()
+    try:
+        try:
+            source = Sources.get(storage, Sources.coerce(target))
+        except SourceNotFoundError as exc:
+            error_console.print(str(exc), style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        counts = {
+            row["status"]: row["count"] for row in storage.count_document_index_by_status(source.id)
+        }
+    finally:
+        storage.close()
+    files = counts.get("indexed", 0) + counts.get("error", 0)
+    if not Confirm.ask(
+        f"Re-index all {files} file{'s' if files != 1 else ''} under {source.path}? "
+        "Every file is OCR'd again, which can take a long time. Existing content stays "
+        "searchable until each file has been reprocessed.",
+        console=console,
+        default=False,
+    ):
+        console.print(IndexPanel.message("Aborted.", "bright_black"))
+        raise typer.Exit(code=0)
+
+
 @reindex_app.command("source", hidden=True)
 def reindex_source(
     target: str = typer.Argument(..., help="Source id or path to re-index."),
@@ -183,14 +209,23 @@ def reindex_source(
         False, "--wait", help="Block until the run finishes, printing progress as it goes."
     ),
     force: bool = typer.Option(
-        False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
+        False,
+        "--force",
+        help=(
+            "Re-index without asking for confirmation, and clear a stale lock left by a run "
+            "that didn't exit cleanly."
+        ),
     ),
 ) -> None:
     """Re-index every file under a source, not just failed ones.
 
-    Files are OCR'd again and their existing documents updated in place, so
-    nothing is duplicated. Use 'vethuq index reindex file' for a single file.
+    Asks for confirmation first. Files are OCR'd again and their existing
+    documents updated in place, so nothing is duplicated; a file's previous
+    content stays searchable until it has been reprocessed. Use 'vethuq index
+    reindex file' for a single file.
     """
+    if not force:
+        _confirm_reindex_source(target)
     _start_reindex(lambda: Reindex.start_source(target, force=force), "reindex", wait=wait)
 
 

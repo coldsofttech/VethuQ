@@ -60,6 +60,7 @@ class Pending:
                 only_new_files
                 and existing is not None
                 and existing["status"] == "indexed"
+                and not existing["reindex_pending"]
                 and not Document.has_content_changed(file_path, existing)
             ):
                 continue

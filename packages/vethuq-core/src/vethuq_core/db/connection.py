@@ -24,7 +24,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 28
+    SCHEMA_VERSION = 29
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -69,7 +69,8 @@ CREATE TABLE IF NOT EXISTS document_index (
     removed_at TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0,
     peak_memory_mb REAL,
-    cpu_percent REAL
+    cpu_percent REAL,
+    reindex_pending INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS pdf_pages (

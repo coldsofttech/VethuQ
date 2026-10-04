@@ -50,6 +50,15 @@ def _status(conn, row_id):
     return conn.execute("SELECT status FROM document_index WHERE id = ?", (row_id,)).fetchone()[0]
 
 
+def _queued(conn, row_id):
+    """Whether a re-index has queued the row (it keeps its status and pages meanwhile)."""
+    return bool(
+        conn.execute(
+            "SELECT reindex_pending FROM document_index WHERE id = ?", (row_id,)
+        ).fetchone()[0]
+    )
+
+
 @pytest.fixture
 def source(storage, conn, tmp_path):
     folder = tmp_path / "docs"
@@ -59,7 +68,7 @@ def source(storage, conn, tmp_path):
 
 
 class TestReindexSource:
-    def test_resets_indexed_and_failed_rows_but_keeps_documents(
+    def test_queues_indexed_and_failed_rows_but_keeps_status_and_documents(
         self, db_path, conn, source, started
     ):
         ok, ok_doc = _track(conn, source.id, Path(source.path) / "a.pdf", "indexed")
@@ -71,10 +80,11 @@ class TestReindexSource:
         assert pid == 4321
         assert started["argv"][-1] == "run"
         assert (_status(conn, ok), _status(conn, bad), _status(conn, gone)) == (
-            "pending",
-            "pending",
+            "indexed",
+            "error",
             "removed",
         )
+        assert (_queued(conn, ok), _queued(conn, bad), _queued(conn, gone)) == (True, True, False)
         assert (
             conn.execute("SELECT document_id FROM document_index WHERE id = ?", (ok,)).fetchone()[0]
             == ok_doc
@@ -88,7 +98,7 @@ class TestReindexSource:
         with pytest.raises(AlreadyRunningError):
             Reindex.start_source(source.id, db_path=db_path)
 
-        assert _status(conn, row) == "indexed"
+        assert not _queued(conn, row)
 
 
 class TestReindexFile:
@@ -98,15 +108,15 @@ class TestReindexFile:
 
         Reindex.start_file(Path(source.path) / "a.pdf", db_path=db_path)
 
-        assert _status(conn, target) == "pending"
-        assert _status(conn, other) == "indexed"
+        assert _queued(conn, target)
+        assert not _queued(conn, other)
 
     def test_accepts_a_document_id(self, db_path, conn, source, started):
         target, _ = _track(conn, source.id, Path(source.path) / "a.pdf")
 
         Reindex.start_file(str(target), db_path=db_path)
 
-        assert _status(conn, target) == "pending"
+        assert _queued(conn, target)
 
     def test_untracked_file_is_rejected(self, db_path, conn, source, started):
         with pytest.raises(FileNotTrackedError):
@@ -125,7 +135,7 @@ class TestReindexFile:
             Reindex.start_file(file, db_path=db_path)
 
         Reindex.start_file(file, source=inner_source.id, db_path=db_path)
-        assert _status(conn, row) == "pending"
+        assert _queued(conn, row)
 
     def test_source_option_must_own_the_file(self, db_path, storage, conn, source, started):
         inner = Path(source.path) / "inner"
@@ -136,4 +146,4 @@ class TestReindexFile:
         with pytest.raises(FileNotTrackedError, match="not"):
             Reindex.start_file(inner / "a.pdf", source=source.id, db_path=db_path)
 
-        assert _status(conn, row) == "indexed"
+        assert not _queued(conn, row)

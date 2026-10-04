@@ -921,3 +921,28 @@ class TestMigration:
             assert version == Db.SCHEMA_VERSION
         finally:
             conn.close()
+
+    def test_connect_adds_reindex_pending_to_a_v28_database(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+        conn = Db.connect(db_path)
+        conn.execute(
+            "INSERT INTO sources (path, source_type, added_at) VALUES ('/d', 'folder', 'x')"
+        )
+        conn.execute("INSERT INTO documents (created_at) VALUES ('x')")
+        conn.execute(
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (1, 1, '/d/a.png', 'image', 'indexed')"
+        )
+        conn.execute("ALTER TABLE document_index DROP COLUMN reindex_pending")
+        conn.execute("UPDATE schema_version SET version = 28")
+        conn.commit()
+        conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            row = conn.execute("SELECT status, reindex_pending FROM document_index").fetchone()
+            assert (row["status"], row["reindex_pending"]) == ("indexed", 0)
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION
+        finally:
+            conn.close()
