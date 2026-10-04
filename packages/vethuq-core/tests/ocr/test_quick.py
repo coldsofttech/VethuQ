@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
+from vethuq_core.ocr.document import Document
 from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
@@ -332,6 +333,25 @@ class TestQuick:
             == 0
         )
         assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
+
+    def test_file_that_becomes_supported_gets_its_real_file_type(
+        self, conn: sqlite3.Connection, storage: Storage, tmp_path
+    ):
+        # A type enabled after the first run (e.g. PNG added by reinstalling) must replace the
+        # 'unsupported' type, or the file is indexed yet never found by search.
+        folder = tmp_path / "docs"
+        folder.mkdir()
+        scan = folder / "scan.png"
+        scan.write_bytes(b"fake png bytes")
+        source = Sources.add(storage, folder)
+
+        Document.record_unsupported(storage, source, [scan])
+        assert conn.execute("SELECT file_type FROM document_index").fetchone()[0] == "unsupported"
+
+        Document.upsert(storage, source.id, scan, "image")
+
+        row = conn.execute("SELECT file_type, status FROM document_index").fetchone()
+        assert (row["file_type"], row["status"]) == ("image", "processing")
 
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_records_unsupported_files_without_ocr(

@@ -166,6 +166,17 @@ class TestOcrModelMissing:
         with pytest.raises(OcrModelMissingError):
             paddle.PaddleOcrEngine.check_installed()
 
+    def test_check_installed_is_skipped_in_the_frozen_build(self, monkeypatch):
+        import sys
+
+        from vethuq_core.ocr.engines import paddle
+
+        # The UI/CLI exes don't bundle the engine (only the worker does), so they can't see it.
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(paddle, "find_spec", lambda name: None)
+
+        paddle.PaddleOcrEngine.check_installed()
+
     def test_start_run_fails_fast_when_the_engine_is_missing(self, tmp_path, monkeypatch):
         from vethuq_core.index import IndexRunner
         from vethuq_core.ocr.engines import paddle
