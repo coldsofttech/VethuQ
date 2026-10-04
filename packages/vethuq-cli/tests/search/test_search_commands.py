@@ -799,6 +799,144 @@ class TestSearchLookalikes:
         )
 
 
+class TestSearchNormalize:
+    def test_unicode_folds_accents_for_like(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "visit the café today")
+
+        off = runner.invoke(app, ["search", "cafe", "--engine", "like"])
+        full = runner.invoke(
+            app, ["search", "cafe", "--engine", "like", "--normalize", "unicode=full"]
+        )
+
+        assert "No matches found." in off.stdout
+        assert "Results: 1 match (engine: like, unicode full)" in full.stdout
+        assert "café" in full.stdout
+
+    def test_several_normalizations_in_one_flag_or_many(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "visit the C@FÉ today")
+
+        one = runner.invoke(
+            app,
+            ["search", "cafe", "--engine", "like", "--normalize", "unicode=full,leetspeak=basic"],
+        )
+        many = runner.invoke(
+            app,
+            ["search", "cafe", "--engine", "like"]
+            + ["--normalize", "unicode=full", "--normalize", "leet=basic"],
+        )
+        strict = runner.invoke(
+            app,
+            ["search", "cafe", "--engine", "like"]
+            + ["--normalize", "unicode=full,leetspeak=basic,case=match"],
+        )
+
+        for result in (one, many):
+            assert "Results: 1 match (engine: like, leet level basic, unicode full)" in (
+                result.stdout
+            )
+        assert "No matches found." in strict.stdout  # the capitals are another case
+
+    def test_case_names_the_same_flags(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say HELLO to all")
+
+        ignore = runner.invoke(
+            app, ["search", "hello", "--engine", "like", "--normalize", "case=ignore"]
+        )
+        match = runner.invoke(
+            app, ["search", "hello", "--engine", "like", "--normalize", "case=match"]
+        )
+
+        assert "Results: 1 match (engine: like)" in ignore.stdout
+        assert "No matches found." in match.stdout
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            (["--normalize", "stemming=on"], "NAME=VALUE"),
+            (["--normalize", "unicode"], "NAME=VALUE"),
+            (["--normalize", "unicode="], "NAME=VALUE"),
+            (["--normalize", "case=sometimes"], "ignore, match"),
+            (["--normalize", "unicode=nfd"], "off, basic, full"),
+            (["--normalize", "leetspeak=insane"], "off, basic, standard, extended"),
+            (["--normalize", "case=match", "--case-sensitive"], "case is given twice"),
+            (["--normalize", "leetspeak=basic", "--leet-level", "off"], "leetspeak is given"),
+            (["--normalize", "unicode=full,unicode=basic"], "unicode is given twice"),
+        ],
+    )
+    def test_the_flag_is_validated(self, use_temp_db, args, message):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "hello", "--engine", "like", *args])
+
+        assert result.exit_code != 0
+        assert message in _flatten(result.output)
+
+    def test_engines_without_a_unicode_setting_reject_it(self, use_temp_db):
+        use_temp_db()
+
+        for engine in ("lexical", "full-text", "proximity"):
+            result = runner.invoke(
+                app, ["search", "hello world", "--engine", engine, "--normalize", "unicode=full"]
+            )
+            assert result.exit_code != 0
+            assert "Only the like, exact, fuzzy and noise-fuzzy engines" in _flatten(result.output)
+
+    def test_the_stored_setting_applies_but_never_to_exact(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "visit the Café today")
+        runner.invoke(app, ["settings", "search", "normalize", "unicode", "set", "full"])
+
+        like = runner.invoke(app, ["search", "cafe", "--engine", "like"])
+        exact = runner.invoke(app, ["search", "Cafe", "--engine", "exact"])
+        exact_asked = runner.invoke(
+            app, ["search", "Cafe", "--engine", "exact", "--normalize", "unicode=full"]
+        )
+
+        assert "unicode full" in like.stdout and "Café" in like.stdout
+        assert "No matches found." in exact.stdout
+        assert "Café" in exact_asked.stdout
+
+    def test_fuzzy_and_noise_fuzzy_take_it_too(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a visit to the Café today")
+
+        fuzzy = runner.invoke(
+            app, ["search", "Cafe", "--engine", "fuzzy", "--normalize", "unicode=full"]
+        )
+        noise = runner.invoke(
+            app, ["search", "Cafe", "--engine", "noise-fuzzy", "--normalize", "unicode=full"]
+        )
+
+        assert "Café" in fuzzy.stdout and "unicode full" in fuzzy.stdout
+        assert "Café" in noise.stdout
+
+    def test_the_combined_search_uses_it(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "the \uff21\uff22\uff23 sign")
+
+        off = runner.invoke(app, ["search", "abc"])
+        full = runner.invoke(app, ["search", "abc", "--normalize", "unicode=full"])
+
+        assert "No matches found." in off.stdout
+        assert "\uff21\uff22\uff23" in full.stdout
+
+    def test_export_records_the_unicode_level(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "visit the café today")
+        as_json = tmp_path / "out.json"
+        as_html = tmp_path / "out.html"
+        base = ["search", "cafe", "--engine", "like", "--normalize", "unicode=full"]
+
+        runner.invoke(app, [*base, "--export", str(as_json)])
+        runner.invoke(app, [*base, "--export", str(as_html), "--format", "html"])
+
+        assert json.loads(as_json.read_text())["unicode"] == "full"
+        assert "unicode full" in as_html.read_text()
+
+
 class TestSearchNoiseFuzzy:
     def test_finds_each_kind_of_hiding(self, use_temp_db):
         db_path = use_temp_db()

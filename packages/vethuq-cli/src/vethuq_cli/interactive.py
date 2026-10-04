@@ -82,6 +82,8 @@ from vethuq_cli.settings import (
     normalize_case_show,
     normalize_leetspeak_set,
     normalize_leetspeak_show,
+    normalize_unicode_set,
+    normalize_unicode_show,
     proximity_distance_set,
     proximity_distance_show,
     removed_retention_set,
@@ -283,6 +285,7 @@ class InteractiveMenu:
             fuzziness=None,
             distance=distance,
             leet_level=leet_level,
+            normalize=None,
             noise=noise,
             export=None,
             format_=None,
@@ -554,7 +557,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Normalize",
-                [("1", "Case"), ("2", "Leetspeak"), ("0", "Back")],
+                [("1", "Case"), ("2", "Leetspeak"), ("3", "Unicode"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -573,6 +576,14 @@ class InteractiveMenu:
                     normalize_leetspeak_show,
                     normalize_leetspeak_set,
                     "leetspeak",
+                )
+            elif choice == "3":
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Normalize > Unicode",
+                    SearchSettings.UNICODE_VALUES,
+                    normalize_unicode_show,
+                    normalize_unicode_set,
+                    "unicode",
                 )
 
     @staticmethod

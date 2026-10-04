@@ -50,6 +50,10 @@ class SearchSettings:
     # the combined search (whose "Lookalike" results come from it).
     DEFAULT_LEETSPEAK = "basic"
     LEGACY_LEETSPEAK_KEY = "search_leetspeak_level"  # before it was a normalizer
+    NORMALIZE_UNICODE_KEY = "search_normalize_unicode"
+    UNICODE_LEVELS = ("off", "basic", "full")  # nothing, NFC, NFKC with accents folded
+    UNICODE_VALUES = (NORMALIZE_AUTO, *UNICODE_LEVELS)
+    DEFAULT_UNICODE = "off"  # what `auto` is for every engine that takes it, for now
     NOISE_KEY = "search_noise_level"
     DEFAULT_NOISE = "low"
     # How much stray punctuation and whitespace the `noise-fuzzy` engine skips inside a match,
@@ -274,6 +278,42 @@ class SearchSettings:
         """Store the default proximity distance: a preset name or a number of words."""
         SearchSettings.parse_proximity_distance(value)  # validate
         Settings.set(storage, SearchSettings.PROXIMITY_DISTANCE_KEY, value.strip().lower())
+
+    @staticmethod
+    def parse_unicode(value: str, *, allow_auto: bool = False) -> str:
+        """Resolve a Unicode setting: `off`, `basic` (NFC), `full` (NFKC, accents folded) or
+        (when stored) `auto`. Raises `InvalidSettingValueError` for anything else."""
+        text = value.strip().lower() if isinstance(value, str) else ""
+        allowed = SearchSettings.UNICODE_VALUES if allow_auto else SearchSettings.UNICODE_LEVELS
+        if text not in allowed:
+            raise InvalidSettingValueError(f"unicode must be one of {', '.join(allowed)}")
+        return text
+
+    @staticmethod
+    def get_unicode(storage: Storage) -> str:
+        """The stored Unicode setting: a level, or `auto` (each engine's own default)."""
+        value = Settings.get(storage, SearchSettings.NORMALIZE_UNICODE_KEY)
+        if value is None:
+            return SearchSettings.NORMALIZE_AUTO
+        try:
+            return SearchSettings.parse_unicode(value, allow_auto=True)
+        except InvalidSettingValueError:
+            return SearchSettings.NORMALIZE_AUTO
+
+    @staticmethod
+    def set_unicode(storage: Storage, value: str) -> None:
+        """Store the Unicode setting: `auto`, `off`, `basic` or `full`."""
+        Settings.set(
+            storage,
+            SearchSettings.NORMALIZE_UNICODE_KEY,
+            SearchSettings.parse_unicode(value, allow_auto=True),
+        )
+
+    @staticmethod
+    def resolve_unicode(storage: Storage, default: str) -> str:
+        """The Unicode level to use: the stored one, or `default` (an engine's own) on `auto`."""
+        stored = SearchSettings.get_unicode(storage)
+        return default if stored == SearchSettings.NORMALIZE_AUTO else stored
 
     @staticmethod
     def parse_leetspeak(value: str, *, allow_auto: bool = False) -> str:

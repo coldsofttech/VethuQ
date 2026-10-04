@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.fuzzy import FuzzySearchEngine
+from vethuq_core.search.normalizers import Normalizers
 from vethuq_core.search.normalizers.leetspeak import Leet
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
@@ -85,6 +86,7 @@ class NoiseFuzzySearchEngine:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_distance(self.name, distance)
         limit = (
@@ -104,12 +106,22 @@ class NoiseFuzzySearchEngine:
         )
         gap_cap, total_cap = SearchSettings.NOISE_LEVELS[noise_level]
 
+        folding = (
+            SearchSettings.resolve_unicode(self._storage, SearchSettings.DEFAULT_UNICODE)
+            if unicode is None
+            else SearchSettings.parse_unicode(unicode)
+        )
+        pipeline = Normalizers.pipeline({"unicode": folding}) if folding != "off" else None
+        query = pipeline.fold(query).text if pipeline else query
         wanted = NoiseFuzzySearchEngine._keep(query, leet_level, case_sensitive)
         if not wanted.folded:
             return []
         edits = NoiseFuzzySearchEngine.allowed_edits(wanted.folded, limit)
         skeleton = Leet.skeleton(query)
-        expression = NoiseFuzzySearchEngine.narrowing_expression(skeleton, edits)
+        # The indexes hold the raw text, so a Unicode normalization can't be narrowed by them.
+        expression = (
+            None if pipeline else NoiseFuzzySearchEngine.narrowing_expression(skeleton, edits)
+        )
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
@@ -118,14 +130,17 @@ class NoiseFuzzySearchEngine:
             *self._storage.search_noise_candidate_pdf_pages(expression),
             *self._storage.search_noise_candidate_image_pages(expression),
         ):
-            stretches = NoiseFuzzySearchEngine.candidate_stretches(
-                skeleton, edits, row["noise_text"]
+            stretches = (
+                None
+                if pipeline
+                else NoiseFuzzySearchEngine.candidate_stretches(skeleton, edits, row["noise_text"])
             )
             if stretches is not None and not stretches:
                 continue
             text = row["ocr_text"].replace("\n", " ")
+            folded = pipeline.fold(text) if pipeline else None
             hits = NoiseFuzzySearchEngine._page_hits(
-                text,
+                folded.text if folded else text,
                 wanted,
                 edits,
                 limit,
@@ -135,6 +150,8 @@ class NoiseFuzzySearchEngine:
                 total_cap,
                 stretches,
             )
+            if folded is not None:
+                hits = [_Hit(*folded.original(hit.start, hit.end), hit.score) for hit in hits]
             if not hits:
                 continue
             page_number = row["page_number"]

@@ -45,6 +45,15 @@ class SearchEngineHelpers:
             raise ValueError(f"The {engine} engine has no noise level; only noise-fuzzy does.")
 
     @staticmethod
+    def require_no_unicode(engine: str, unicode: str | None) -> None:
+        """Reject a Unicode level for an engine that has no Unicode normalization to set."""
+        if unicode is not None:
+            raise ValueError(
+                f"The {engine} engine has no unicode setting; only like, exact, fuzzy and "
+                "noise-fuzzy do."
+            )
+
+    @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:
         """Total page count of every PDF with OCR pages, keyed by its carrier document id."""
         return {
@@ -117,6 +126,7 @@ class SearchEngineHelpers:
         *,
         context_chars: int | None,
         engine: str,
+        narrow: bool = True,
     ) -> list[SearchMatch]:
         """Find `query` on indexed pages, one `SearchMatch` per span `find` yields for a page.
 
@@ -135,20 +145,30 @@ class SearchEngineHelpers:
         pages) is returned as its own row, reusing the carrier's text, so it still
         surfaces as its own search result. Ordered by file path (pages of the same
         PDF in page order, occurrences within a page in text order).
+
+        With `narrow` false (a normalization that changes what the page text is - the trigram
+        index holds the raw text) every indexed page is a candidate.
         """
         if not query:
             return []
 
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(storage)
-        pattern = SearchEngineHelpers.like_pattern(query)
-        match_expr = SearchEngineHelpers.trigram_match(query)
+        if narrow:
+            pattern = SearchEngineHelpers.like_pattern(query)
+            match_expr = SearchEngineHelpers.trigram_match(query)
+            candidates = (
+                *storage.search_indexed_pdf_pages(pattern, match_expr),
+                *storage.search_indexed_image_pages(pattern, match_expr),
+            )
+        else:
+            candidates = (
+                *storage.search_candidate_pdf_pages(None),
+                *storage.search_candidate_image_pages(None),
+            )
 
         matches: list[SearchMatch] = []
-        for row in (
-            *storage.search_indexed_pdf_pages(pattern, match_expr),
-            *storage.search_indexed_image_pages(pattern, match_expr),
-        ):
+        for row in candidates:
             page_number = row["page_number"]
             text = row["ocr_text"].replace("\n", " ")
             total_pages = page_counts.get(row["canonical_id"]) if page_number is not None else None

@@ -42,11 +42,13 @@ class ProximitySearchEngine:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         if case_sensitive:
             raise ValueError("The proximity engine is always case-insensitive.")
         SearchEngineHelpers.require_no_level(self.name, level)
         SearchEngineHelpers.require_no_noise(self.name, noise)
+        SearchEngineHelpers.require_no_unicode(self.name, unicode)
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         limit = (
             SearchSettings.get_proximity_distance(self._storage)

@@ -28,6 +28,7 @@ class TestSearchEngines:
                 distance=None,
                 level=None,
                 noise=None,
+                unicode=None,
             ):
                 raise SearchEngineUnavailable
 

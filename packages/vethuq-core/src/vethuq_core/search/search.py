@@ -32,7 +32,7 @@ class SearchOptionError(ValueError):
     """A search option combination that can't be honoured.
 
     `option` is which argument to blame: 'engine', 'case_sensitive', 'threshold', 'distance',
-    'level' or 'noise'.
+    'level', 'noise' or 'unicode'.
     """
 
     def __init__(self, message: str, option: str) -> None:
@@ -45,7 +45,8 @@ class SearchOptions(NamedTuple):
 
     `threshold` is set for `fuzzy`, `noise-fuzzy` and `all`, `distance` for `proximity` and
     `all`, `level` (the leetspeak normalization) for `like`, `noise-fuzzy` and `all`, and `noise`
-    (the noise level) for `noise-fuzzy` and `all`.
+    (the noise level) for `noise-fuzzy` and `all`, and `unicode` (the Unicode normalization)
+    for `like`, `exact`, `fuzzy`, `noise-fuzzy` and `all`.
     """
 
     engine: str
@@ -54,6 +55,7 @@ class SearchOptions(NamedTuple):
     distance: int | None = None
     level: str | None = None
     noise: str | None = None
+    unicode: str | None = None
 
 
 class Search:
@@ -66,6 +68,7 @@ class Search:
         distance: int | str | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> SearchOptions:
         """Work out the engine, case sensitivity, fuzzy threshold, proximity distance,
         leetspeak level and noise level.
@@ -133,6 +136,22 @@ class Search:
                     "use --engine noise-fuzzy to set one.",
                     "noise",
                 )
+        if unicode is not None:
+            try:
+                unicode = SearchSettings.parse_unicode(unicode)
+            except ValueError as exc:
+                raise SearchOptionError(str(exc), "unicode") from exc
+            if resolved_engine not in ("like", "exact", "fuzzy", "noise-fuzzy", "all"):
+                raise SearchOptionError(
+                    "Only the like, exact, fuzzy and noise-fuzzy engines have a unicode "
+                    "setting; use one of them to set one.",
+                    "unicode",
+                )
+        stored_unicode = (
+            unicode
+            if unicode is not None
+            else SearchSettings.resolve_unicode(storage, SearchSettings.DEFAULT_UNICODE)
+        )
         if resolved_engine == SearchSettings.ENGINE_ALL:
             return SearchOptions(
                 resolved_engine,
@@ -153,6 +172,7 @@ class Search:
                     else SearchSettings.resolve_leetspeak(storage, SearchSettings.DEFAULT_LEETSPEAK)
                 ),
                 noise if noise is not None else SearchSettings.get_noise_level(storage),
+                stored_unicode,
             )
         if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
@@ -177,21 +197,33 @@ class Search:
                     "for a case-insensitive search.",
                     "case_sensitive",
                 )
-            return SearchOptions(resolved_engine, True)
+            return SearchOptions(
+                resolved_engine, True, None, None, None, None, "off" if unicode is None else unicode
+            )
         if case_sensitive is None:
             case_sensitive = SearchSettings.is_case_sensitive(storage)
         if resolved_engine == "fuzzy":
             effective = (
                 threshold if threshold is not None else SearchSettings.get_fuzzy_threshold(storage)
             )
-            return SearchOptions(resolved_engine, case_sensitive, effective)
+            return SearchOptions(
+                resolved_engine, case_sensitive, effective, None, None, None, stored_unicode
+            )
         if resolved_engine == "like":
             effective_level = (
                 level
                 if level is not None
                 else SearchSettings.resolve_leetspeak(storage, SearchSettings.LEETSPEAK_OFF)
             )
-            return SearchOptions(resolved_engine, case_sensitive, None, None, effective_level)
+            return SearchOptions(
+                resolved_engine,
+                case_sensitive,
+                None,
+                None,
+                effective_level,
+                None,
+                stored_unicode,
+            )
         if resolved_engine == "noise-fuzzy":
             return SearchOptions(
                 resolved_engine,
@@ -204,6 +236,7 @@ class Search:
                     else SearchSettings.resolve_leetspeak(storage, SearchSettings.DEFAULT_LEETSPEAK)
                 ),
                 noise if noise is not None else SearchSettings.get_noise_level(storage),
+                stored_unicode,
             )
         return SearchOptions(resolved_engine, case_sensitive)
 
@@ -218,6 +251,7 @@ class Search:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first (see `ranking`).
 
@@ -240,16 +274,18 @@ class Search:
                 distance=distance,
                 level=level,
                 noise=noise,
+                unicode=unicode,
             )
         except Exception as exc:
             _logger.error(
                 "Search failed: engine=all case_sensitive=%s threshold=%s distance=%s "
-                "level=%s noise=%s query_length=%d error=%s: %s",
+                "level=%s noise=%s unicode=%s query_length=%d error=%s: %s",
                 case_sensitive,
                 threshold,
                 distance,
                 level,
                 noise,
+                unicode,
                 len(query),
                 type(exc).__name__,
                 exc,
@@ -269,6 +305,7 @@ class Search:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query` using the named (default: `like`) engine.
 
@@ -303,6 +340,7 @@ class Search:
                     distance=distance,
                     level=level,
                     noise=noise,
+                    unicode=unicode,
                 )
             )
         try:
@@ -314,17 +352,19 @@ class Search:
                 distance=distance,
                 level=level,
                 noise=noise,
+                unicode=unicode,
             )
         except Exception as exc:
             _logger.error(
                 "Search failed: engine=%s case_sensitive=%s threshold=%s distance=%s "
-                "level=%s noise=%s query_length=%d error=%s: %s",
+                "level=%s noise=%s unicode=%s query_length=%d error=%s: %s",
                 engine or "default",
                 case_sensitive,
                 threshold,
                 distance,
                 level,
                 noise,
+                unicode,
                 len(query),
                 type(exc).__name__,
                 exc,
@@ -344,6 +384,7 @@ class Search:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[FileMatch]:
         """Search like `indexed_content`, but return one `FileMatch` per matching file.
 
@@ -361,6 +402,7 @@ class Search:
             distance=distance,
             level=level,
             noise=noise,
+            unicode=unicode,
         ):
             files.setdefault(
                 match.file_id,

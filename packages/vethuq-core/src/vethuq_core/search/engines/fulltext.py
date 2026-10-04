@@ -40,9 +40,11 @@ class FullTextSearchEngine:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_level(self.name, level)
         SearchEngineHelpers.require_no_noise(self.name, noise)
+        SearchEngineHelpers.require_no_unicode(self.name, unicode)
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         SearchEngineHelpers.require_no_distance(self.name, distance)
         if case_sensitive:

@@ -14,6 +14,7 @@ class TestResolveOptions:
             10,
             "basic",
             "low",
+            "off",
         )
         assert Search.resolve_options(storage, "like", None) == (
             "like",
@@ -22,10 +23,19 @@ class TestResolveOptions:
             None,
             "off",
             None,
+            "off",
         )
 
         SearchSettings.set_case_sensitive(storage, True)
-        assert Search.resolve_options(storage, None, None) == ("all", True, 0.8, 10, "basic", "low")
+        assert Search.resolve_options(storage, None, None) == (
+            "all",
+            True,
+            0.8,
+            10,
+            "basic",
+            "low",
+            "off",
+        )
         assert Search.resolve_options(storage, "like", None) == (
             "like",
             True,
@@ -33,6 +43,7 @@ class TestResolveOptions:
             None,
             "off",
             None,
+            "off",
         )
         assert Search.resolve_options(storage, "like", False) == (
             "like",
@@ -41,6 +52,7 @@ class TestResolveOptions:
             None,
             "off",
             None,
+            "off",
         )
 
         # A stored preference the engine can't honour is dropped, not an error...
@@ -51,10 +63,12 @@ class TestResolveOptions:
             None,
             None,
             None,
+            "off",
         )
         assert Search.resolve_options(storage, "full-text", None) == (
             "full-text",
             False,
+            None,
             None,
             None,
             None,
@@ -64,6 +78,7 @@ class TestResolveOptions:
         assert Search.resolve_options(storage, None, None) == (
             "full-text",
             False,
+            None,
             None,
             None,
             None,
@@ -78,6 +93,7 @@ class TestResolveOptions:
             None,
             None,
             None,
+            "off",
         )
         assert Search.resolve_options(storage, "fuzzy", False, 0.7) == (
             "fuzzy",
@@ -86,6 +102,7 @@ class TestResolveOptions:
             None,
             None,
             None,
+            "off",
         )
         assert Search.resolve_options(storage, "fuzzy", False, "loose") == (
             "fuzzy",
@@ -94,6 +111,7 @@ class TestResolveOptions:
             None,
             None,
             None,
+            "off",
         )
 
     def test_rejects_what_the_engine_cannot_honour(self, storage: Storage):
@@ -133,6 +151,7 @@ class TestResolveOptions:
             False,
             None,
             10,
+            None,
             None,
             None,
         )

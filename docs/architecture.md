@@ -249,7 +249,7 @@ A test enforces that no core module outside `db/` and `storage/` imports
 threshold, (proximity only) distance, (like and noise-fuzzy) leetspeak level and (noise-fuzzy only)
 noise level from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-/ `search_normalize_case` / `search_normalize_leetspeak` / `search_noise_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+/ `search_normalize_case` / `search_normalize_unicode` / `search_normalize_leetspeak` / `search_noise_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 ### Normalizers
 
@@ -270,7 +270,15 @@ counts as *the same character*, for the query and the page text alike.
   characters folded into classes; also the skeleton and noise helpers the database and
   `noise-fuzzy` use).
 
-The settings are `search_normalize_case` and `search_normalize_leetspeak` (`auto` = each engine's
+The Unicode normalizer is applied by `like`, `exact` (only when asked for, never from the stored
+setting), `fuzzy` and `noise-fuzzy`: the query and the page text are folded (`Pipeline.fold`), the
+engine matches on the folded text, and `Folded.original` maps the spans back to the original so
+highlights and exports show what is on the page. The indexes (the trigram, word and skeleton
+indexes) are built on the raw text and can't be narrowed by a Unicode fold, so a search with it
+on reads every candidate page; the engines' default level is `off` until the normalized text is
+recorded in the database too.
+
+The settings are `search_normalize_case`, `search_normalize_unicode` and `search_normalize_leetspeak` (`auto` = each engine's
 own default, or an explicit value for every engine that can honour it); the engine's own default
 and what it supports is in the engine (`like`: look-alikes off; `noise-fuzzy`: `basic`).
 `search/__init__.py` imports lazily so the database layer can import the normalizers (to record a

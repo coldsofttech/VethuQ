@@ -33,6 +33,8 @@ class ResultRenderer:
             parts.append(f"leet level {options.level}")
         if options.engine == "noise-fuzzy" and options.noise is not None:
             parts.append(f"noise {options.noise}")
+        if options.unicode not in (None, "off"):
+            parts.append(f"unicode {options.unicode}")
         return ", ".join(parts)
 
     @staticmethod

@@ -150,6 +150,7 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.search.case_sensitive.get() is False
     assert client.settings.search.normalize.leetspeak.get() == "auto"
     assert client.settings.search.normalize.case.get() == "auto"
+    assert client.settings.search.normalize.unicode.get() == "auto"
     assert client.settings.search.noise_fuzzy.noise.get() == "low"
     assert client.settings.index.removed_retention.get() == 7 * 24 * 60
     assert client.settings.ocr.retry.get() == 3
@@ -195,6 +196,7 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.search.case_sensitive.set(True)
     client.settings.search.normalize.leetspeak.set("extended")
     client.settings.search.normalize.case.set("match")
+    client.settings.search.normalize.unicode.set("full")
     client.settings.search.noise_fuzzy.noise.set("high")
     client.settings.index.removed_retention.set(30)
     client.settings.ocr.retry.set(5)
@@ -211,6 +213,7 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     assert client.settings.search.case_sensitive.get() is True
     assert client.settings.search.normalize.leetspeak.get() == "extended"
     assert client.settings.search.normalize.case.get() == "match"
+    assert client.settings.search.normalize.unicode.get() == "full"
     assert client.settings.search.noise_fuzzy.noise.get() == "high"
     assert client.settings.index.removed_retention.get() == 30
     assert client.settings.ocr.retry.get() == 5
@@ -242,6 +245,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         lambda s: s.search.export_format.set("pdf"),
         lambda s: s.search.normalize.leetspeak.set("insane"),
         lambda s: s.search.normalize.case.set("sometimes"),
+        lambda s: s.search.normalize.unicode.set("nfd"),
         lambda s: s.search.noise_fuzzy.noise.set("loud"),
         lambda s: s.index.removed_retention.set(-1),
         lambda s: s.ocr.retry.set(-1),
@@ -257,6 +261,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         "export_format",
         "leetspeak",
         "case",
+        "unicode",
         "noise_level",
         "removed_retention",
         "ocr_retry",
@@ -490,6 +495,28 @@ def test_search_like_look_alikes_honour_case_sensitive(indexed_client: vethuq.Ve
     assert [m.matched for m in matches] == ["Invoice"]
 
 
+def test_search_unicode_folds_accents_for_the_engines_that_take_it(indexed_client: vethuq.Vethuq):
+    assert vethuq.SEARCH_UNICODE_LEVELS == ("off", "basic", "full")
+    assert vethuq.SEARCH_UNICODE_VALUES == ("auto", "off", "basic", "full")
+    # "Total due on this Invoice is 40 USD": an accent on a letter of it, as typed in the query.
+    assert indexed_client.search.run("Invoicé", engine="like") == []
+
+    matches = indexed_client.search.run("Invoicé", engine="like", unicode="full")
+
+    assert [m.matched for m in matches] == ["Invoice", "INVOICE"]
+    assert indexed_client.search.run("Invoicé", engine="fuzzy", unicode="full")
+    assert indexed_client.search.run("Invoicé", engine="noise-fuzzy", unicode="full")
+    assert indexed_client.search.run_pages("Invoicé", unicode="full")
+
+
+def test_search_unicode_stored_setting_applies_except_to_exact(indexed_client: vethuq.Vethuq):
+    indexed_client.settings.search.normalize.unicode.set("full")
+
+    assert indexed_client.search.run("Invoicé", engine="like")
+    assert indexed_client.search.run("Invoicé", engine="exact") == []
+    assert indexed_client.search.run("Invoicé", engine="exact", unicode="full")
+
+
 def test_search_case_setting_applies_like_the_old_one(indexed_client: vethuq.Vethuq):
     indexed_client.settings.search.normalize.case.set("match")
 
@@ -516,6 +543,9 @@ def test_search_uses_the_configured_engine(indexed_client: vethuq.Vethuq):
         {"engine": "fuzzy", "leet_level": "basic"},
         {"engine": "like", "leet_level": "insane"},
         {"engine": "like", "threshold": 0.8},
+        {"engine": "full-text", "unicode": "full"},
+        {"engine": "lexical", "unicode": "full"},
+        {"engine": "like", "unicode": "nfd"},
         {"engine": "like", "noise": "low"},
         {"engine": "noise-fuzzy", "noise": "loud"},
         {"engine": "noise-fuzzy", "distance": 3},

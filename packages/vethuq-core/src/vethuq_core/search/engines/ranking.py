@@ -200,6 +200,7 @@ class Ranking:
         distance: int | None,
         level: str | None,
         noise: str | None,
+        unicode: str | None,
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
         if engine == "leetspeak":
@@ -213,7 +214,11 @@ class Ranking:
             ):
                 return []
             hits = SearchEngines.get(storage, "like").search(
-                query, context_chars=chars, case_sensitive=case_sensitive, level=lookalikes
+                query,
+                context_chars=chars,
+                case_sensitive=case_sensitive,
+                level=lookalikes,
+                unicode=unicode,
             )
             return [replace(hit, engine="leetspeak") for hit in hits if (hit.score or 0.0) < 1.0]
         search = SearchEngines.get(storage, engine).search
@@ -223,12 +228,17 @@ class Ranking:
                 context_chars=chars,
                 case_sensitive=case_sensitive,
                 level=SearchSettings.LEETSPEAK_OFF,
+                unicode=unicode,
             )
         if engine == "lexical":
             return search(query, context_chars=chars, case_sensitive=case_sensitive)
         if engine == "fuzzy":
             return search(
-                query, context_chars=chars, case_sensitive=case_sensitive, threshold=threshold
+                query,
+                context_chars=chars,
+                case_sensitive=case_sensitive,
+                threshold=threshold,
+                unicode=unicode,
             )
         if engine == "proximity":
             return search(query, context_chars=chars, distance=distance)
@@ -240,6 +250,7 @@ class Ranking:
                 threshold=threshold,
                 level=level,
                 noise=noise,
+                unicode=unicode,
             )
         return search(query, context_chars=chars)
 
@@ -254,6 +265,7 @@ class Ranking:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first.
 
@@ -270,7 +282,16 @@ class Ranking:
         for engine in Ranking.TIERS:
             try:
                 runs[engine] = Ranking._run(
-                    storage, engine, query, chars, case_sensitive, threshold, distance, level, noise
+                    storage,
+                    engine,
+                    query,
+                    chars,
+                    case_sensitive,
+                    threshold,
+                    distance,
+                    level,
+                    noise,
+                    unicode,
                 )
             except SearchQueryError:
                 runs[engine] = []

@@ -461,7 +461,7 @@ class TestOptions:
             storage, "noise-fuzzy", True, threshold="loose", level="Standard", noise="Medium"
         )
 
-        assert options == ("noise-fuzzy", True, 0.65, None, "standard", "medium")
+        assert options == ("noise-fuzzy", True, 0.65, None, "standard", "medium", "off")
         assert Search.resolve_options(storage, "noise-fuzzy", None).noise == "high"
 
     def test_follows_the_case_sensitive_setting(self, storage):

@@ -151,7 +151,7 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None, leet_level=None, noise=None)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
@@ -165,7 +165,7 @@ matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
@@ -234,7 +234,7 @@ for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
 ```
 
-### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None)`
+### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
 
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
@@ -325,6 +325,18 @@ client.search.run("payment termination", engine="proximity")  # within 10 words
 client.search.run("payment termination", engine="proximity", distance="loose")  # 30 words
 client.search.run("late fee", engine="proximity", distance=5)
 client.search.run("payment", engine="proximity")  # raises SearchQueryError: needs two terms
+```
+
+**Unicode** (`unicode=`) treats characters written differently as the same — for `"like"`,
+`"fuzzy"` and `"noise-fuzzy"` (and `"exact"` only when passed here); the other engines raise
+`SearchOptionError`. It defaults to `client.settings.search.normalize.unicode` (off unless set),
+and a search with it on reads every page:
+
+```python
+client.search.run("cafe", engine="like", unicode="full")  # finds "café" and "cafe\u0301"
+client.search.run("Cafe", engine="exact", unicode="full")  # "Café" - asked for, so applied
+client.search.run("cafe", engine="fuzzy", unicode="full")  # an accent is no longer an edit
+client.search.run("cafe", engine="full-text", unicode="full")  # raises SearchOptionError
 ```
 
 **Look-alikes** (`leet_level`) with `"like"`:
@@ -452,6 +464,16 @@ Invalid values raise `InvalidSettingValueError`.
   `"auto"` (the default — each engine's own), `"ignore"` or `"match"`
 - `set(value)` — one of those, for the engines that can honour it (`like`, `lexical`,
   `fuzzy`, `noise-fuzzy`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.normalize.unicode`
+
+- `get()` — whether characters written differently count as the same, a name from
+  `SEARCH_UNICODE_VALUES`: `"auto"` (the default — each engine's own, which is off for all of
+  them for now), `"off"`, `"basic"` or `"full"`
+- `set(value)` — one of those (`SEARCH_UNICODE_LEVELS` lists the three): `"basic"` composes
+  characters and keeps accents, `"full"` also folds accents and compatibility forms (`cafe` finds
+  `café`). Honoured by `like`, `fuzzy` and `noise-fuzzy`, and by `exact` only when `unicode=` is
+  passed to `search.run`; raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.normalize.leetspeak`
 

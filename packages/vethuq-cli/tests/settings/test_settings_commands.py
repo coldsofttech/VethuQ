@@ -489,6 +489,21 @@ class TestNormalizeSettings:
             "enabled" in runner.invoke(app, ["settings", "search", "case-sensitive", "show"]).stdout
         )
 
+    def test_unicode_show_set_and_validation(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "normalize", "unicode", "show"]
+
+        assert "auto" in runner.invoke(app, show).stdout
+        for value in ("full", "basic", "Off", "auto"):
+            result = runner.invoke(
+                app, ["settings", "search", "normalize", "unicode", "set", value]
+            )
+            assert result.exit_code == 0
+            assert f"set to {value.lower()}" in result.stdout
+            assert value.lower() in runner.invoke(app, show).stdout
+        bad = runner.invoke(app, ["settings", "search", "normalize", "unicode", "set", "nfd"])
+        assert bad.exit_code == 1 and "off, basic, full" in bad.output
+
     def test_the_old_leetspeak_level_command_is_gone(self, use_temp_db):
         use_temp_db()
 

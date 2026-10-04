@@ -380,6 +380,16 @@ class TestInteractiveSearchEngines:
         assert "Search case set to match." in result.stdout
         assert "Search case: match" in result.stdout
 
+    def test_settings_normalize_unicode_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Normalize > Unicode > Set full; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n7\n3\n2\nfull\n1\n0\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search unicode set to full." in result.stdout
+        assert "Search unicode: full" in result.stdout
+
     def test_settings_normalize_rejects_an_unknown_value(self, use_temp_db):
         use_temp_db()
 

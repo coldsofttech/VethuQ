@@ -42,6 +42,9 @@ normalize_app = typer.Typer(
     help="Configure what counts as the same character in a search: case, look-alikes."
 )
 normalize_case_app = typer.Typer(help="Configure whether upper and lower case are the same.")
+normalize_unicode_app = typer.Typer(
+    help="Configure whether characters written differently count as the same (café, cafe)."
+)
 normalize_leetspeak_app = typer.Typer(
     help="Configure whether look-alike characters (3 for e, @ for a) count as the letters."
 )
@@ -110,6 +113,7 @@ proximity_app.add_typer(proximity_distance_app, name="distance")
 search_app.add_typer(normalize_app, name="normalize")
 normalize_app.add_typer(normalize_case_app, name="case")
 normalize_app.add_typer(normalize_leetspeak_app, name="leetspeak")
+normalize_app.add_typer(normalize_unicode_app, name="unicode")
 search_app.add_typer(noise_fuzzy_app, name="noise-fuzzy")
 noise_fuzzy_app.add_typer(noise_fuzzy_noise_app, name="noise")
 app.add_typer(index_app, name="index")
@@ -1491,6 +1495,72 @@ def normalize_case_set(
                     (".", "white"),
                 ),
                 "Case",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_unicode_app.command("show")
+def normalize_unicode_show() -> None:
+    """Show whether `search` treats characters written differently as the same."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search unicode: ", "white"),
+                    (SearchSettings.get_unicode(storage), Theme.VALUE),
+                ),
+                "Unicode",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_unicode_app.command(
+    "set",
+    help=(
+        "Set whether `search` treats characters that are written differently as the same, when "
+        "`--normalize unicode=...` isn't given.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own, which for now is `off` for all of them.\n\n"
+        "off - the text as it is.\n\n"
+        "basic - composes characters (an `e` and a separate accent are `é`), keeping accents.\n\n"
+        "full - also folds accents (`cafe` finds `café`) and compatibility forms (`fine` finds "
+        "`ﬁne`, full-width `ＡＢＣ` is `ABC`).\n\n"
+        "Honoured by `like`, `fuzzy` and `noise-fuzzy`, and by `exact` only when asked for in "
+        'one search (`--normalize unicode=full`), so "as typed" never changes on its own. '
+        "`full-text` already folds accents and accepts no setting; `lexical` and `proximity` "
+        "take none. A search with this on reads every page instead of using the text indexes."
+    ),
+)
+def normalize_unicode_set(
+    unicode: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.UNICODE_VALUES)}.",
+    ),
+) -> None:
+    """Set whether `search` treats characters written differently as the same."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_unicode(storage, unicode)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search unicode set to ", "white"),
+                    (unicode.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Unicode",
                 Theme.OK,
             )
         )

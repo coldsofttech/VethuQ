@@ -40,6 +40,7 @@ class LikeSearchEngine:
         distance: int | None = None,
         level: str | None = None,
         noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_noise(self.name, noise)
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
@@ -49,8 +50,19 @@ class LikeSearchEngine:
             if level is None
             else SearchSettings.parse_leetspeak(level)
         )
-        if lookalikes != SearchSettings.LEETSPEAK_OFF and LikeSearchEngine.has_lookalikes(query):
-            return self._search_lookalikes(query, context_chars, case_sensitive, lookalikes)
+        if lookalikes != SearchSettings.LEETSPEAK_OFF and not LikeSearchEngine.has_lookalikes(
+            query
+        ):
+            lookalikes = SearchSettings.LEETSPEAK_OFF
+        folding = (
+            SearchSettings.resolve_unicode(self._storage, SearchSettings.DEFAULT_UNICODE)
+            if unicode is None
+            else SearchSettings.parse_unicode(unicode)
+        )
+        if lookalikes != SearchSettings.LEETSPEAK_OFF or folding != "off":
+            return self._search_normalized(
+                query, context_chars, case_sensitive, lookalikes, folding
+            )
         return SearchEngineHelpers.search_substring_pages(
             self._storage,
             query,
@@ -70,20 +82,35 @@ class LikeSearchEngine:
             char.isalpha() for char in spelled
         )
 
-    def _search_lookalikes(
-        self, query: str, context_chars: int | None, case_sensitive: bool, level: str
+    def _search_normalized(
+        self,
+        query: str,
+        context_chars: int | None,
+        case_sensitive: bool,
+        level: str,
+        unicode: str,
     ) -> list[SearchMatch]:
-        """`query` as a substring, with look-alike characters read as the letters they stand for.
+        """`query` as a substring, with Unicode and look-alike normalization applied to it and
+        to the page text alike (see `Normalizers.pipeline`).
 
-        Candidate pages come from the trigram index over each page's recorded skeleton (its
-        text without noise, look-alikes folded as coarsely as any level does), which every
-        page that has the folded query holds; the folded text then has the final say.
+        With look-alikes, candidate pages come from the trigram index over each page's recorded
+        skeleton (its text without noise, look-alikes folded as coarsely as any level does),
+        which every page that has the folded query holds. A Unicode normalization changes what
+        the page text is, which that index (made of the raw text) can't know, so every page is
+        a candidate. The folded text has the final say.
         """
         pipeline = Normalizers.pipeline(
-            {"case": "match" if case_sensitive else "ignore", "leetspeak": level}
+            {
+                "unicode": unicode,
+                "case": "match" if case_sensitive else "ignore",
+                "leetspeak": level,
+            }
         )
         needle = pipeline.fold(query).text
-        expression = SearchEngineHelpers.trigram_match(Leet.skeleton(query))
+        if not needle:
+            return []
+        narrowed = unicode == "off" and level != SearchSettings.LEETSPEAK_OFF
+        expression = SearchEngineHelpers.trigram_match(Leet.skeleton(query)) if narrowed else None
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
@@ -113,7 +140,11 @@ class LikeSearchEngine:
                         end=end,
                         chars=chars,
                         engine=self.name,
-                        score=LikeSearchEngine._as_typed(query, text[start:end], case_sensitive),
+                        score=(
+                            LikeSearchEngine._as_typed(query, text[start:end], case_sensitive)
+                            if level != SearchSettings.LEETSPEAK_OFF
+                            else None
+                        ),
                     )
                 )
         matches.sort(key=lambda m: (m.file_path, m.page_number or 0, m.start or 0))

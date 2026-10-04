@@ -209,7 +209,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -322,6 +322,25 @@ not applied there), and `proximity` is never case-sensitive. A distance of 0
 would be an exact phrase, which `full-text` already does with quotes. Prefix
 queries are stemmed like any other term, so a prefix that isn't itself a word
 stem (`pay*` — stemmed to `pai*`) may miss words it looks like it covers.
+
+**Normalizations** decide what counts as *the same character*, for `content` and the page
+alike, whichever engine decides the shape of the match: `--normalize NAME=VALUE` (repeat the
+flag, or separate with commas) with `unicode=off|basic|full`, `case=ignore|match` (the same as
+`--no-case-sensitive` / `--case-sensitive`) and `leetspeak=off|basic|standard|extended` (the
+same as `--leet-level`); each one is also a setting under `vethuq settings search normalize`
+(`auto` unless changed: every engine uses its own default). Giving the same one twice is an
+error.
+
+**Unicode** (`unicode=`) treats characters that are written differently as the same: `basic`
+composes them (an `e` followed by a separate accent is `é`, which is how some PDFs write it)
+and keeps accents; `full` also folds accents and compatibility forms, so `cafe` finds `café`
+and `naive` finds `naïve`, `fine` finds the ligature `ﬁne`, full-width `ＡＢＣ` is `ABC` and
+`x2` finds `x²`. It applies to `like`, `fuzzy` and `noise-fuzzy` (for the fuzzy ones an accent
+is no longer an edit), and to `exact` only when asked for in that search — "as typed" never
+changes on its own, so a stored setting doesn't reach it. `full-text` already folds accents
+(and accepts no setting), `lexical` and `proximity` take none; they reject it. Highlights and
+exports show the original text. For now every engine's own default is `off`, and a search with
+it on reads every page rather than using the text indexes.
 
 **Look-alike characters (leetspeak)** are a normalization, not an engine: what counts as
 the same character, applied to `content` and to the page alike, whichever engine decides
@@ -515,6 +534,8 @@ vethuq settings search noise-fuzzy noise set medium         # the default from n
 **Look-alikes** with `like` (they are on by default for `noise-fuzzy` and the combined search):
 
 ```bash
+vethuq search cafe --engine like --normalize unicode=full    # finds "café" (and "cafe\u0301", "cafe")
+vethuq search abc --normalize unicode=full,leetspeak=basic   # full-width ＡＢＣ, "4bc", ...
 vethuq search hello --engine like --leet-level basic         # finds "hello", "h3ll0", "He11o"
 vethuq search p@55w0rd --engine like --leet-level basic      # finds "password" and "p@55w0rd"
 vethuq search hello --engine like --leet-level basic --case-sensitive   # "hello", "h3ll0" - not "H3LL0"
@@ -745,6 +766,19 @@ it). `case-sensitive enable|disable` above is the same setting as `match` / `ign
 ```bash
 vethuq settings search normalize case set match
 vethuq settings search normalize case show
+```
+
+### `search normalize unicode set <value>|show`
+
+Configure whether `vethuq search` treats characters that are written differently as the same,
+when `--normalize unicode=...` isn't given: `auto` (the default — each engine's own, which is
+`off` for all of them for now), `off`, `basic` (compose characters, keep accents) or `full`
+(also fold accents and compatibility forms: `cafe` finds `café`). Honoured by `like`, `fuzzy` and
+`noise-fuzzy`; `exact` only when asked for in a search. A search with it on reads every page.
+
+```bash
+vethuq settings search normalize unicode set full
+vethuq settings search normalize unicode show
 ```
 
 ### `search normalize leetspeak set <value>|show`
