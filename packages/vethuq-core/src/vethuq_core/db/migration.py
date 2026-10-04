@@ -34,6 +34,17 @@ class Migration:
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_trigram_{suffix}")
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_words_{suffix}")
                 conn.execute(f"DROP TABLE IF EXISTS {table}_fts")
+        if from_version < 29:
+            # `Db._SCHEMA` just created the noise indexes and their triggers, but the
+            # `noise_text` column they read is only added (and backfilled) by the v29 step
+            # below, so the triggers must not fire before then. The UPDATE triggers of the
+            # older indexes go too: the backfill would otherwise re-index every page's text
+            # twice for nothing. `Db` restores all of them afterwards.
+            for table in ("pdf_pages", "image_pages"):
+                for suffix in ("ai", "ad", "au"):
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_noise_{suffix}")
+                for kind in ("trigram", "words"):
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_{kind}_au")
         if from_version < 3:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
             if "source" not in columns:
@@ -558,5 +569,20 @@ class Migration:
             # 'rebuild' re-reads every row from the content table; unlike a plain
             # INSERT ... SELECT it is idempotent. This also covers databases that predate
             # the trigram indexes (v25).
-            for index in Document.SEARCH_INDEXES:
+            for index in Document.TEXT_SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)
+
+        if from_version < 29:
+            # Each page's text now also has a noise-free, look-alike-folded skeleton recorded
+            # next to it (`noise_text`), with its own trigram index, for the `noise-fuzzy`
+            # search. Pages written before this version get theirs now.
+            for table in Document.PAGE_TABLES:
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if "noise_text" not in columns:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN noise_text TEXT NOT NULL DEFAULT ''"
+                    )
+                Document.refresh_noise_text(conn, table)
+            for index in Document.SEARCH_INDEXES:
+                if index.endswith("_noise"):
+                    Document.rebuild_search_index(conn, index)

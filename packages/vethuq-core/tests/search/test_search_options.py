@@ -7,19 +7,55 @@ from vethuq_core.storage import Storage
 class TestResolveOptions:
     def test_falls_back_to_settings(self, storage: Storage):
         # No engine given: the stored one, which defaults to `all` (every engine, ranked).
-        assert Search.resolve_options(storage, None, None) == ("all", False, 0.8, 10, "basic")
-        assert Search.resolve_options(storage, "like", None) == ("like", False, None, None, None)
+        assert Search.resolve_options(storage, None, None) == (
+            "all",
+            False,
+            0.8,
+            10,
+            "basic",
+            "low",
+        )
+        assert Search.resolve_options(storage, "like", None) == (
+            "like",
+            False,
+            None,
+            None,
+            None,
+            None,
+        )
 
         SearchSettings.set_case_sensitive(storage, True)
-        assert Search.resolve_options(storage, None, None) == ("all", True, 0.8, 10, "basic")
-        assert Search.resolve_options(storage, "like", None) == ("like", True, None, None, None)
-        assert Search.resolve_options(storage, "like", False) == ("like", False, None, None, None)
+        assert Search.resolve_options(storage, None, None) == ("all", True, 0.8, 10, "basic", "low")
+        assert Search.resolve_options(storage, "like", None) == (
+            "like",
+            True,
+            None,
+            None,
+            None,
+            None,
+        )
+        assert Search.resolve_options(storage, "like", False) == (
+            "like",
+            False,
+            None,
+            None,
+            None,
+            None,
+        )
 
         # A stored preference the engine can't honour is dropped, not an error...
-        assert Search.resolve_options(storage, "exact", None) == ("exact", True, None, None, None)
+        assert Search.resolve_options(storage, "exact", None) == (
+            "exact",
+            True,
+            None,
+            None,
+            None,
+            None,
+        )
         assert Search.resolve_options(storage, "full-text", None) == (
             "full-text",
             False,
+            None,
             None,
             None,
             None,
@@ -31,14 +67,23 @@ class TestResolveOptions:
             None,
             None,
             None,
+            None,
         )
 
         # ...while fuzzy honours case and always resolves a threshold (default: balanced).
-        assert Search.resolve_options(storage, "fuzzy", None) == ("fuzzy", True, 0.8, None, None)
+        assert Search.resolve_options(storage, "fuzzy", None) == (
+            "fuzzy",
+            True,
+            0.8,
+            None,
+            None,
+            None,
+        )
         assert Search.resolve_options(storage, "fuzzy", False, 0.7) == (
             "fuzzy",
             False,
             0.7,
+            None,
             None,
             None,
         )
@@ -46,6 +91,7 @@ class TestResolveOptions:
             "fuzzy",
             False,
             0.65,
+            None,
             None,
             None,
         )
@@ -87,6 +133,7 @@ class TestResolveOptions:
             False,
             None,
             10,
+            None,
             None,
         )
         assert Search.resolve_options(storage, "proximity", None, distance=5).distance == 5

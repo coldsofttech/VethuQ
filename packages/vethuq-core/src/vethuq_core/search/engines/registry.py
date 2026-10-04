@@ -76,6 +76,12 @@ class SearchEngines:
         return LeetspeakSearchEngine(storage)
 
     @staticmethod
+    def _noise_fuzzy_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.noise_fuzzy import NoiseFuzzySearchEngine
+
+        return NoiseFuzzySearchEngine(storage)
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines, sorted."""
         return sorted(SearchEngines._factories)
@@ -88,3 +94,4 @@ SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)
 SearchEngines.register("proximity", SearchEngines._proximity_factory)
 SearchEngines.register("leetspeak", SearchEngines._leetspeak_factory)
+SearchEngines.register("noise-fuzzy", SearchEngines._noise_fuzzy_factory)

@@ -63,23 +63,24 @@ class Export:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> None:
         """Write `matches` for `query` to `output` as `format_` ('json' or 'html').
 
-        `engine`, `case_sensitive`, and - for the fuzzy, proximity and leetspeak engines -
-        the `threshold`, `distance` or `level` record how the search was run, so the export can be
-        reproduced; they're omitted from the file when `engine` is None, and
-        `threshold`/`distance`/`level` when they are.
+        `engine`, `case_sensitive`, and - for the fuzzy, proximity, leetspeak and
+        noise-fuzzy engines - the `threshold`, `distance`, `level` or `noise` record how the
+        search was run, so the export can be reproduced; they're omitted from the file when
+        `engine` is None, and `threshold`/`distance`/`level`/`noise` when they are.
         """
         if format_ not in SearchSettings.EXPORT_FORMATS:
             raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
         if format_ == "json":
             Export._write_json(
-                matches, query, output, engine, case_sensitive, threshold, distance, level
+                matches, query, output, engine, case_sensitive, threshold, distance, level, noise
             )
         else:
             Export._write_html(
-                matches, query, output, engine, case_sensitive, threshold, distance, level
+                matches, query, output, engine, case_sensitive, threshold, distance, level, noise
             )
 
     @staticmethod
@@ -108,7 +109,8 @@ class Export:
         case_sensitive: bool,
         threshold: float | None,
         distance: int | None,
-        level: str | None,
+        level: str | None = None,
+        noise: str | None = None,
     ) -> None:
         payload: dict[str, object] = {"query": query}
         if engine is not None:
@@ -120,6 +122,8 @@ class Export:
                 payload["distance"] = distance
             if level is not None:
                 payload["leet_level"] = level
+            if noise is not None:
+                payload["noise"] = noise
         payload["generated_at"] = Export._generated_at()
         payload["result_count"] = len(matches)
         payload["matches"] = [Export._match_entry(match) for match in matches]
@@ -134,7 +138,8 @@ class Export:
         case_sensitive: bool,
         threshold: float | None,
         distance: int | None,
-        level: str | None,
+        level: str | None = None,
+        noise: str | None = None,
     ) -> None:
         search_mode = ""
         if engine is not None:
@@ -147,6 +152,8 @@ class Export:
                 search_mode += f", within {distance} words"
             if level is not None:
                 search_mode += f", leet level {html.escape(level)}"
+            if noise is not None:
+                search_mode += f", noise {html.escape(noise)}"
         rows = []
         for match in matches:
             page = str(match.page_number) if match.page_number is not None else "-"

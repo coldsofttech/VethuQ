@@ -292,6 +292,12 @@ class _DocumentStoreMixin:
     def search_candidate_image_pages(self, match_expr: str | None) -> list[sqlite3.Row]:
         return Document.search_candidate_image_pages(self._conn, match_expr)
 
+    def search_noise_candidate_pdf_pages(self, match_expr: str | None) -> list[sqlite3.Row]:
+        return Document.search_noise_candidate_pdf_pages(self._conn, match_expr)
+
+    def search_noise_candidate_image_pages(self, match_expr: str | None) -> list[sqlite3.Row]:
+        return Document.search_noise_candidate_image_pages(self._conn, match_expr)
+
     def search_fulltext_pdf_pages(self, match_expr: str) -> list[sqlite3.Row]:
         return Document.search_fulltext_pdf_pages(self._conn, match_expr)
 

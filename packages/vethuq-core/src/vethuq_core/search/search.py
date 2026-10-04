@@ -31,8 +31,8 @@ class FileMatch:
 class SearchOptionError(ValueError):
     """A search option combination that can't be honoured.
 
-    `option` is which argument to blame: 'engine', 'case_sensitive', 'threshold', 'distance' or
-    'level'.
+    `option` is which argument to blame: 'engine', 'case_sensitive', 'threshold', 'distance',
+    'level' or 'noise'.
     """
 
     def __init__(self, message: str, option: str) -> None:
@@ -43,8 +43,9 @@ class SearchOptionError(ValueError):
 class SearchOptions(NamedTuple):
     """The resolved options a search runs with.
 
-    `threshold` is set for `fuzzy` and `all`, `distance` for `proximity` and `all`, `level`
-    (the leetspeak level) for `leetspeak` and `all`.
+    `threshold` is set for `fuzzy`, `noise-fuzzy` and `all`, `distance` for `proximity` and
+    `all`, `level` (the leetspeak level) for `leetspeak`, `noise-fuzzy` and `all`, and `noise`
+    (the noise level) for `noise-fuzzy` and `all`.
     """
 
     engine: str
@@ -52,6 +53,7 @@ class SearchOptions(NamedTuple):
     threshold: float | None = None
     distance: int | None = None
     level: str | None = None
+    noise: str | None = None
 
 
 class Search:
@@ -63,22 +65,24 @@ class Search:
         threshold: float | str | None = None,
         distance: int | str | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> SearchOptions:
-        """Work out the engine, case sensitivity, fuzzy threshold, proximity distance and
-        leetspeak level.
+        """Work out the engine, case sensitivity, fuzzy threshold, proximity distance,
+        leetspeak level and noise level.
 
         Each falls back to its setting when None. The engines differ in what they
         can honour: `exact` is always case-sensitive while `full-text` and
-        `proximity` never are, only `fuzzy` has a similarity `threshold`, and only
-        `proximity` has a word `distance`, and only `leetspeak` has a `level`. `all` runs
+        `proximity` never are, only `fuzzy` and `noise-fuzzy` have a similarity `threshold`,
+        only `proximity` has a word `distance`, only `leetspeak` and `noise-fuzzy` have a
+        `level`, and only `noise-fuzzy` has a `noise` level. `all` runs
         every engine, each applying the options it can, so it accepts them all and never
         rejects one. A
         preference that came from the *setting* is simply not applied where the engine
         can't use it, but one asked for explicitly that the engine can't honour raises
         `SearchOptionError` rather than being silently ignored - as does an
-        unknown `engine`, or a `threshold`, `distance` or `level` that isn't a valid value
-        (see `SearchSettings.parse_fuzzy_threshold`, `parse_proximity_distance` and
-        `parse_leetspeak_level`).
+        unknown `engine`, or a `threshold`, `distance`, `level` or `noise` that isn't a valid
+        value (see `SearchSettings.parse_fuzzy_threshold`, `parse_proximity_distance`,
+        `parse_leetspeak_level` and `parse_noise_level`).
         """
         if engine is not None and engine not in SearchSettings.ENGINES:
             raise SearchOptionError(
@@ -90,10 +94,10 @@ class Search:
                 threshold = SearchSettings.parse_fuzzy_threshold(threshold)
             except ValueError as exc:
                 raise SearchOptionError(str(exc), "threshold") from exc
-            if resolved_engine not in ("fuzzy", SearchSettings.ENGINE_ALL):
+            if resolved_engine not in ("fuzzy", "noise-fuzzy", SearchSettings.ENGINE_ALL):
                 raise SearchOptionError(
-                    "Only the fuzzy engine has a similarity threshold; "
-                    "use --engine fuzzy (or the fuzzy engine) to set one.",
+                    "Only the fuzzy and noise-fuzzy engines have a similarity threshold; "
+                    "use --engine fuzzy or noise-fuzzy to set one.",
                     "threshold",
                 )
         if distance is not None:
@@ -112,11 +116,22 @@ class Search:
                 level = SearchSettings.parse_leetspeak_level(level)
             except ValueError as exc:
                 raise SearchOptionError(str(exc), "level") from exc
-            if resolved_engine not in ("leetspeak", SearchSettings.ENGINE_ALL):
+            if resolved_engine not in ("leetspeak", "noise-fuzzy", SearchSettings.ENGINE_ALL):
                 raise SearchOptionError(
-                    "Only the leetspeak engine has a level; "
-                    "use --engine leetspeak (or the leetspeak engine) to set one.",
+                    "Only the leetspeak and noise-fuzzy engines have a level; "
+                    "use --engine leetspeak or noise-fuzzy to set one.",
                     "level",
+                )
+        if noise is not None:
+            try:
+                noise = SearchSettings.parse_noise_level(noise)
+            except ValueError as exc:
+                raise SearchOptionError(str(exc), "noise") from exc
+            if resolved_engine not in ("noise-fuzzy", SearchSettings.ENGINE_ALL):
+                raise SearchOptionError(
+                    "Only the noise-fuzzy engine has a noise level; "
+                    "use --engine noise-fuzzy to set one.",
+                    "noise",
                 )
         if resolved_engine == SearchSettings.ENGINE_ALL:
             return SearchOptions(
@@ -133,6 +148,7 @@ class Search:
                     else SearchSettings.get_proximity_distance(storage)
                 ),
                 level if level is not None else SearchSettings.get_leetspeak_level(storage),
+                noise if noise is not None else SearchSettings.get_noise_level(storage),
             )
         if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
@@ -170,6 +186,15 @@ class Search:
                 level if level is not None else SearchSettings.get_leetspeak_level(storage)
             )
             return SearchOptions(resolved_engine, case_sensitive, None, None, effective_level)
+        if resolved_engine == "noise-fuzzy":
+            return SearchOptions(
+                resolved_engine,
+                case_sensitive,
+                threshold if threshold is not None else SearchSettings.get_fuzzy_threshold(storage),
+                None,
+                level if level is not None else SearchSettings.get_leetspeak_level(storage),
+                noise if noise is not None else SearchSettings.get_noise_level(storage),
+            )
         return SearchOptions(resolved_engine, case_sensitive)
 
     @staticmethod
@@ -182,16 +207,18 @@ class Search:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first (see `ranking`).
 
         Pages are ranked by how strict the strictest engine that found them is - Exact,
-        Contains, Relevant, Near, Word, Lookalike, then Similar - and within that by the
-        engine's own signal.
+        Contains, Relevant, Near, Word, Lookalike, Similar, then Obscured - and within that
+        by the engine's own signal.
         Each page lists its hits, best first, each labelled with the engine that found it.
         `case_sensitive` reaches the engines that can honour it, `threshold` (0-1) is the
-        fuzzy engine's, `distance` the proximity engine's and `level` the leetspeak engine's,
-        each defaulting to the user's setting.
+        fuzzy (and noise-fuzzy) engine's, `distance` the proximity engine's, `level` the
+        leetspeak (and noise-fuzzy) engine's and `noise` the noise-fuzzy engine's, each
+        defaulting to the user's setting.
         """
         try:
             return Ranking.search_all(
@@ -202,15 +229,17 @@ class Search:
                 threshold=threshold,
                 distance=distance,
                 level=level,
+                noise=noise,
             )
         except Exception as exc:
             _logger.error(
-                "Search failed: engine=all case_sensitive=%s threshold=%s distance=%s level=%s "
-                "query_length=%d error=%s: %s",
+                "Search failed: engine=all case_sensitive=%s threshold=%s distance=%s "
+                "level=%s noise=%s query_length=%d error=%s: %s",
                 case_sensitive,
                 threshold,
                 distance,
                 level,
+                noise,
                 len(query),
                 type(exc).__name__,
                 exc,
@@ -229,6 +258,7 @@ class Search:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query` using the named (default: `like`) engine.
 
@@ -246,8 +276,10 @@ class Search:
         setting); the other engines raise `ValueError` if given a `threshold` or
         `distance` they don't use. `leetspeak` finds the query's words written with look-alike
         characters, recognizing the substitutions of `level` (default the user's setting);
-        the other engines raise `ValueError` if given one. `proximity` needs at least two
-        terms (`SearchQueryError` otherwise).
+        the other engines raise `ValueError` if given one. `noise-fuzzy` finds the query's
+        characters hidden by stray characters (up to the `noise` level), look-alikes and
+        typos; the engines that don't use `noise` raise `ValueError` if given one.
+        `proximity` needs at least two terms (`SearchQueryError` otherwise).
         """
         if engine == SearchSettings.ENGINE_ALL:
             return Ranking.flatten(
@@ -259,6 +291,7 @@ class Search:
                     threshold=threshold,
                     distance=distance,
                     level=level,
+                    noise=noise,
                 )
             )
         try:
@@ -269,16 +302,18 @@ class Search:
                 threshold=threshold,
                 distance=distance,
                 level=level,
+                noise=noise,
             )
         except Exception as exc:
             _logger.error(
-                "Search failed: engine=%s case_sensitive=%s threshold=%s distance=%s level=%s "
-                "query_length=%d error=%s: %s",
+                "Search failed: engine=%s case_sensitive=%s threshold=%s distance=%s "
+                "level=%s noise=%s query_length=%d error=%s: %s",
                 engine or "default",
                 case_sensitive,
                 threshold,
                 distance,
                 level,
+                noise,
                 len(query),
                 type(exc).__name__,
                 exc,
@@ -297,6 +332,7 @@ class Search:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[FileMatch]:
         """Search like `indexed_content`, but return one `FileMatch` per matching file.
 
@@ -313,6 +349,7 @@ class Search:
             threshold=threshold,
             distance=distance,
             level=level,
+            noise=noise,
         ):
             files.setdefault(
                 match.file_id,

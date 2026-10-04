@@ -68,6 +68,7 @@ class SearchEngine(Protocol):
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         """Return one `SearchMatch` per occurrence of `query`.
 
@@ -83,7 +84,9 @@ class SearchEngine(Protocol):
         its first and last term, None meaning the user's setting; other engines
         raise `ValueError` if given one. `level` is the leetspeak engine's substitution level
         (`SearchSettings.LEETSPEAK_LEVELS`), None meaning the user's setting; other engines
-        raise `ValueError` if given one. An empty `query` matches nothing, and a
+        raise `ValueError` if given one. `noise` is the noise-fuzzy engine's noise level
+        (`SearchSettings.NOISE_LEVELS`), None meaning the user's setting; other engines raise
+        `ValueError` if given one. An empty `query` matches nothing, and a
         query an engine can't search raises `SearchQueryError`. May raise
         `SearchEngineUnavailable`.
         """
@@ -110,6 +113,7 @@ class FallbackSearchEngine:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         try:
             return self._primary.search(
@@ -119,6 +123,7 @@ class FallbackSearchEngine:
                 threshold=threshold,
                 distance=distance,
                 level=level,
+                noise=noise,
             )
         except SearchEngineUnavailable:
             return self._fallback.search(
@@ -128,4 +133,5 @@ class FallbackSearchEngine:
                 threshold=threshold,
                 distance=distance,
                 level=level,
+                noise=noise,
             )

@@ -336,7 +336,7 @@ class TestLeetspeakOptions:
             Search.resolve_options(storage, "leetspeak", None, level="insane")
 
         assert only.value.option == "level"
-        assert "Only the leetspeak engine" in str(only.value)
+        assert "Only the leetspeak and noise-fuzzy engines" in str(only.value)
         assert invalid.value.option == "level"
 
     def test_other_engines_carry_no_level(self, storage):

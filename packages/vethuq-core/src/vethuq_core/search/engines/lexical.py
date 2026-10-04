@@ -32,8 +32,10 @@ class LexicalSearchEngine:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_level(self.name, level)
+        SearchEngineHelpers.require_no_noise(self.name, noise)
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         SearchEngineHelpers.require_no_distance(self.name, distance)
         if not query:

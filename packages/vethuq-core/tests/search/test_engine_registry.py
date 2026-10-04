@@ -27,6 +27,7 @@ class TestSearchEngines:
                 threshold=None,
                 distance=None,
                 level=None,
+                noise=None,
             ):
                 raise SearchEngineUnavailable
 

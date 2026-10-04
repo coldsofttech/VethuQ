@@ -469,6 +469,52 @@ class TestLeetspeakLevel:
         assert "leetspeak" in shown.stdout
 
 
+class TestNoiseLevel:
+    def test_show_defaults_to_low(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "show"])
+
+        assert result.exit_code == 0
+        assert "low" in result.stdout and "1 in a row, 2 in all" in result.stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "noise-fuzzy", "noise", "show"]
+
+        for level, limits in (
+            ("medium", "3 in a row, 6"),
+            ("high", "6 in a row, 12"),
+            ("Low", "1"),
+        ):
+            result = runner.invoke(
+                app, ["settings", "search", "noise-fuzzy", "noise", "set", level]
+            )
+            assert result.exit_code == 0
+            assert f"set to {level.lower()}" in result.stdout
+            shown = runner.invoke(app, show).stdout
+            assert level.lower() in shown and limits in shown
+
+    def test_set_rejects_an_unknown_level(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "set", "loud"])
+        shown = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "show"])
+
+        assert result.exit_code == 1
+        assert "low, medium, high" in result.output
+        assert "low" in shown.stdout
+
+    def test_engine_can_be_the_default(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "search", "engine", "set", "noise-fuzzy"])
+        shown = runner.invoke(app, ["settings", "search", "engine", "show"])
+
+        assert set_result.exit_code == 0
+        assert "noise-fuzzy" in shown.stdout
+
+
 class TestBackupSettings:
     def test_defaults(self, use_temp_db):
         use_temp_db()

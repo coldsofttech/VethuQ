@@ -39,6 +39,9 @@ _NO_MATCH_HINTS = {
     "leetspeak": "`leetspeak` only finds whole words spelled with look-alike characters (e.g. "
     "`h3ll0` for `hello`), with no typos, and the query needs a letter in it. Try "
     "`vethuq settings search leetspeak level extended` or `--engine fuzzy`.",
+    "noise-fuzzy": "`noise-fuzzy` finds your characters hidden by a little stray punctuation or "
+    "whitespace, look-alike symbols and a typo or two - not letters in between. Try "
+    "`--noise medium` (or `high`), `--fuzziness loose` or `--leet-level extended`.",
 }
 
 
@@ -50,6 +53,7 @@ def _resolve_options(
     fuzziness: str | None,
     distance: str | None,
     leet_level: str | None = None,
+    noise: str | None = None,
 ) -> SearchOptions:
     """`Search.resolve_options`, with an unusable combination reported as a usage error.
 
@@ -69,7 +73,7 @@ def _resolve_options(
         threshold = str(preset)
     try:
         return Search.resolve_options(
-            storage, engine, case_sensitive, threshold, distance, leet_level
+            storage, engine, case_sensitive, threshold, distance, leet_level, noise
         )
     except SearchOptionError as exc:
         if exc.option == "engine":
@@ -80,6 +84,8 @@ def _resolve_options(
             hint = "--distance"
         elif exc.option == "level":
             hint = "--leet-level"
+        elif exc.option == "noise":
+            hint = "--noise"
         else:
             hint = "--case-sensitive" if case_sensitive else "--no-case-sensitive"
         raise typer.BadParameter(str(exc), param_hint=hint) from exc
@@ -91,10 +97,10 @@ class SearchHelp:
         "indexed documents are searched.\n\n"
         "--engine picks how CONTENT is matched:\n\n"
         "all (the default) - runs every engine and lists each page once, ranked by the "
-        "strictest way it matched: Exact, Contains, Relevant, Near, Word, Lookalike, then "
-        "Similar. Each page is labelled with that, the other engines that found it, and any "
-        "hit found less strictly than the page's best. Each engine applies the options it "
-        "can.\n\n"
+        "strictest way it matched: Exact, Contains, Relevant, Near, Word, Lookalike, Similar, "
+        "then Obscured. Each page is labelled with that, the other engines that found it, "
+        "and any hit found less strictly than the page's best. Each engine applies the "
+        "options it can.\n\n"
         "like - finds CONTENT anywhere, even inside a word, ignoring case. "
         '`mus` finds "Museum". Results are ordered by file path.\n\n'
         "lexical - finds CONTENT anywhere, even inside a word, like `like`, but lists the "
@@ -119,10 +125,17 @@ class SearchHelp:
         "substitutions are recognized is set by `vethuq settings search leetspeak level` "
         "(basic, standard or extended), or per search by --leet-level. Honours "
         "--case-sensitive; spelled as typed first.\n\n"
+        "noise-fuzzy - finds CONTENT's characters hidden by stray punctuation or whitespace, "
+        "look-alike symbols and typos, all at once: `h..e llo`, `h @ e # l l o`, `h3ll0` and "
+        "`helo` all find `hello`. The noise is ignored (letters never are), look-alikes are "
+        "folded (single characters of --leet-level) and what is left must be within "
+        "--threshold or --fuzziness of CONTENT, as in `fuzzy`. How much noise is skipped is "
+        "set by --noise (low, medium or high) or `vethuq settings search noise-fuzzy noise`. "
+        "Honours --case-sensitive; the cleanest text first.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
         "`e` to export what's been found and close the pager, `h` (with the default `all` "
-        "engine) to see what Exact, Contains, Relevant, Near, Word, Lookalike and Similar "
-        "mean, `q` to close "
+        "engine) to see what Exact, Contains, Relevant, Near, Word, Lookalike, Similar and "
+        "Obscured mean, `q` to close "
         "without exporting. A file with several matching pages prints its file name as a bold "
         "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
         "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
@@ -142,8 +155,9 @@ def search(
             "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads), 'proximity' (all your words near each other) or 'leetspeak' (words written "
-            "with look-alike characters, e.g. h3ll0). Defaults to "
+            "misreads), 'proximity' (all your words near each other), 'leetspeak' (words "
+            "written with look-alike characters, e.g. h3ll0) or 'noise-fuzzy' (words hidden by "
+            "stray characters, look-alikes and typos at once, e.g. h..e l1o). Defaults to "
             "`vethuq settings search engine`."
         ),
     ),
@@ -151,7 +165,8 @@ def search(
         None,
         "--case-sensitive/--no-case-sensitive",
         help=(
-            "Match case. Only 'like', 'lexical', 'fuzzy' and 'leetspeak' honour it (default: "
+            "Match case. Only 'like', 'lexical', 'fuzzy', 'leetspeak' and 'noise-fuzzy' honour it "
+            "(default: "
             "`vethuq settings search case-sensitive`); 'exact' is always case-sensitive, "
             "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
         ),
@@ -160,7 +175,8 @@ def search(
         None,
         "--threshold",
         help=(
-            "Fuzzy only: the minimum similarity between your words and the words found, as a "
+            "Fuzzy and noise-fuzzy only: the minimum similarity between your words and the "
+            "words found, as a "
             "percentage (80%) or a number above 0 and up to 1 (0.8). Default: `vethuq settings "
             "search fuzzy threshold`."
         ),
@@ -169,7 +185,8 @@ def search(
         None,
         "--fuzziness",
         help=(
-            "Fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' (0.80) or "
+            "Fuzzy and noise-fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' "
+            "(0.80) or "
             "'loose' (0.65)."
         ),
     ),
@@ -186,8 +203,18 @@ def search(
         None,
         "--leet-level",
         help=(
-            "Leetspeak only: which look-alike characters to recognize - 'basic', 'standard' or "
-            "'extended'. Default: `vethuq settings search leetspeak level`."
+            "Leetspeak and noise-fuzzy only: which look-alike characters to recognize - "
+            "'basic', 'standard' or 'extended'. Default: `vethuq settings search leetspeak "
+            "level`."
+        ),
+    ),
+    noise: str | None = typer.Option(
+        None,
+        "--noise",
+        help=(
+            "Noise-fuzzy only: how much stray punctuation and whitespace may sit inside a "
+            "match - 'low' (1 in a row, 2 in all), 'medium' (3, 6) or 'high' (6, 12). "
+            "Default: `vethuq settings search noise-fuzzy noise`."
         ),
     ),
     export: str | None = typer.Option(
@@ -208,7 +235,7 @@ def search(
     storage = open_storage()
     try:
         options = _resolve_options(
-            storage, engine, case_sensitive, threshold, fuzziness, distance, leet_level
+            storage, engine, case_sensitive, threshold, fuzziness, distance, leet_level, noise
         )
         pages: list[PageResult] | None = None
         try:
@@ -220,6 +247,7 @@ def search(
                     threshold=options.threshold,
                     distance=options.distance,
                     level=options.level,
+                    noise=options.noise,
                 )
                 matches = Ranking.flatten(pages)
             else:
@@ -231,6 +259,7 @@ def search(
                     threshold=options.threshold,
                     distance=options.distance,
                     level=options.level,
+                    noise=options.noise,
                 )
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
@@ -258,6 +287,7 @@ def search(
                 threshold=options.threshold,
                 distance=options.distance,
                 level=options.level,
+                noise=options.noise,
             )
             console.print(
                 ResultRenderer.message_panel(
@@ -293,6 +323,7 @@ def search(
                 threshold=options.threshold,
                 distance=options.distance,
                 level=options.level,
+                noise=options.noise,
             )
             console.print(
                 ResultRenderer.message_panel(

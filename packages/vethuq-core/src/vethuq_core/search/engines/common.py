@@ -37,6 +37,12 @@ class SearchEngineHelpers:
             raise ValueError(f"The {engine} engine has no leetspeak level; only leetspeak does.")
 
     @staticmethod
+    def require_no_noise(engine: str, noise: str | None) -> None:
+        """Reject a noise level for an engine that isn't noise-fuzzy."""
+        if noise is not None:
+            raise ValueError(f"The {engine} engine has no noise level; only noise-fuzzy does.")
+
+    @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:
         """Total page count of every PDF with OCR pages, keyed by its carrier document id."""
         return {

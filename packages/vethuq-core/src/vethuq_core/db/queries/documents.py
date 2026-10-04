@@ -4,22 +4,101 @@ from __future__ import annotations
 
 import sqlite3
 
+from vethuq_core.leet import Leet
+
 
 class Document:
-    SEARCH_INDEXES = (
+    # The indexes older than the noise skeleton: a trigram and a word index per pages table.
+    TEXT_SEARCH_INDEXES = (
         "pdf_pages_trigram",
         "pdf_pages_words",
         "image_pages_trigram",
         "image_pages_words",
     )
+    SEARCH_INDEXES = (*TEXT_SEARCH_INDEXES, "pdf_pages_noise", "image_pages_noise")
+
+    PAGE_TABLES = ("pdf_pages", "image_pages")
+
+    @staticmethod
+    def noise_triggers(table: str) -> dict[str, str]:
+        """The statements keeping `<table>_noise` in step with `<table>`, by trigger name."""
+        index = f"{table}_noise"
+        return {
+            f"{index}_ai": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_ai AFTER INSERT ON {table} BEGIN "
+                f"INSERT INTO {index}(rowid, noise_text) VALUES (new.id, new.noise_text); END"
+            ),
+            f"{index}_ad": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_ad AFTER DELETE ON {table} BEGIN "
+                f"INSERT INTO {index}({index}, rowid, noise_text) "
+                f"VALUES ('delete', old.id, old.noise_text); END"
+            ),
+            f"{index}_au": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_au AFTER UPDATE ON {table} BEGIN "
+                f"INSERT INTO {index}({index}, rowid, noise_text) "
+                f"VALUES ('delete', old.id, old.noise_text); "
+                f"INSERT INTO {index}(rowid, noise_text) VALUES (new.id, new.noise_text); END"
+            ),
+        }
+
+    @staticmethod
+    def noise_schema() -> str:
+        """The trigram index over each pages table's `noise_text` skeleton, and its triggers.
+
+        `noise_text` is `Leet.skeleton(ocr_text)` - the page's text without its noise and
+        with look-alike characters folded - recorded at write time, so the `noise-fuzzy`
+        engine can find candidate pages through SQLite instead of scanning every page. Like
+        the other indexes these are external-content tables kept in sync by triggers.
+        """
+        statements = []
+        for table in Document.PAGE_TABLES:
+            statements.append(
+                f"CREATE VIRTUAL TABLE IF NOT EXISTS {table}_noise USING fts5("
+                f"noise_text, content='{table}', content_rowid='id', tokenize='trigram');"
+            )
+            statements.extend(f"{sql};" for sql in Document.noise_triggers(table).values())
+        return "\n".join(statements) + "\n"
+
+    @staticmethod
+    def refresh_noise_text(conn: sqlite3.Connection, table: str) -> int:
+        """Recompute `noise_text` of every `table` page where it is out of date; returns how many.
+
+        Pages are normally written with it; this brings older ones (and any written by
+        something else) up to date.
+        """
+        if table not in Document.PAGE_TABLES:
+            raise ValueError(f"Unknown pages table: {table}")
+        changed = 0
+        rows = conn.execute(f"SELECT id, ocr_text, noise_text FROM {table}").fetchall()
+        for row in rows:
+            skeleton = Leet.skeleton(row["ocr_text"])
+            if skeleton != row["noise_text"]:
+                conn.execute(
+                    f"UPDATE {table} SET noise_text = ? WHERE id = ?", (skeleton, row["id"])
+                )
+                changed += 1
+        return changed
 
     @staticmethod
     def rebuild_search_index(conn: sqlite3.Connection, index: str) -> int:
-        """Re-read every stored page into the FTS5 table `index`; returns its page count."""
+        """Re-read every stored page into the FTS5 table `index`; returns its page count.
+
+        For a `noise` index the skeleton the index is built on is brought up to date first.
+        """
         if index not in Document.SEARCH_INDEXES:
             raise ValueError(f"Unknown search index: {index}")
-        conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
         table = index.rsplit("_", 1)[0]
+        if index.endswith("_noise"):
+            # Updating `noise_text` would fire the index's own UPDATE trigger, which
+            # 'delete's entries that may never have been indexed (the very reason for a
+            # rebuild) - so it steps aside while the skeleton is refreshed.
+            update = f"{index}_au"
+            conn.execute(f"DROP TRIGGER IF EXISTS {update}")
+            try:
+                Document.refresh_noise_text(conn, table)
+            finally:
+                conn.execute(Document.noise_triggers(table)[update])
+        conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
     @staticmethod
@@ -360,10 +439,10 @@ class Document:
     def insert_pdf_pages(conn: sqlite3.Connection, rows: list[tuple]) -> None:
         conn.executemany(
             "INSERT INTO pdf_pages "
-            "(document_id, page_number, ocr_text, char_count, confidence, source, "
+            "(document_id, page_number, ocr_text, char_count, noise_text, confidence, source, "
             "ocr_engine, language, image_width, image_height, ocr_phase, ocr_angles) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            rows,
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(*row[:4], Leet.skeleton(row[2]), *row[4:]) for row in rows],
         )
 
     @staticmethod
@@ -382,13 +461,14 @@ class Document:
     ) -> None:
         conn.execute(
             "INSERT INTO image_pages "
-            "(document_id, ocr_text, char_count, confidence, ocr_engine, language, "
+            "(document_id, ocr_text, char_count, noise_text, confidence, ocr_engine, language, "
             "image_width, image_height, ocr_phase, ocr_angles) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 document_id,
                 ocr_text,
                 char_count,
+                Leet.skeleton(ocr_text),
                 confidence,
                 ocr_engine,
                 language,
@@ -645,6 +725,66 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {where}"
+            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "ORDER BY di.file_path",
+            (match_expr,) if match_expr is not None else (),
+        ).fetchall()
+
+    @staticmethod
+    def search_noise_candidate_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        """Return indexed `pdf_pages` rows that may hold a `noise-fuzzy` match.
+
+        Shaped like `search_candidate_pdf_pages`, plus the page's `noise_text` skeleton.
+
+        `match_expr` is an FTS5 expression over the trigram index `pdf_pages_noise` (built
+        on the skeleton) that every page that could match satisfies, or None when no such
+        narrowing is possible and every indexed page is returned. Pages whose skeleton has
+        not been recorded yet (empty) are always returned, so none is missed.
+        """
+        narrowed = (
+            "(pp.id IN (SELECT rowid FROM pdf_pages_noise WHERE pdf_pages_noise MATCH ?) "
+            "OR pp.noise_text = '') AND "
+            if match_expr is not None
+            else ""
+        )
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, pp.ocr_text AS ocr_text, "
+            "pp.noise_text AS noise_text, "
+            "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM pdf_pages pp "
+            "JOIN document_index carrier ON carrier.id = pp.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            f"WHERE {narrowed}"
+            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "ORDER BY di.file_path, pp.page_number",
+            (match_expr,) if match_expr is not None else (),
+        ).fetchall()
+
+    @staticmethod
+    def search_noise_candidate_image_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        """Like `search_noise_candidate_pdf_pages`, but for `image_pages`/`image_pages_noise`."""
+        narrowed = (
+            "(ip.id IN (SELECT rowid FROM image_pages_noise WHERE image_pages_noise MATCH ?) "
+            "OR ip.noise_text = '') AND "
+            if match_expr is not None
+            else ""
+        )
+        return conn.execute(
+            "SELECT di.id AS document_id, di.file_path AS file_path, ip.ocr_text AS ocr_text, "
+            "ip.noise_text AS noise_text, "
+            "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
+            "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
+            "FROM image_pages ip "
+            "JOIN document_index carrier ON carrier.id = ip.document_id "
+            "JOIN document_index di ON di.document_id = carrier.document_id "
+            "JOIN sources s ON s.id = di.source_id "
+            f"WHERE {narrowed}"
             "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY di.file_path",
             (match_expr,) if match_expr is not None else (),

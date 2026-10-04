@@ -42,6 +42,10 @@ leetspeak_app = typer.Typer(help="Configure the `leetspeak` search engine.")
 leetspeak_level_app = typer.Typer(
     help="Configure which look-alike characters `leetspeak` search recognizes."
 )
+noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
+noise_fuzzy_noise_app = typer.Typer(
+    help="Configure how much stray punctuation and whitespace `noise-fuzzy` search skips."
+)
 case_sensitive_app = typer.Typer(
     help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
@@ -102,6 +106,8 @@ search_app.add_typer(proximity_app, name="proximity")
 proximity_app.add_typer(proximity_distance_app, name="distance")
 search_app.add_typer(leetspeak_app, name="leetspeak")
 leetspeak_app.add_typer(leetspeak_level_app, name="level")
+search_app.add_typer(noise_fuzzy_app, name="noise-fuzzy")
+noise_fuzzy_app.add_typer(noise_fuzzy_noise_app, name="noise")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -344,7 +350,11 @@ def search_engine_show() -> None:
         "leetspeak - finds your words written with look-alike characters (`h3ll0` or `p@55w0rd` "
         "for `hello` or `password`, and the other way round). Every character must match, as a "
         "whole word. Which substitutions count is set by `settings search leetspeak level`. "
-        "Words spelled as typed first."
+        "Words spelled as typed first.\n\n"
+        "noise-fuzzy - finds your characters hidden by stray punctuation or whitespace, "
+        "look-alike symbols and typos all at once (`h..e llo`, `h @ e # l l o`, `h3ll0` and "
+        "`helo` for `hello`). Uses the fuzzy threshold, the leetspeak level and how much noise "
+        "is skipped (`settings search noise-fuzzy noise`). Cleanest text first."
     ),
 )
 def search_engine_set(
@@ -397,8 +407,10 @@ def case_sensitive_show() -> None:
 
 @case_sensitive_app.command("enable")
 def case_sensitive_enable() -> None:
-    """Make `search` match case by default ('like'/'fuzzy'/'leetspeak'; `--no-case-sensitive`
-    overrides)."""
+    """Make `search` match case by default (`--no-case-sensitive` overrides).
+
+    Acted on by the 'like', 'lexical', 'fuzzy', 'leetspeak' and 'noise-fuzzy' engines.
+    """
     storage = open_storage()
     try:
         SearchSettings.set_case_sensitive(storage, True)
@@ -1480,6 +1492,75 @@ def leetspeak_level_set(
                     (".", "white"),
                 ),
                 "Leetspeak Level",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@noise_fuzzy_noise_app.command("show")
+def noise_fuzzy_noise_show() -> None:
+    """Show how much noise `search --engine noise-fuzzy` skips inside a match."""
+    storage = open_storage()
+    try:
+        level = SearchSettings.get_noise_level(storage)
+        gap, total = SearchSettings.NOISE_LEVELS[level]
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search noise level: ", "white"),
+                    (level, Theme.VALUE),
+                    (f" ({gap} in a row, {total} in all)", "white"),
+                ),
+                "Noise Level",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@noise_fuzzy_noise_app.command(
+    "set",
+    help=(
+        "Set how much stray punctuation and whitespace `search --engine noise-fuzzy` skips "
+        "inside a match when `--noise` isn't given.\n\n"
+        "Noise is whitespace and punctuation between the characters you searched for, such as "
+        "the dots and spaces of `h..e llo`. Letters and digits are never noise (a stray letter "
+        "is a typo, and the fuzzy threshold decides how many of those are allowed), and the "
+        "symbols that can stand for a letter, such as @ or $, are read as that letter first.\n\n"
+        "Levels:\n\n"
+        "low (the default) - at most 1 noise character in a row and 2 in all: `he llo`, "
+        "`h.ello`, `h e llo`.\n\n"
+        "medium - at most 3 in a row and 6 in all: `h..e llo`, `h e l l o`, `h @ 3 l l 0`.\n\n"
+        "high - at most 6 in a row and 12 in all: `h @ e # l l o`. Finds the most, with more "
+        "chance of unrelated text coming together."
+    ),
+)
+def noise_fuzzy_noise_set(
+    noise: str = typer.Argument(
+        ...,
+        metavar="LEVEL",
+        help=f"One of: {', '.join(SearchSettings.NOISE_LEVELS)}.",
+    ),
+) -> None:
+    """Set how much noise `search --engine noise-fuzzy` skips inside a match."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_noise_level(storage, noise)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search noise level set to ", "white"),
+                    (noise.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Noise Level",
                 Theme.OK,
             )
         )

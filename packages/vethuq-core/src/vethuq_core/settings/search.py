@@ -24,6 +24,7 @@ class SearchSettings:
         "fuzzy",
         "proximity",
         "leetspeak",
+        "noise-fuzzy",
     )
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
@@ -41,6 +42,11 @@ class SearchSettings:
     # How many character substitutions the `leetspeak` engine recognizes, each level
     # including the one before it.
     LEETSPEAK_LEVELS = ("basic", "standard", "extended")
+    NOISE_KEY = "search_noise_level"
+    DEFAULT_NOISE = "low"
+    # How much stray punctuation and whitespace the `noise-fuzzy` engine skips inside a match,
+    # by name: (most in a row between two characters, most in the whole match).
+    NOISE_LEVELS = {"low": (1, 2), "medium": (3, 6), "high": (6, 12)}
 
     @staticmethod
     def get_snippet_context_chars(storage: Storage) -> int:
@@ -253,3 +259,32 @@ class SearchSettings:
         Settings.set(
             storage, SearchSettings.LEETSPEAK_LEVEL_KEY, SearchSettings.parse_leetspeak_level(level)
         )
+
+    @staticmethod
+    def parse_noise_level(value: str) -> str:
+        """Resolve a noise level name (`low`, `medium` or `high`).
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        text = value.strip().lower() if isinstance(value, str) else ""
+        if text not in SearchSettings.NOISE_LEVELS:
+            raise InvalidSettingValueError(
+                f"noise must be one of {', '.join(SearchSettings.NOISE_LEVELS)}"
+            )
+        return text
+
+    @staticmethod
+    def get_noise_level(storage: Storage) -> str:
+        """How much noise the `noise-fuzzy` engine skips. 'low' by default."""
+        value = Settings.get(storage, SearchSettings.NOISE_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_NOISE
+        try:
+            return SearchSettings.parse_noise_level(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_NOISE
+
+    @staticmethod
+    def set_noise_level(storage: Storage, level: str) -> None:
+        """Store the default noise level: `low`, `medium` or `high`."""
+        Settings.set(storage, SearchSettings.NOISE_KEY, SearchSettings.parse_noise_level(level))

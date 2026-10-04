@@ -78,6 +78,8 @@ from vethuq_cli.settings import (
     log_level_show,
     log_retention_set,
     log_retention_show,
+    noise_fuzzy_noise_set,
+    noise_fuzzy_noise_show,
     proximity_distance_set,
     proximity_distance_show,
     removed_retention_set,
@@ -221,22 +223,30 @@ class InteractiveMenu:
             default_threshold = SearchSettings.get_fuzzy_threshold_setting(storage)
             default_distance = SearchSettings.get_proximity_distance_setting(storage)
             default_level = SearchSettings.get_leetspeak_level(storage)
+            default_noise = SearchSettings.get_noise_level(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
-        # Only `like`, `lexical`, `fuzzy`, `leetspeak` and `all` (which includes them) have a
-        # choice to make:
+        # Only `like`, `lexical`, `fuzzy`, `leetspeak`, `noise-fuzzy` and `all` (which includes
+        # them) have a choice to make:
         # `exact` is always case-sensitive while `full-text` and `proximity` never are,
         # so asking would have no effect. `all` uses the stored threshold and distance.
         case_sensitive: bool | None = None
-        if engine in (SearchSettings.ENGINE_ALL, "like", "lexical", "fuzzy", "leetspeak"):
+        if engine in (
+            SearchSettings.ENGINE_ALL,
+            "like",
+            "lexical",
+            "fuzzy",
+            "leetspeak",
+            "noise-fuzzy",
+        ):
             case_sensitive = Confirm.ask(
                 "Case-sensitive?", console=console, default=default_case_sensitive
             )
         threshold: str | None = None
-        if engine == "fuzzy":
+        if engine in ("fuzzy", "noise-fuzzy"):
             presets = ", ".join(SearchSettings.FUZZY_PRESETS)
             threshold = Prompt.ask(
                 f"Fuzziness ({presets}, a percentage or a similarity 0-1)",
@@ -252,11 +262,15 @@ class InteractiveMenu:
                 default=default_distance,
             )
         leet_level: str | None = None
-        if engine == "leetspeak":
+        if engine in ("leetspeak", "noise-fuzzy"):
             levels = ", ".join(SearchSettings.LEETSPEAK_LEVELS)
             leet_level = Prompt.ask(
                 f"Leet level ({levels})", console=console, default=default_level
             )
+        noise: str | None = None
+        if engine == "noise-fuzzy":
+            levels = ", ".join(SearchSettings.NOISE_LEVELS)
+            noise = Prompt.ask(f"Noise ({levels})", console=console, default=default_noise)
         InteractiveMenu._run_safely(
             run_search,
             content=content,
@@ -266,6 +280,7 @@ class InteractiveMenu:
             fuzziness=None,
             distance=distance,
             leet_level=leet_level,
+            noise=noise,
             export=None,
             format_=None,
         )
@@ -529,6 +544,21 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(leetspeak_level_set, level=level)
 
     @staticmethod
+    def _settings_noise_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Search > Noise Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(noise_fuzzy_noise_show)
+            elif choice == "2":
+                levels = ", ".join(SearchSettings.NOISE_LEVELS)
+                level = Prompt.ask(f"Noise ({levels})", console=console)
+                InteractiveMenu._run_safely(noise_fuzzy_noise_set, noise=level)
+
+    @staticmethod
     def _settings_search_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -541,6 +571,7 @@ class InteractiveMenu:
                     ("5", "Fuzzy Threshold"),
                     ("6", "Proximity Distance"),
                     ("7", "Leetspeak Level"),
+                    ("8", "Noise Level"),
                     ("0", "Back"),
                 ],
             )
@@ -560,6 +591,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_proximity_distance_menu()
             elif choice == "7":
                 InteractiveMenu._settings_leetspeak_level_menu()
+            elif choice == "8":
+                InteractiveMenu._settings_noise_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

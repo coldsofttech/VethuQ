@@ -472,8 +472,11 @@ class TestSearchEngines:
     @pytest.mark.parametrize(
         ("args", "message"),
         [
-            (["--engine", "like", "--threshold", "0.8"], "Only the fuzzy engine"),
-            (["--engine", "full-text", "--fuzziness", "loose"], "Only the fuzzy engine"),
+            (["--engine", "like", "--threshold", "0.8"], "Only the fuzzy and noise-fuzzy engines"),
+            (
+                ["--engine", "full-text", "--fuzziness", "loose"],
+                "Only the fuzzy and noise-fuzzy engines",
+            ),
             (["--engine", "fuzzy", "--threshold", "0"], "above 0"),
             (["--engine", "fuzzy", "--threshold", "150"], "above 0"),
             (["--engine", "fuzzy", "--fuzziness", "sloppy"], "not one of"),
@@ -587,7 +590,10 @@ class TestSearchEngines:
             (["--engine", "proximity", "--distance", "0"], "from 1 to 100"),
             (["--engine", "proximity", "--distance", "101"], "from 1 to 100"),
             (["--engine", "proximity", "--distance", "nope"], "from 1 to 100"),
-            (["--engine", "proximity", "--threshold", "80%"], "Only the fuzzy engine"),
+            (
+                ["--engine", "proximity", "--threshold", "80%"],
+                "Only the fuzzy and noise-fuzzy engines",
+            ),
             (["--engine", "proximity", "--case-sensitive"], "always case-insensitive"),
             (["--engine", "fuzzy", "--distance", "5"], "Only the proximity engine"),
         ],
@@ -739,7 +745,9 @@ class TestSearchLeetspeak:
         assert invalid.exit_code != 0 and "level must be one of" in _flatten(invalid.output)
         assert "--leet-level" in _flatten(invalid.output)
         assert wrong_engine.exit_code != 0
-        assert "Only the leetspeak engine has a level" in _flatten(wrong_engine.output)
+        assert "Only the leetspeak and noise-fuzzy engines have a level" in _flatten(
+            wrong_engine.output
+        )
 
     def test_export_records_the_leet_level(self, use_temp_db, tmp_path):
         db_path = use_temp_db()
@@ -769,7 +777,7 @@ class TestSearchLeetspeak:
 
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
-        assert "Page: 1 of 1 [ocr] [Lookalike]" in lines
+        assert "Page: 1 of 1 [ocr] [Lookalike]  also: Obscured" in lines
         assert "say h3ll0 to all" in lines
 
     def test_rejects_fuzzy_and_proximity_options(self, use_temp_db):
@@ -782,7 +790,9 @@ class TestSearchLeetspeak:
             app, ["search", "hello", "--engine", "leetspeak", "--distance", "5"]
         )
 
-        assert threshold.exit_code != 0 and "Only the fuzzy engine" in _flatten(threshold.output)
+        assert threshold.exit_code != 0 and "Only the fuzzy and noise-fuzzy engines" in _flatten(
+            threshold.output
+        )
         assert distance.exit_code != 0 and "Only the proximity engine" in _flatten(distance.output)
 
     def test_too_short_a_query_is_reported(self, use_temp_db):
@@ -792,6 +802,151 @@ class TestSearchLeetspeak:
 
         assert result.exit_code != 0
         assert "at least 3 characters" in _flatten(result.output)
+
+
+class TestSearchNoiseFuzzy:
+    def test_finds_each_kind_of_hiding(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h3ll0 and helo and he llo to all")
+
+        result = runner.invoke(app, ["search", "hello", "--engine", "noise-fuzzy"])
+
+        assert result.exit_code == 0
+        assert "Results: 3 matches (engine: noise-fuzzy, threshold 80%" in result.stdout
+        for text in ("h3ll0", "helo", "he llo"):
+            assert text in result.stdout
+
+    def test_the_header_shows_threshold_level_and_noise(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h3ll0 to all")
+
+        result = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--noise", "medium"]
+        )
+
+        # (the panel title is cut off at 80 columns; the export keeps every option)
+        assert "engine: noise-fuzzy, threshold 80%, leet level bas" in _flatten(result.stdout)
+
+    def test_noise_flag_beats_the_setting(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h..e llo to all")
+
+        low = runner.invoke(app, ["search", "hello", "--engine", "noise-fuzzy"])
+        medium = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--noise", "medium"]
+        )
+        runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "set", "medium"])
+        stored = runner.invoke(app, ["search", "hello", "--engine", "noise-fuzzy"])
+        overridden = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--noise", "low"]
+        )
+
+        assert "No matches found." in low.stdout
+        assert "--noise medium" in low.stdout  # the hint towards more noise
+        assert "h..e llo" in medium.stdout and "h..e llo" in stored.stdout
+        assert "No matches found." in overridden.stdout
+
+    def test_fuzziness_and_leet_level_flags_apply(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame and a Museurn")
+
+        game = runner.invoke(
+            app, ["search", "game", "--engine", "noise-fuzzy", "--fuzziness", "strict"]
+        )
+        standard = runner.invoke(
+            app,
+            ["search", "game", "--engine", "noise-fuzzy", "--fuzziness", "strict"]
+            + ["--leet-level", "standard"],
+        )
+        loose = runner.invoke(
+            app, ["search", "Museum", "--engine", "noise-fuzzy", "--threshold", "0.65"]
+        )
+
+        assert "No matches found." in game.stdout
+        assert "9ame" in standard.stdout and "threshold 90%, leet level sta" in standard.stdout
+        assert "Museurn" in loose.stdout and "threshold 65%" in loose.stdout
+
+    def test_honours_case_sensitive(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say HELLO to all")
+
+        loose = runner.invoke(app, ["search", "hello", "--engine", "noise-fuzzy"])
+        strict = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--case-sensitive"]
+        )
+
+        assert "HELLO" in loose.stdout
+        assert "No matches found." in strict.stdout
+
+    def test_in_the_combined_search_it_is_labelled_obscured(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h.ell0 to all")
+
+        result = runner.invoke(app, ["search", "hello"])
+
+        assert result.exit_code == 0
+        lines = _content_lines(result.stdout)
+        assert "Page: 1 of 1 [ocr] [Obscured]" in lines
+        assert "say h.ell0 to all" in lines
+
+    def test_the_noise_flag_reaches_the_combined_search(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h..e llo to all")
+
+        default = runner.invoke(app, ["search", "hello"])
+        medium = runner.invoke(app, ["search", "hello", "--noise", "medium"])
+
+        assert "No matches found." in default.stdout
+        assert "[Obscured]" in medium.stdout
+
+    def test_noise_flag_is_validated(self, use_temp_db):
+        use_temp_db()
+
+        invalid = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--noise", "loud"]
+        )
+        wrong_engine = runner.invoke(app, ["search", "hello", "--engine", "like", "--noise", "low"])
+
+        assert invalid.exit_code != 0 and "noise must be one of" in _flatten(invalid.output)
+        assert "--noise" in _flatten(invalid.output)
+        assert wrong_engine.exit_code != 0
+        assert "Only the noise-fuzzy engine has a noise level" in _flatten(wrong_engine.output)
+
+    def test_a_distance_is_an_error(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(
+            app, ["search", "hello", "--engine", "noise-fuzzy", "--distance", "5"]
+        )
+
+        assert result.exit_code != 0
+        assert "Only the proximity engine" in _flatten(result.output)
+
+    def test_export_records_threshold_level_and_noise(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h3ll0 to all")
+        as_json = tmp_path / "out.json"
+        as_html = tmp_path / "out.html"
+
+        runner.invoke(
+            app,
+            ["search", "hello", "--engine", "noise-fuzzy", "--noise", "medium"]
+            + ["--export", str(as_json)],
+        )
+        runner.invoke(
+            app,
+            ["search", "hello", "--engine", "noise-fuzzy", "--noise", "medium"]
+            + ["--export", str(as_html), "--format", "html"],
+        )
+
+        payload = json.loads(as_json.read_text())
+        assert payload["engine"] == "noise-fuzzy"
+        assert (payload["threshold"], payload["leet_level"], payload["noise"]) == (
+            0.8,
+            "basic",
+            "medium",
+        )
+        assert "noise medium" in as_html.read_text()
 
 
 class TestSearchAll:
@@ -805,7 +960,7 @@ class TestSearchAll:
         lines = _content_lines(result.stdout)
         assert "Search Results: 1 page (engine: all)" in lines
         assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Lookalike," in lines
-        assert "Similar" in lines  # the label wraps rather than cutting off
+        assert "Similar, Obscured" in lines  # the label wraps rather than cutting off
 
     def test_ranks_pages_exact_then_contains_then_word_then_similar(self, use_temp_db):
         db_path = use_temp_db()
@@ -910,6 +1065,7 @@ class TestSearchAll:
             "full-text",
             "leetspeak",
             "fuzzy",
+            "noise-fuzzy",
         ]
         html_text = as_html.read_text()
         assert "engine: all" in html_text

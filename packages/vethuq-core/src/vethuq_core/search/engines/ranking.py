@@ -5,15 +5,18 @@ relevance, a word similarity, no score at all. Rather than blend the numbers,
 pages are ranked by *match quality* - how strict the strictest engine that found
 them is - and only ordered by an engine's own signal within a tier:
 
-    Exact > Contains > Relevant > Near > Word > Lookalike > Similar
+    Exact > Contains > Relevant > Near > Word > Lookalike > Similar > Obscured
 
-(`exact` > `like` > `lexical` > `proximity` > `full-text` > `leetspeak` > `fuzzy`.)
+(`exact` > `like` > `lexical` > `proximity` > `full-text` > `leetspeak` > `fuzzy` >
+`noise-fuzzy`.)
 `proximity` outranks `full-text` because every page it finds, `full-text` finds too: both
 need all the terms, so ranking them the other way round would leave "the words are close
 together" with no way to raise a page. `leetspeak` sits between `full-text` and `fuzzy`:
 it only swaps known look-alike characters (`3` for `e`) in the very words typed, which is
 more certain than `fuzzy`'s guess that a word with a few edits is the one meant, but it
-doesn't tolerate the other word forms and word orders `full-text` does.
+doesn't tolerate the other word forms and word orders `full-text` does. `noise-fuzzy` is
+last: it is `leetspeak` and `fuzzy` combined with tolerance for stray characters, so every
+page they find it finds too, and only it finds text hidden by all three at once.
 
 Because the engines' matches nest (an exact match is also a substring, a word and
 a similar word), a good match is usually found by three or four of them. So a page
@@ -59,7 +62,16 @@ class PageResult:
 
 class Ranking:
     # Strictest first: the order pages are ranked in, and `matched_by` is listed in.
-    TIERS = ("exact", "like", "lexical", "proximity", "full-text", "leetspeak", "fuzzy")
+    TIERS = (
+        "exact",
+        "like",
+        "lexical",
+        "proximity",
+        "full-text",
+        "leetspeak",
+        "fuzzy",
+        "noise-fuzzy",
+    )
 
     # What each engine is called to users, in the CLI and the UI alike.
     BADGES = {
@@ -70,6 +82,7 @@ class Ranking:
         "full-text": "Word",
         "leetspeak": "Lookalike",
         "fuzzy": "Similar",
+        "noise-fuzzy": "Obscured",
     }
 
     # What each badge means in plain language, shared by the CLI and the UI.
@@ -82,6 +95,8 @@ class Ranking:
         "leetspeak": "your words written with look-alike characters (h3ll0 for hello, p@55w0rd "
         "for password)",
         "fuzzy": "a word close to yours, tolerating typos and OCR misreads (the % is how close)",
+        "noise-fuzzy": "your words hidden by stray characters, look-alike symbols or typos "
+        "(h..e llo, h @ 3 l l 0)",
     }
 
     @staticmethod
@@ -182,6 +197,7 @@ class Ranking:
         threshold: float | None,
         distance: int | None,
         level: str | None,
+        noise: str | None,
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
         search = SearchEngines.get(storage, engine).search
@@ -195,6 +211,15 @@ class Ranking:
             )
         if engine == "proximity":
             return search(query, context_chars=chars, distance=distance)
+        if engine == "noise-fuzzy":
+            return search(
+                query,
+                context_chars=chars,
+                case_sensitive=case_sensitive,
+                threshold=threshold,
+                level=level,
+                noise=noise,
+            )
         return search(query, context_chars=chars)
 
     @staticmethod
@@ -207,13 +232,14 @@ class Ranking:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first.
 
         Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`,
-        `leetspeak` and `fuzzy` (`exact` always matches case, `full-text` and `proximity`
-        never do),
-        `threshold` only `fuzzy`, `distance` only `proximity` and `level` only `leetspeak`,
+        `leetspeak`, `fuzzy` and `noise-fuzzy` (`exact` always matches case, `full-text` and
+        `proximity` never do), `threshold` only `fuzzy` and `noise-fuzzy`, `distance` only
+        `proximity`, `level` only `leetspeak` and `noise-fuzzy` and `noise` only `noise-fuzzy`,
         each defaulting to the user's setting. An engine that can't search the query
         (`proximity` needs two terms, `lexical` three characters) is skipped rather than
         failing the search.
@@ -223,7 +249,7 @@ class Ranking:
         for engine in Ranking.TIERS:
             try:
                 runs[engine] = Ranking._run(
-                    storage, engine, query, chars, case_sensitive, threshold, distance, level
+                    storage, engine, query, chars, case_sensitive, threshold, distance, level, noise
                 )
             except SearchQueryError:
                 runs[engine] = []

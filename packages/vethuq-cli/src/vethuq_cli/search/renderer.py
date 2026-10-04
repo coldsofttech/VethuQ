@@ -23,12 +23,14 @@ class ResultRenderer:
         parts = [f"engine: {options.engine}"]
         if options.case_sensitive:
             parts.append("case-sensitive")
-        if options.engine == "fuzzy" and options.threshold is not None:
+        if options.engine in ("fuzzy", "noise-fuzzy") and options.threshold is not None:
             parts.append(f"threshold {options.threshold:.0%}")
         if options.engine == "proximity" and options.distance is not None:
             parts.append(f"within {options.distance} words")
-        if options.engine == "leetspeak" and options.level is not None:
+        if options.engine in ("leetspeak", "noise-fuzzy") and options.level is not None:
             parts.append(f"leet level {options.level}")
+        if options.engine == "noise-fuzzy" and options.noise is not None:
+            parts.append(f"noise {options.noise}")
         return ", ".join(parts)
 
     @staticmethod

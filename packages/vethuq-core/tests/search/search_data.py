@@ -3,6 +3,8 @@
 import sqlite3
 from datetime import UTC, datetime
 
+from vethuq_core.leet import Leet
+
 
 class SearchData:
     @staticmethod
@@ -48,17 +50,18 @@ class SearchData:
         conn: sqlite3.Connection, document_id: int, page_number: int, text: str
     ) -> None:
         conn.execute(
-            "INSERT INTO pdf_pages (document_id, page_number, ocr_text, confidence) "
-            "VALUES (?, ?, ?, 0.95)",
-            (document_id, page_number, text),
+            "INSERT INTO pdf_pages (document_id, page_number, ocr_text, noise_text, confidence) "
+            "VALUES (?, ?, ?, ?, 0.95)",
+            (document_id, page_number, text, Leet.skeleton(text)),
         )
         conn.commit()
 
     @staticmethod
     def add_image_page(conn: sqlite3.Connection, document_id: int, text: str) -> None:
         conn.execute(
-            "INSERT INTO image_pages (document_id, ocr_text, confidence) VALUES (?, ?, 0.95)",
-            (document_id, text),
+            "INSERT INTO image_pages (document_id, ocr_text, noise_text, confidence) "
+            "VALUES (?, ?, ?, 0.95)",
+            (document_id, text, Leet.skeleton(text)),
         )
         conn.commit()
 

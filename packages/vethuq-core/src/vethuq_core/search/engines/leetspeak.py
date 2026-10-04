@@ -21,51 +21,11 @@ from functools import cache
 from itertools import product
 from string import ascii_letters, ascii_lowercase
 
+from vethuq_core.leet import LEVEL_TABLES as _LEVEL_TABLES
 from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
-
-# Letter -> what it is written as, added at each level (cumulative).
-_BASIC = {
-    "a": ("4", "@"),
-    "e": ("3",),
-    "i": ("1",),
-    "l": ("1",),
-    "o": ("0",),
-    "s": ("5", "$"),
-    "t": ("7",),
-}
-_STANDARD = {
-    "b": ("8",),
-    "g": ("9", "6"),
-    "i": ("!", "|"),
-    "l": ("|",),
-    "t": ("+",),
-    "z": ("2",),
-}
-_EXTENDED = {
-    "a": ("/\\",),
-    "b": ("|3",),
-    "c": ("(", "[", "{"),
-    "d": ("|)",),
-    "f": ("ph",),
-    "h": ("|-|",),
-    "k": ("|<",),
-    "l": ("|_",),
-    "m": ("/\\/\\",),
-    "n": ("|\\|",),
-    "o": ("()",),
-    "r": ("|2",),
-    "u": ("|_|",),
-    "v": ("\\/",),
-    "w": ("\\/\\/",),
-}
-_LEVEL_TABLES = {
-    "basic": (_BASIC,),
-    "standard": (_BASIC, _STANDARD),
-    "extended": (_BASIC, _STANDARD, _EXTENDED),
-}
 
 # Most phrases the narrowing expression may hold; beyond that, every page is examined.
 _MAX_NARROWING_PHRASES = 256
@@ -111,9 +71,11 @@ class LeetspeakSearchEngine:
         threshold: float | None = None,
         distance: int | None = None,
         level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         SearchEngineHelpers.require_no_distance(self.name, distance)
+        SearchEngineHelpers.require_no_noise(self.name, noise)
         query = query.strip()
         if not query:
             return []

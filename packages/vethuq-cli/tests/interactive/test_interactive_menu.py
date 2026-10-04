@@ -124,7 +124,7 @@ class TestInteractiveMenu:
         result = runner.invoke(app, [], input="3\n10\ny\n0\n8\n")
 
         assert result.exit_code == 0
-        assert "4 rebuilt, 0 failed" in " ".join(result.output.split())
+        assert "6 rebuilt, 0 failed" in " ".join(result.output.split())
 
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()
@@ -395,6 +395,47 @@ class TestInteractiveSearchEngines:
         assert "leet level standard" in default.stdout
         assert "Results:" not in bad.output
         assert "level must be one of" in bad.output
+
+    def test_settings_noise_level_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Noise Level > Set high; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n8\n2\nhigh\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search noise level set to high." in result.stdout
+        assert "Search noise level: high" in result.stdout
+
+    def test_noise_fuzzy_asks_for_case_fuzziness_level_and_noise(self, use_temp_db):
+        _seed_page(use_temp_db(), "say h..e llo to all")
+
+        # Search > text > engine > case-sensitive? no > fuzziness > leet level > noise, then exit.
+        result = runner.invoke(
+            app, [], input="1\nhello\nnoise-fuzzy\nn\nloose\nstandard\nmedium\n8\n"
+        )
+
+        assert result.exit_code == 0
+        # (the panel title is cut off at 80 columns, so only its start is checked)
+        assert "Results: 1 match (engine: noise-fuzzy, threshold 65%" in result.stdout
+        assert "h..e llo" in result.stdout  # found, so the medium noise level was used
+        for prompt in ("Case-sensitive?", "Fuzziness", "Leet level", "Noise (low, medium, high)"):
+            assert prompt in result.stdout
+
+    def test_noise_fuzzy_defaults_to_the_stored_answers_and_rejects_nonsense(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_page(db_path, "say h..e llo to all")
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_noise_level(storage, "medium")
+        finally:
+            storage.close()
+
+        stored = runner.invoke(app, [], input="1\nhello\nnoise-fuzzy\nn\n\n\n\n8\n")
+        bad = runner.invoke(app, [], input="1\nhello\nnoise-fuzzy\nn\n\n\nloud\n8\n")
+
+        assert "h..e llo" in stored.stdout  # the stored medium noise level applied
+        assert "Results:" not in bad.output
+        assert "noise must be one of" in bad.output
 
     _CONTRACT = "The payment is due within thirty days, subject to the termination clause."
 

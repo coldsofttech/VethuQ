@@ -88,6 +88,7 @@ SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
 SEARCH_LEETSPEAK_LEVELS = _SearchSettings.LEETSPEAK_LEVELS
+SEARCH_NOISE_LEVELS = tuple(_SearchSettings.NOISE_LEVELS)
 SEARCH_PROXIMITY_MAX_DISTANCE = _SearchSettings.PROXIMITY_MAX_DISTANCE
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 BACKUP_VALUES = _DbSettings.BACKUP_VALUES
@@ -112,6 +113,7 @@ __all__ = [
     "SEARCH_EXPORT_FORMATS",
     "SEARCH_FUZZY_PRESETS",
     "SEARCH_LEETSPEAK_LEVELS",
+    "SEARCH_NOISE_LEVELS",
     "SEARCH_PROXIMITY_MAX_DISTANCE",
     "SEARCH_PROXIMITY_PRESETS",
     "STALE_LOCK_VALUES",
@@ -161,6 +163,8 @@ __all__ = [
     "SearchFuzzyThresholdSettings",
     "SearchLeetspeakLevelSettings",
     "SearchLeetspeakSettings",
+    "SearchNoiseFuzzySettings",
+    "SearchNoiseLevelSettings",
     "SearchIndexRebuildResult",
     "SearchMatch",
     "SearchOptionError",
@@ -636,6 +640,41 @@ class SearchLeetspeakSettings:
         self.level = SearchLeetspeakLevelSettings()
 
 
+class SearchNoiseLevelSettings:
+    """How much stray punctuation and whitespace `noise-fuzzy` search skips inside a match.
+
+    Not instantiated directly — use `Vethuq().settings.search.noise_fuzzy.noise`.
+    """
+
+    def get(self) -> str:
+        """The stored level, a name from `SEARCH_NOISE_LEVELS`. `"low"` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_noise_level(storage)
+        finally:
+            storage.close()
+
+    def set(self, level: str) -> None:
+        """Set the default level: `"low"` (at most 1 noise character in a row, 2 in all),
+        `"medium"` (3 in a row, 6 in all) or `"high"` (6 in a row, 12 in all).
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_noise_level(storage, level)
+        finally:
+            storage.close()
+
+
+class SearchNoiseFuzzySettings:
+    """Configure the `noise-fuzzy` search engine. Not instantiated directly — use
+    `Vethuq().settings.search.noise_fuzzy`."""
+
+    def __init__(self) -> None:
+        self.noise = SearchNoiseLevelSettings()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
@@ -647,6 +686,7 @@ class SearchSettings:
         self.fuzzy = SearchFuzzySettings()
         self.proximity = SearchProximitySettings()
         self.leetspeak = SearchLeetspeakSettings()
+        self.noise_fuzzy = SearchNoiseFuzzySettings()
 
 
 class RemovedRetentionSettings:
@@ -1072,13 +1112,14 @@ class Search:
         threshold: float | str | None = None,
         distance: int | str | None = None,
         leet_level: str | None = None,
+        noise: str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `content`.
 
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
-        page in text order) - or best match first for the `full-text`, `fuzzy`, `proximity` and
-        `leetspeak` engines. Only successfully indexed documents are considered.
+        page in text order) - or best match first for the `full-text`, `fuzzy`, `proximity`,
+        `leetspeak` and `noise-fuzzy` engines. Only successfully indexed documents are considered.
         `context_chars` defaults to `Vethuq().settings.search.snippet` if not given.
 
         `engine` is one of `SEARCH_ENGINES` and defaults to
@@ -1094,10 +1135,15 @@ class Search:
         `password`, and the other way round - as whole words, spelled-as-typed first
         (`leet_level`, one of `SEARCH_LEETSPEAK_LEVELS`, picks which substitutions count and
         defaults to `Vethuq().settings.search.leetspeak.level`; it needs
-        at least 3 characters, one a letter). `case_sensitive`
+        at least 3 characters, one a letter); `noise-fuzzy` finds `content`'s characters
+        hidden by stray punctuation or whitespace (letters are never noise), look-alike
+        symbols and typos at once - `h..e llo`, `h @ 3 l l 0` and `helo` for `hello` - closest
+        first (it uses `threshold` and `leet_level` too, and `noise`, one of
+        `SEARCH_NOISE_LEVELS`, says how much noise is skipped, defaulting to
+        `Vethuq().settings.search.noise_fuzzy.noise`). `case_sensitive`
         defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
-        `fuzzy` and `leetspeak` act on it - `exact` is always case-sensitive and
-        `full-text` and `proximity` never are. `threshold` (`fuzzy` only)
+        `fuzzy`, `leetspeak` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
+        `full-text` and `proximity` never are. `threshold` (`fuzzy` and `noise-fuzzy` only)
         is the minimum similarity between `content`'s words and the words found: a
         name from `SEARCH_FUZZY_PRESETS`, a percentage (`"80%"`) or a number above 0
         and up to 1, defaulting to `Vethuq().settings.search.fuzzy.threshold`.
@@ -1111,14 +1157,15 @@ class Search:
         the hits in ranked page order, each labelled with the engine that found it
         (see `run_pages` for them grouped by page); the options above then reach
         the engines that can use them and are never rejected. Raises `SearchOptionError`
-        for an unknown engine, an invalid `threshold`, `distance` or `leet_level`, or an explicit
-        `case_sensitive`, `threshold`, `distance` or `leet_level` the engine can't honour, and
+        for an unknown engine, an invalid `threshold`, `distance`, `leet_level` or `noise`, or an
+        explicit `case_sensitive`, `threshold`, `distance`, `leet_level` or `noise` the engine
+        can't honour, and
         `SearchQueryError` for a `proximity` query of fewer than two terms.
         """
         storage = _open_storage()
         try:
             options = _Search.resolve_options(
-                storage, engine, case_sensitive, threshold, distance, leet_level
+                storage, engine, case_sensitive, threshold, distance, leet_level, noise
             )
             return _Search.indexed_content(
                 storage,
@@ -1129,6 +1176,7 @@ class Search:
                 threshold=options.threshold,
                 distance=options.distance,
                 level=options.level,
+                noise=options.noise,
             )
         finally:
             storage.close()
@@ -1142,29 +1190,31 @@ class Search:
         threshold: float | str | None = None,
         distance: int | str | None = None,
         leet_level: str | None = None,
+        noise: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine at once and return the pages found, best first.
 
         Each page is one `PageResult` - however many engines found it - ranked by the
-        strictest engine that did: Exact, Contains, Relevant, Near, Word, Lookalike, then
-        Similar (see `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge` for the
-        labels the CLI and the UI show), and within a tier by that engine's own signal.
+        strictest engine that did: Exact, Contains, Relevant, Near, Word, Lookalike, Similar,
+        then Obscured (see `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge`
+        for the labels the CLI and the UI show), and within a tier by that engine's own signal.
         `PageResult.engine` is the page's strictest engine and `matched_by` all of
         them; its `hits` are `SearchMatch`es best first, each with its own `engine`
         and `matched_by` (hits found by several engines are merged into one).
 
-        `case_sensitive`, `threshold`, `distance` and `leet_level` default to their settings
-        and reach the engines that can use them (`like`/`fuzzy`/`leetspeak`, `fuzzy`,
-        `proximity`, `leetspeak`);
+        `case_sensitive`, `threshold`, `distance`, `leet_level` and `noise` default to their
+        settings and reach the engines that can use them (`like`/`fuzzy`/`leetspeak`/
+        `noise-fuzzy`, `fuzzy`/`noise-fuzzy`, `proximity`, `leetspeak`/`noise-fuzzy`,
+        `noise-fuzzy`);
         `proximity` is skipped for a query of fewer than two terms.
         `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
-        `SearchOptionError` for an invalid `threshold`, `distance` or `leet_level`. This is what
-        `run` does when `engine="all"` (the default), with the hits flattened.
+        `SearchOptionError` for an invalid `threshold`, `distance`, `leet_level` or `noise`.
+        This is what `run` does when `engine="all"` (the default), with the hits flattened.
         """
         storage = _open_storage()
         try:
             options = _Search.resolve_options(
-                storage, "all", case_sensitive, threshold, distance, leet_level
+                storage, "all", case_sensitive, threshold, distance, leet_level, noise
             )
             return _Search.indexed_pages(
                 storage,
@@ -1174,6 +1224,7 @@ class Search:
                 threshold=options.threshold,
                 distance=options.distance,
                 level=options.level,
+                noise=options.noise,
             )
         finally:
             storage.close()
@@ -1190,14 +1241,15 @@ class Search:
         threshold: float | None = None,
         distance: int | None = None,
         leet_level: str | None = None,
+        noise: str | None = None,
     ) -> Path:
         """Write `matches` for `query` to `output` as JSON or HTML.
 
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
         `engine`, `case_sensitive` and (for `fuzzy` or
-        `proximity`) `threshold` or `distance`, or (for `leetspeak`) `leet_level` the search
-        ran with to record them
+        `proximity`) `threshold` or `distance`, (for `leetspeak`) `leet_level`, or (for
+        `noise-fuzzy`) `noise` the search ran with to record them
         in the file.
         """
         storage = _open_storage()
@@ -1216,6 +1268,7 @@ class Search:
             threshold=threshold,
             distance=distance,
             level=leet_level,
+            noise=noise,
         )
         return output_path
 

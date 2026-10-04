@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 
+from vethuq_core.leet import Leet
+
 
 class Ocr:
     _FIND_UNITS_SQL = {
@@ -33,12 +35,12 @@ class Ocr:
     }
     _PAGE_UPDATE_SQL = {
         "pdf_pages": (
-            "UPDATE pdf_pages SET ocr_text = ?, confidence = ?, ocr_phase = ?, ocr_angles = ? "
-            "WHERE id = ?"
+            "UPDATE pdf_pages SET ocr_text = ?, noise_text = ?, confidence = ?, ocr_phase = ?, "
+            "ocr_angles = ? WHERE id = ?"
         ),
         "image_pages": (
-            "UPDATE image_pages SET ocr_text = ?, confidence = ?, ocr_phase = ?, ocr_angles = ? "
-            "WHERE id = ?"
+            "UPDATE image_pages SET ocr_text = ?, noise_text = ?, confidence = ?, ocr_phase = ?, "
+            "ocr_angles = ? WHERE id = ?"
         ),
     }
     _PAGE_PHASE_DONE_SQL = {
@@ -119,7 +121,8 @@ class Ocr:
             ocr_angles: str,
         ) -> None:
             conn.execute(
-                Ocr._PAGE_UPDATE_SQL[table], (ocr_text, confidence, ocr_phase, ocr_angles, page_id)
+                Ocr._PAGE_UPDATE_SQL[table],
+                (ocr_text, Leet.skeleton(ocr_text), confidence, ocr_phase, ocr_angles, page_id),
             )
 
         @staticmethod
