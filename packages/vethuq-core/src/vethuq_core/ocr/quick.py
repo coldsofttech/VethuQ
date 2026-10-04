@@ -28,6 +28,7 @@ from vethuq_core.readers import (
     FileRemovedError,
     OutsideSourceError,
     PageResult,
+    PasswordProtectedError,
     Readers,
     UnreadableFileError,
 )
@@ -120,13 +121,20 @@ class Quick:
         ('processing') in that case, for a future run to retry rather than ever
         being readable as 'indexed' with missing pages/metrics.
 
-        Returns whether the document was indexed successfully.
+        A password-protected file is recorded as 'unsupported' (keeping its file type)
+        rather than an error, since nothing is wrong with it that a retry could fix; it
+        counts as processed, not failed.
+
+        Returns whether the document was processed without failing.
         """
         try:
             with storage.transaction():
                 storage.update_document_index_retry_stats(
                     document_id, attempts_used - 1, peak_memory_mb, cpu_percent
                 )
+                if pages is None and isinstance(last_exc, PasswordProtectedError):
+                    Document.mark_unsupported(storage, document_id, str(last_exc))
+                    return True
                 if pages is None:
                     Document.mark_error(storage, document_id, str(last_exc))
                     return False

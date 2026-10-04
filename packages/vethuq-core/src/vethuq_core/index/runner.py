@@ -900,7 +900,8 @@ class IndexRunner:
                 IndexRunner._logger.info("Processing %s", file_path)
                 if not unsupported_counted:
                     # Every source is scanned (unsupported files recorded) before the
-                    # first file is processed, so one count here is enough.
+                    # first file is processed, so this picks up those up front;
+                    # `on_file_done` then adds files found unsupported while processing.
                     unsupported_counted = True
                     unsupported = IndexRunner._count_unsupported(db_path, target)
                     with state_lock:
@@ -917,7 +918,11 @@ class IndexRunner:
                     IndexRunner._logger.info("Indexed %s", file_path)
                 else:
                     IndexRunner._logger.warning("Failed to index %s", file_path)
+                # A file can turn out unsupported while being processed (e.g. a
+                # password-protected PDF), so refresh the count after each one.
+                unsupported = IndexRunner._count_unsupported(db_path, target)
                 with state_lock:
+                    state.unsupported_files = unsupported
                     if file_path in state.current_files:
                         state.current_files.remove(file_path)
                     # None: another concurrently-running index run already
