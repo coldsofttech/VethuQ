@@ -32,10 +32,12 @@ class TestEta:
             )
         # Quick is fast, moderate takes 30s a document; deep has no history yet.
         conn.execute(
-            "INSERT INTO processing_metrics VALUES (1, 'image', 'small', 5, 1.0, 10, 5, 'now')"
+            "INSERT INTO processing_metrics "
+            "VALUES (1, 'image', 'png', 'small', 5, 1.0, 10, 5, 'now')"
         )
         conn.execute(
-            "INSERT INTO processing_metrics VALUES (2, 'image', 'small', 5, 30.0, 10, 5, 'now')"
+            "INSERT INTO processing_metrics "
+            "VALUES (2, 'image', 'png', 'small', 5, 30.0, 10, 5, 'now')"
         )
         conn.commit()
         OcrSettings.set_engine(storage, "deep")

@@ -11,17 +11,28 @@ class TestInteractiveMenu:
     def test_no_args_shows_banner_and_main_menu(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="8\n")
+        result = runner.invoke(app, [], input="10\n")
 
         assert result.exit_code == 0
         assert "VethuQ" in result.stdout
         assert "Main Menu" in result.stdout
         assert "Goodbye." in result.stdout
 
+    def test_main_menu_shows_the_version_just_before_exit(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="9\n10\n")
+
+        assert result.exit_code == 0
+        assert result.stdout.index("Version") < result.stdout.index("Exit")
+        assert "VethuQ CLI" in result.stdout
+        assert "Python " in result.stdout
+        assert "Database schema" in result.stdout
+
     def test_header_panel_shows_the_app_name_and_tagline(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="8\n")
+        result = runner.invoke(app, [], input="10\n")
 
         assert "VethuQ" in result.stdout
         assert "Document intelligence and evidence infrastructure." in result.stdout
@@ -29,7 +40,7 @@ class TestInteractiveMenu:
     def test_each_menu_is_a_panel_listing_its_numbered_items(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n1\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n1\n0\n0\n10\n")
 
         assert "Main Menu" in result.stdout
         assert "Settings > GPU" in result.stdout
@@ -39,7 +50,7 @@ class TestInteractiveMenu:
     def test_an_invalid_selection_asks_again(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="9\n8\n")
+        result = runner.invoke(app, [], input="99\n10\n")
 
         assert "Invalid selection" in result.output
         assert "Goodbye." in result.stdout
@@ -55,7 +66,7 @@ class TestInteractiveMenu:
     def test_sources_list_then_back_then_exit(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="2\n1\n\n\n\n0\n8\n")
+        result = runner.invoke(app, [], input="2\n1\n\n\n\n0\n10\n")
 
         assert result.exit_code == 0
         assert "No sources registered yet." in result.stdout
@@ -64,7 +75,7 @@ class TestInteractiveMenu:
         use_temp_db()
         runner.invoke(app, ["source", "add", str(tmp_path)])
 
-        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\ny\n\n\n\n0\n8\n")
+        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\ny\n\n\n\n0\n10\n")
 
         assert result.exit_code == 0
         assert "No files indexed yet for this source." in result.stdout
@@ -72,7 +83,7 @@ class TestInteractiveMenu:
     def test_sources_list_files_unknown_source_keeps_shell_alive(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="2\n2\n99\nn\n\n\n\n0\n8\n")
+        result = runner.invoke(app, [], input="2\n2\n99\nn\n\n\n\n0\n10\n")
 
         assert result.exit_code == 0
         assert "No active source matches" in result.output
@@ -83,7 +94,7 @@ class TestInteractiveMenu:
         runner.invoke(app, ["source", "add", str(tmp_path)])
         out = tmp_path / "out.html"
 
-        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\nn\n\n\n{out}\nhtml\n0\n8\n")
+        result = runner.invoke(app, [], input=f"2\n2\n{tmp_path}\nn\n\n\n{out}\nhtml\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Exported 0 file(s)" in result.stdout
@@ -92,7 +103,7 @@ class TestInteractiveMenu:
     def test_index_reindex_source_unknown_source_keeps_shell_alive(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="3\n8\n99\nn\n\n\n0\n8\n")
+        result = runner.invoke(app, [], input="3\n8\n99\nn\n\n\n0\n10\n")
 
         assert result.exit_code == 0
         assert "No active source matches" in result.output
@@ -100,7 +111,7 @@ class TestInteractiveMenu:
 
     def test_index_reindex_untracked_file_keeps_shell_alive(self, use_temp_db, tmp_path):
         use_temp_db()
-        answers = ["3", "9", str(tmp_path / "x.pdf"), "", "n", "", "", "0", "8"]
+        answers = ["3", "9", str(tmp_path / "x.pdf"), "", "n", "", "", "0", "10"]
 
         result = runner.invoke(app, [], input="\n".join(answers) + "\n")
 
@@ -111,7 +122,7 @@ class TestInteractiveMenu:
     def test_index_rebuild_search_asks_for_confirmation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="3\n10\nn\n0\n8\n")
+        result = runner.invoke(app, [], input="3\n10\nn\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Rebuild search index" in result.output
@@ -121,7 +132,7 @@ class TestInteractiveMenu:
     def test_index_rebuild_search_runs_when_confirmed(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="3\n10\ny\n0\n8\n")
+        result = runner.invoke(app, [], input="3\n10\ny\n0\n10\n")
 
         assert result.exit_code == 0
         assert "8 rebuilt, 0 failed" in " ".join(result.output.split())
@@ -129,7 +140,7 @@ class TestInteractiveMenu:
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n1\n3\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "GPU: " in result.stdout
@@ -137,7 +148,7 @@ class TestInteractiveMenu:
     def test_db_integrity_check_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="6\n1\n0\n8\n")
+        result = runner.invoke(app, [], input="6\n1\n0\n10\n")
 
         assert result.exit_code == 0
         assert "passed" in result.stdout
@@ -145,7 +156,7 @@ class TestInteractiveMenu:
     def test_settings_db_integrity_check_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n5\n1\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n5\n1\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Integrity check: " in result.stdout
@@ -153,7 +164,7 @@ class TestInteractiveMenu:
     def test_settings_db_backup_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n5\n2\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n5\n2\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Automatic backup: " in result.stdout
@@ -161,7 +172,7 @@ class TestInteractiveMenu:
     def test_db_backup_create_and_list_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="6\n2\n1\nsnap\n\n2\n\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="6\n2\n1\nsnap\n\n2\n\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "snap" in result.stdout
@@ -169,7 +180,7 @@ class TestInteractiveMenu:
     def test_settings_logs_level_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n6\n1\n2\ndebug\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n6\n1\n2\ndebug\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Log level set to debug." in result.stdout
@@ -178,7 +189,7 @@ class TestInteractiveMenu:
     def test_settings_logs_retention_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n6\n2\n2\n30\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n6\n2\n2\n30\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Log retention set to 30 days." in result.stdout
@@ -193,7 +204,7 @@ class TestInteractiveMenu:
             encoding="utf-8",
         )
 
-        result = runner.invoke(app, [], input="7\n2\n10\n0\n8\n")
+        result = runner.invoke(app, [], input="7\n2\n10\n0\n10\n")
 
         assert result.exit_code == 0
         assert "hello menu" in result.stdout
@@ -201,7 +212,7 @@ class TestInteractiveMenu:
     def test_invalid_selection_then_quit(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="9\nq\n")
+        result = runner.invoke(app, [], input="99\nq\n")
 
         assert result.exit_code == 0
         assert "Invalid selection." in result.stdout
@@ -218,7 +229,7 @@ class TestInteractiveMenu:
     def test_settings_index_stability_check_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n3\n4\n2\n0.5\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n3\n4\n2\n0.5\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Stability check set to 0.5 seconds." in result.stdout
@@ -227,7 +238,7 @@ class TestInteractiveMenu:
     def test_settings_ocr_retry_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n4\n1\n2\n5\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n4\n1\n2\n5\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "OCR retry attempts set to 5." in result.stdout
@@ -236,7 +247,7 @@ class TestInteractiveMenu:
     def test_settings_ocr_engine_set_and_show_navigation(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n4\n2\n2\ndeep\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n4\n2\n2\ndeep\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "deep" in result.stdout
@@ -269,7 +280,7 @@ class TestInteractiveSearchEngines:
         _seed_page(use_temp_db(), "Visit the Museum today")
 
         # Search > text > engine (like) > case-sensitive? no, then exit.
-        result = runner.invoke(app, [], input="1\nmuseum\nlike\nn\n8\n")
+        result = runner.invoke(app, [], input="1\nmuseum\nlike\nn\n10\n")
 
         assert result.exit_code == 0
         assert "Results: 1 match (engine: like)" in result.stdout
@@ -277,15 +288,15 @@ class TestInteractiveSearchEngines:
     def test_case_sensitive_answer_is_applied_for_like(self, use_temp_db):
         _seed_page(use_temp_db(), "Visit the Museum today")
 
-        result = runner.invoke(app, [], input="1\nmuseum\nlike\ny\n8\n")
+        result = runner.invoke(app, [], input="1\nmuseum\nlike\ny\n10\n")
 
         assert "No matches found." in result.stdout
 
     def test_skips_case_question_for_other_engines(self, use_temp_db):
         _seed_page(use_temp_db(), "Visit the Museum today")
 
-        # No case-sensitive answer is given: prompting for one would eat the "8" and hang.
-        result = runner.invoke(app, [], input="1\nMuseum\nexact\n8\n")
+        # No case-sensitive answer is given: prompting for one would eat the "9" and hang.
+        result = runner.invoke(app, [], input="1\nMuseum\nexact\n10\n")
 
         assert result.exit_code == 0
         assert "Results: 1 match (engine: exact, case-sensitive)" in result.stdout
@@ -301,7 +312,7 @@ class TestInteractiveSearchEngines:
             storage.close()
 
         # Enter accepts the default engine (full-text), which asks nothing further.
-        result = runner.invoke(app, [], input="1\nmuseums\n\n8\n")
+        result = runner.invoke(app, [], input="1\nmuseums\n\n10\n")
 
         assert "Results: 1 match (engine: full-text)" in result.stdout
 
@@ -309,7 +320,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Engine > Set exact; Show; back. Case Sensitive > Enable; Show; back.
-        result = runner.invoke(app, [], input="4\n2\n3\n2\nexact\n1\n0\n4\n2\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n3\n2\nexact\n1\n0\n4\n2\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search engine set to exact." in result.stdout
@@ -320,7 +331,7 @@ class TestInteractiveSearchEngines:
         _seed_page(use_temp_db(), "Visit the Museurn today")
 
         # Search > text > engine (fuzzy) > case-sensitive? no > fuzziness loose, then exit.
-        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nloose\n8\n")
+        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nloose\n10\n")
 
         assert result.exit_code == 0
         assert "Results: 1 match (engine: fuzzy, threshold 65%)" in result.stdout
@@ -329,7 +340,7 @@ class TestInteractiveSearchEngines:
         db_path = use_temp_db()
         _seed_page(db_path, "Visit the Museurn today")
 
-        numeric = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n0.7\n8\n")
+        numeric = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n0.7\n10\n")
         assert "threshold 70%" in numeric.stdout
 
         storage = open_storage(db_path)
@@ -338,13 +349,13 @@ class TestInteractiveSearchEngines:
         finally:
             storage.close()
         # Enter accepts the stored default (loose).
-        default = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n\n8\n")
+        default = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\n\n10\n")
         assert "threshold 65%" in default.stdout
 
     def test_fuzzy_rejects_an_invalid_fuzziness_answer(self, use_temp_db):
         _seed_page(use_temp_db(), "Visit the Museum today")
 
-        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nsloppy\n8\n")
+        result = runner.invoke(app, [], input="1\nMuseum\nfuzzy\nn\nsloppy\n10\n")
 
         assert result.exit_code == 0
         assert "Results:" not in result.output
@@ -354,7 +365,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Fuzzy Threshold > Set loose; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n5\n2\nloose\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n5\n2\nloose\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search fuzzy threshold set to loose." in result.stdout
@@ -468,7 +479,7 @@ class TestInteractiveSearchEngines:
         _seed_page(use_temp_db(), self._CONTRACT)
 
         # Search > text > engine (proximity) > distance 12, then exit. No case question.
-        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n12\n8\n")
+        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n12\n10\n")
 
         assert result.exit_code == 0
         assert "Results: 1 match (engine: proximity, within 12 words)" in result.stdout
@@ -478,7 +489,7 @@ class TestInteractiveSearchEngines:
         db_path = use_temp_db()
         _seed_page(db_path, self._CONTRACT)
 
-        preset = runner.invoke(app, [], input="1\npayment termination\nproximity\nloose\n8\n")
+        preset = runner.invoke(app, [], input="1\npayment termination\nproximity\nloose\n10\n")
         assert "within 30 words" in preset.stdout
 
         storage = open_storage(db_path)
@@ -487,13 +498,13 @@ class TestInteractiveSearchEngines:
         finally:
             storage.close()
         # Enter accepts the stored default (15).
-        default = runner.invoke(app, [], input="1\npayment termination\nproximity\n\n8\n")
+        default = runner.invoke(app, [], input="1\npayment termination\nproximity\n\n10\n")
         assert "within 15 words" in default.stdout
 
     def test_proximity_rejects_an_invalid_distance_answer(self, use_temp_db):
         _seed_page(use_temp_db(), self._CONTRACT)
 
-        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n0\n8\n")
+        result = runner.invoke(app, [], input="1\npayment termination\nproximity\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Results:" not in result.output
@@ -503,7 +514,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Proximity Distance > Set tight; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n6\n2\ntight\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n6\n2\ntight\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search proximity distance set to tight." in result.stdout
@@ -513,8 +524,41 @@ class TestInteractiveSearchEngines:
         _seed_page(use_temp_db(), "Visit the Museum today")
 
         # Search > text > Enter accepts the default engine (all) > case-sensitive? no.
-        result = runner.invoke(app, [], input="1\nMuseum\n\nn\n8\n")
+        result = runner.invoke(app, [], input="1\nMuseum\n\nn\n10\n")
 
         assert result.exit_code == 0
         assert "Results: 1 page (engine: all)" in result.stdout
         assert "[Exact]" in result.stdout
+
+
+class TestFileTypesMenu:
+    def test_main_menu_lists_file_types(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="8\n1\n1\n0\n0\n10\n")
+
+        assert "File types" in result.stdout
+        assert "List installed" in result.stdout
+        assert "PDF" in result.stdout
+
+    def test_main_menu_lists_search_engines(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="8\n2\n1\n0\n0\n10\n")
+
+        assert "Search engines" in result.stdout
+        assert "List installed" in result.stdout
+        assert "like" in result.stdout.lower()
+
+    def test_list_all_includes_install_hints_for_missing_types(self, use_temp_db, monkeypatch):
+        from vethuq_core.filetypes import FileType
+
+        use_temp_db()
+        real = FileType.is_installed
+        monkeypatch.setattr(
+            FileType, "is_installed", lambda self: False if self.id == "pdf" else real(self)
+        )
+
+        result = runner.invoke(app, [], input="8\n1\n2\n0\n0\n10\n")
+
+        assert "not installed" in result.stdout

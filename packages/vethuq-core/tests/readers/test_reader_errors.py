@@ -1,10 +1,10 @@
 import pymupdf
 import pytest
+from vethuq_core.filetypes.pdf.reader import PdfReader
 from vethuq_core.readers import (
     CorruptedFileError,
     FileRemovedError,
     PasswordProtectedError,
-    PdfReader,
 )
 
 

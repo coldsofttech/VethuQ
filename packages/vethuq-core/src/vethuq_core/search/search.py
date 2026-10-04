@@ -11,6 +11,7 @@ from typing import NamedTuple
 
 from vethuq_core.logs import Logs
 from vethuq_core.search.engines import PageResult, Ranking, SearchEngines, SearchMatch
+from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -91,7 +92,14 @@ class Search:
             raise SearchOptionError(
                 f"{engine!r} is not one of {', '.join(SearchSettings.ENGINES)}.", "engine"
             )
+        if engine is not None and not SearchEngineCatalog.is_name_enabled(engine):
+            info = SearchEngineCatalog.get(engine)
+            reason = SearchEngineCatalog.unavailable_reason(info) if info is not None else None
+            raise SearchOptionError(reason or f"The {engine} engine is not available.", "engine")
         resolved_engine = engine if engine is not None else SearchSettings.get_engine(storage)
+        if not SearchEngineCatalog.is_name_enabled(resolved_engine):
+            # The saved default names an engine that is no longer enabled: search with the rest.
+            resolved_engine = SearchSettings.ENGINE_ALL
         if threshold is not None:
             try:
                 threshold = SearchSettings.parse_fuzzy_threshold(threshold)

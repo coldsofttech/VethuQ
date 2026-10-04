@@ -3,7 +3,7 @@ VethuQ — open-source document intelligence and evidence infrastructure for sea
 
 ## Compatibility
 
-The `vethuq` CLI and Python library work on both Windows and Linux. The desktop app is Windows-only.
+The `vethuq` CLI and Python library work on both Windows and Linux. The desktop app is Windows-only and supports 64-bit Windows 10 and Windows 11.
 
 ## Install
 
@@ -61,6 +61,18 @@ By default VethuQ keeps its database and logs in your user data folder (`%APPDAT
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 
-Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file type and text source. `vethuq stats reset` clears them if you want a fresh baseline.
+Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file extension (pdf, png, jpg) and text source. `vethuq stats reset` clears them if you want a fresh baseline.
+
+## What V1 doesn't do
+
+To set expectations, these are deliberately out of scope for V1:
+
+- Word, Excel, and PowerPoint files
+- Email files
+- Archives (zip and similar)
+- Searching across languages, or semantic (meaning-based) search
+- Cloud or hybrid OCR — OCR runs locally only
+- Automatic OCR-engine selection
+- OCR previews and advanced OCR remediation
 
 See [docs/CLI.md](docs/CLI.md) for the full command reference, [docs/PYTHON_API.md](docs/PYTHON_API.md) for the library, or [docs/DESKTOP.md](docs/DESKTOP.md) for the desktop app.

@@ -246,10 +246,15 @@ class Document:
     def find_duplicate_index(
         conn: sqlite3.Connection, sha256: str, exclude_id: int
     ) -> sqlite3.Row | None:
-        """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`."""
+        """Return the earliest-indexed `document_index` row (id, document_id) matching `sha256`.
+
+        A row queued for re-indexing doesn't count: its pages are about to be replaced, so
+        a file matching it would otherwise skip OCR against text that is going away.
+        """
         return conn.execute(
             "SELECT id, document_id FROM document_index "
-            "WHERE sha256 = ? AND id != ? AND status = 'indexed' ORDER BY id ASC LIMIT 1",
+            "WHERE sha256 = ? AND id != ? AND status = 'indexed' AND reindex_pending = 0 "
+            "ORDER BY id ASC LIMIT 1",
             (sha256, exclude_id),
         ).fetchone()
 
@@ -298,7 +303,7 @@ class Document:
                  file_size_bytes, sha256, mtime, created_at, modified_at)
             VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?)
             ON CONFLICT(file_path) DO UPDATE SET
-                document_id = excluded.document_id,
+                document_id = excluded.document_id, file_type = excluded.file_type,
                 status = 'processing', error_message = NULL, indexed_at = NULL,
                 started_at = excluded.started_at, completed_at = NULL,
                 file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,
@@ -359,13 +364,14 @@ class Document:
     def reset_index_for_reindex(
         conn: sqlite3.Connection, source_id: int, file_path: str | None = None
     ) -> int:
-        """Send indexed/failed rows of a source (or just one file's) back to 'pending'.
+        """Queue indexed/failed rows of a source (or just one file's) for re-indexing.
 
-        The rows keep their documents, so the next run reprocesses them in place
-        instead of creating new logical documents. Returns how many were reset.
+        The rows keep their status, documents and pages, so they stay searchable until the
+        next run reprocesses each one in place (clearing `reindex_pending`) instead of
+        creating new logical documents. Returns how many were queued.
         """
         query = (
-            "UPDATE document_index SET status = 'pending', error_message = NULL "
+            "UPDATE document_index SET reindex_pending = 1 "
             "WHERE source_id = ? AND status IN ('indexed', 'error')"
         )
         params: tuple[object, ...] = (source_id,)
@@ -401,15 +407,16 @@ class Document:
     @staticmethod
     def mark_index_removed(conn: sqlite3.Connection, row_id: int, removed_at: str) -> None:
         conn.execute(
-            "UPDATE document_index SET status = 'removed', removed_at = ? WHERE id = ?",
+            "UPDATE document_index SET status = 'removed', removed_at = ?, reindex_pending = 0 "
+            "WHERE id = ?",
             (removed_at, row_id),
         )
 
     @staticmethod
     def mark_indexed(conn: sqlite3.Connection, document_id: int, now: str) -> None:
         conn.execute(
-            "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ? "
-            "WHERE id = ?",
+            "UPDATE document_index SET status = 'indexed', indexed_at = ?, completed_at = ?, "
+            "reindex_pending = 0 WHERE id = ?",
             (now, now, document_id),
         )
 
@@ -427,14 +434,15 @@ class Document:
     ) -> None:
         conn.execute(
             "UPDATE document_index SET status = 'unsupported', error_message = ?, "
-            "completed_at = ? WHERE id = ?",
+            "completed_at = ?, reindex_pending = 0 WHERE id = ?",
             (message, now, document_id),
         )
 
     @staticmethod
     def get_index_metrics_stats(conn: sqlite3.Connection, document_id: int) -> sqlite3.Row:
         row = conn.execute(
-            "SELECT started_at, completed_at, peak_memory_mb, cpu_percent, file_size_bytes "
+            "SELECT file_path, started_at, completed_at, peak_memory_mb, cpu_percent, "
+            "file_size_bytes "
             "FROM document_index WHERE id = ?",
             (document_id,),
         ).fetchone()
@@ -459,7 +467,8 @@ class Document:
     @staticmethod
     def get_index_pending_check(conn: sqlite3.Connection, file_path: str) -> sqlite3.Row | None:
         return conn.execute(
-            "SELECT status, mtime, file_size_bytes, sha256 FROM document_index WHERE file_path = ?",
+            "SELECT status, mtime, file_size_bytes, sha256, reindex_pending "
+            "FROM document_index WHERE file_path = ?",
             (file_path,),
         ).fetchone()
 
@@ -640,7 +649,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {where}"
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY di.file_path, pp.page_number",
             (match_expr if match_expr is not None else like_pattern,),
         ).fetchall()
@@ -665,7 +675,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {where}"
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY di.file_path",
             (match_expr if match_expr is not None else like_pattern,),
         ).fetchall()
@@ -689,7 +700,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE pdf_pages_trigram MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY score DESC, di.file_path, pp.page_number",
             (match_expr,),
         ).fetchall()
@@ -708,7 +720,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE image_pages_trigram MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY score DESC, di.file_path",
             (match_expr,),
         ).fetchall()
@@ -742,7 +755,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {where}"
-            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "(di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY di.file_path, pp.page_number",
             (match_expr,) if match_expr is not None else (),
         ).fetchall()
@@ -767,7 +781,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {where}"
-            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "(di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY di.file_path",
             (match_expr,) if match_expr is not None else (),
         ).fetchall()
@@ -882,7 +897,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE pdf_pages_words MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY score DESC, di.file_path, pp.page_number",
             (match_expr,),
         ).fetchall()
@@ -902,7 +918,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE image_pages_words MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY score DESC, di.file_path",
             (match_expr,),
         ).fetchall()
@@ -926,7 +943,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE pdf_pages_words MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY score DESC, di.file_path, pp.page_number",
             (match_expr,),
         ).fetchall()
@@ -947,7 +965,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             "WHERE image_pages_words MATCH ? "
-            "AND di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "AND (di.status = 'indexed' OR di.reindex_pending) "
+            "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY score DESC, di.file_path",
             (match_expr,),
         ).fetchall()

@@ -6,9 +6,11 @@
 # (vethuq.iss), which can't shrink the already-compressed --onefile archives.
 # Built by scripts/dev/release.py --desktop.
 
+import importlib.util
+import os
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 # SPECPATH is packages/vethuq-ui/installer
 REPO_ROOT = Path(SPECPATH).parents[2]
@@ -30,6 +32,46 @@ sv_ttk_datas, sv_ttk_binaries, sv_ttk_hidden = collect_all("sv_ttk")
 rich_datas, rich_binaries, rich_hidden = collect_all("rich")
 
 
+# PaddleX finds its pipelines (OCR.yaml and friends) as data files beside the package and imports
+# its pipeline and model classes by name, and PaddleOCR checks its dependencies through package
+# metadata - none of which static analysis sees. Only the worker runs OCR.
+# Importing PaddleX to collect it would otherwise probe the network for model hosters.
+os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+paddlex_datas, paddlex_binaries, paddlex_hidden = collect_all("paddlex")
+paddleocr_datas, paddleocr_binaries, paddleocr_hidden = collect_all("paddleocr")
+paddle_metadata = copy_metadata("paddlex", recursive=True) + copy_metadata(
+    "paddleocr", recursive=True
+)
+# Paddle loads several native libraries by name at run time (mklml.dll, the BLAS/LAPACK and
+# Fortran runtime DLLs, ...), which PyInstaller's dependency scan misses. Ship every file in its
+# libs folder rather than trying to name the ones that are needed.
+_paddle_libs = Path(importlib.util.find_spec("paddle").submodule_search_locations[0]) / "libs"
+paddle_binaries = [(str(f), "paddle/libs") for f in sorted(_paddle_libs.iterdir()) if f.is_file()]
+
+# Creating the OCR pipeline checks that every package of PaddleX's `ocr-core` extra (the one
+# paddleocr depends on) is installed, by reading each one's package metadata.
+from paddlex.utils import deps as paddlex_deps  # noqa: E402
+
+for _dep in paddlex_deps.EXTRAS["ocr-core"]:
+    paddle_metadata += copy_metadata(_dep)
+
+# File types are discovered at run time: FileTypes.all() lists the type.json manifests beside the
+# package (so they must ship as files), and each type's reader is imported by name from the
+# manifest (so static analysis can't see it).
+FILETYPE_DATAS = [
+    (str(manifest), f"vethuq_core/filetypes/{manifest.parent.name}")
+    for manifest in sorted((CORE_SRC / "filetypes").glob("*/type.json"))
+]
+FILETYPE_HIDDEN = collect_submodules("vethuq_core.filetypes")
+
+# Search engines are listed from the manifests beside the package (SearchEngineCatalog.all()),
+# so those must ship as files too.
+SEARCH_ENGINE_DATAS = [
+    (str(manifest), "vethuq_core/search/engines/manifests")
+    for manifest in sorted((CORE_SRC / "search" / "engines" / "manifests").glob("*.json"))
+]
+
+
 def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
     return Analysis(
         [str(entry)],
@@ -47,9 +89,14 @@ def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
 
 ui_a = _analysis(
     UI_SRC / "app.py",
-    datas=[(str(UI_SRC / "assets"), "vethuq_ui/assets"), *sv_ttk_datas],
+    datas=[
+        (str(UI_SRC / "assets"), "vethuq_ui/assets"),
+        *sv_ttk_datas,
+        *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
+    ],
     binaries=sv_ttk_binaries,
-    hiddenimports=sv_ttk_hidden,
+    hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN],
     excludes=OCR_MODULES,
 )
 cli_a = _analysis(
@@ -60,12 +107,25 @@ cli_a = _analysis(
         # The CLI's styles are built from the palette at import time.
         (str(CORE_SRC / "branding" / "palette.json"), "vethuq_core/branding"),
         *rich_datas,
+        *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
     ],
     binaries=rich_binaries,
-    hiddenimports=rich_hidden,
+    hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN],
     excludes=OCR_MODULES,
 )
-worker_a = _analysis(CORE_SRC / "index" / "runner.py")
+worker_a = _analysis(
+    CORE_SRC / "index" / "runner.py",
+    datas=[
+        *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
+        *paddlex_datas,
+        *paddleocr_datas,
+        *paddle_metadata,
+    ],
+    binaries=[*paddle_binaries, *paddlex_binaries, *paddleocr_binaries],
+    hiddenimports=[*FILETYPE_HIDDEN, *paddlex_hidden, *paddleocr_hidden],
+)
 
 
 def _exe(analysis, name, *, console):

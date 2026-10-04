@@ -14,14 +14,14 @@ class Ocr:
         SELECT p.id, p.ocr_phase, p.ocr_angles, p.page_number, p.source AS page_source,
                d.id AS document_id, d.document_id AS logical_document_id, d.file_path
         FROM pdf_pages p JOIN document_index d ON d.id = p.document_id
-        WHERE d.status = 'indexed'
+        WHERE d.status = 'indexed' AND d.reindex_pending = 0
           AND p.source != 'native' AND p.ocr_phase < ? AND d.source_id IN ({marks})
     """,
         "image_pages": """
         SELECT p.id, p.ocr_phase, p.ocr_angles, 1 AS page_number, 'ocr' AS page_source,
                d.id AS document_id, d.document_id AS logical_document_id, d.file_path
         FROM image_pages p JOIN document_index d ON d.id = p.document_id
-        WHERE d.status = 'indexed'
+        WHERE d.status = 'indexed' AND d.reindex_pending = 0
           AND p.ocr_phase < ? AND d.source_id IN ({marks})
     """,
     }
@@ -58,13 +58,13 @@ class Ocr:
         "pdf_pages": (
             "SELECT p.ocr_phase AS phase, COUNT(*) AS pages "
             "FROM pdf_pages p JOIN document_index d ON d.id = p.document_id "
-            "WHERE d.status = 'indexed' AND p.source != 'native' "
+            "WHERE d.status = 'indexed' AND d.reindex_pending = 0 AND p.source != 'native' "
             "AND d.source_id IN ({marks}) GROUP BY p.ocr_phase"
         ),
         "image_pages": (
             "SELECT p.ocr_phase AS phase, COUNT(*) AS pages "
             "FROM image_pages p JOIN document_index d ON d.id = p.document_id "
-            "WHERE d.status = 'indexed' "
+            "WHERE d.status = 'indexed' AND d.reindex_pending = 0 "
             "AND d.source_id IN ({marks}) GROUP BY p.ocr_phase"
         ),
     }
@@ -72,13 +72,13 @@ class Ocr:
         "pdf": (
             "SELECT COUNT(DISTINCT d.id) FROM pdf_pages p "
             "JOIN document_index d ON d.id = p.document_id "
-            "WHERE d.status = 'indexed' AND p.source != 'native' "
+            "WHERE d.status = 'indexed' AND d.reindex_pending = 0 AND p.source != 'native' "
             "AND p.ocr_phase < ? AND d.source_id IN ({marks})"
         ),
         "image": (
             "SELECT COUNT(DISTINCT d.id) FROM image_pages p "
             "JOIN document_index d ON d.id = p.document_id "
-            "WHERE d.status = 'indexed' "
+            "WHERE d.status = 'indexed' AND d.reindex_pending = 0 "
             "AND p.ocr_phase < ? AND d.source_id IN ({marks})"
         ),
     }
@@ -92,7 +92,8 @@ class Ocr:
         conn: sqlite3.Connection, document_index_id: int
     ) -> sqlite3.Row | None:
         return conn.execute(
-            "SELECT file_size_bytes FROM document_index WHERE id = ?", (document_index_id,)
+            "SELECT file_path, file_size_bytes FROM document_index WHERE id = ?",
+            (document_index_id,),
         ).fetchone()
 
     class Page:

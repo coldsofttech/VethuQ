@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import PageResult, Readers
 from vethuq_core.sources import Source
 from vethuq_core.storage import Row, Storage
@@ -298,7 +298,7 @@ class Document:
                         Document.mark_unsupported(
                             storage,
                             claim[0],
-                            f"Unsupported file format: {file_path.suffix or file_path.name}",
+                            Readers.unsupported_reason(file_path),
                         )
             except FileNotFoundError:
                 continue

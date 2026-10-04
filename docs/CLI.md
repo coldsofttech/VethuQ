@@ -14,7 +14,7 @@ problem (10-15). See [docs/troubleshooting.md](troubleshooting.md).
 
 ## `--version`
 
-Show the VethuQ version, Python version, platform and database schema version in a panel, then exit. Handy to include when asking for support.
+Show the VethuQ version, Python version, platform, database schema version and the installed file type and search engine packages (`type-pdf`, `search-like`, ...) in a panel, then exit. The installed file types and search engines are also saved in the database. Handy to include when asking for support.
 
 ```
 vethuq --version
@@ -101,11 +101,16 @@ vethuq index restart ./path/to/folder-or-file
 ### `reindex <source> [--wait] [--force]` / `reindex file <id-or-path> [--source <id-or-path>] [--wait] [--force]`
 
 Re-index everything under a source, or one file, regardless of whether it
-already succeeded. Files are OCR'd again and their existing documents are
-updated in place, so no duplicate logical documents appear. Refused while
-another index run is active. `file` is reserved: address a source literally
-named `file` by its id. If a file sits under more than one source,
-`reindex file` fails and asks for `--source`.
+already succeeded. `reindex <source>` asks for confirmation first (showing how
+many files will be re-processed); `--force` skips the question and also clears
+a stale lock left by a run that didn't exit cleanly. Files are OCR'd again and
+their existing documents are updated in place, so no duplicate logical
+documents appear. A file's previous content stays searchable until it has been
+reprocessed, and is kept if reprocessing fails (the file is then listed as
+failed; `vethuq index restart` retries it). Progress is reported like any other
+run (`vethuq index status`). Refused while another index run is active. `file`
+is reserved: address a source literally named `file` by its id. If a file sits
+under more than one source, `reindex file` fails and asks for `--source`.
 
 ```bash
 vethuq index reindex 3
@@ -932,4 +937,30 @@ Processing figures also feed `vethuq index run`'s ETA estimate.
 
 ```bash
 vethuq stats show
+```
+
+## `types`
+
+File types are installed as extras: `pip install vethuq[type-pdf]` (PDF is always included), `vethuq[type-png]`, `vethuq[type-jpg]`. The Windows installer has a page to pick them, and `/TYPES=pdf,png` does the same silently. A type counts as installed when its dependencies import, so there is nothing to switch on or off in the CLI: to add or remove a type, install or reinstall the package (or re-run the installer). Files of a type that is not installed or enabled are not scanned or indexed; they are listed as unsupported with the command to add the type.
+
+### `list [--all]`
+
+List the installed file types with their extensions and package name. `--all` also lists the types that are not installed, with the `pip install` command for each.
+
+```bash
+vethuq file-types list
+vethuq file-types list --all
+```
+
+## `search-engines`
+
+Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
+
+### `list [--all]`
+
+List the installed search engines with their package name. `--all` also lists the ones that are not installed, with the `pip install` command for each.
+
+```bash
+vethuq search-engines list
+vethuq search-engines list --all
 ```

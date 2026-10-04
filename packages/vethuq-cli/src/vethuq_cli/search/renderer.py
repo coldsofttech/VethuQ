@@ -58,7 +58,7 @@ class ResultRenderer:
         table = Table.grid(padding=(0, 2))
         table.add_column(style=f"bold {Theme.PRIMARY}", no_wrap=True)
         table.add_column(style="bright_black")
-        for engine in Ranking.TIERS:
+        for engine in Ranking.active_tiers():
             table.add_row(f"[{Ranking.BADGES[engine]}]", Ranking.MEANINGS[engine])
         for modifier, meaning in Ranking.MODIFIERS.items():
             table.add_row(f"· {modifier}", meaning)

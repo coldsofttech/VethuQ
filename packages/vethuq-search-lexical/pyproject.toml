@@ -1,0 +1,13 @@
+[project]
+name = "vethuq-search-lexical"
+version = "0.1.0"
+description = "Marker package: enables the lexical search engine when installed with vethuq[search-lexical]"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_search_lexical"]

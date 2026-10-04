@@ -22,6 +22,7 @@ from vethuq_core.settings import (
     OcrSettings,
     SearchSettings,
 )
+from vethuq_core.sources import SourceSort
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
@@ -32,6 +33,7 @@ from vethuq_cli.db import integrity_check as db_integrity_check
 from vethuq_cli.db import repair as db_repair
 from vethuq_cli.db import reset as db_reset
 from vethuq_cli.db import restore as db_restore
+from vethuq_cli.filetypes import list_types as file_types_list
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
 from vethuq_cli.index.commands import rebuild_search as index_rebuild_search
@@ -44,6 +46,7 @@ from vethuq_cli.index.commands import status as index_status
 from vethuq_cli.index.commands import stop as index_stop
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import search as run_search
+from vethuq_cli.search_engines import list_engines as search_engines_list
 from vethuq_cli.settings import (
     backup_interval_set,
     backup_interval_show,
@@ -101,13 +104,13 @@ from vethuq_cli.settings import (
     thread_workers_set,
     thread_workers_show,
 )
-from vethuq_cli.source import SourceSort
 from vethuq_cli.source import add as source_add
 from vethuq_cli.source import list_ as source_list
 from vethuq_cli.source import remove as source_remove
 from vethuq_cli.stats.commands import reset as stats_reset
 from vethuq_cli.stats.commands import show as stats_show
 from vethuq_cli.theme import Theme
+from vethuq_cli.version import VersionCommand
 
 
 class _Quit(Exception):
@@ -886,6 +889,42 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(stats_reset, force=False)
 
     @staticmethod
+    def _file_types_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "File types",
+                [("1", "List installed"), ("2", "List all"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            InteractiveMenu._run_safely(file_types_list, all_types=choice == "2")
+
+    @staticmethod
+    def _search_engines_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Search engines",
+                [("1", "List installed"), ("2", "List all"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            InteractiveMenu._run_safely(search_engines_list, all_engines=choice == "2")
+
+    @staticmethod
+    def _extras_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "File types & search engines",
+                [("1", "File types"), ("2", "Search engines"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._file_types_menu()
+            elif choice == "2":
+                InteractiveMenu._search_engines_menu()
+
+    @staticmethod
     def _settings_db_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -1099,10 +1138,12 @@ class InteractiveMenu:
                         ("5", "Stats"),
                         ("6", "Db"),
                         ("7", "Logs"),
-                        ("8", "Exit"),
+                        ("8", "File types & search engines"),
+                        ("9", "Version"),
+                        ("10", "Exit"),
                     ],
                 )
-                if choice == "8":
+                if choice == "10":
                     break
                 if choice == "1":
                     InteractiveMenu._search_action()
@@ -1118,6 +1159,10 @@ class InteractiveMenu:
                     InteractiveMenu._db_menu()
                 elif choice == "7":
                     InteractiveMenu._logs_menu()
+                elif choice == "8":
+                    InteractiveMenu._extras_menu()
+                elif choice == "9":
+                    InteractiveMenu._run_safely(VersionCommand.show)
         except _Quit:
             pass
         console.print()

@@ -8,6 +8,9 @@ fails on every PR, not on release day.
     uv run python scripts/dev/release.py --package
     uv run python scripts/dev/release.py --desktop   # Windows only
 
+Both first regenerate the files derived from the file type and search engine manifests
+(scripts/dev/sync_extras.py), so a stale extra or installer page can't ship.
+
 `--package` (default if neither flag is given):
   1. Runs packages/vethuq/scripts/merge_sources.py.
   2. Builds the `vethuq` wheel+sdist (`uv build --package vethuq`) into
@@ -24,11 +27,21 @@ fails on every PR, not on release day.
      PATH so `vethuq` works from any terminal. `--version` sets the version
      shown in the installer and in Windows' Apps & Features (defaults to
      vethuq.iss's own MyAppVersion fallback, "0.1.0", if omitted).
+
+The installer is compressed with LZMA2 ultra64 (a few parallel blocks), except under `--dev`.
+
+`--desktop --dev` is for local iteration and never used by CI: it skips `uv sync` and
+PyInstaller when their inputs are unchanged since the last build, and builds the installer
+without compression (quick, but as large as the app). `--clean` forces a full
+PyInstaller rebuild (it also drops PyInstaller's analysis cache, which is otherwise kept
+between builds); it is optional with `--dev` and always applied without it.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 import platform
 import shutil
 import subprocess
@@ -47,7 +60,56 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=REPO_ROOT, check=True, **kwargs)  # noqa: S603
 
 
+class ExtrasFiles:
+    """The files generated from the file type and search engine manifests."""
+
+    @staticmethod
+    def regenerate() -> None:
+        """Bring the extras and installer catalog in step with the manifests."""
+        print("== regenerating extras and installer catalogs ==")
+        _run([sys.executable, "scripts/dev/sync_extras.py"])
+
+
+class DesktopCache:
+    """Remembers what the last desktop build was made from, so `--dev` can skip unchanged steps."""
+
+    STAMP_DIR = REPO_ROOT / "build" / ".stamps"
+
+    @staticmethod
+    def _files(patterns: list[str]) -> list[Path]:
+        found = {
+            path
+            for pattern in patterns
+            for path in REPO_ROOT.glob(pattern)
+            if path.is_file() and "__pycache__" not in path.parts
+        }
+        return sorted(found)
+
+    @staticmethod
+    def fingerprint(patterns: list[str]) -> str:
+        digest = hashlib.sha256()
+        for path in DesktopCache._files(patterns):
+            digest.update(path.relative_to(REPO_ROOT).as_posix().encode())
+            digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    @staticmethod
+    def is_current(name: str, key: str) -> bool:
+        stamp = DesktopCache.STAMP_DIR / name
+        return stamp.exists() and stamp.read_text(encoding="utf-8") == key
+
+    @staticmethod
+    def record(name: str, key: str) -> None:
+        DesktopCache.STAMP_DIR.mkdir(parents=True, exist_ok=True)
+        (DesktopCache.STAMP_DIR / name).write_text(key, encoding="utf-8")
+
+    @staticmethod
+    def forget(name: str) -> None:
+        (DesktopCache.STAMP_DIR / name).unlink(missing_ok=True)
+
+
 def build_package() -> None:
+    ExtrasFiles.regenerate()
     print("== merging vethuq-core + vethuq-cli into packages/vethuq ==")
     _run([sys.executable, "packages/vethuq/scripts/merge_sources.py"])
 
@@ -63,18 +125,29 @@ def build_package() -> None:
     print(f"built {wheels[-1]}")
 
 
-def build_desktop(*, version: str | None = None) -> None:
+def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool = False) -> None:
     if platform.system() != "Windows":
         print("desktop build is Windows-only - skipping on this platform.")
         return
+    # Only `--dev` may reuse earlier work; a normal build always starts from a clean PyInstaller
+    # cache so a stale analysis can never leave a module out of the exe.
+    clean = clean or not dev
 
     # `uv sync` alone only installs the workspace root's own deps, not
     # member packages like vethuq-ui/vethuq-cli - without this, PyInstaller's
     # `--collect-all sv_ttk` below silently collects nothing (sv_ttk isn't
     # installed anywhere) and produces an exe that fails at runtime with
     # ModuleNotFoundError.
-    print("== syncing workspace packages for the desktop build ==")
-    _run(["uv", "sync", "--all-packages", "--group", "desktop"])
+    ExtrasFiles.regenerate()
+
+    sync_key = DesktopCache.fingerprint(["uv.lock", "pyproject.toml", "packages/*/pyproject.toml"])
+    if dev and not clean and DesktopCache.is_current("sync", sync_key):
+        print("== workspace packages unchanged - skipping uv sync ==")
+    else:
+        print("== syncing workspace packages for the desktop build ==")
+        DesktopCache.forget("sync")
+        _run(["uv", "sync", "--all-packages", "--group", "desktop"])
+        DesktopCache.record("sync", sync_key)
 
     build_dir = REPO_ROOT / "build"
     dist_dir = build_dir / "desktop"
@@ -86,29 +159,37 @@ def build_desktop(*, version: str | None = None) -> None:
     if not spec_path.exists():
         raise ReleaseBuildError(f"expected PyInstaller spec at {spec_path}")
 
-    # PyInstaller's scratch output is intermediate and disposable - keep it
-    # out of dist_dir and clean it up after a successful build.
+    # PyInstaller's work folder holds its analysis cache, so it is kept between builds to make
+    # the next one faster under `--dev`; `--clean`, or any build without `--dev`, starts over.
     work_dir = build_dir / "_pyinstaller_work"
-    print("== building VethuQ Desktop with PyInstaller ==")
-    _run(
+    app_dir = dist_dir / "VethuQ"
+    exe_names = ("VethuQ-UI.exe", "vethuq.exe", "vethuq-worker.exe")
+    build_key = DesktopCache.fingerprint(
         [
-            "uv",
-            "run",
-            "pyinstaller",
-            "--noconfirm",
-            "--distpath",
-            str(dist_dir),
-            "--workpath",
-            str(work_dir),
-            str(spec_path),
+            "uv.lock",
+            "packages/*/pyproject.toml",
+            "packages/*/src/**/*",
+            "packages/vethuq-ui/installer/vethuq.spec",
         ]
     )
-    shutil.rmtree(work_dir, ignore_errors=True)
-
-    app_dir = dist_dir / "VethuQ"
-    for exe_name in ("VethuQ-UI.exe", "vethuq.exe", "vethuq-worker.exe"):
-        if not (app_dir / exe_name).exists():
-            raise ReleaseBuildError(f"expected PyInstaller output at {app_dir / exe_name}")
+    if (
+        dev
+        and not clean
+        and DesktopCache.is_current("pyinstaller", build_key)
+        and all((app_dir / name).exists() for name in exe_names)
+    ):
+        print("== sources unchanged - skipping PyInstaller ==")
+    else:
+        DesktopCache.forget("pyinstaller")
+        print("== building VethuQ Desktop with PyInstaller ==")
+        command = ["uv", "run", "pyinstaller", "--noconfirm"]
+        if clean:
+            command.append("--clean")
+        _run([*command, "--distpath", str(dist_dir), "--workpath", str(work_dir), str(spec_path)])
+        for exe_name in exe_names:
+            if not (app_dir / exe_name).exists():
+                raise ReleaseBuildError(f"expected PyInstaller output at {app_dir / exe_name}")
+        DesktopCache.record("pyinstaller", build_key)
     print(f"built {app_dir}")
 
     iscc = shutil.which("iscc")
@@ -122,6 +203,10 @@ def build_desktop(*, version: str | None = None) -> None:
 
     print("== wrapping with Inno Setup ==")
     iscc_cmd = [iscc]
+    if dev:
+        iscc_cmd.append("/DNoCompression")
+    else:
+        iscc_cmd.append(f"/DCompressThreads={min(os.cpu_count() or 1, 4)}")
     if version is not None:
         iscc_cmd.append(f"/DMyAppVersion={version}")
     iscc_cmd.append(str(installer_script))
@@ -140,6 +225,19 @@ def main() -> None:
         "--desktop", action="store_true", help="build the VethuQ Desktop installer (Windows only)"
     )
     parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="local iteration (--desktop only): skip unchanged steps, no compression",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help=(
+            "force a full PyInstaller rebuild, dropping its cache "
+            "(--desktop only; always on without --dev)"
+        ),
+    )
+    parser.add_argument(
         "--version",
         default=None,
         help="version to stamp the desktop installer with (--desktop only); "
@@ -154,7 +252,7 @@ def main() -> None:
         if args.package:
             build_package()
         if args.desktop:
-            build_desktop(version=args.version)
+            build_desktop(version=args.version, dev=args.dev, clean=args.clean)
     except (ReleaseBuildError, subprocess.CalledProcessError) as exc:
         print(f"release build failed: {exc}", file=sys.stderr)
         sys.exit(1)

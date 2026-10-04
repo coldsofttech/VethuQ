@@ -1,0 +1,8 @@
+{
+  "id": "lexical",
+  "label": "Word match (lexical)",
+  "extra": "search-lexical",
+  "requires": [],
+  "modules": [],
+  "default": false
+}

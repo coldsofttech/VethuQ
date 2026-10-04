@@ -19,6 +19,7 @@ from vethuq_core.logs import Logs
 from vethuq_core.ocr.engines import Engines
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.paths.extensions import Extensions
 from vethuq_core.readers import Readers
 from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Source
@@ -284,6 +285,7 @@ class Deepening:
             storage,
             phase=unit.phase,
             file_type=unit.file_type,
+            extension=Extensions.of(unit.file_path),
             file_size_bytes=(doc["file_size_bytes"] if doc is not None else 0) or 0,
             duration=row["duration_seconds"],
             peak_memory_mb=row["peak_memory_mb"] or 0.0,

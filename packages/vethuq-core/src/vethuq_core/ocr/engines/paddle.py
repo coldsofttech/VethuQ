@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from importlib.metadata import version as _package_version
 from importlib.util import find_spec
 from typing import TYPE_CHECKING
@@ -36,7 +37,13 @@ class PaddleOcrEngine:
     @staticmethod
     def check_installed() -> None:
         """Raise `OcrModelMissingError` if PaddleOCR can't be imported - a cheap check that
-        doesn't load it, so a caller can fail fast before starting a background run."""
+        doesn't load it, so a caller can fail fast before starting a background run.
+
+        Skipped in the desktop build: the OCR engine ships only inside the worker exe, so the
+        UI and CLI exes can't import it themselves even though it is installed.
+        """
+        if getattr(sys, "frozen", False):
+            return
         if find_spec("paddleocr") is None:
             _logger.error("OCR engine is not installed")
             raise OcrModelMissingError(

@@ -29,6 +29,13 @@ members = [
     "vethuq",
     "vethuq-cli",
     "vethuq-core",
+    "vethuq-search-exact",
+    "vethuq-search-full-text",
+    "vethuq-search-fuzzy",
+    "vethuq-search-lexical",
+    "vethuq-search-proximity",
+    "vethuq-type-jpg",
+    "vethuq-type-png",
     "vethuq-ui",
     "vethuq-workspace",
 ]
@@ -3016,6 +3023,32 @@ dependencies = [
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+search-exact = [
+    { name = "vethuq-search-exact" },
+]
+search-full-text = [
+    { name = "vethuq-search-full-text" },
+]
+search-fuzzy = [
+    { name = "vethuq-search-fuzzy" },
+]
+search-lexical = [
+    { name = "vethuq-search-lexical" },
+]
+search-proximity = [
+    { name = "vethuq-search-proximity" },
+]
+type-jpg = [
+    { name = "vethuq-type-jpg" },
+]
+type-pdf = [
+    { name = "pymupdf" },
+]
+type-png = [
+    { name = "vethuq-type-png" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
@@ -3024,9 +3057,18 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pymupdf", specifier = ">=1.24" },
+    { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
     { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "vethuq-search-exact", marker = "extra == 'search-exact'", editable = "packages/vethuq-search-exact" },
+    { name = "vethuq-search-full-text", marker = "extra == 'search-full-text'", editable = "packages/vethuq-search-full-text" },
+    { name = "vethuq-search-fuzzy", marker = "extra == 'search-fuzzy'", editable = "packages/vethuq-search-fuzzy" },
+    { name = "vethuq-search-lexical", marker = "extra == 'search-lexical'", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-proximity", marker = "extra == 'search-proximity'", editable = "packages/vethuq-search-proximity" },
+    { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
+provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-cli"
@@ -3059,6 +3101,32 @@ dependencies = [
     { name = "pymupdf" },
 ]
 
+[package.optional-dependencies]
+search-exact = [
+    { name = "vethuq-search-exact" },
+]
+search-full-text = [
+    { name = "vethuq-search-full-text" },
+]
+search-fuzzy = [
+    { name = "vethuq-search-fuzzy" },
+]
+search-lexical = [
+    { name = "vethuq-search-lexical" },
+]
+search-proximity = [
+    { name = "vethuq-search-proximity" },
+]
+type-jpg = [
+    { name = "vethuq-type-jpg" },
+]
+type-pdf = [
+    { name = "pymupdf" },
+]
+type-png = [
+    { name = "vethuq-type-png" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
@@ -3067,7 +3135,51 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pymupdf", specifier = ">=1.24" },
+    { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
+    { name = "vethuq-search-exact", marker = "extra == 'search-exact'", editable = "packages/vethuq-search-exact" },
+    { name = "vethuq-search-full-text", marker = "extra == 'search-full-text'", editable = "packages/vethuq-search-full-text" },
+    { name = "vethuq-search-fuzzy", marker = "extra == 'search-fuzzy'", editable = "packages/vethuq-search-fuzzy" },
+    { name = "vethuq-search-lexical", marker = "extra == 'search-lexical'", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-proximity", marker = "extra == 'search-proximity'", editable = "packages/vethuq-search-proximity" },
+    { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
+provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
+
+[[package]]
+name = "vethuq-search-exact"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-exact" }
+
+[[package]]
+name = "vethuq-search-full-text"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-full-text" }
+
+[[package]]
+name = "vethuq-search-fuzzy"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-fuzzy" }
+
+[[package]]
+name = "vethuq-search-lexical"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-lexical" }
+
+[[package]]
+name = "vethuq-search-proximity"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-proximity" }
+
+[[package]]
+name = "vethuq-type-jpg"
+version = "0.1.0"
+source = { editable = "packages/vethuq-type-jpg" }
+
+[[package]]
+name = "vethuq-type-png"
+version = "0.1.0"
+source = { editable = "packages/vethuq-type-png" }
 
 [[package]]
 name = "vethuq-ui"
@@ -3105,6 +3217,13 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-psutil" },
+    { name = "vethuq-search-exact" },
+    { name = "vethuq-search-full-text" },
+    { name = "vethuq-search-fuzzy" },
+    { name = "vethuq-search-lexical" },
+    { name = "vethuq-search-proximity" },
+    { name = "vethuq-type-jpg" },
+    { name = "vethuq-type-png" },
 ]
 icons = [
     { name = "reportlab" },
@@ -3123,6 +3242,13 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.5" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "types-psutil", specifier = ">=5.9" },
+    { name = "vethuq-search-exact", editable = "packages/vethuq-search-exact" },
+    { name = "vethuq-search-full-text", editable = "packages/vethuq-search-full-text" },
+    { name = "vethuq-search-fuzzy", editable = "packages/vethuq-search-fuzzy" },
+    { name = "vethuq-search-lexical", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-proximity", editable = "packages/vethuq-search-proximity" },
+    { name = "vethuq-type-jpg", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", editable = "packages/vethuq-type-png" },
 ]
 icons = [
     { name = "reportlab", specifier = "==3.6.13" },

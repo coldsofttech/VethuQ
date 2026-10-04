@@ -25,6 +25,19 @@ dependencies = [
     "psutil>=5.9",
 ]
 
+# BEGIN generated from the manifests - run scripts/dev/sync_extras.py
+[project.optional-dependencies]
+search-exact = ["vethuq-search-exact"]
+search-full-text = ["vethuq-search-full-text"]
+search-fuzzy = ["vethuq-search-fuzzy"]
+search-lexical = ["vethuq-search-lexical"]
+search-like = []
+search-proximity = ["vethuq-search-proximity"]
+type-jpg = ["vethuq-type-jpg"]
+type-pdf = ["pymupdf>=1.24"]
+type-png = ["vethuq-type-png"]
+# END generated
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

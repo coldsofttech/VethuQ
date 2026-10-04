@@ -13,6 +13,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
+      - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=5000]
@@ -26,9 +27,17 @@ repos:
         pass_filenames: false
         types: [python]
 
+      - id: sync-extras
+        name: regenerate extras and installer catalogs
+        entry: uv run python scripts/dev/sync_extras.py
+        language: system
+        pass_filenames: false
+        files: '(filetypes/.*/type\.json|search/engines/manifests/.*\.json|scripts/dev/sync_extras\.py)$'
+
       - id: pytest
         name: pytest
         entry: uv run pytest -n auto -m "not integration"
         language: system
         pass_filenames: false
+        files: '(\.py|pyproject\.toml|uv\.lock)$'
         stages: [pre-push]

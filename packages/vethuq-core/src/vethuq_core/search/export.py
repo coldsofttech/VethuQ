@@ -11,7 +11,8 @@ from importlib import resources
 from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
-from vethuq_core.fspath import FsPath
+from vethuq_core.formatting import Formatting
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.search.engines import Ranking
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
@@ -221,17 +222,6 @@ class Export:
             raise ValueError(f"format_ must be one of {SearchSettings.EXPORT_FORMATS}")
 
     @staticmethod
-    def _size(size: int | None) -> str:
-        if size is None:
-            return "-"
-        value = float(size)
-        for unit in ("B", "KB", "MB"):
-            if value < 1024:
-                return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-            value /= 1024
-        return f"{value:.1f} GB"
-
-    @staticmethod
     def _write_table(
         output: Path,
         title: str,
@@ -368,7 +358,7 @@ class Export:
                 )
                 cells = [
                     file.file_type,
-                    Export._size(file.file_size_bytes),
+                    Formatting.size(file.file_size_bytes),
                     str(file.pages) if file.pages else "-",
                     file.started_at or "-",
                     file.completed_at or "-",

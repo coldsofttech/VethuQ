@@ -28,6 +28,7 @@ def _isolated_data_root(tmp_path_factory, monkeypatch):
     """Keep tests from creating db/, run/ or logs/ folders in the real per-user data dir."""
     root = tmp_path_factory.mktemp("data_root")
     monkeypatch.setattr(Paths, "default_data_root", staticmethod(lambda: root))
+    monkeypatch.setattr(Paths, "platform_data_root", staticmethod(lambda: root))
     # ...and from the real per-user location.json (which can relocate the backups folder).
     monkeypatch.setattr(
         Paths, "location_file", staticmethod(lambda: root / "config" / "location.json")

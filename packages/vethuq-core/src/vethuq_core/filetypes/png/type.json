@@ -1,0 +1,11 @@
+{
+  "id": "png",
+  "label": "PNG image",
+  "extensions": [".png"],
+  "extra": "type-png",
+  "requires": [],
+  "modules": ["cv2", "numpy"],
+  "approx_size_mb": 0,
+  "default": false,
+  "reader": "vethuq_core.filetypes.png.reader:PngReader"
+}
