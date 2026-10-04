@@ -61,7 +61,7 @@ By default VethuQ keeps its database and logs in your user data folder (`%APPDAT
 
 OCR runs on CPU by default. If your machine has a supported GPU, you can turn GPU use on via `vethuq settings gpu enable`, or from the desktop app's **Settings** menu.
 
-Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file type and text source. `vethuq stats reset` clears them if you want a fresh baseline.
+Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file extension (pdf, png, jpg) and text source. `vethuq stats reset` clears them if you want a fresh baseline.
 
 ## What V1 doesn't do
 

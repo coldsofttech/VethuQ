@@ -320,7 +320,8 @@ class Document:
     @staticmethod
     def get_index_metrics_stats(conn: sqlite3.Connection, document_id: int) -> sqlite3.Row:
         row = conn.execute(
-            "SELECT started_at, completed_at, peak_memory_mb, cpu_percent, file_size_bytes "
+            "SELECT file_path, started_at, completed_at, peak_memory_mb, cpu_percent, "
+            "file_size_bytes "
             "FROM document_index WHERE id = ?",
             (document_id,),
         ).fetchone()

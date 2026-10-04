@@ -238,16 +238,22 @@ class TestPdfIntegration:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        "fixture_name",
+        ("fixture_name", "expected_status"),
         [
-            "17_Digital Protected File (Pass - Abc123).pdf",
-            "18_Digital Corrupted.pdf",
+            ("17_Digital Protected File (Pass - Abc123).pdf", "unsupported"),
+            ("18_Digital Corrupted.pdf", "error"),
         ],
         ids=["protected", "corrupted"],
     )
     @patch("vethuq_core.ocr.engines.Engines.get")
     def test_run_ocr_unreadable_pdf_records_error_without_aborting(
-        self, mock_get_engine, fixture_name, conn: sqlite3.Connection, storage: Storage, tmp_path
+        self,
+        mock_get_engine,
+        fixture_name,
+        expected_status,
+        conn: sqlite3.Connection,
+        storage: Storage,
+        tmp_path,
     ):
         pdf_path = tmp_path / "doc.pdf"
         pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
@@ -260,6 +266,6 @@ class TestPdfIntegration:
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
         ).fetchone()
-        assert doc["status"] == "error"
+        assert doc["status"] == expected_status
         assert doc["error_message"]
         assert conn.execute("SELECT COUNT(*) FROM pdf_pages").fetchone()[0] == 0

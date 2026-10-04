@@ -10,7 +10,8 @@ from vethuq_core.storage import Storage
 
 @dataclass(frozen=True)
 class ProcessingMetric:
-    file_type: str
+    file_type: str  # 'pdf' | 'image': how the file's pages are stored
+    extension: str  # 'pdf', 'png', 'jpg', ...: what the averages are tracked per
     size_bucket: str
     document_count: int
     avg_duration_seconds: float
@@ -34,7 +35,7 @@ class ProcessingMetric:
 class Processing:
     @staticmethod
     def get_metrics(storage: Storage) -> list[ProcessingMetric]:
-        """Return `processing_metrics`' per-(phase, file_type, size_bucket) running averages."""
+        """Return `processing_metrics`' per-(phase, extension, size_bucket) running averages."""
         return [ProcessingMetric(**dict(row)) for row in storage.list_processing_metrics()]
 
     @staticmethod

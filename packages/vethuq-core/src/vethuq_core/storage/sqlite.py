@@ -331,19 +331,20 @@ class _StatsStoreMixin:
     _conn: sqlite3.Connection
 
     def get_processing_metrics_row(
-        self, phase: int, file_type: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str
     ) -> sqlite3.Row | None:
-        return Stats.get_processing_metrics_row(self._conn, phase, file_type, size_bucket)
+        return Stats.get_processing_metrics_row(self._conn, phase, extension, size_bucket)
 
     def get_processing_metrics_budget_row(
-        self, phase: int, file_type: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str
     ) -> sqlite3.Row | None:
-        return Stats.get_processing_metrics_budget_row(self._conn, phase, file_type, size_bucket)
+        return Stats.get_processing_metrics_budget_row(self._conn, phase, extension, size_bucket)
 
     def insert_processing_metrics(
         self,
         phase: int,
         file_type: str,
+        extension: str,
         size_bucket: str,
         duration: float,
         peak_memory_mb: float,
@@ -354,6 +355,7 @@ class _StatsStoreMixin:
             self._conn,
             phase,
             file_type,
+            extension,
             size_bucket,
             duration,
             peak_memory_mb,
@@ -364,7 +366,7 @@ class _StatsStoreMixin:
     def update_processing_metrics(
         self,
         phase: int,
-        file_type: str,
+        extension: str,
         size_bucket: str,
         document_count: int,
         avg_duration_seconds: float,
@@ -375,7 +377,7 @@ class _StatsStoreMixin:
         return Stats.update_processing_metrics(
             self._conn,
             phase,
-            file_type,
+            extension,
             size_bucket,
             document_count,
             avg_duration_seconds,
@@ -384,12 +386,13 @@ class _StatsStoreMixin:
             updated_at,
         )
 
-    def get_confidence_metrics_row(self, file_type: str, process_type: str) -> sqlite3.Row | None:
-        return Stats.get_confidence_metrics_row(self._conn, file_type, process_type)
+    def get_confidence_metrics_row(self, extension: str, process_type: str) -> sqlite3.Row | None:
+        return Stats.get_confidence_metrics_row(self._conn, extension, process_type)
 
     def insert_confidence_metrics(
         self,
         file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,
@@ -398,6 +401,7 @@ class _StatsStoreMixin:
         return Stats.insert_confidence_metrics(
             self._conn,
             file_type,
+            extension,
             process_type,
             page_count,
             avg_confidence,
@@ -406,7 +410,7 @@ class _StatsStoreMixin:
 
     def update_confidence_metrics(
         self,
-        file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,
@@ -414,7 +418,7 @@ class _StatsStoreMixin:
     ) -> None:
         return Stats.update_confidence_metrics(
             self._conn,
-            file_type,
+            extension,
             process_type,
             page_count,
             avg_confidence,

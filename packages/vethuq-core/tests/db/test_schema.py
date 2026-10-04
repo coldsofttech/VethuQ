@@ -9,6 +9,7 @@ class TestSchema:
             assert columns == {
                 "phase",
                 "file_type",
+                "extension",
                 "size_bucket",
                 "document_count",
                 "avg_duration_seconds",
@@ -25,6 +26,7 @@ class TestSchema:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(confidence_metrics)")}
             assert columns == {
                 "file_type",
+                "extension",
                 "process_type",
                 "page_count",
                 "avg_confidence",

@@ -231,17 +231,18 @@ class StatsStore(Protocol):
     """Storage operations for the processing and confidence metrics."""
 
     def get_processing_metrics_row(
-        self, phase: int, file_type: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str
     ) -> Row | None: ...
 
     def get_processing_metrics_budget_row(
-        self, phase: int, file_type: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str
     ) -> Row | None: ...
 
     def insert_processing_metrics(
         self,
         phase: int,
         file_type: str,
+        extension: str,
         size_bucket: str,
         duration: float,
         peak_memory_mb: float,
@@ -252,7 +253,7 @@ class StatsStore(Protocol):
     def update_processing_metrics(
         self,
         phase: int,
-        file_type: str,
+        extension: str,
         size_bucket: str,
         document_count: int,
         avg_duration_seconds: float,
@@ -261,11 +262,12 @@ class StatsStore(Protocol):
         updated_at: str,
     ) -> None: ...
 
-    def get_confidence_metrics_row(self, file_type: str, process_type: str) -> Row | None: ...
+    def get_confidence_metrics_row(self, extension: str, process_type: str) -> Row | None: ...
 
     def insert_confidence_metrics(
         self,
         file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,
@@ -274,7 +276,7 @@ class StatsStore(Protocol):
 
     def update_confidence_metrics(
         self,
-        file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,

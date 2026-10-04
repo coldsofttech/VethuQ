@@ -9,7 +9,8 @@ from vethuq_core.storage import Storage
 
 @dataclass(frozen=True)
 class ConfidenceMetric:
-    file_type: str
+    file_type: str  # 'pdf' | 'image': how the file's pages are stored
+    extension: str  # 'pdf', 'png', 'jpg', ...: what the averages are tracked per
     process_type: str
     page_count: int
     avg_confidence: float
@@ -19,7 +20,7 @@ class ConfidenceMetric:
 class Confidence:
     @staticmethod
     def get_metrics(storage: Storage) -> list[ConfidenceMetric]:
-        """Return `confidence_metrics`' per-(file_type, process_type) running averages."""
+        """Return `confidence_metrics`' per-(extension, process_type) running averages."""
         return [ConfidenceMetric(**dict(row)) for row in storage.list_confidence_metrics()]
 
     @staticmethod

@@ -24,7 +24,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 29
+    SCHEMA_VERSION = 30
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -126,13 +126,14 @@ CREATE TABLE IF NOT EXISTS index_runs (
 CREATE TABLE IF NOT EXISTS processing_metrics (
     phase INTEGER NOT NULL DEFAULT 1,
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    extension TEXT NOT NULL,
     size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
     document_count INTEGER NOT NULL DEFAULT 0,
     avg_duration_seconds REAL NOT NULL DEFAULT 0,
     avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
     avg_cpu_percent REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (phase, file_type, size_bucket)
+    PRIMARY KEY (phase, file_type, extension, size_bucket)
 );
 
 -- Phase 1 (quick) timings live on document_index; this holds the deeper
@@ -151,11 +152,12 @@ CREATE TABLE IF NOT EXISTS document_phases (
 
 CREATE TABLE IF NOT EXISTS confidence_metrics (
     file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+    extension TEXT NOT NULL,
     process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
     page_count INTEGER NOT NULL DEFAULT 0,
     avg_confidence REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (file_type, process_type)
+    PRIMARY KEY (file_type, extension, process_type)
 );
 
 -- Full-text index over ocr_text, one per pages table, so `vethuq_core.search`
