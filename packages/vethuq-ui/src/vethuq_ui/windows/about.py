@@ -10,6 +10,7 @@ from tkinter import ttk
 from vethuq_core.version import VersionInfo
 
 from vethuq_ui.icons import Brand
+from vethuq_ui.windows.placement import Placement
 
 
 class AboutWindow:
@@ -48,14 +49,6 @@ class AboutWindow:
             ("Languages", ", ".join(details.ocr_languages) or "none"),
         ]
         return rows
-
-    @staticmethod
-    def _center_on(window: tk.Toplevel, parent: tk.Tk | tk.Toplevel) -> None:
-        """Place `window` in the middle of `parent`."""
-        window.update_idletasks()
-        x = parent.winfo_rootx() + (parent.winfo_width() - window.winfo_reqwidth()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - window.winfo_reqheight()) // 2
-        window.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     @staticmethod
     def show(parent: tk.Tk | tk.Toplevel) -> None:
@@ -101,6 +94,6 @@ class AboutWindow:
         ttk.Button(buttons, text="Close", width=9, command=window.destroy).pack(side=tk.RIGHT)
         copy_button = ttk.Button(buttons, text="Copy", width=9, command=copy)
         copy_button.pack(side=tk.RIGHT, padx=(0, 6))
-        AboutWindow._center_on(window, parent)
+        Placement.center_on(window, parent)
         window.bind("<Escape>", lambda _event: window.destroy())
         window.focus_set()

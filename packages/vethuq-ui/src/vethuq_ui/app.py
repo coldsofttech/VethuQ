@@ -11,6 +11,7 @@ from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
 from vethuq_ui.windows.about import AboutWindow
+from vethuq_ui.windows.location import LocationWindow
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
@@ -60,6 +61,12 @@ class MainWindow(tk.Tk):
                 delete_source=lambda: self.sources.delete_selected(),
                 show_about=lambda: AboutWindow.show(self),
                 show_status=lambda text: self.status_bar.show_message(text),
+                show_app_location=lambda: LocationWindow.show(
+                    self, LocationWindow.App, self.status_bar.show_message
+                ),
+                show_backups_location=lambda: LocationWindow.show(
+                    self, LocationWindow.Backups, self.status_bar.show_message
+                ),
             ),
         )
         self.ribbon.pack(side=tk.TOP, fill=tk.X)

@@ -1,4 +1,4 @@
-"""The ribbon's Settings tab: the GPU toggle and Help > About."""
+"""The ribbon's Settings tab: GPU, Location and Help."""
 
 from __future__ import annotations
 
@@ -31,6 +31,22 @@ class SettingsTab(ttk.Frame):
             **Widgets.icon_button_kwargs(self.gpu_icon_name(), "\N{HIGH VOLTAGE SIGN}", ""),
         )
         self.gpu_button.pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(self, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=4)
+
+        location_group = RibbonGroup.build(self, "Location")
+        ttk.Button(
+            location_group,
+            command=actions.show_app_location,
+            **Widgets.icon_button_kwargs("app-location", "\N{FILE FOLDER}", "App"),
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
+            location_group,
+            command=actions.show_backups_location,
+            **Widgets.icon_button_kwargs("db-bkp-location", "\N{FLOPPY DISK}", "Backups"),
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(self, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=4)
 
         help_group = RibbonGroup.build(self, "Help")
         ttk.Button(

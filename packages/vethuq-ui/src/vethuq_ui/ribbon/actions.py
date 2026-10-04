@@ -19,3 +19,5 @@ class RibbonActions:
     delete_source: Callable[[], None]
     show_about: Callable[[], None]
     show_status: Callable[[str], None]
+    show_app_location: Callable[[], None]
+    show_backups_location: Callable[[], None]
