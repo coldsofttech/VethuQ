@@ -70,7 +70,7 @@ class TestPerExtensionTracking:
         source = Sources.add(storage, folder)
         scores = {"a.png": 0.6, "b.png": 1.0, "c.jpg": 0.2}
 
-        def extract(storage_, reader, file_path):
+        def extract(storage_, reader, file_path, db_lock=None):
             return [PageResult("text", scores[file_path.name], "ocr")], 1, None
 
         # Hand pages straight in: this test is about the bookkeeping, not about OCR.

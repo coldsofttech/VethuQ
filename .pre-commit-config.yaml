@@ -13,6 +13,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
+      - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=5000]
@@ -31,4 +32,5 @@ repos:
         entry: uv run pytest -n auto -m "not integration"
         language: system
         pass_filenames: false
+        files: '(\.py|pyproject\.toml|uv\.lock)$'
         stages: [pre-push]

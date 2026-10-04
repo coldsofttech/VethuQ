@@ -12,6 +12,17 @@
 ; PyInstaller analyses, choosing CLI-only still installs a few UI-only
 ; library files (sv_ttk, tcl/tk) - a few MB, not worth re-splitting the
 ; build to avoid.
+;
+; Install scope: a wizard page after the license and before Select Destination
+; Location asks "Install for me only" or "Install for all users". Setup starts
+; unelevated (PrivilegesRequired=lowest); choosing all users relaunches it
+; elevated (/ALLUSERS, allowed via PrivilegesRequiredOverridesAllowed=commandline)
+; with the license page already answered. All users needs
+; administrator rights (UAC prompt) and installs to Program Files; current
+; user needs none and installs to %LOCALAPPDATA%\Programs. {autopf},
+; {autodesktop}, the Start menu group, the uninstall entry and the PATH
+; change (HKLM vs HKCU) all follow the chosen scope, so the CLI, PATH option
+; and uninstall work for both.
 ; Built by scripts/dev/release.py --desktop and .github/workflows/release-desktop.yml.
 
 #define MyAppName "VethuQ"
@@ -31,6 +42,8 @@ AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 LicenseFile=..\..\..\LICENSE
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=commandline
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\..\..\dist
@@ -42,19 +55,6 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
 ArchitecturesInstallIn64BitMode=x64compatible
-; Setup's own "at least X MB of free disk space is required" estimate on the
-; Select Destination Location page (shown before Select Components, so before
-; any component choice is known) comes out far too low here - observed 4.3 MB
-; against a real ~407 MB "core" install (the OCR runtime is required either
-; way; see [Components] below). Root cause not pinned down (file packaging
-; itself is correct - every file in the shared lib\ folder is present and
-; sized correctly in the compiled installer); this floor makes the figure
-; shown to the user accurate instead of chasing Setup's own calculation
-; further. ~420 MB measured for a full app+cli+core install as of the numpy
-; 2.4.6/paddle build this was measured against - rerun `du`/`Get-ChildItem
-; -Recurse | Measure-Object Length -Sum` on build\desktop\VethuQ after a
-; dependency bump and bump this if it's grown meaningfully.
-ExtraDiskSpaceRequired=450000000
 DisableProgramGroupPage=yes
 
 [Languages]
@@ -93,7 +93,27 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 [Code]
 const
-  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  UserEnvironmentKey = 'Environment';
+
+{ PATH lives in HKLM for an all-users install, HKCU for a per-user one.
+  IsAdminInstallMode is also valid while uninstalling (it reflects the scope
+  the app was installed in). }
+function EnvRootKey: Integer;
+begin
+  if IsAdminInstallMode then
+    Result := HKEY_LOCAL_MACHINE
+  else
+    Result := HKEY_CURRENT_USER;
+end;
+
+function EnvironmentKey: string;
+begin
+  if IsAdminInstallMode then
+    Result := SystemEnvironmentKey
+  else
+    Result := UserEnvironmentKey;
+end;
 
 function SendMessageTimeoutA(
   hWnd: Longint; Msg: Longint; wParam: Longint; lParam: AnsiString;
@@ -120,7 +140,7 @@ procedure EnvAddPath(const Path: string);
 var
   Paths: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if not RegQueryStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     Paths := '';
 
   if EnvPathContains(Paths, Path) then
@@ -130,7 +150,7 @@ begin
     Paths := Paths + ';';
   Paths := Paths + Path;
 
-  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if RegWriteStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     RefreshEnvironment;
 end;
 
@@ -139,7 +159,7 @@ var
   Paths: string;
   P: Integer;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if not RegQueryStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     exit;
 
   P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
@@ -148,8 +168,72 @@ begin
 
   Delete(Paths, P - 1, Length(Path) + 1);
 
-  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+  if RegWriteStringValue(EnvRootKey, EnvironmentKey, 'Path', Paths) then
     RefreshEnvironment;
+end;
+
+var
+  ScopePage: TInputOptionWizardPage;
+  Relaunching: Boolean;
+
+function IsRelaunched: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCHED|0}') = '1';
+end;
+
+procedure InitializeWizard;
+begin
+  ScopePage := CreateInputOptionPage(wpLicense, 'Select Install Mode',
+    'Who should VethuQ be installed for?',
+    'VethuQ can be installed for you only, or for all users (requires administrative privileges).',
+    True, False);
+  ScopePage.Add('Install for me only (recommended)');
+  ScopePage.Add('Install for all users');
+  ScopePage.SelectedValueIndex := 0;
+end;
+
+{ Already admin (run as administrator, or /ALLUSERS) - nothing to choose. After
+  the elevated relaunch the license was already answered. }
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if PageID = ScopePage.ID then
+    Result := IsAdminInstallMode
+  else if IsRelaunched and (PageID = wpLicense) then
+    Result := True;
+end;
+
+{ Closing for the elevated relaunch is not a user cancel - skip the prompt. }
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if Relaunching then
+    Confirm := False;
+end;
+
+{ All users: relaunch Setup elevated and close this instance; the destination
+  page then defaults to Program Files. }
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Params: string;
+  ResultCode: Integer;
+begin
+  Result := True;
+  if (CurPageID = ScopePage.ID) and (ScopePage.SelectedValueIndex = 1) then
+  begin
+    Params := '/ALLUSERS /RELAUNCHED=1';
+    if ShellExec('runas', ExpandConstant('{srcexe}'), Params, '', SW_SHOW,
+      ewNoWait, ResultCode) then
+    begin
+      Relaunching := True;
+      WizardForm.Close;
+    end
+    else
+    begin
+      MsgBox('Administrator permission was not granted, so VethuQ cannot be installed for all users.',
+        mbError, MB_OK);
+      Result := False;
+    end;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
