@@ -23,3 +23,6 @@ class CaseNormalizer:
 
     def char_table(self, level: str) -> dict[int, str] | None:
         return None
+
+    def index_form(self, text: str) -> str:
+        return self.fold(text, "ignore").text

@@ -18,6 +18,7 @@ import re
 from functools import cache
 
 from vethuq_core.search.normalizers.base import Folded
+from vethuq_core.search.normalizers.unicode import UnicodeNormalizer
 
 # Letter -> what it is written as, added at each level (cumulative).
 BASIC = {
@@ -152,7 +153,8 @@ class Leet:
 
     @staticmethod
     def skeleton(text: str) -> str:
-        """`text` without its noise and with every look-alike folded, lower-cased.
+        """`text` folded as Unicode `full`, without its noise and with every look-alike folded,
+        lower-cased.
 
         `"h @ e # l l o"` is `"haeiio"` (`l` and `i` share a class) and `"p@55w0rd"` is
         `"password"` - the text a page's search index is built on. It is level independent:
@@ -160,7 +162,7 @@ class Leet:
         """
         classes = Leet.classes(MAX_LEVEL)
         parts = []
-        for char in text:
+        for char in UnicodeNormalizer().fold(text, "full").text:
             if Leet.is_noise(char):
                 continue
             lowered = char.lower()
@@ -188,3 +190,6 @@ class LeetspeakNormalizer:
 
     def char_table(self, level: str) -> dict[int, str] | None:
         return {} if level == self.identity else Leet.folding(level, True)
+
+    def index_form(self, text: str) -> str:
+        return self.fold(text, "extended").text

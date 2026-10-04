@@ -3,78 +3,120 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 
-from vethuq_core.search.normalizers.leetspeak import Leet
+from vethuq_core.search.normalizers import Leet, Normalizers
 
 
 class Document:
-    # The indexes older than the noise skeleton: a trigram and a word index per pages table.
+    # The indexes over the page text itself: a trigram and a word index per pages table.
     TEXT_SEARCH_INDEXES = (
         "pdf_pages_trigram",
         "pdf_pages_words",
         "image_pages_trigram",
         "image_pages_words",
     )
-    SEARCH_INDEXES = (*TEXT_SEARCH_INDEXES, "pdf_pages_noise", "image_pages_noise")
+    # The indexes over text derived from it and recorded with it (see `DERIVED_TEXT`).
+    DERIVED_SEARCH_INDEXES = (
+        "pdf_pages_noise",
+        "image_pages_noise",
+        "pdf_pages_norm",
+        "image_pages_norm",
+    )
+    SEARCH_INDEXES = (*TEXT_SEARCH_INDEXES, *DERIVED_SEARCH_INDEXES)
 
     PAGE_TABLES = ("pdf_pages", "image_pages")
 
+    # Derived text recorded with each page, by the kind of index over it: its column, and how
+    # it is made from the page's text.
+    #
+    # `noise`: the skeleton - Unicode folded, noise dropped, look-alikes folded - for
+    # `noise-fuzzy`, which finds text hidden by noise. `norm`: the index form - Unicode folded,
+    # lower-cased, look-alikes folded, noise kept - for engines that normalize (`like`,
+    # `exact`, `fuzzy`). Both are the coarsest folding any level does, so a page a search can
+    # match always has them match.
+    DERIVED_TEXT: dict[str, tuple[str, Callable[[str], str]]] = {
+        "noise": ("noise_text", Leet.skeleton),
+        "norm": ("norm_text", Normalizers.index_form),
+    }
+
     @staticmethod
-    def noise_triggers(table: str) -> dict[str, str]:
-        """The statements keeping `<table>_noise` in step with `<table>`, by trigger name."""
-        index = f"{table}_noise"
+    def derived_triggers(table: str, kind: str) -> dict[str, str]:
+        """The statements keeping `<table>_<kind>` in step with `<table>`, by trigger name."""
+        column = Document.DERIVED_TEXT[kind][0]
+        index = f"{table}_{kind}"
         return {
             f"{index}_ai": (
                 f"CREATE TRIGGER IF NOT EXISTS {index}_ai AFTER INSERT ON {table} BEGIN "
-                f"INSERT INTO {index}(rowid, noise_text) VALUES (new.id, new.noise_text); END"
+                f"INSERT INTO {index}(rowid, {column}) VALUES (new.id, new.{column}); END"
             ),
             f"{index}_ad": (
                 f"CREATE TRIGGER IF NOT EXISTS {index}_ad AFTER DELETE ON {table} BEGIN "
-                f"INSERT INTO {index}({index}, rowid, noise_text) "
-                f"VALUES ('delete', old.id, old.noise_text); END"
+                f"INSERT INTO {index}({index}, rowid, {column}) "
+                f"VALUES ('delete', old.id, old.{column}); END"
             ),
             f"{index}_au": (
-                f"CREATE TRIGGER IF NOT EXISTS {index}_au AFTER UPDATE ON {table} BEGIN "
-                f"INSERT INTO {index}({index}, rowid, noise_text) "
-                f"VALUES ('delete', old.id, old.noise_text); "
-                f"INSERT INTO {index}(rowid, noise_text) VALUES (new.id, new.noise_text); END"
+                f"CREATE TRIGGER IF NOT EXISTS {index}_au "
+                f"AFTER UPDATE OF {column} ON {table} BEGIN "
+                f"INSERT INTO {index}({index}, rowid, {column}) "
+                f"VALUES ('delete', old.id, old.{column}); "
+                f"INSERT INTO {index}(rowid, {column}) VALUES (new.id, new.{column}); END"
             ),
         }
 
     @staticmethod
-    def noise_schema() -> str:
-        """The trigram index over each pages table's `noise_text` skeleton, and its triggers.
+    def noise_triggers(table: str) -> dict[str, str]:
+        return Document.derived_triggers(table, "noise")
 
-        `noise_text` is `Leet.skeleton(ocr_text)` - the page's text without its noise and
-        with look-alike characters folded - recorded at write time, so the `noise-fuzzy`
-        engine can find candidate pages through SQLite instead of scanning every page. Like
-        the other indexes these are external-content tables kept in sync by triggers.
+    @staticmethod
+    def derived_schema() -> str:
+        """The trigram index over each pages table's derived text, and its triggers.
+
+        The text is recorded at write time (see `DERIVED_TEXT`), so engines can find candidate
+        pages through SQLite instead of scanning every page. Like the other indexes these are
+        external-content tables kept in sync by triggers.
         """
         statements = []
         for table in Document.PAGE_TABLES:
-            statements.append(
-                f"CREATE VIRTUAL TABLE IF NOT EXISTS {table}_noise USING fts5("
-                f"noise_text, content='{table}', content_rowid='id', tokenize='trigram');"
-            )
-            statements.extend(f"{sql};" for sql in Document.noise_triggers(table).values())
+            for kind, (column, _) in Document.DERIVED_TEXT.items():
+                statements.append(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS {table}_{kind} USING fts5("
+                    f"{column}, content='{table}', content_rowid='id', tokenize='trigram');"
+                )
+                statements.extend(
+                    f"{sql};" for sql in Document.derived_triggers(table, kind).values()
+                )
         return "\n".join(statements) + "\n"
 
     @staticmethod
-    def refresh_noise_text(conn: sqlite3.Connection, table: str) -> int:
-        """Recompute `noise_text` of every `table` page where it is out of date; returns how many.
+    def derived_text(text: str) -> tuple[str, str]:
+        """`(noise_text, norm_text)` for a page's `text`."""
+        return Document.DERIVED_TEXT["noise"][1](text), Document.DERIVED_TEXT["norm"][1](text)
+
+    @staticmethod
+    def refresh_derived_text(
+        conn: sqlite3.Connection, table: str, kinds: tuple[str, ...] = ("noise", "norm")
+    ) -> int:
+        """Recompute the derived text of every `table` page where it is out of date; returns
+        how many pages changed.
 
         Pages are normally written with it; this brings older ones (and any written by
-        something else) up to date.
+        something else) up to date. `kinds` are the derived texts to refresh.
         """
         if table not in Document.PAGE_TABLES:
             raise ValueError(f"Unknown pages table: {table}")
+        columns = [
+            (Document.DERIVED_TEXT[kind][0], Document.DERIVED_TEXT[kind][1]) for kind in kinds
+        ]
+        names = ", ".join(column for column, _ in columns)
         changed = 0
-        rows = conn.execute(f"SELECT id, ocr_text, noise_text FROM {table}").fetchall()
-        for row in rows:
-            skeleton = Leet.skeleton(row["ocr_text"])
-            if skeleton != row["noise_text"]:
+        for row in conn.execute(f"SELECT id, ocr_text, {names} FROM {table}").fetchall():
+            fresh = {column: make(row["ocr_text"]) for column, make in columns}
+            stale = {column: value for column, value in fresh.items() if value != row[column]}
+            if stale:
+                assignments = ", ".join(f"{column} = ?" for column in stale)
                 conn.execute(
-                    f"UPDATE {table} SET noise_text = ? WHERE id = ?", (skeleton, row["id"])
+                    f"UPDATE {table} SET {assignments} WHERE id = ?", (*stale.values(), row["id"])
                 )
                 changed += 1
         return changed
@@ -83,21 +125,21 @@ class Document:
     def rebuild_search_index(conn: sqlite3.Connection, index: str) -> int:
         """Re-read every stored page into the FTS5 table `index`; returns its page count.
 
-        For a `noise` index the skeleton the index is built on is brought up to date first.
+        For an index over derived text that text is brought up to date first.
         """
         if index not in Document.SEARCH_INDEXES:
             raise ValueError(f"Unknown search index: {index}")
-        table = index.rsplit("_", 1)[0]
-        if index.endswith("_noise"):
-            # Updating `noise_text` would fire the index's own UPDATE trigger, which
-            # 'delete's entries that may never have been indexed (the very reason for a
-            # rebuild) - so it steps aside while the skeleton is refreshed.
+        table, kind = index.rsplit("_", 1)
+        if index in Document.DERIVED_SEARCH_INDEXES:
+            # Updating the text would fire the index's own UPDATE trigger, which 'delete's
+            # entries that may never have been indexed (the very reason for a rebuild) - so
+            # it steps aside while the text is refreshed.
             update = f"{index}_au"
             conn.execute(f"DROP TRIGGER IF EXISTS {update}")
             try:
-                Document.refresh_noise_text(conn, table)
+                Document.refresh_derived_text(conn, table, (kind,))
             finally:
-                conn.execute(Document.noise_triggers(table)[update])
+                conn.execute(Document.derived_triggers(table, kind)[update])
         conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
@@ -439,10 +481,10 @@ class Document:
     def insert_pdf_pages(conn: sqlite3.Connection, rows: list[tuple]) -> None:
         conn.executemany(
             "INSERT INTO pdf_pages "
-            "(document_id, page_number, ocr_text, char_count, noise_text, confidence, source, "
-            "ocr_engine, language, image_width, image_height, ocr_phase, ocr_angles) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(*row[:4], Leet.skeleton(row[2]), *row[4:]) for row in rows],
+            "(document_id, page_number, ocr_text, char_count, noise_text, norm_text, confidence, "
+            "source, ocr_engine, language, image_width, image_height, ocr_phase, ocr_angles) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(*row[:4], *Document.derived_text(row[2]), *row[4:]) for row in rows],
         )
 
     @staticmethod
@@ -461,14 +503,14 @@ class Document:
     ) -> None:
         conn.execute(
             "INSERT INTO image_pages "
-            "(document_id, ocr_text, char_count, noise_text, confidence, ocr_engine, language, "
-            "image_width, image_height, ocr_phase, ocr_angles) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(document_id, ocr_text, char_count, noise_text, norm_text, confidence, ocr_engine, "
+            "language, image_width, image_height, ocr_phase, ocr_angles) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 document_id,
                 ocr_text,
                 char_count,
-                Leet.skeleton(ocr_text),
+                *Document.derived_text(ocr_text),
                 confidence,
                 ocr_engine,
                 language,
@@ -731,21 +773,23 @@ class Document:
         ).fetchall()
 
     @staticmethod
-    def search_noise_candidate_pdf_pages(
-        conn: sqlite3.Connection, match_expr: str | None
+    def search_derived_candidate_pdf_pages(
+        conn: sqlite3.Connection, kind: str, match_expr: str | None
     ) -> list[sqlite3.Row]:
-        """Return indexed `pdf_pages` rows that may hold a `noise-fuzzy` match.
+        """Return indexed `pdf_pages` rows that may match a search over derived text of `kind`
+        (`noise` or `norm`, see `DERIVED_TEXT`).
 
         Shaped like `search_candidate_pdf_pages`, plus the page's `noise_text` skeleton.
 
-        `match_expr` is an FTS5 expression over the trigram index `pdf_pages_noise` (built
-        on the skeleton) that every page that could match satisfies, or None when no such
-        narrowing is possible and every indexed page is returned. Pages whose skeleton has
-        not been recorded yet (empty) are always returned, so none is missed.
+        `match_expr` is an FTS5 expression over the trigram index `pdf_pages_<kind>` that every
+        page that could match satisfies, or None when no such narrowing is possible and every
+        indexed page is returned. Pages whose derived text has not been recorded yet (empty)
+        are always returned, so none is missed.
         """
+        column = Document.DERIVED_TEXT[kind][0]
         narrowed = (
-            "(pp.id IN (SELECT rowid FROM pdf_pages_noise WHERE pdf_pages_noise MATCH ?) "
-            "OR pp.noise_text = '') AND "
+            f"(pp.id IN (SELECT rowid FROM pdf_pages_{kind} WHERE pdf_pages_{kind} MATCH ?) "
+            f"OR pp.{column} = '') AND "
             if match_expr is not None
             else ""
         )
@@ -765,13 +809,14 @@ class Document:
         ).fetchall()
 
     @staticmethod
-    def search_noise_candidate_image_pages(
-        conn: sqlite3.Connection, match_expr: str | None
+    def search_derived_candidate_image_pages(
+        conn: sqlite3.Connection, kind: str, match_expr: str | None
     ) -> list[sqlite3.Row]:
-        """Like `search_noise_candidate_pdf_pages`, but for `image_pages`/`image_pages_noise`."""
+        """Like `search_derived_candidate_pdf_pages`, but for `image_pages`."""
+        column = Document.DERIVED_TEXT[kind][0]
         narrowed = (
-            "(ip.id IN (SELECT rowid FROM image_pages_noise WHERE image_pages_noise MATCH ?) "
-            "OR ip.noise_text = '') AND "
+            f"(ip.id IN (SELECT rowid FROM image_pages_{kind} WHERE image_pages_{kind} MATCH ?) "
+            f"OR ip.{column} = '') AND "
             if match_expr is not None
             else ""
         )
@@ -789,6 +834,30 @@ class Document:
             "ORDER BY di.file_path",
             (match_expr,) if match_expr is not None else (),
         ).fetchall()
+
+    @staticmethod
+    def search_noise_candidate_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        return Document.search_derived_candidate_pdf_pages(conn, "noise", match_expr)
+
+    @staticmethod
+    def search_noise_candidate_image_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        return Document.search_derived_candidate_image_pages(conn, "noise", match_expr)
+
+    @staticmethod
+    def search_norm_candidate_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        return Document.search_derived_candidate_pdf_pages(conn, "norm", match_expr)
+
+    @staticmethod
+    def search_norm_candidate_image_pages(
+        conn: sqlite3.Connection, match_expr: str | None
+    ) -> list[sqlite3.Row]:
+        return Document.search_derived_candidate_image_pages(conn, "norm", match_expr)
 
     @staticmethod
     def search_fulltext_pdf_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:

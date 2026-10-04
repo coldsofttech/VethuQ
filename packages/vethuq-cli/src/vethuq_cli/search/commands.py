@@ -268,7 +268,8 @@ def search(
         help=(
             "What counts as the same character, as NAME=VALUE (repeat, or separate with commas): "
             "unicode=off|basic|full (basic composes characters, full also folds accents and "
-            "compatibility forms - like, exact, fuzzy and noise-fuzzy), case=ignore|match (the "
+            "compatibility forms - like, exact, fuzzy and noise-fuzzy; by default basic for like "
+            "and exact, full for fuzzy and noise-fuzzy), case=ignore|match (the "
             "same as --no-case-sensitive / --case-sensitive) and leetspeak=off|basic|standard|"
             "extended (the same as --leet-level). Defaults: `vethuq settings search normalize`."
         ),

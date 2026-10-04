@@ -270,13 +270,22 @@ counts as *the same character*, for the query and the page text alike.
   characters folded into classes; also the skeleton and noise helpers the database and
   `noise-fuzzy` use).
 
-The Unicode normalizer is applied by `like`, `exact` (only when asked for, never from the stored
-setting), `fuzzy` and `noise-fuzzy`: the query and the page text are folded (`Pipeline.fold`), the
-engine matches on the folded text, and `Folded.original` maps the spans back to the original so
-highlights and exports show what is on the page. The indexes (the trigram, word and skeleton
-indexes) are built on the raw text and can't be narrowed by a Unicode fold, so a search with it
-on reads every candidate page; the engines' default level is `off` until the normalized text is
-recorded in the database too.
+The Unicode normalizer is applied by `like`, `exact`, `fuzzy` and `noise-fuzzy`: the query and the
+page text are folded (`Pipeline.fold`), the engine matches on the folded text, and
+`Folded.original` maps the spans back to the original so highlights and exports show what is on
+the page. Each engine has its own default (`SearchSettings.UNICODE_DEFAULTS`): `exact` and `like`
+`basic`, `fuzzy` and `noise-fuzzy` `full`; the stored setting (`auto` unless changed) or a
+per-search flag overrides it, except for `exact`, which is strict and takes a level only from the
+search itself.
+
+**The normalized text:** pages also store `norm_text` — `Normalizers.index_form(text)`, the text
+folded as coarsely as any normalization does (Unicode `full`, case ignored, look-alikes
+`extended`) — with a trigram index over it (`pdf_pages_norm`, `image_pages_norm`), recorded at
+write time and rebuilt by `rebuild-search`. Because the strictest level only ever matches a subset
+of what the coarsest does, it is a sound pre-filter for every level: `like`, `exact` and `fuzzy`
+narrow candidate pages through it (`SearchEngineHelpers.norm_match`, `narrowing_expression`),
+`noise-fuzzy` through the skeleton index, and the folded text still has the final say, so a
+setting never needs a reindex. Pages without recorded text are always candidates.
 
 The settings are `search_normalize_case`, `search_normalize_unicode` and `search_normalize_leetspeak` (`auto` = each engine's
 own default, or an explicit value for every engine that can honour it); the engine's own default

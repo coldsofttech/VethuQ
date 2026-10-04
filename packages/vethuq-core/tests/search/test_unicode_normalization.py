@@ -34,7 +34,12 @@ class TestUnicodeSettings:
         assert SearchSettings.resolve_unicode(storage, "full") == "full"
         SearchSettings.set_unicode(storage, "basic")
         assert SearchSettings.resolve_unicode(storage, "off") == "basic"
-        assert SearchSettings.DEFAULT_UNICODE == "off"
+        assert SearchSettings.UNICODE_DEFAULTS == {
+            "exact": "basic",
+            "like": "basic",
+            "fuzzy": "full",
+            "noise-fuzzy": "full",
+        }
 
 
 def _found(storage, query, engine, **kwargs):
@@ -42,16 +47,18 @@ def _found(storage, query, engine, **kwargs):
 
 
 class TestLike:
-    def test_off_by_default(self, conn, storage):
+    def test_off_asks_for_the_text_as_typed(self, conn, storage):
         SearchData.seed_page(conn, "a café and a cafe")
 
-        assert _found(storage, "cafe", "like") == ["cafe"]
-        assert _found(storage, "café", "like") == ["café"]
+        assert _found(storage, "cafe", "like", unicode="off") == ["cafe"]
+        assert _found(storage, "café", "like", unicode="off") == ["café"]
 
     def test_basic_composes_characters_but_keeps_accents(self, conn, storage):
         SearchData.seed_page(conn, f"a {DECOMPOSED_CAFE} and a cafe")
 
-        assert _found(storage, "café", "like") == []  # written differently
+        assert _found(storage, "café", "like", unicode="off") == []  # written differently
+        assert _found(storage, "café", "like") == [DECOMPOSED_CAFE]  # basic is the default
+        assert _found(storage, "cafe", "like") == ["cafe"]  # ...and keeps accents
         assert _found(storage, "café", "like", unicode="basic") == [DECOMPOSED_CAFE]
         assert _found(storage, "cafe", "like", unicode="basic") == ["cafe"]
 
@@ -147,8 +154,9 @@ class TestFuzzy:
     def test_an_accent_is_an_edit_unless_folded(self, conn, storage):
         SearchData.seed_page(conn, "a visit to the Café today")
 
-        assert _found(storage, "Cafe", "fuzzy") == []  # one edit in four letters: 75%
+        assert _found(storage, "Cafe", "fuzzy", unicode="basic") == []  # one edit in four: 75%
         assert _found(storage, "Cafe", "fuzzy", unicode="full") == ["Café"]
+        assert _found(storage, "Cafe", "fuzzy") == ["Café"]  # full is its default
 
     def test_the_match_is_the_original_word(self, conn, storage):
         SearchData.seed_page(conn, f"eat at the {DECOMPOSED_CAFE} today")
@@ -165,16 +173,16 @@ class TestFuzzy:
 
     def test_the_stored_setting_applies(self, conn, storage):
         SearchData.seed_page(conn, "a visit to the Café today")
-        SearchSettings.set_unicode(storage, "full")
+        SearchSettings.set_unicode(storage, "basic")
 
-        assert _found(storage, "Cafe", "fuzzy") == ["Café"]
+        assert _found(storage, "Cafe", "fuzzy") == []
 
 
 class TestNoiseFuzzy:
     def test_folds_accents_then_hides_them_in_noise(self, conn, storage):
         SearchData.seed_page(conn, "visit the c a f é today")
 
-        assert _found(storage, "cafe", "noise-fuzzy", noise="medium") == []  # an é is a typo...
+        assert _found(storage, "cafe", "noise-fuzzy", noise="medium", unicode="off") == []  # a typo
         assert _found(storage, "cafe", "noise-fuzzy", noise="medium", unicode="full") == ["c a f é"]
 
     def test_reports_the_original_text(self, conn, storage):
@@ -221,6 +229,7 @@ class TestCombinedSearch:
     def test_the_stored_setting_reaches_the_engines_that_take_it(self, conn, storage):
         # `full-text` already folds accents; it doesn't fold full-width letters.
         SearchData.seed_page(conn, "the \uff21\uff22\uff23 sign")
+        SearchSettings.set_unicode(storage, "off")
         assert Search.indexed_pages(storage, "abc") == []
 
         SearchSettings.set_unicode(storage, "full")
@@ -237,19 +246,22 @@ class TestCombinedSearch:
 
 
 class TestOptions:
-    def test_resolves_from_the_argument_or_setting_or_off(self, storage):
-        assert Search.resolve_options(storage, "like", None).unicode == "off"
-        SearchSettings.set_unicode(storage, "basic")
+    def test_resolves_from_the_argument_or_setting_or_the_engines_default(self, storage):
         assert Search.resolve_options(storage, "like", None).unicode == "basic"
+        assert Search.resolve_options(storage, "fuzzy", None).unicode == "full"
+        assert Search.resolve_options(storage, "noise-fuzzy", None).unicode == "full"
+        assert Search.resolve_options(storage, None, None).unicode is None  # all: each its own
+        SearchSettings.set_unicode(storage, "off")
+        assert Search.resolve_options(storage, "like", None).unicode == "off"
         assert Search.resolve_options(storage, "like", None, unicode="Full").unicode == "full"
-        assert Search.resolve_options(storage, None, None).unicode == "basic"  # all
-        assert Search.resolve_options(storage, "fuzzy", None).unicode == "basic"
-        assert Search.resolve_options(storage, "noise-fuzzy", None).unicode == "basic"
+        assert Search.resolve_options(storage, None, None).unicode == "off"  # all
+        assert Search.resolve_options(storage, "fuzzy", None).unicode == "off"
+        assert Search.resolve_options(storage, "noise-fuzzy", None).unicode == "off"
 
     def test_exact_takes_it_only_when_asked(self, storage):
         SearchSettings.set_unicode(storage, "full")
 
-        assert Search.resolve_options(storage, "exact", None).unicode == "off"
+        assert Search.resolve_options(storage, "exact", None).unicode == "basic"
         assert Search.resolve_options(storage, "exact", None, unicode="basic").unicode == "basic"
 
     def test_other_engines_carry_none(self, storage):

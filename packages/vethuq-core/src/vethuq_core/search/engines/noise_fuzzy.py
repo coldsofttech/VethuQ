@@ -107,7 +107,9 @@ class NoiseFuzzySearchEngine:
         gap_cap, total_cap = SearchSettings.NOISE_LEVELS[noise_level]
 
         folding = (
-            SearchSettings.resolve_unicode(self._storage, SearchSettings.DEFAULT_UNICODE)
+            SearchSettings.resolve_unicode(
+                self._storage, SearchSettings.UNICODE_DEFAULTS[self.name]
+            )
             if unicode is None
             else SearchSettings.parse_unicode(unicode)
         )
@@ -118,10 +120,10 @@ class NoiseFuzzySearchEngine:
             return []
         edits = NoiseFuzzySearchEngine.allowed_edits(wanted.folded, limit)
         skeleton = Leet.skeleton(query)
-        # The indexes hold the raw text, so a Unicode normalization can't be narrowed by them.
-        expression = (
-            None if pipeline else NoiseFuzzySearchEngine.narrowing_expression(skeleton, edits)
-        )
+        expression = NoiseFuzzySearchEngine.narrowing_expression(skeleton, edits)
+        # A page's skeleton is made of its fully folded text, so its positions line up with the
+        # kept characters of the text the search runs on only when that is fully folded too.
+        aligned = folding == "full"
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
@@ -131,9 +133,9 @@ class NoiseFuzzySearchEngine:
             *self._storage.search_noise_candidate_image_pages(expression),
         ):
             stretches = (
-                None
-                if pipeline
-                else NoiseFuzzySearchEngine.candidate_stretches(skeleton, edits, row["noise_text"])
+                NoiseFuzzySearchEngine.candidate_stretches(skeleton, edits, row["noise_text"])
+                if aligned
+                else None
             )
             if stretches is not None and not stretches:
                 continue

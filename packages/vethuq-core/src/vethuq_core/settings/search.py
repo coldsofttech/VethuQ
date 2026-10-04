@@ -53,7 +53,9 @@ class SearchSettings:
     NORMALIZE_UNICODE_KEY = "search_normalize_unicode"
     UNICODE_LEVELS = ("off", "basic", "full")  # nothing, NFC, NFKC with accents folded
     UNICODE_VALUES = (NORMALIZE_AUTO, *UNICODE_LEVELS)
-    DEFAULT_UNICODE = "off"  # what `auto` is for every engine that takes it, for now
+    # What `auto` is for each engine that takes a Unicode level: `exact` and `like` compose
+    # characters (NFC), the fuzzy engines also fold accents.
+    UNICODE_DEFAULTS = {"exact": "basic", "like": "basic", "fuzzy": "full", "noise-fuzzy": "full"}
     NOISE_KEY = "search_noise_level"
     DEFAULT_NOISE = "low"
     # How much stray punctuation and whitespace the `noise-fuzzy` engine skips inside a match,
@@ -311,7 +313,8 @@ class SearchSettings:
 
     @staticmethod
     def resolve_unicode(storage: Storage, default: str) -> str:
-        """The Unicode level to use: the stored one, or `default` (an engine's own) on `auto`."""
+        """The Unicode level to use: the stored one, or `default` (an engine's own, see
+        `UNICODE_DEFAULTS`) on `auto`."""
         stored = SearchSettings.get_unicode(storage)
         return default if stored == SearchSettings.NORMALIZE_AUTO else stored
 

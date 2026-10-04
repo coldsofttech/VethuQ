@@ -329,8 +329,9 @@ client.search.run("payment", engine="proximity")  # raises SearchQueryError: nee
 
 **Unicode** (`unicode=`) treats characters written differently as the same — for `"like"`,
 `"fuzzy"` and `"noise-fuzzy"` (and `"exact"` only when passed here); the other engines raise
-`SearchOptionError`. It defaults to `client.settings.search.normalize.unicode` (off unless set),
-and a search with it on reads every page:
+`SearchOptionError`. It defaults to `client.settings.search.normalize.unicode`, which on `"auto"` is each engine's
+own: `"basic"` for `"like"` and `"exact"` (`"exact"` ignores the stored setting), `"full"` for
+`"fuzzy"` and `"noise-fuzzy"`:
 
 ```python
 client.search.run("cafe", engine="like", unicode="full")  # finds "café" and "cafe\u0301"
@@ -468,8 +469,8 @@ Invalid values raise `InvalidSettingValueError`.
 ### `client.settings.search.normalize.unicode`
 
 - `get()` — whether characters written differently count as the same, a name from
-  `SEARCH_UNICODE_VALUES`: `"auto"` (the default — each engine's own, which is off for all of
-  them for now), `"off"`, `"basic"` or `"full"`
+  `SEARCH_UNICODE_VALUES`: `"auto"` (the default — each engine's own: `"basic"` for `like` and
+  `exact`, `"full"` for `fuzzy` and `noise-fuzzy`), `"off"`, `"basic"` or `"full"`
 - `set(value)` — one of those (`SEARCH_UNICODE_LEVELS` lists the three): `"basic"` composes
   characters and keeps accents, `"full"` also folds accents and compatibility forms (`cafe` finds
   `café`). Honoured by `like`, `fuzzy` and `noise-fuzzy`, and by `exact` only when `unicode=` is

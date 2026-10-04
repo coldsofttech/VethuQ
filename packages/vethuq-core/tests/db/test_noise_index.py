@@ -167,10 +167,10 @@ class TestNoiseIndex:
         )
         conn.execute("UPDATE pdf_pages SET noise_text = 'old' WHERE page_number = 2")
 
-        assert Document.refresh_noise_text(conn, "pdf_pages") == 1
-        assert Document.refresh_noise_text(conn, "pdf_pages") == 0
+        assert Document.refresh_derived_text(conn, "pdf_pages") == 1
+        assert Document.refresh_derived_text(conn, "pdf_pages") == 0
         with pytest.raises(ValueError):
-            Document.refresh_noise_text(conn, "documents")
+            Document.refresh_derived_text(conn, "documents")
 
     def test_candidate_queries_narrow_through_the_index(self, conn, storage):
         document_id = _add_document(conn)
@@ -285,7 +285,7 @@ class TestMigration:
         try:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
             assert {"pdf_pages_noise", "image_pages_noise"} <= tables
-            assert Db.SCHEMA_VERSION == 29
+            assert Db.SCHEMA_VERSION == 30
         finally:
             conn.close()
 

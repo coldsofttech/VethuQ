@@ -177,8 +177,8 @@ def test_index_rebuild_search_rebuilds_every_table_and_reports_progress(client: 
 
     assert isinstance(result, vethuq.SearchIndexRebuildResult)
     assert result.ok is True
-    assert len(result.rebuilt) == 6
-    assert [position for _, position, _ in seen] == [1, 2, 3, 4, 5, 6]
+    assert len(result.rebuilt) == 8
+    assert [position for _, position, _ in seen] == [1, 2, 3, 4, 5, 6, 7, 8]
 
 
 def test_settings_gpu_enable_and_disable(client: vethuq.Vethuq):

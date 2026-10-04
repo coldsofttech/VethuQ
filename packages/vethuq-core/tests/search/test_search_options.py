@@ -14,7 +14,7 @@ class TestResolveOptions:
             10,
             "basic",
             "low",
-            "off",
+            None,
         )
         assert Search.resolve_options(storage, "like", None) == (
             "like",
@@ -23,7 +23,7 @@ class TestResolveOptions:
             None,
             "off",
             None,
-            "off",
+            "basic",
         )
 
         SearchSettings.set_case_sensitive(storage, True)
@@ -34,7 +34,7 @@ class TestResolveOptions:
             10,
             "basic",
             "low",
-            "off",
+            None,
         )
         assert Search.resolve_options(storage, "like", None) == (
             "like",
@@ -43,7 +43,7 @@ class TestResolveOptions:
             None,
             "off",
             None,
-            "off",
+            "basic",
         )
         assert Search.resolve_options(storage, "like", False) == (
             "like",
@@ -52,7 +52,7 @@ class TestResolveOptions:
             None,
             "off",
             None,
-            "off",
+            "basic",
         )
 
         # A stored preference the engine can't honour is dropped, not an error...
@@ -63,7 +63,7 @@ class TestResolveOptions:
             None,
             None,
             None,
-            "off",
+            "basic",
         )
         assert Search.resolve_options(storage, "full-text", None) == (
             "full-text",
@@ -93,7 +93,7 @@ class TestResolveOptions:
             None,
             None,
             None,
-            "off",
+            "full",
         )
         assert Search.resolve_options(storage, "fuzzy", False, 0.7) == (
             "fuzzy",
@@ -102,7 +102,7 @@ class TestResolveOptions:
             None,
             None,
             None,
-            "off",
+            "full",
         )
         assert Search.resolve_options(storage, "fuzzy", False, "loose") == (
             "fuzzy",
@@ -111,7 +111,7 @@ class TestResolveOptions:
             None,
             None,
             None,
-            "off",
+            "full",
         )
 
     def test_rejects_what_the_engine_cannot_honour(self, storage: Storage):

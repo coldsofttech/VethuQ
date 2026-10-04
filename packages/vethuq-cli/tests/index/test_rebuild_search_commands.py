@@ -93,4 +93,4 @@ class TestRebuildSearchCommand:
         result = runner.invoke(app, ["index", "rebuild-search", "--force"])
 
         assert result.exit_code == 0
-        assert "6 rebuilt, 0 failed" in _flatten(result.output)
+        assert "8 rebuilt, 0 failed" in _flatten(result.output)

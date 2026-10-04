@@ -147,11 +147,18 @@ class Search:
                     "setting; use one of them to set one.",
                     "unicode",
                 )
-        stored_unicode = (
+        explicit_unicode = (
             unicode
             if unicode is not None
-            else SearchSettings.resolve_unicode(storage, SearchSettings.DEFAULT_UNICODE)
+            else SearchSettings.resolve_unicode(storage, SearchSettings.NORMALIZE_AUTO)
         )
+
+        def engine_unicode(engine: str) -> str:
+            """The level `engine` runs at: the one asked for or stored, else its own default."""
+            if explicit_unicode != SearchSettings.NORMALIZE_AUTO:
+                return explicit_unicode
+            return SearchSettings.UNICODE_DEFAULTS[engine]
+
         if resolved_engine == SearchSettings.ENGINE_ALL:
             return SearchOptions(
                 resolved_engine,
@@ -172,7 +179,7 @@ class Search:
                     else SearchSettings.resolve_leetspeak(storage, SearchSettings.DEFAULT_LEETSPEAK)
                 ),
                 noise if noise is not None else SearchSettings.get_noise_level(storage),
-                stored_unicode,
+                None if explicit_unicode == SearchSettings.NORMALIZE_AUTO else explicit_unicode,
             )
         if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
@@ -198,7 +205,13 @@ class Search:
                     "case_sensitive",
                 )
             return SearchOptions(
-                resolved_engine, True, None, None, None, None, "off" if unicode is None else unicode
+                resolved_engine,
+                True,
+                None,
+                None,
+                None,
+                None,
+                unicode if unicode is not None else SearchSettings.UNICODE_DEFAULTS["exact"],
             )
         if case_sensitive is None:
             case_sensitive = SearchSettings.is_case_sensitive(storage)
@@ -207,7 +220,13 @@ class Search:
                 threshold if threshold is not None else SearchSettings.get_fuzzy_threshold(storage)
             )
             return SearchOptions(
-                resolved_engine, case_sensitive, effective, None, None, None, stored_unicode
+                resolved_engine,
+                case_sensitive,
+                effective,
+                None,
+                None,
+                None,
+                engine_unicode("fuzzy"),
             )
         if resolved_engine == "like":
             effective_level = (
@@ -222,7 +241,7 @@ class Search:
                 None,
                 effective_level,
                 None,
-                stored_unicode,
+                engine_unicode("like"),
             )
         if resolved_engine == "noise-fuzzy":
             return SearchOptions(
@@ -236,7 +255,7 @@ class Search:
                     else SearchSettings.resolve_leetspeak(storage, SearchSettings.DEFAULT_LEETSPEAK)
                 ),
                 noise if noise is not None else SearchSettings.get_noise_level(storage),
-                stored_unicode,
+                engine_unicode("noise-fuzzy"),
             )
         return SearchOptions(resolved_engine, case_sensitive)
 

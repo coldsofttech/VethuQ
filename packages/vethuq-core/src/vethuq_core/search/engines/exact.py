@@ -46,7 +46,11 @@ class ExactSearchEngine:
         SearchEngineHelpers.require_no_distance(self.name, distance)
         if not query:
             return []
-        folding = "off" if unicode is None else SearchSettings.parse_unicode(unicode)
+        folding = (
+            SearchSettings.UNICODE_DEFAULTS[self.name]
+            if unicode is None
+            else SearchSettings.parse_unicode(unicode)
+        )
         if folding != "off":
             pipeline = Normalizers.pipeline({"unicode": folding})
             needle = pipeline.fold(query).text
@@ -65,7 +69,7 @@ class ExactSearchEngine:
                 find_folded,
                 context_chars=context_chars,
                 engine=self.name,
-                narrow=False,
+                candidates="norm",
             )
         pattern = ExactSearchEngine._exact_pattern(query)
         return SearchEngineHelpers.search_substring_pages(

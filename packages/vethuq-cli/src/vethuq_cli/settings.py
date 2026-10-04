@@ -1527,7 +1527,8 @@ def normalize_unicode_show() -> None:
         "Set whether `search` treats characters that are written differently as the same, when "
         "`--normalize unicode=...` isn't given.\n\n"
         "Values:\n\n"
-        "auto (the default) - each engine's own, which for now is `off` for all of them.\n\n"
+        "auto (the default) - each engine's own: `basic` for `like` and `exact`, `full` for "
+        "`fuzzy` and `noise-fuzzy`.\n\n"
         "off - the text as it is.\n\n"
         "basic - composes characters (an `e` and a separate accent are `é`), keeping accents.\n\n"
         "full - also folds accents (`cafe` finds `café`) and compatibility forms (`fine` finds "
@@ -1535,7 +1536,7 @@ def normalize_unicode_show() -> None:
         "Honoured by `like`, `fuzzy` and `noise-fuzzy`, and by `exact` only when asked for in "
         'one search (`--normalize unicode=full`), so "as typed" never changes on its own. '
         "`full-text` already folds accents and accepts no setting; `lexical` and `proximity` "
-        "take none. A search with this on reads every page instead of using the text indexes."
+        "take none."
     ),
 )
 def normalize_unicode_set(

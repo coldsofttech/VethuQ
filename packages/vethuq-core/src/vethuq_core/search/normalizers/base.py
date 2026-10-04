@@ -66,3 +66,10 @@ class Normalizer(Protocol):
         `fold` isn't a character-for-character substitution (so engines that align
         character by character have a fast path where there is one)."""
         ...
+
+    def index_form(self, text: str) -> str:
+        """`text` folded as coarsely as any level does - the form the database records so
+        candidate pages can be found through an index. Whatever two texts a level of this
+        normalizer treats as the same are the same here too, so a page a search can match
+        always has its index form match the query's."""
+        ...

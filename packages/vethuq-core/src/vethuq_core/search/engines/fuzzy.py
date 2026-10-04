@@ -71,7 +71,9 @@ class FuzzySearchEngine:
         SearchEngineHelpers.require_no_noise(self.name, noise)
         SearchEngineHelpers.require_no_distance(self.name, distance)
         folding = (
-            SearchSettings.resolve_unicode(self._storage, SearchSettings.DEFAULT_UNICODE)
+            SearchSettings.resolve_unicode(
+                self._storage, SearchSettings.UNICODE_DEFAULTS[self.name]
+            )
             if unicode is None
             else SearchSettings.parse_unicode(unicode)
         )
@@ -91,19 +93,18 @@ class FuzzySearchEngine:
         if not words:
             return []
 
-        # The trigram index holds the raw text, so a Unicode normalization can't be narrowed by it.
-        expression = (
-            None
-            if pipeline
-            else FuzzySearchEngine.narrowing_expression((w.casefold() for w in words), limit)
+        # The norm index holds each page's text folded as coarsely as any normalization does,
+        # and a fold never adds edits between two words, so the query's folded words narrow it.
+        expression = FuzzySearchEngine.narrowing_expression(
+            (Normalizers.index_form(w) for w in words), limit
         )
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
         ranked: list[tuple[float, str, int, list[SearchMatch]]] = []
         for row in (
-            *self._storage.search_candidate_pdf_pages(expression),
-            *self._storage.search_candidate_image_pages(expression),
+            *self._storage.search_norm_candidate_pdf_pages(expression),
+            *self._storage.search_norm_candidate_image_pages(expression),
         ):
             text = row["ocr_text"].replace("\n", " ")
             folded = pipeline.fold(text) if pipeline else None

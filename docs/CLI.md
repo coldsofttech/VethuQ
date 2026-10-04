@@ -115,7 +115,7 @@ vethuq index reindex file ./docs/invoice.pdf --source 3
 ### `rebuild-search [--force]`
 
 Rebuild the full-text search tables (a trigram and a word index per kind of page, plus the
-trigram index over each page's noise-free skeleton) from the page text already stored in the
+trigram index over each page's noise-free skeleton and one over its normalized text) from the page text already stored in the
 database; files are not re-read or re-OCR'd. Use it if search results look
 incomplete or out of date. Asks for confirmation unless `--force` is given,
 shows progress while it runs, then a panel with one row per table (rebuilt or
@@ -335,12 +335,14 @@ error.
 composes them (an `e` followed by a separate accent is `é`, which is how some PDFs write it)
 and keeps accents; `full` also folds accents and compatibility forms, so `cafe` finds `café`
 and `naive` finds `naïve`, `fine` finds the ligature `ﬁne`, full-width `ＡＢＣ` is `ABC` and
-`x2` finds `x²`. It applies to `like`, `fuzzy` and `noise-fuzzy` (for the fuzzy ones an accent
-is no longer an edit), and to `exact` only when asked for in that search — "as typed" never
-changes on its own, so a stored setting doesn't reach it. `full-text` already folds accents
-(and accepts no setting), `lexical` and `proximity` take none; they reject it. Highlights and
-exports show the original text. For now every engine's own default is `off`, and a search with
-it on reads every page rather than using the text indexes.
+`x2` finds `x²`. It applies to `like`, `exact`, `fuzzy` and `noise-fuzzy`. Each engine has its own default:
+`exact` and `like` `basic` (so a decomposed `é` is found either way, but `cafe` still isn't
+`café`), `fuzzy` and `noise-fuzzy` `full` (an accent is no longer an edit). `exact` is strict: a
+stored setting doesn't reach it, only `--normalize unicode=...` in that search. `full-text`
+already folds accents (and accepts no setting), `lexical` and `proximity` take none; they reject
+it. Highlights and exports show the original text. The searches still use the text indexes (the
+database records each page's normalized text), so a level never needs a reindex; run `index
+rebuild-search` once after upgrading from a version that predates it.
 
 **Look-alike characters (leetspeak)** are a normalization, not an engine: what counts as
 the same character, applied to `content` and to the page alike, whichever engine decides
@@ -771,10 +773,10 @@ vethuq settings search normalize case show
 ### `search normalize unicode set <value>|show`
 
 Configure whether `vethuq search` treats characters that are written differently as the same,
-when `--normalize unicode=...` isn't given: `auto` (the default — each engine's own, which is
-`off` for all of them for now), `off`, `basic` (compose characters, keep accents) or `full`
-(also fold accents and compatibility forms: `cafe` finds `café`). Honoured by `like`, `fuzzy` and
-`noise-fuzzy`; `exact` only when asked for in a search. A search with it on reads every page.
+when `--normalize unicode=...` isn't given: `auto` (the default — each engine's own: `basic` for
+`like` and `exact`, `full` for `fuzzy` and `noise-fuzzy`), `off`, `basic` (compose characters, keep
+accents) or `full` (also fold accents and compatibility forms: `cafe` finds `café`). Honoured by
+`like`, `fuzzy` and `noise-fuzzy`; `exact` only when asked for in a search.
 
 ```bash
 vethuq settings search normalize unicode set full

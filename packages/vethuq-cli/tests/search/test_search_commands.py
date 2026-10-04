@@ -903,22 +903,23 @@ class TestSearchNormalize:
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "a visit to the Café today")
 
-        fuzzy = runner.invoke(
-            app, ["search", "Cafe", "--engine", "fuzzy", "--normalize", "unicode=full"]
-        )
-        noise = runner.invoke(
-            app, ["search", "Cafe", "--engine", "noise-fuzzy", "--normalize", "unicode=full"]
+        fuzzy = runner.invoke(app, ["search", "Cafe", "--engine", "fuzzy"])
+        noise = runner.invoke(app, ["search", "Cafe", "--engine", "noise-fuzzy"])
+        basic = runner.invoke(
+            app, ["search", "Cafe", "--engine", "fuzzy", "--normalize", "unicode=basic"]
         )
 
-        assert "Café" in fuzzy.stdout and "unicode full" in fuzzy.stdout
+        # They fold accents by default, so it's only shown when it isn't the default.
+        assert "Café" in fuzzy.stdout and "unicode" not in fuzzy.stdout
         assert "Café" in noise.stdout
+        assert "No matches found." in basic.stdout
 
     def test_the_combined_search_uses_it(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "the \uff21\uff22\uff23 sign")
 
-        off = runner.invoke(app, ["search", "abc"])
-        full = runner.invoke(app, ["search", "abc", "--normalize", "unicode=full"])
+        off = runner.invoke(app, ["search", "abc", "--normalize", "unicode=off"])
+        full = runner.invoke(app, ["search", "abc"])
 
         assert "No matches found." in off.stdout
         assert "\uff21\uff22\uff23" in full.stdout

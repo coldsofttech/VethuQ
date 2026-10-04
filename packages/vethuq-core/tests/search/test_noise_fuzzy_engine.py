@@ -263,7 +263,9 @@ class TestCaseAndBoundaries:
     def test_unicode_is_kept(self, conn, storage):
         SearchData.seed_page(conn, "Café and c@fé and cafe")
 
-        assert _found(storage, "café") == ["Café", "c@fé"]  # cafe is an edit away: 75%
+        # Accents fold by default, so cafe matches too; asked as typed, it is an edit away: 75%
+        assert _found(storage, "café") == ["Café", "c@fé", "cafe"]
+        assert _found(storage, "café", unicode="off") == ["Café", "c@fé"]
 
     def test_skips_documents_that_are_not_indexed(self, conn, storage):
         source_id = SearchData.add_source(conn)
@@ -461,7 +463,7 @@ class TestOptions:
             storage, "noise-fuzzy", True, threshold="loose", level="Standard", noise="Medium"
         )
 
-        assert options == ("noise-fuzzy", True, 0.65, None, "standard", "medium", "off")
+        assert options == ("noise-fuzzy", True, 0.65, None, "standard", "medium", "full")
         assert Search.resolve_options(storage, "noise-fuzzy", None).noise == "high"
 
     def test_follows_the_case_sensitive_setting(self, storage):

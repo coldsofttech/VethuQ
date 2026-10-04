@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
-from vethuq_core.search.normalizers import Leet, Normalizers
+from vethuq_core.search.normalizers import Normalizers
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -55,7 +55,9 @@ class LikeSearchEngine:
         ):
             lookalikes = SearchSettings.LEETSPEAK_OFF
         folding = (
-            SearchSettings.resolve_unicode(self._storage, SearchSettings.DEFAULT_UNICODE)
+            SearchSettings.resolve_unicode(
+                self._storage, SearchSettings.UNICODE_DEFAULTS[self.name]
+            )
             if unicode is None
             else SearchSettings.parse_unicode(unicode)
         )
@@ -93,11 +95,9 @@ class LikeSearchEngine:
         """`query` as a substring, with Unicode and look-alike normalization applied to it and
         to the page text alike (see `Normalizers.pipeline`).
 
-        With look-alikes, candidate pages come from the trigram index over each page's recorded
-        skeleton (its text without noise, look-alikes folded as coarsely as any level does),
-        which every page that has the folded query holds. A Unicode normalization changes what
-        the page text is, which that index (made of the raw text) can't know, so every page is
-        a candidate. The folded text has the final say.
+        Candidate pages come from the trigram index over each page's recorded norm text (Unicode
+        fully folded, case ignored, look-alikes folded as coarsely as any level does), which every
+        page holding the folded query also holds. The folded text has the final say.
         """
         pipeline = Normalizers.pipeline(
             {
@@ -109,15 +109,14 @@ class LikeSearchEngine:
         needle = pipeline.fold(query).text
         if not needle:
             return []
-        narrowed = unicode == "off" and level != SearchSettings.LEETSPEAK_OFF
-        expression = SearchEngineHelpers.trigram_match(Leet.skeleton(query)) if narrowed else None
+        expression = SearchEngineHelpers.norm_match(query)
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
         matches: list[SearchMatch] = []
         for row in (
-            *self._storage.search_noise_candidate_pdf_pages(expression),
-            *self._storage.search_noise_candidate_image_pages(expression),
+            *self._storage.search_norm_candidate_pdf_pages(expression),
+            *self._storage.search_norm_candidate_image_pages(expression),
         ):
             text = row["ocr_text"].replace("\n", " ")
             folded = pipeline.fold(text)

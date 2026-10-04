@@ -8,6 +8,7 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.search import PageResult, SearchMatch, SearchOptions
 from vethuq_core.search.engines import Ranking
+from vethuq_core.settings import SearchSettings
 
 from vethuq_cli.theme import Theme
 
@@ -33,7 +34,9 @@ class ResultRenderer:
             parts.append(f"leet level {options.level}")
         if options.engine == "noise-fuzzy" and options.noise is not None:
             parts.append(f"noise {options.noise}")
-        if options.unicode not in (None, "off"):
+        if options.unicode is not None and options.unicode != SearchSettings.UNICODE_DEFAULTS.get(
+            options.engine
+        ):
             parts.append(f"unicode {options.unicode}")
         return ", ".join(parts)
 

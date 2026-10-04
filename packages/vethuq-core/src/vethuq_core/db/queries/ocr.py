@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 
-from vethuq_core.search.normalizers.leetspeak import Leet
+from vethuq_core.db.queries.documents import Document
 
 
 class Ocr:
@@ -35,12 +35,12 @@ class Ocr:
     }
     _PAGE_UPDATE_SQL = {
         "pdf_pages": (
-            "UPDATE pdf_pages SET ocr_text = ?, noise_text = ?, confidence = ?, ocr_phase = ?, "
-            "ocr_angles = ? WHERE id = ?"
+            "UPDATE pdf_pages SET ocr_text = ?, noise_text = ?, norm_text = ?, confidence = ?, "
+            "ocr_phase = ?, ocr_angles = ? WHERE id = ?"
         ),
         "image_pages": (
-            "UPDATE image_pages SET ocr_text = ?, noise_text = ?, confidence = ?, ocr_phase = ?, "
-            "ocr_angles = ? WHERE id = ?"
+            "UPDATE image_pages SET ocr_text = ?, noise_text = ?, norm_text = ?, confidence = ?, "
+            "ocr_phase = ?, ocr_angles = ? WHERE id = ?"
         ),
     }
     _PAGE_PHASE_DONE_SQL = {
@@ -122,7 +122,14 @@ class Ocr:
         ) -> None:
             conn.execute(
                 Ocr._PAGE_UPDATE_SQL[table],
-                (ocr_text, Leet.skeleton(ocr_text), confidence, ocr_phase, ocr_angles, page_id),
+                (
+                    ocr_text,
+                    *Document.derived_text(ocr_text),
+                    confidence,
+                    ocr_phase,
+                    ocr_angles,
+                    page_id,
+                ),
             )
 
         @staticmethod

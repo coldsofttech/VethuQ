@@ -25,7 +25,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 29
+    SCHEMA_VERSION = 30
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     ocr_text TEXT NOT NULL,
     char_count INTEGER NOT NULL DEFAULT 0,
     noise_text TEXT NOT NULL DEFAULT '',
+    norm_text TEXT NOT NULL DEFAULT '',
     confidence REAL NOT NULL,
     source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed')),
     ocr_engine TEXT,
@@ -96,6 +97,7 @@ CREATE TABLE IF NOT EXISTS image_pages (
     ocr_text TEXT NOT NULL,
     char_count INTEGER NOT NULL DEFAULT 0,
     noise_text TEXT NOT NULL DEFAULT '',
+    norm_text TEXT NOT NULL DEFAULT '',
     confidence REAL NOT NULL,
     ocr_engine TEXT,
     language TEXT,
@@ -266,7 +268,7 @@ CREATE TRIGGER IF NOT EXISTS image_pages_words_au AFTER UPDATE ON image_pages BE
         VALUES ('delete', old.id, old.ocr_text);
     INSERT INTO image_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
-""" + Document.noise_schema()
+""" + Document.derived_schema()
 
     @staticmethod
     def _migrate_legacy_db(root: Path, db_dir: Path) -> None:
@@ -420,7 +422,7 @@ END;
             )
             Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
-            if row["version"] < 29:
+            if row["version"] < 30:
                 # Restores the index triggers `Migration.schema` dropped while it
                 # backfilled the (then still empty) indexes - idempotent.
                 conn.executescript(Db._SCHEMA)

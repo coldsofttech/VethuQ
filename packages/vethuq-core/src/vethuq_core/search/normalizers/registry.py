@@ -37,6 +37,14 @@ class Normalizers:
         return ordered + sorted(known - set(ordered))
 
     @staticmethod
+    def index_form(text: str) -> str:
+        """`text` through every normalizer's `index_form`, in application order: the form the
+        database records (`norm_text`) so candidate pages can be found through an index."""
+        for name in Normalizers.available():
+            text = Normalizers.get(name).index_form(text)
+        return text
+
+    @staticmethod
     def pipeline(levels: Mapping[str, str]) -> Pipeline:
         """The normalizers named in `levels`, at those levels, in application order.
 

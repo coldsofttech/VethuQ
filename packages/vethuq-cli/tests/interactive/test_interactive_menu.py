@@ -124,7 +124,7 @@ class TestInteractiveMenu:
         result = runner.invoke(app, [], input="3\n10\ny\n0\n8\n")
 
         assert result.exit_code == 0
-        assert "6 rebuilt, 0 failed" in " ".join(result.output.split())
+        assert "8 rebuilt, 0 failed" in " ".join(result.output.split())
 
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()
