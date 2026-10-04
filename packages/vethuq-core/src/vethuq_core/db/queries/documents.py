@@ -995,28 +995,39 @@ class Document:
         return Document.search_derived_candidate_image_pages(conn, "norm", match_expr)
 
     @staticmethod
-    def search_fulltext_pdf_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
+    def words_index(table: str, complex_index: bool = False) -> str:
+        """The word index over `table` ('pdf_pages' or 'image_pages'): the plain one
+        (`unicode61` + `porter`), or with `complex_index` the mark-aware one for scripts whose
+        marks are part of the word (see `COMPLEX_SEARCH_INDEXES`)."""
+        return f"{table}_words_complex" if complex_index else f"{table}_words"
+
+    @staticmethod
+    def search_fulltext_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str, complex_index: bool = False
+    ) -> list[sqlite3.Row]:
         """Return indexed `pdf_pages` rows matching the FTS5 `match_expr`, best match first.
 
         Queries `pdf_pages_words` - the word-based (`unicode61` + `porter`) index kept in sync
-        with `pdf_pages` by triggers - with `MATCH`. `highlighted_text` is the page's text
+        with `pdf_pages` by triggers - with `MATCH`, or with `complex_index` the mark-aware
+        `pdf_pages_words_complex`. `highlighted_text` is the page's text
         with every matched word wrapped in control characters 0x02...0x03 (FTS5's own
         `highlight()`, so stemmed and prefix matches are marked exactly as the index
         matched them), and `score` is the negated BM25 rank (higher is better).
         Otherwise shaped like `search_indexed_pdf_pages`.
         """
+        words = Document.words_index("pdf_pages", complex_index)
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, "
-            "highlight(pdf_pages_words, 0, char(2), char(3)) AS highlighted_text, "
-            "-bm25(pdf_pages_words) AS score, "
+            f"highlight({words}, 0, char(2), char(3)) AS highlighted_text, "
+            f"-bm25({words}) AS score, "
             "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM pdf_pages_words "
-            "JOIN pdf_pages pp ON pp.id = pdf_pages_words.rowid "
+            f"FROM {words} "
+            f"JOIN pdf_pages pp ON pp.id = {words}.rowid "
             "JOIN document_index carrier ON carrier.id = pp.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE pdf_pages_words MATCH ? "
+            f"WHERE {words} MATCH ? "
             "AND (di.status = 'indexed' OR di.reindex_pending) "
             "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY score DESC, di.file_path, pp.page_number",
@@ -1024,20 +1035,23 @@ class Document:
         ).fetchall()
 
     @staticmethod
-    def search_fulltext_image_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
+    def search_fulltext_image_pages(
+        conn: sqlite3.Connection, match_expr: str, complex_index: bool = False
+    ) -> list[sqlite3.Row]:
         """Like `search_fulltext_pdf_pages`, but for `image_pages`/`image_pages_words`."""
+        words = Document.words_index("image_pages", complex_index)
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, "
-            "highlight(image_pages_words, 0, char(2), char(3)) AS highlighted_text, "
-            "-bm25(image_pages_words) AS score, "
+            f"highlight({words}, 0, char(2), char(3)) AS highlighted_text, "
+            f"-bm25({words}) AS score, "
             "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM image_pages_words "
-            "JOIN image_pages ip ON ip.id = image_pages_words.rowid "
+            f"FROM {words} "
+            f"JOIN image_pages ip ON ip.id = {words}.rowid "
             "JOIN document_index carrier ON carrier.id = ip.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE image_pages_words MATCH ? "
+            f"WHERE {words} MATCH ? "
             "AND (di.status = 'indexed' OR di.reindex_pending) "
             "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY score DESC, di.file_path",
@@ -1045,24 +1059,27 @@ class Document:
         ).fetchall()
 
     @staticmethod
-    def search_proximity_pdf_pages(conn: sqlite3.Connection, match_expr: str) -> list[sqlite3.Row]:
+    def search_proximity_pdf_pages(
+        conn: sqlite3.Connection, match_expr: str, complex_index: bool = False
+    ) -> list[sqlite3.Row]:
         """Return indexed `pdf_pages` rows matching the FTS5 `NEAR` expression `match_expr`.
 
         Like `search_fulltext_pdf_pages` but without the text: `page_id` (the
         `pdf_pages` row id, to pass to `get_pdf_term_highlights`) and `score` (the
         negated BM25 rank, higher is better) come back instead.
         """
+        words = Document.words_index("pdf_pages", complex_index)
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, pp.id AS page_id, "
-            "-bm25(pdf_pages_words) AS score, "
+            f"-bm25({words}) AS score, "
             "pp.page_number AS page_number, pp.source AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM pdf_pages_words "
-            "JOIN pdf_pages pp ON pp.id = pdf_pages_words.rowid "
+            f"FROM {words} "
+            f"JOIN pdf_pages pp ON pp.id = {words}.rowid "
             "JOIN document_index carrier ON carrier.id = pp.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE pdf_pages_words MATCH ? "
+            f"WHERE {words} MATCH ? "
             "AND (di.status = 'indexed' OR di.reindex_pending) "
             "AND s.is_active = 1 AND di.file_type = 'pdf' "
             "ORDER BY score DESC, di.file_path, pp.page_number",
@@ -1071,20 +1088,21 @@ class Document:
 
     @staticmethod
     def search_proximity_image_pages(
-        conn: sqlite3.Connection, match_expr: str
+        conn: sqlite3.Connection, match_expr: str, complex_index: bool = False
     ) -> list[sqlite3.Row]:
         """Like `search_proximity_pdf_pages`, but for `image_pages`/`image_pages_words`."""
+        words = Document.words_index("image_pages", complex_index)
         return conn.execute(
             "SELECT di.id AS document_id, di.file_path AS file_path, ip.id AS page_id, "
-            "-bm25(image_pages_words) AS score, "
+            f"-bm25({words}) AS score, "
             "NULL AS page_number, 'ocr' AS source, carrier.id AS canonical_id, "
             "CASE WHEN carrier.id != di.id THEN carrier.file_path END AS duplicate_of_path "
-            "FROM image_pages_words "
-            "JOIN image_pages ip ON ip.id = image_pages_words.rowid "
+            f"FROM {words} "
+            f"JOIN image_pages ip ON ip.id = {words}.rowid "
             "JOIN document_index carrier ON carrier.id = ip.document_id "
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
-            "WHERE image_pages_words MATCH ? "
+            f"WHERE {words} MATCH ? "
             "AND (di.status = 'indexed' OR di.reindex_pending) "
             "AND s.is_active = 1 AND di.file_type = 'image' "
             "ORDER BY score DESC, di.file_path",
@@ -1095,7 +1113,7 @@ class Document:
 
     @staticmethod
     def get_pdf_term_highlights(
-        conn: sqlite3.Connection, match_expr: str, page_ids: list[int]
+        conn: sqlite3.Connection, match_expr: str, page_ids: list[int], complex_index: bool = False
     ) -> dict[int, str]:
         """Each page's text (by `pdf_pages` id, for those in `page_ids` that match `match_expr`)
         with every match wrapped in 0x02...0x03 - see `search_fulltext_pdf_pages`.
@@ -1103,14 +1121,18 @@ class Document:
         `match_expr` is a single term (a word, phrase or prefix), so this locates where
         that one term occurs on the pages a `NEAR` query already selected.
         """
-        return Document._term_highlights(conn, "pdf_pages_words", match_expr, page_ids)
+        return Document._term_highlights(
+            conn, Document.words_index("pdf_pages", complex_index), match_expr, page_ids
+        )
 
     @staticmethod
     def get_image_term_highlights(
-        conn: sqlite3.Connection, match_expr: str, page_ids: list[int]
+        conn: sqlite3.Connection, match_expr: str, page_ids: list[int], complex_index: bool = False
     ) -> dict[int, str]:
         """Like `get_pdf_term_highlights`, but for `image_pages`/`image_pages_words`."""
-        return Document._term_highlights(conn, "image_pages_words", match_expr, page_ids)
+        return Document._term_highlights(
+            conn, Document.words_index("image_pages", complex_index), match_expr, page_ids
+        )
 
     @staticmethod
     def _term_highlights(

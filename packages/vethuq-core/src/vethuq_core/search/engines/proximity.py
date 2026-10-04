@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from bisect import bisect_left
 
 from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
@@ -68,16 +69,17 @@ class ProximitySearchEngine:
             )
 
         expression = f"NEAR({' '.join(terms)}, {limit})"
+        complex_index = FullTextSearchEngine.needs_mark_aware_index(self._storage, query)
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
-        pdf_rows = list(self._storage.search_proximity_pdf_pages(expression))
-        image_rows = list(self._storage.search_proximity_image_pages(expression))
+        pdf_rows = list(self._storage.search_proximity_pdf_pages(expression, complex_index))
+        image_rows = list(self._storage.search_proximity_image_pages(expression, complex_index))
         pdf_highlights = ProximitySearchEngine._term_highlights(
-            terms, pdf_rows, self._storage.get_pdf_term_highlights
+            terms, pdf_rows, self._storage.get_pdf_term_highlights, complex_index
         )
         image_highlights = ProximitySearchEngine._term_highlights(
-            terms, image_rows, self._storage.get_image_term_highlights
+            terms, image_rows, self._storage.get_image_term_highlights, complex_index
         )
 
         matches: list[SearchMatch] = []
@@ -94,7 +96,7 @@ class ProximitySearchEngine:
                     continue  # a term couldn't be located again, so no passage can be shown
                 text = texts_and_spans[0][0]
                 passages = ProximitySearchEngine.find_clusters(
-                    text, [spans for _, spans in texts_and_spans], limit
+                    text, [spans for _, spans in texts_and_spans], limit, complex_index
                 )
                 page_number = row["page_number"]
                 total_pages = (
@@ -124,8 +126,30 @@ class ProximitySearchEngine:
         return matches
 
     @staticmethod
+    def token_starts(text: str, complex_index: bool = False) -> list[int]:
+        """Where each word of `text` starts, as the word index being searched sees words.
+
+        The plain index (FTS5's `unicode61`) cuts words at anything that isn't a letter or digit;
+        the mark-aware one also keeps combining marks (a Telugu vowel sign) inside the word.
+        """
+        if not complex_index:
+            return [m.start() for m in ProximitySearchEngine._TOKEN.finditer(text)]
+        starts = []
+        inside = False
+        for position, char in enumerate(text):
+            category = unicodedata.category(char)
+            is_token = category[0] in "LNM" or category == "Co"
+            if is_token and not inside:
+                starts.append(position)
+            inside = is_token
+        return starts
+
+    @staticmethod
     def find_clusters(
-        text: str, term_spans: list[list[tuple[int, int]]], distance: int
+        text: str,
+        term_spans: list[list[tuple[int, int]]],
+        distance: int,
+        complex_index: bool = False,
     ) -> list[tuple[int, int]]:
         """The `(start, end)` of each passage of `text` holding every term within `distance` words.
 
@@ -137,7 +161,7 @@ class ProximitySearchEngine:
         """
         if not term_spans or not all(term_spans):
             return []
-        starts = [m.start() for m in ProximitySearchEngine._TOKEN.finditer(text)]
+        starts = ProximitySearchEngine.token_starts(text, complex_index)
 
         def words_between(first_end: int, last_start: int) -> int:
             return max(0, bisect_left(starts, last_start) - bisect_left(starts, first_end))
@@ -178,9 +202,9 @@ class ProximitySearchEngine:
         return merged
 
     @staticmethod
-    def _term_highlights(terms, rows, fetch) -> list[dict[int, str]]:
+    def _term_highlights(terms, rows, fetch, complex_index: bool = False) -> list[dict[int, str]]:
         """For each term, the highlighted text of the rows' pages it occurs on, by page id."""
         page_ids = [row["page_id"] for row in rows]
         if not page_ids:
             return [{} for _ in terms]
-        return [fetch(term, page_ids) for term in terms]
+        return [fetch(term, page_ids, complex_index) for term in terms]

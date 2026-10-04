@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 
-from vethuq_core.search.engines.base import SearchMatch
+from vethuq_core.languages import Scripts
+from vethuq_core.search.engines.base import SearchEngineUnavailable, SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.storage import Storage
 
@@ -17,6 +18,11 @@ class FullTextSearchEngine:
     unless written as the prefix `mus*`. Results are ordered best first -
     `SearchMatch.score` - with one match per matched word or phrase on a page.
     The index folds case, so this engine can't match case-sensitively.
+
+    A query with Telugu in it (any script whose marks are part of its words) is looked up in the
+    mark-aware word index instead, which keeps `అమ్మ` whole where the plain one splits it at its
+    vowel signs. That index does not stem, so Telugu words match as written (or as a prefix,
+    `ఇంట*`), and a mixed query matches its English words unstemmed too.
     """
 
     name = "full-text"
@@ -24,7 +30,7 @@ class FullTextSearchEngine:
     # Highlight markers - see `Document.search_fulltext_pdf_pages`.
     _OPEN, _CLOSE = "\x02", "\x03"
     _TERM = re.compile(r'"([^"]*)"|(\S+)')
-    _WORDS = re.compile(r"\w+")
+    _WORDS = Scripts.word_pattern()
     _HIGHLIGHT = re.compile(f"{_OPEN}(.*?){_CLOSE}", re.DOTALL)
 
     def __init__(self, storage: Storage) -> None:
@@ -52,14 +58,15 @@ class FullTextSearchEngine:
         expression = FullTextSearchEngine.build_match_expression(query)
         if expression is None:
             return []
+        complex_index = FullTextSearchEngine.needs_mark_aware_index(self._storage, query)
 
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
         matches: list[SearchMatch] = []
         for row in (
-            *self._storage.search_fulltext_pdf_pages(expression),
-            *self._storage.search_fulltext_image_pages(expression),
+            *self._storage.search_fulltext_pdf_pages(expression, complex_index),
+            *self._storage.search_fulltext_image_pages(expression, complex_index),
         ):
             page_number = row["page_number"]
             # Newlines flatten to spaces, one-for-one, so the spans stay valid.
@@ -89,6 +96,23 @@ class FullTextSearchEngine:
         # file path then page. Stable, so occurrences keep their text order.
         matches.sort(key=lambda m: (-(m.score or 0.0), m.file_path, m.page_number or 0))
         return matches
+
+    @staticmethod
+    def needs_mark_aware_index(storage: Storage, query: str) -> bool:
+        """Whether `query` has to be looked up in the mark-aware word index (it has Telugu in it).
+
+        Raises `SearchEngineUnavailable` if that index does not exist, which is when this
+        SQLite is too old for the tokenizer it needs: Telugu words can't be searched here, and
+        silently searching the plain index would match consonant fragments instead.
+        """
+        if not Scripts.has_mark_script(query):
+            return False
+        if not storage.has_complex_word_index():
+            raise SearchEngineUnavailable(
+                "Telugu word search needs a newer SQLite than this one; "
+                "the 'like' and 'fuzzy' engines still find Telugu text."
+            )
+        return True
 
     @staticmethod
     def parse_terms(query: str) -> list[str]:

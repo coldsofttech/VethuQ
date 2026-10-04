@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.normalizers import Normalizers
@@ -23,7 +24,7 @@ class ExactSearchEngine:
 
     name = "exact"
 
-    _WORD_CHAR = re.compile(r"\w")
+    _WORD_CHAR = re.compile(Scripts.word_char())
 
     def __init__(self, storage: Storage) -> None:
         self._storage = storage
@@ -88,6 +89,7 @@ class ExactSearchEngine:
         with a word character, so `$1,200.00` (which ends in a digit but starts
         with a symbol) still matches right after other text on its left.
         """
-        before = r"(?<!\w)" if ExactSearchEngine._WORD_CHAR.match(query[0]) else ""
-        after = r"(?!\w)" if ExactSearchEngine._WORD_CHAR.match(query[-1]) else ""
+        word_char = Scripts.word_char()
+        before = f"(?<!{word_char})" if ExactSearchEngine._WORD_CHAR.match(query[0]) else ""
+        after = f"(?!{word_char})" if ExactSearchEngine._WORD_CHAR.match(query[-1]) else ""
         return re.compile(f"{before}{re.escape(query)}{after}")

@@ -273,7 +273,7 @@ runs just that engine:
 |---|---|---|
 | `like` | `content` anywhere, even inside a word; ignores case unless `--case-sensitive`; with `--leet-level`, look-alikes (`3` for `e`) count as the letters | `museum`, `Museum`, `mus`, `seu` ✓ — `Museums`, `euma` ✗ |
 | `exact` | `content` as typed: same case, as a whole word (always case-sensitive) | `Museum` ✓ — `museum`, `Museums`, `mus` ✗ |
-| `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
+| `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first. Telugu words match as written (no stemming) | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
 | `noise-fuzzy` | `content`'s characters hidden by stray punctuation or whitespace, look-alike symbols and typos *at once*; cleanest first | `hello` finds `hello`, `helo`, `hallo`, `h3ll0`, `he llo`, `h.ello`; with `--noise medium` also `h..e llo` and `h @ 3 l l 0` ✓ — `hxexlxlxo` ✗ |
@@ -394,6 +394,29 @@ already folds accents (and accepts no setting), `lexical` and `proximity` take n
 it. Highlights and exports show the original text. The searches still use the text indexes (the
 database records each page's normalized text), so a level never needs a reindex; run `index
 rebuild-search` once after upgrading from a version that predates it.
+
+**Telugu** (and any script whose marks are part of its words) needs no flag: a query is searched as
+typed, and a query with Telugu in it is detected automatically. The engines read a Telugu word as
+one word - `అమ్మ` is not `అ`, `మ` and a virama - so:
+
+- `like` finds any substring (`కా` is found inside `కాకి`); `exact` and `full-text` find whole
+  words only, so `కా` is not a match for `కాకి`, and `క` matches only a page where `క` stands alone,
+  not the syllable inside other words.
+- `full-text` and `proximity` use a Telugu-aware word index for such queries. It does not stem (Telugu
+  words change with their endings: `ఇల్లు`, `ఇంట్లో`), so words match as written; a prefix finds the
+  forms that share it (`ఇంట*`), and `like` or `fuzzy` find related spellings. A mixed query
+  (`invoice అమ్మ`) uses the same index, where the English words are not stemmed either. On an SQLite
+  too old to build that index, naming `--engine full-text` or `proximity` with a Telugu query is an
+  error that says so, and the combined search simply leaves those two out.
+- Unicode `full` (the default of `fuzzy` and `noise-fuzzy`) keeps vowel signs and the virama - they
+  are what tells `కాకి` from `కక` - drops the zero-width joiners that only choose a conjunct's form,
+  and reads Telugu digits as ASCII digits, so `2024` finds `౨౦౨౪` and the other way round.
+  `basic` (the default of `like` and `exact`) only composes, so those two read digits as written
+  unless you ask for `--normalize unicode=full`.
+- `fuzzy` allows the same one or two edits it does for English, counted per character, so a
+  misread sign (`కాకీ` for `కాకి`) is one edit; `--fuzziness loose` is the setting that accepts it
+  for words this short.
+- A snippet never starts or ends between a letter and its vowel signs.
 
 **Look-alike characters (leetspeak)** are a normalization, not an engine: what counts as
 the same character, applied to `content` and to the page alike, whichever engine decides
@@ -588,6 +611,8 @@ vethuq settings search noise-fuzzy noise set medium         # the default from n
 
 ```bash
 vethuq search cafe --engine like --normalize unicode=full    # finds "café" (and "cafe\u0301", "cafe")
+vethuq search కాకి                                           # Telugu: found whole, like English
+vethuq search 2024 --engine like --normalize unicode=full    # also finds Telugu digits ౨౦౨౪
 vethuq search abc --normalize unicode=full,leetspeak=basic   # full-width ＡＢＣ, "4bc", ...
 vethuq search hello --engine like --leet-level basic         # finds "hello", "h3ll0", "He11o"
 vethuq search p@55w0rd --engine like --leet-level basic      # finds "password" and "p@55w0rd"

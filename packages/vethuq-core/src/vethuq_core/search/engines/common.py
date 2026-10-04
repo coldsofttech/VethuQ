@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
@@ -76,9 +78,18 @@ class SearchEngineHelpers:
         engine: str,
         score: float | None = None,
     ) -> SearchMatch:
-        """Build the `SearchMatch` for `text[start:end]`, with `chars` of context either side."""
+        """Build the `SearchMatch` for `text[start:end]`, with `chars` of context either side.
+
+        Context never begins or ends in the middle of a syllable: a Telugu vowel sign is kept
+        with its letter, so a snippet does not start on a sign with no letter or lose the sign
+        of its last letter.
+        """
         before_start = max(0, start - chars)
         after_end = min(len(text), end + chars)
+        while before_start > 0 and SearchEngineHelpers._is_sign(text[before_start]):
+            before_start -= 1
+        while after_end < len(text) and SearchEngineHelpers._is_sign(text[after_end]):
+            after_end += 1
         return SearchMatch(
             file_id=document_id,
             file_name=Path(file_path).name,
@@ -97,6 +108,13 @@ class SearchEngineHelpers:
             end=end,
             engine=engine,
         )
+
+    @staticmethod
+    def _is_sign(char: str) -> bool:
+        """Whether `char` is a combining mark of a script whose marks are part of its words (a
+        Telugu vowel sign): it can't stand without the letter before it. Accents of other
+        scripts are not, so snippets of other text are cut exactly where they always were."""
+        return unicodedata.category(char)[0] == "M" and Scripts.keeps_marks(char)
 
     @staticmethod
     def like_pattern(query: str) -> str:

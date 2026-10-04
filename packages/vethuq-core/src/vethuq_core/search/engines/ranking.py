@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
+from vethuq_core.search.engines.base import SearchEngineUnavailable, SearchMatch, SearchQueryError
 from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.registry import SearchEngines
@@ -290,8 +290,9 @@ class Ranking:
         `proximity` never do), `threshold` only `fuzzy` and `noise-fuzzy`, `distance` only
         `proximity`, `level` only `like` and `noise-fuzzy` and `noise` only `noise-fuzzy`,
         each defaulting to the user's setting. An engine that can't search the query
-        (`proximity` needs two terms, `lexical` three characters) is skipped rather than
-        failing the search.
+        (`proximity` needs two terms, `lexical` three characters, `full-text` and `proximity`
+        a Telugu query on an SQLite too old to index it) is skipped rather than failing the
+        search.
         """
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         runs: dict[str, list[SearchMatch]] = {}
@@ -309,7 +310,7 @@ class Ranking:
                     noise,
                     unicode,
                 )
-            except SearchQueryError:
+            except (SearchQueryError, SearchEngineUnavailable):
                 runs[engine] = []
 
         pages: dict[tuple[int, int | None], dict[str, list[SearchMatch]]] = {}

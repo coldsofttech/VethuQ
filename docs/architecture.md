@@ -293,6 +293,38 @@ and what it supports is in the engine (`like`: look-alikes off; `noise-fuzzy`: `
 `search/__init__.py` imports lazily so the database layer can import the normalizers (to record a
 page's skeleton) without pulling in the engines, which import the database layer.
 
+### Searching Telugu
+
+What a *word* is lives in one place, `Scripts` (`vethuq_core.languages`): `Scripts.word_pattern()` is
+`\w+` except that the whole Telugu block (letters, vowel signs, virama, digits) belongs to words, and a
+zero-width joiner next to a Telugu character does too. `full-text`, `fuzzy`, `exact`'s boundaries and
+`noise-fuzzy`'s word edges use it instead of `\w`/`isalnum`, which treat a Telugu vowel sign as
+punctuation. For any other text it is `\w` exactly, so English tokenizes as it always did (pinned by
+`tests/search/test_english_golden.py`).
+
+- **Unicode normalizer.** `full` strips a combining mark (category Mn) only when the letter before
+  it is in a script where marks are decoration (`Scripts.strips_marks`); Telugu vowel signs and the
+  virama stay. In `full` a joiner after a Telugu character is dropped and Telugu digits become ASCII
+  digits. `_units` keeps a Telugu sign with its letter, so a mark is never normalized without it and
+  positions still trace back for highlighting.
+- **Skeleton and noise.** `Leet.is_noise` and `Leet.kept()` no longer treat Telugu marks as noise, so a
+  page's `noise_text` keeps them and `noise-fuzzy` compares real syllables rather than bare
+  consonants. The look-alike classes are Latin only and are not touched.
+- **Word index routing.** A query with a character of a mark-keeping script (`Scripts.has_mark_script`)
+  is looked up in the `*_words_complex` indexes (schema v32) by `full-text` and `proximity`
+  (`FullTextSearchEngine.needs_mark_aware_index`); everything else uses the plain indexes. The storage
+  calls take `complex_index`, and `Document.words_index` names the table. `proximity` counts the words
+  between terms with the tokenizer of the index it searched (`ProximitySearchEngine.token_starts`). If
+  that index does not exist (an SQLite too old for the tokenizer) the engine raises
+  `SearchEngineUnavailable`: searching the plain index would match consonant fragments, so it refuses;
+  the combined search skips an engine that is unavailable, and the CLI reports it.
+- **Snippets.** `SearchEngineHelpers.build_match` moves context boundaries off Telugu signs, so a
+  snippet never starts on a sign without its letter or loses the sign of its last letter; other scripts'
+  accents are cut exactly where they were.
+- **What is deliberately not done.** No Telugu stemming (a rule-based stripper would be a later
+  addition); `fuzzy` counts edits per code point, not per syllable; and `lexical` (a trigram-overlap
+  engine) is unchanged.
+
 ### Combined search and ranking
 
 `vethuq_core.ranking.search_all` (`search --engine all`, the default) runs every

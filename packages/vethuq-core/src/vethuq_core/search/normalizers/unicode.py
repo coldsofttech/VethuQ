@@ -1,10 +1,16 @@
 """The Unicode normalizer: `basic` composes text (NFC), `full` also folds compatibility forms
-and accents (`ﬁ` is `fi`, a full-width `Ａ` is `A`, `é` is `e`)."""
+and accents (`ﬁ` is `fi`, a full-width `Ａ` is `A`, `é` is `e`).
+
+Accents are only folded away on letters of scripts where they are decoration. In a script whose
+combining marks are part of the syllable (Telugu: vowel signs and the virama) they are kept - they
+are what tells `కాకి` from `కక` - and `full` there instead drops the zero-width joiners that only
+choose a conjunct's form and reads the script's digits as ASCII digits (`౨౦౨౪` is `2024`)."""
 
 from __future__ import annotations
 
 import unicodedata
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.normalizers.base import Folded
 
 
@@ -57,9 +63,21 @@ class UnicodeNormalizer:
         if level == "basic":
             return unicodedata.normalize("NFC", text)
         decomposed = unicodedata.normalize("NFKD", text)
-        return unicodedata.normalize(
-            "NFC", "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
-        )
+        kept: list[str] = []
+        base = ""  # the last character that is not a mark: what a following mark belongs to
+        for char in decomposed:
+            category = unicodedata.category(char)
+            if category == "Mn":
+                if not base or Scripts.strips_marks(base):
+                    continue
+            elif category[0] != "M":
+                if char in Scripts.JOINERS and base and Scripts.keeps_marks(base):
+                    continue
+                base = char
+                if category == "Nd" and Scripts.keeps_marks(char):
+                    char = str(unicodedata.digit(char))
+            kept.append(char)
+        return unicodedata.normalize("NFC", "".join(kept))
 
     @staticmethod
     def _is_settled(text: str, level: str) -> bool:
@@ -69,6 +87,14 @@ class UnicodeNormalizer:
         return text.isascii() or UnicodeNormalizer._normalize(text, level) == text
 
     @staticmethod
+    def _joins(char: str) -> bool:
+        """Whether `char` belongs to the letter before it: a mark or joiner of a script whose
+        marks are part of its words."""
+        return Scripts.keeps_marks(char) and (
+            unicodedata.category(char)[0] == "M" or char in Scripts.JOINERS
+        )
+
+    @staticmethod
     def _segments(text: str) -> list[tuple[int, int]]:
         """`text` cut before each whitespace character."""
         cuts = [0] + [i for i, char in enumerate(text) if char.isspace() and i > 0] + [len(text)]
@@ -76,10 +102,18 @@ class UnicodeNormalizer:
 
     @staticmethod
     def _units(text: str, first: int, last: int) -> list[tuple[int, int]]:
-        """`text[first:last]` cut before each character that isn't a combining mark."""
+        """`text[first:last]` cut before each character that isn't a combining mark.
+
+        The marks and joiners of a script whose marks are part of the word stay with the letter
+        before them even when Unicode gives them no combining class (a Telugu vowel sign): the
+        letter and its signs are one unit, so a mark is never normalized without its letter."""
         cuts = (
             [first]
-            + [i for i in range(first + 1, last) if unicodedata.combining(text[i]) == 0]
+            + [
+                i
+                for i in range(first + 1, last)
+                if unicodedata.combining(text[i]) == 0 and not UnicodeNormalizer._joins(text[i])
+            ]
             + [last]
         )
         return list(zip(cuts, cuts[1:], strict=False))

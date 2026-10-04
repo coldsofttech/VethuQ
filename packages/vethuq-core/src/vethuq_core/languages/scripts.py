@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import cache
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,58 @@ class Scripts:
             for first, last in script.ranges
         )
         return f"*[{body}]*"
+
+    @staticmethod
+    def keeps_marks(char: str) -> bool:
+        """Whether `char` is in a script whose combining marks are part of the word (the
+        opposite of `strips_marks`): its letters, vowel signs and digits all belong to words."""
+        return not Scripts.strips_marks(char)
+
+    @staticmethod
+    def is_word_char(char: str) -> bool:
+        """Whether `char` is part of a word: a letter or digit, or anything in a script whose
+        marks belong to its words. Combining marks of other scripts (an accent) are not, as
+        `str.isalnum` has always said."""
+        return char.isalnum() or Scripts.keeps_marks(char)
+
+    # Zero-width (non-)joiners sit inside Telugu words (they choose a conjunct's form).
+    JOINERS = "\u200c\u200d"
+
+    @staticmethod
+    @cache
+    def mark_ranges() -> str:
+        """The body of a regex character class matching every character of the scripts whose marks
+        belong to their words (empty if there are none)."""
+        return "".join(
+            f"{re.escape(chr(first))}-{re.escape(chr(last))}"
+            for script in Scripts.REGISTRY.values()
+            if not script.strips_marks
+            for first, last in script.ranges
+        )
+
+    @staticmethod
+    def has_mark_script(text: str) -> bool:
+        """Whether `text` has a character of a script whose marks are part of its words - text
+        the mark-aware word index and word pattern are for."""
+        marks = Scripts.mark_ranges()
+        return bool(marks) and re.search(f"[{marks}]", text) is not None
+
+    @staticmethod
+    @cache
+    def word_char() -> str:
+        """A regex matching one word character: `\\w`, plus the whole of the scripts whose marks
+        belong to their words, plus a zero-width joiner next to such a character. For everything
+        but those scripts it is `\\w` exactly."""
+        marks = Scripts.mark_ranges()
+        if not marks:
+            return r"\w"
+        return rf"(?:[\w{marks}]|(?<=[{marks}])[{Scripts.JOINERS}])"
+
+    @staticmethod
+    @cache
+    def word_pattern() -> re.Pattern[str]:
+        """Matches a run of word characters: `\\w+`, but not cut at a Telugu vowel sign."""
+        return re.compile(f"{Scripts.word_char()}+")
 
     @staticmethod
     def strips_marks(char: str) -> bool:

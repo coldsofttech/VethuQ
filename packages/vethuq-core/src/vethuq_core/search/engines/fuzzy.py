@@ -17,10 +17,10 @@ two neighbours, each one edit). Guard rails keep it from becoming noise:
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.normalizers import Normalizers
@@ -42,7 +42,7 @@ class FuzzySearchEngine:
     MIN_FUZZY_LENGTH = 4
     MAX_EDITS = 2
 
-    _WORD = re.compile(r"\w+")
+    _WORD = Scripts.word_pattern()
     # So 0.8 accepts 4 letters with 1 edit (1 - 1/5 == 0.8 in floating point).
     _TOLERANCE = 1e-9
 
@@ -194,7 +194,7 @@ class FuzzySearchEngine:
           `n - 2` trigrams with any match as long as `n - 2 > 3k` (one edit spoils at
           most three trigrams), so any of them will do: `("abc" OR "bcd" ...)`.
 
-        Words are `\\w+` only, so nothing here needs escaping.
+        Words are word characters only, so nothing here needs escaping.
         """
         groups = []
         for word in words:

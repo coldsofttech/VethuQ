@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from functools import cache
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.normalizers.base import Folded
 from vethuq_core.search.normalizers.unicode import UnicodeNormalizer
 
@@ -116,7 +117,10 @@ class Leet:
         character (`\\w` is a letter, a digit or an underscore, which is noise).
         """
         symbols = "".join(re.escape(char) for char in sorted(Leet.symbols()))
-        return re.compile(rf"[^\W_]|[{symbols}]")
+        # Everything in a script whose marks are part of its words is kept too: dropping a
+        # Telugu vowel sign as noise would leave the bare consonants.
+        marks = Scripts.mark_ranges()
+        return re.compile(rf"[^\W_]|[{symbols}]" + (rf"|[{marks}]" if marks else ""))
 
     @staticmethod
     @cache
@@ -135,7 +139,7 @@ class Leet:
     @staticmethod
     def is_noise(char: str) -> bool:
         """Whether `char` is skipped when text is reduced to its skeleton."""
-        return not char.isalnum() and char not in Leet.symbols()
+        return not char.isalnum() and char not in Leet.symbols() and not Scripts.keeps_marks(char)
 
     @staticmethod
     def fold(char: str, level: str, case_sensitive: bool) -> str:

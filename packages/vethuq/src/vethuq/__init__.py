@@ -49,7 +49,13 @@ from vethuq._core.ocr import DocumentResult
 from vethuq._core.ocr.models import CleanResult, ClearResult, DownloadResult, ModelStatus
 from vethuq._core.ocr.models import OcrModels as _OcrModels
 from vethuq._core.search import Export as _Export
-from vethuq._core.search import PageResult, SearchMatch, SearchOptionError, SearchQueryError
+from vethuq._core.search import (
+    PageResult,
+    SearchEngineUnavailable,
+    SearchMatch,
+    SearchOptionError,
+    SearchQueryError,
+)
 from vethuq._core.search import Search as _Search
 from vethuq._core.search.engines import Ranking as _Ranking
 from vethuq._core.settings import DbSettings as _DbSettings
@@ -117,6 +123,7 @@ __all__ = [
     "DownloadResult",
     "LanguageUnavailableError",
     "ModelStatus",
+    "SearchEngineUnavailable",
     "UnknownLanguageError",
     "VersionDetails",
     "FileTypeInfo",

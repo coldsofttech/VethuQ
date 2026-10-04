@@ -13,6 +13,7 @@ from vethuq_core.search import (
     Export,
     PageResult,
     Search,
+    SearchEngineUnavailable,
     SearchMatch,
     SearchOptionError,
     SearchOptions,
@@ -344,6 +345,9 @@ def search(
                 )
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
+        except SearchEngineUnavailable as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
         if not matches:
             message = Text("No matches found.", style=Theme.NOTICE)
             if options.engine in _NO_MATCH_HINTS:

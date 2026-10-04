@@ -281,8 +281,10 @@ terms in between count: a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3, `"m
 `client.settings.search.proximity.distance`. Raises `SearchOptionError` (a
 `ValueError`; its `option` says which argument) for an unknown engine, an invalid
 `threshold`, `distance` or `leet_level`, or an explicit `case_sensitive`, `threshold`,
-`distance` or `leet_level` the engine can't honour, and `SearchQueryError` (also a `ValueError`) for a `"proximity"`
-query of fewer than two terms.
+`distance` or `leet_level` the engine can't honour, `SearchQueryError` (also a `ValueError`) for a `"proximity"`
+query of fewer than two terms, and `SearchEngineUnavailable` when `"full-text"` or `"proximity"` is asked to search
+Telugu text on an SQLite too old to build the word index it needs (the combined search leaves those engines out instead).
+Telugu needs no option: a query is detected and searched as typed (see "Telugu" under `search` in [docs/CLI.md](CLI.md)).
 
 ```python
 for match in client.search.run("invoice"):

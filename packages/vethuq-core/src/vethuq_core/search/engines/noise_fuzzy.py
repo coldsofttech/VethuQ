@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from vethuq_core.languages import Scripts
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.fuzzy import FuzzySearchEngine
@@ -486,9 +487,17 @@ class NoiseFuzzySearchEngine:
         than allowed.
         """
         where = page.where
-        while start > 0 and where[start - 1] + 1 == where[start] and page.raw[start - 1].isalnum():
+        while (
+            start > 0
+            and where[start - 1] + 1 == where[start]
+            and Scripts.is_word_char(page.raw[start - 1])
+        ):
             start -= 1
-        while end < len(where) and where[end - 1] + 1 == where[end] and page.raw[end].isalnum():
+        while (
+            end < len(where)
+            and where[end - 1] + 1 == where[end]
+            and Scripts.is_word_char(page.raw[end])
+        ):
             end += 1
         window = page.folded[start:end]
         distance = FuzzySearchEngine.edit_distance(wanted.folded, window, edits)
