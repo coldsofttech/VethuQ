@@ -60,3 +60,7 @@ library (see [docs/CLI.md](CLI.md) and [docs/PYTHON_API.md](PYTHON_API.md))
 — sources, indexing, and search all share the same local database, so
 adding a source in the desktop app makes it available to the CLI too, and
 vice versa.
+
+## Languages
+
+The installer has a **Languages** page. English is always installed; tick Telugu to add it (silent installs: `/LANGS=en,te`). If Windows has no Telugu font (Nirmala UI, Gautami or Vani), the installer also copies Noto Sans Telugu (SIL OFL) into the app's `fonts` folder. The app loads it for itself only; nothing is installed into Windows. Telugu OCR models download the first time they are needed, or ahead of time with `vethuq ocr models download`.

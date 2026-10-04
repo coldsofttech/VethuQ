@@ -8,6 +8,7 @@ from tkinter import ttk
 from vethuq_core.search import Search
 from vethuq_core.storage import Storage
 
+from vethuq_ui.fonts import TeluguFont
 from vethuq_ui.icons import Icons
 from vethuq_ui.tooltip import TreeviewTooltip
 from vethuq_ui.widgets import Widgets
@@ -28,6 +29,10 @@ class SearchView(ttk.Frame):
         self.var = tk.StringVar()
         self.entry = ttk.Entry(search_bar, textvariable=self.var)
         self.entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # The entry keeps its font for English and switches to a Telugu-capable one while it holds
+        # Telugu, so a query can be typed or pasted in Telugu script.
+        self._entry_font = self.entry.cget("font")
+        self.var.trace_add("write", lambda *_: self._sync_entry_font())
         self.entry.bind("<Return>", lambda event: self.on_search())
         self._add_placeholder()
         ttk.Button(
@@ -70,6 +75,10 @@ class SearchView(ttk.Frame):
 
         TreeviewTooltip(self.tree, self.full_names.get)
 
+    def _sync_entry_font(self) -> None:
+        telugu = TeluguFont.font_for(self) if TeluguFont.needs_font(self.var.get()) else None
+        self.entry.configure(font=telugu or self._entry_font)
+
     def _add_placeholder(self) -> None:
         entry = self.entry
 
@@ -105,6 +114,9 @@ class SearchView(ttk.Frame):
             display_name = f"{file.file_name} (duplicate)" if file.is_duplicate else file.file_name
             if len(display_name) > self.MAX_DISPLAYED_NAME_CHARS:
                 self.full_names[iid] = display_name
+            telugu = TeluguFont.font_for(self) if TeluguFont.needs_font(display_name) else None
+            if telugu is not None:
+                self.tree.tag_configure("telugu", font=telugu)
             self.tree.insert(
                 "",
                 tk.END,
@@ -112,4 +124,5 @@ class SearchView(ttk.Frame):
                 text=self.truncate_name(display_name),
                 image=Icons.for_file(file.file_path),
                 values=(file.file_path,),
+                tags=("telugu",) if telugu is not None else (),
             )

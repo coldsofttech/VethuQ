@@ -13,6 +13,11 @@
 ; library files (sv_ttk, tcl/tk) - a few MB, not worth re-splitting the
 ; build to avoid.
 ;
+; Languages: English is always installed; any other OCR language (Telugu today) is a page checkbox
+; (or /LANGS=en,te for a silent install) recorded in %LOCALAPPDATA%\VethuQ\languages.json as
+; {"enabled": [...]}. The language's OCR models are not part of the installer - they download the
+; first time they are needed, or with "vethuq ocr models download --lang te".
+;
 ; Install scope: Setup starts unelevated (PrivilegesRequired=lowest) and, because of
 ; PrivilegesRequiredOverridesAllowed=dialog, Inno's own first screen asks "Install for
 ; all users" or "Install for me only" and elevates itself when all users is chosen (UAC
@@ -129,6 +134,11 @@ Source: "..\..\..\build\desktop\VethuQ\{#MyAppExeName}"; DestDir: "{app}"; Flags
 Source: "..\..\..\build\desktop\VethuQ\{#MyAppCliExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: cli; Check: FilesNeeded
 Source: "..\..\..\build\desktop\VethuQ\vethuq-worker.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: core; Check: FilesNeeded
 Source: "..\..\..\build\desktop\VethuQ\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: core; Check: FilesNeeded
+; The Telugu fallback fonts (Noto Sans Telugu, SIL Open Font License, with its license): loaded by
+; the desktop app for its own process only (vethuq_ui/fonts.py), never installed into Windows.
+; Copied only when Telugu is chosen and Windows has no Telugu font of its own. Deliberately not
+; tied to FilesNeeded: adding Telugu through Change copies no program files but still needs these.
+Source: "..\src\vethuq_ui\assets\fonts\*"; DestDir: "{app}\fonts"; Flags: ignoreversion; Components: app; Check: TeluguFontNeeded
 ; Kept so Apps & Features can offer Change (the maintenance page); skipped when Setup is
 ; already running from that copy.
 Source: "{srcexe}"; DestDir: "{app}"; DestName: "{#MySetupCopyName}"; Flags: external ignoreversion; Check: ShouldCopySetup
@@ -381,6 +391,25 @@ begin
   Result := ExpandConstant('{localappdata}\VethuQ\languages.json');
 end;
 
+function LanguagesParam: string;
+begin
+  Result := ExpandConstant('{param:LANGS|}');
+end;
+
+function LanguageWasSelected(const Id: string): Boolean;
+var
+  Previous: AnsiString;
+begin
+  { /LANGS=en,te wins; else the previous install's choice (the older single-choice file reads as
+    that one language); else just the default. }
+  if LanguagesParam <> '' then
+    Result := Pos(',' + Id + ',', ',' + Lowercase(LanguagesParam) + ',') > 0
+  else if LoadStringFromFile(LanguageFile, Previous) then
+    Result := Pos('"' + Id + '"', Previous) > 0
+  else
+    Result := False;
+end;
+
 function DefaultOcrIndex: Integer;
 var
   I: Integer;
@@ -394,21 +423,26 @@ begin
     end;
 end;
 
-function DefaultLanguageIndex: Integer;
+procedure SetAllLanguages(Value: Boolean);
 var
   I: Integer;
 begin
-  Result := 0;
   for I := 0 to LanguageCount - 1 do
-    if LanguageDefault(I) then
-    begin
-      Result := I;
-      Exit;
-    end;
+    LanguagePage.Values[I] := Value or LanguageDefault(I);
 end;
 
-{ OCR engine and language pages: single choice (radio), one option each for now. }
-procedure InitOcrPages;
+procedure SelectAllLanguagesClick(Sender: TObject);
+begin
+  SetAllLanguages(True);
+end;
+
+procedure UnselectAllLanguagesClick(Sender: TObject);
+begin
+  SetAllLanguages(False);
+end;
+
+{ The OCR engine page: single choice (radio), one engine for now. }
+procedure InitOcrPage;
 var
   I: Integer;
 begin
@@ -421,16 +455,123 @@ begin
   for I := 0 to OcrEngineCount - 1 do
     OcrPage.Add(OcrEngineLabel(I));
   OcrPage.SelectedValueIndex := DefaultOcrIndex;
+end;
 
+{ The languages page: English is always installed (ticked and locked, like the default file type);
+  the others are optional. With more than one, which language a file is in is detected. }
+procedure InitLanguagePage;
+var
+  I: Integer;
+  Chosen: Boolean;
+  SelectAllButton, UnselectAllButton: TNewButton;
+begin
   LanguagePage := CreateInputOptionPage(
-    OcrPage.ID, 'Language',
-    'Which language should OCR recognise?',
-    'Only one language is available at the moment.',
-    True, False
+    OcrPage.ID, 'Languages',
+    'Which languages should OCR recognise?',
+    'English is always installed. With more than one language VethuQ works out which one a ' +
+    'file is in. The recognition models of a language other than English download the first ' +
+    'time they are needed. Run this installer again to add more later.',
+    False, False
   );
   for I := 0 to LanguageCount - 1 do
+  begin
     LanguagePage.Add(LanguageLabel(I));
-  LanguagePage.SelectedValueIndex := DefaultLanguageIndex;
+    Chosen := LanguageWasSelected(LanguageId(I));
+    if (LanguagesParam = '') and (not FileExists(LanguageFile)) then
+      Chosen := LanguageDefault(I);
+    if LanguageDefault(I) then
+    begin
+      Chosen := True;
+      LanguagePage.CheckListBox.ItemEnabled[I] := False;
+    end;
+    LanguagePage.Values[I] := Chosen;
+  end;
+
+  { Select all / Unselect all sit under the list. }
+  LanguagePage.CheckListBox.Height := LanguagePage.SurfaceHeight - ScaleY(32);
+
+  SelectAllButton := TNewButton.Create(LanguagePage);
+  SelectAllButton.Parent := LanguagePage.Surface;
+  SelectAllButton.Left := 0;
+  SelectAllButton.Top := LanguagePage.SurfaceHeight - ScaleY(23);
+  SelectAllButton.Width := ScaleX(90);
+  SelectAllButton.Height := ScaleY(23);
+  SelectAllButton.Caption := 'Select all';
+  SelectAllButton.OnClick := @SelectAllLanguagesClick;
+
+  UnselectAllButton := TNewButton.Create(LanguagePage);
+  UnselectAllButton.Parent := LanguagePage.Surface;
+  UnselectAllButton.Left := SelectAllButton.Left + SelectAllButton.Width + ScaleX(8);
+  UnselectAllButton.Top := SelectAllButton.Top;
+  UnselectAllButton.Width := ScaleX(90);
+  UnselectAllButton.Height := ScaleY(23);
+  UnselectAllButton.Caption := 'Unselect all';
+  UnselectAllButton.OnClick := @UnselectAllLanguagesClick;
+end;
+
+procedure InitOcrPages;
+begin
+  InitOcrPage;
+  InitLanguagePage;
+end;
+
+function IsLanguageChosen(const Id: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to LanguageCount - 1 do
+    if (LanguageId(I) = Id) and (LanguagePage.Values[I] or LanguageDefault(I)) then
+      Result := True;
+end;
+
+{ True when the font list under `Root` has a Telugu-capable font Windows ships (Nirmala UI on
+  Windows 10 and 11; Gautami and Vani on older ones). Face names are listed as "Nirmala UI
+  (TrueType)", so only the start of a name is compared. }
+function RootHasTeluguFont(Root: Integer): Boolean;
+var
+  Names: TArrayOfString;
+  I: Integer;
+  Name: string;
+begin
+  Result := False;
+  if RegGetValueNames(Root, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts', Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+    begin
+      Name := Lowercase(Names[I]);
+      if (Pos('nirmala ui', Name) = 1) or (Pos('gautami ', Name) = 1) or
+        (Pos('vani ', Name) = 1) then
+        Result := True;
+    end;
+end;
+
+{ Machine-wide, or installed for this user (Windows 10 lets a user install fonts for themselves). }
+function HasNativeTeluguFont: Boolean;
+begin
+  Result := RootHasTeluguFont(HKEY_LOCAL_MACHINE) or RootHasTeluguFont(HKEY_CURRENT_USER);
+end;
+
+{ The fallback Telugu fonts are needed when Telugu is chosen and Windows has none of its own. }
+function TeluguFontNeeded: Boolean;
+begin
+  Result := IsLanguageChosen('te') and not HasNativeTeluguFont;
+end;
+
+procedure SaveLanguageSelection;
+var
+  I: Integer;
+  Json: string;
+begin
+  Json := '';
+  for I := 0 to LanguageCount - 1 do
+    if LanguagePage.Values[I] or LanguageDefault(I) then
+    begin
+      if Json <> '' then
+        Json := Json + ', ';
+      Json := Json + '"' + LanguageId(I) + '"';
+    end;
+  ForceDirectories(ExtractFilePath(LanguageFile));
+  SaveStringToFile(LanguageFile, '{ "enabled": [' + Json + '] }', False);
 end;
 
 procedure SaveOcrSelection;
@@ -438,8 +579,7 @@ begin
   ForceDirectories(ExtractFilePath(OcrFile));
   SaveStringToFile(OcrFile,
     '{ "engine": "' + OcrEngineId(OcrPage.SelectedValueIndex) + '" }', False);
-  SaveStringToFile(LanguageFile,
-    '{ "language": "' + LanguageId(LanguagePage.SelectedValueIndex) + '" }', False);
+  SaveLanguageSelection;
 end;
 
 const
@@ -631,7 +771,7 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   I: Integer;
-  Types, Engines: string;
+  Types, Engines, Languages: string;
 begin
   Types := '';
   for I := 0 to FileTypeCount - 1 do
@@ -645,6 +785,11 @@ begin
     if EnginesPage.Values[I] or SearchEngineDefault(I) then
       Engines := Engines + Space + Space + SearchEngineLabel(I) + NewLine;
 
+  Languages := '';
+  for I := 0 to LanguageCount - 1 do
+    if LanguagePage.Values[I] or LanguageDefault(I) then
+      Languages := Languages + Space + Space + LanguageLabel(I) + NewLine;
+
   Result := '';
   if TypesOnly then
     Result := 'No program files will be copied - only your choices are updated.' + NewLine + NewLine;
@@ -655,8 +800,7 @@ begin
   if MemoTasksInfo <> '' then Result := Result + MemoTasksInfo + NewLine + NewLine;
   Result := Result + 'OCR engine:' + NewLine + Space + Space +
     OcrEngineLabel(OcrPage.SelectedValueIndex) + NewLine + NewLine;
-  Result := Result + 'Language:' + NewLine + Space + Space +
-    LanguageLabel(LanguagePage.SelectedValueIndex) + NewLine + NewLine;
+  Result := Result + 'Languages:' + NewLine + Languages + NewLine;
   Result := Result + 'File types:' + NewLine + Types + NewLine;
   Result := Result + 'Search engines:' + NewLine + Engines;
 end;

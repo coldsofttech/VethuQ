@@ -305,3 +305,21 @@ PNG image
 JPEG image
 
 - **No additional packages; uses OpenCV and NumPy from the core runtime.
+
+
+## LANGUAGES (installed when selected)
+
+
+Telugu
+
+- **vethuq-lang-te** - MIT
+  How VethuQ uses it: marks Telugu as installed, which enables Telugu OCR and search. It holds no code.
+
+- **Noto Sans Telugu (font)** - SIL Open Font License 1.1. Copyright 2022 The Noto Project Authors
+  How VethuQ uses it: shows Telugu text in the desktop app when Windows has no Telugu font of its
+  own. It is installed only in that case, with its license text (OFL.txt) beside the font files, and
+  is loaded for the app only, not installed into Windows. Source: https://github.com/notofonts/telugu
+
+- **Telugu OCR model (te_PP-OCRv5_mobile_rec)** - published with PaddleOCR (Apache-2.0)
+  How VethuQ uses it: reads Telugu text on scanned pages. It is downloaded the first time it is
+  needed, not installed with the app.

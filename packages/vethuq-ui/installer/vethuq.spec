@@ -72,6 +72,23 @@ SEARCH_ENGINE_DATAS = [
 ]
 
 
+# OCR engines and languages are listed from their manifests beside the package
+# (`OcrCatalog.engines()/languages()`), so those ship as files too. Each OCR language beyond English is
+# a marker package (`vethuq_lang_te`) whose import is what `OcrCatalog` checks to see it is installed -
+# nothing imports it by name, so it is a hidden import (the installer's language page decides which
+# of the installed languages are enabled).
+OCR_MANIFEST_DATAS = [
+    (str(manifest), f"vethuq_core/ocr/{kind}/manifests")
+    for kind in ("engines", "languages")
+    for manifest in sorted((CORE_SRC / "ocr" / kind / "manifests").glob("*.json"))
+]
+LANGUAGE_HIDDEN = [
+    f"vethuq_lang_{manifest.stem}"
+    for manifest in sorted((CORE_SRC / "ocr" / "languages" / "manifests").glob("*.json"))
+    if manifest.stem != "en" and importlib.util.find_spec(f"vethuq_lang_{manifest.stem}")
+]
+
+
 def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
     return Analysis(
         [str(entry)],
@@ -90,13 +107,17 @@ def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
 ui_a = _analysis(
     UI_SRC / "app.py",
     datas=[
-        (str(UI_SRC / "assets"), "vethuq_ui/assets"),
+        # Not the whole assets folder: the Telugu fallback fonts in assets/fonts are put in
+        # {app}\fonts by the installer, only when Telugu is chosen and Windows has no Telugu font.
+        (str(UI_SRC / "assets" / "brand"), "vethuq_ui/assets/brand"),
+        (str(UI_SRC / "assets" / "icons"), "vethuq_ui/assets/icons"),
         *sv_ttk_datas,
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
+        *OCR_MANIFEST_DATAS,
     ],
     binaries=sv_ttk_binaries,
-    hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN],
+    hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN],
     excludes=OCR_MODULES,
 )
 cli_a = _analysis(
@@ -109,9 +130,10 @@ cli_a = _analysis(
         *rich_datas,
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
+        *OCR_MANIFEST_DATAS,
     ],
     binaries=rich_binaries,
-    hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN],
+    hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN],
     excludes=OCR_MODULES,
 )
 worker_a = _analysis(
@@ -119,12 +141,13 @@ worker_a = _analysis(
     datas=[
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
+        *OCR_MANIFEST_DATAS,
         *paddlex_datas,
         *paddleocr_datas,
         *paddle_metadata,
     ],
     binaries=[*paddle_binaries, *paddlex_binaries, *paddleocr_binaries],
-    hiddenimports=[*FILETYPE_HIDDEN, *paddlex_hidden, *paddleocr_hidden],
+    hiddenimports=[*FILETYPE_HIDDEN, *LANGUAGE_HIDDEN, *paddlex_hidden, *paddleocr_hidden],
 )
 
 
