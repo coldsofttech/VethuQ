@@ -27,7 +27,9 @@ class ResultRenderer:
             parts.append(f"threshold {options.threshold:.0%}")
         if options.engine == "proximity" and options.distance is not None:
             parts.append(f"within {options.distance} words")
-        if options.engine in ("leetspeak", "noise-fuzzy") and options.level is not None:
+        if options.level is not None and (
+            options.engine == "noise-fuzzy" or (options.engine == "like" and options.level != "off")
+        ):
             parts.append(f"leet level {options.level}")
         if options.engine == "noise-fuzzy" and options.noise is not None:
             parts.append(f"noise {options.noise}")

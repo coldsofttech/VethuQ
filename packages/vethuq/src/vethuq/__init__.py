@@ -88,6 +88,8 @@ SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
 SEARCH_LEETSPEAK_LEVELS = _SearchSettings.LEETSPEAK_LEVELS
+SEARCH_LEETSPEAK_VALUES = _SearchSettings.LEETSPEAK_VALUES
+SEARCH_CASE_VALUES = _SearchSettings.CASE_VALUES
 SEARCH_NOISE_LEVELS = tuple(_SearchSettings.NOISE_LEVELS)
 SEARCH_PROXIMITY_MAX_DISTANCE = _SearchSettings.PROXIMITY_MAX_DISTANCE
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
@@ -112,7 +114,9 @@ __all__ = [
     "SEARCH_ENGINES",
     "SEARCH_EXPORT_FORMATS",
     "SEARCH_FUZZY_PRESETS",
+    "SEARCH_CASE_VALUES",
     "SEARCH_LEETSPEAK_LEVELS",
+    "SEARCH_LEETSPEAK_VALUES",
     "SEARCH_NOISE_LEVELS",
     "SEARCH_PROXIMITY_MAX_DISTANCE",
     "SEARCH_PROXIMITY_PRESETS",
@@ -161,8 +165,9 @@ __all__ = [
     "SearchEngineSettings",
     "SearchFuzzySettings",
     "SearchFuzzyThresholdSettings",
-    "SearchLeetspeakLevelSettings",
-    "SearchLeetspeakSettings",
+    "SearchNormalizeCaseSettings",
+    "SearchNormalizeLeetspeakSettings",
+    "SearchNormalizeSettings",
     "SearchNoiseFuzzySettings",
     "SearchNoiseLevelSettings",
     "SearchIndexRebuildResult",
@@ -508,7 +513,8 @@ class SearchEngineSettings:
 
 
 class SearchCaseSensitiveSettings:
-    """Whether `search` matches case by default (only the 'like' and 'fuzzy' engines honour it).
+    """Whether `search` matches case by default (the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy'
+    engines honour it). The same as `settings.search.normalize.case` being `"match"`.
 
     Not instantiated directly — use `Vethuq().settings.search.case_sensitive`.
     """
@@ -604,40 +610,71 @@ class SearchProximitySettings:
         self.distance = SearchProximityDistanceSettings()
 
 
-class SearchLeetspeakLevelSettings:
-    """Which look-alike characters `leetspeak` search recognizes.
+class SearchNormalizeCaseSettings:
+    """Whether `search` treats upper and lower case as the same letter.
 
-    Not instantiated directly — use `Vethuq().settings.search.leetspeak.level`.
+    Not instantiated directly — use `Vethuq().settings.search.normalize.case`.
     """
 
     def get(self) -> str:
-        """The stored level, a name from `SEARCH_LEETSPEAK_LEVELS`. `"basic"` by default."""
+        """The stored value, a name from `SEARCH_CASE_VALUES`: `"auto"` (the default - each
+        engine's own), `"ignore"` or `"match"`."""
         storage = _open_storage()
         try:
-            return _SearchSettings.get_leetspeak_level(storage)
+            return _SearchSettings.get_case(storage)
         finally:
             storage.close()
 
-    def set(self, level: str) -> None:
-        """Set the default level: `"basic"` (0 1 3 4 5 7 @ $), `"standard"` (adds 2 6 8 9 + ! |)
-        or `"extended"` (adds multi-character forms such as `|\\|` for n and `ph` for f). Each
-        level includes the one before it.
+    def set(self, value: str) -> None:
+        """Set it: `"auto"`, `"ignore"` or `"match"` (for the engines that can honour it:
+        `like`, `lexical`, `fuzzy`, `noise-fuzzy`).
 
         Raises `InvalidSettingValueError` for anything else.
         """
         storage = _open_storage()
         try:
-            _SearchSettings.set_leetspeak_level(storage, level)
+            _SearchSettings.set_case(storage, value)
         finally:
             storage.close()
 
 
-class SearchLeetspeakSettings:
-    """Configure the `leetspeak` search engine. Not instantiated directly — use
-    `Vethuq().settings.search.leetspeak`."""
+class SearchNormalizeLeetspeakSettings:
+    """Whether `search` reads look-alike characters (`3` for `e`, `@` for `a`) as the letters.
+
+    Not instantiated directly — use `Vethuq().settings.search.normalize.leetspeak`.
+    """
+
+    def get(self) -> str:
+        """The stored value, a name from `SEARCH_LEETSPEAK_VALUES`: `"auto"` (the default -
+        each engine's own: `noise-fuzzy` and the combined search read them at `"basic"`, `like`
+        doesn't), `"off"`, `"basic"`, `"standard"` or `"extended"`."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_leetspeak(storage)
+        finally:
+            storage.close()
+
+    def set(self, value: str) -> None:
+        """Set it: `"auto"`, `"off"`, `"basic"` (0 1 3 4 5 7 @ $), `"standard"` (adds 2 6 8 9
+        + ! |) or `"extended"` (adds ( [ {). Each level includes the one before it. Honoured by
+        `like` and `noise-fuzzy`.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_leetspeak(storage, value)
+        finally:
+            storage.close()
+
+
+class SearchNormalizeSettings:
+    """What counts as the same character in a search. Not instantiated directly — use
+    `Vethuq().settings.search.normalize`."""
 
     def __init__(self) -> None:
-        self.level = SearchLeetspeakLevelSettings()
+        self.case = SearchNormalizeCaseSettings()
+        self.leetspeak = SearchNormalizeLeetspeakSettings()
 
 
 class SearchNoiseLevelSettings:
@@ -685,7 +722,7 @@ class SearchSettings:
         self.case_sensitive = SearchCaseSensitiveSettings()
         self.fuzzy = SearchFuzzySettings()
         self.proximity = SearchProximitySettings()
-        self.leetspeak = SearchLeetspeakSettings()
+        self.normalize = SearchNormalizeSettings()
         self.noise_fuzzy = SearchNoiseFuzzySettings()
 
 
@@ -1119,7 +1156,7 @@ class Search:
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
         page in text order) - or best match first for the `full-text`, `fuzzy`, `proximity`,
-        `leetspeak` and `noise-fuzzy` engines. Only successfully indexed documents are considered.
+        and `noise-fuzzy` engines. Only successfully indexed documents are considered.
         `context_chars` defaults to `Vethuq().settings.search.snippet` if not given.
 
         `engine` is one of `SEARCH_ENGINES` and defaults to
@@ -1130,19 +1167,19 @@ class Search:
         a word with * for a prefix), best matches first; `fuzzy` finds words
         close to `content`'s - typos and OCR misreads such as `Musuem` or
         `Museurn` for `Museum` - closest first (words under 4 letters and
-        anything with a digit must match exactly); `leetspeak` finds `content`'s words
-        written with look-alike characters - `h3ll0` or `p@55w0rd` for `hello` or
-        `password`, and the other way round - as whole words, spelled-as-typed first
-        (`leet_level`, one of `SEARCH_LEETSPEAK_LEVELS`, picks which substitutions count and
-        defaults to `Vethuq().settings.search.leetspeak.level`; it needs
-        at least 3 characters, one a letter); `noise-fuzzy` finds `content`'s characters
-        hidden by stray punctuation or whitespace (letters are never noise), look-alike
-        symbols and typos at once - `h..e llo`, `h @ 3 l l 0` and `helo` for `hello` - closest
-        first (it uses `threshold` and `leet_level` too, and `noise`, one of
+        anything with a digit must match exactly); with `leet_level` (`"off"`, `"basic"`,
+        `"standard"` or `"extended"`, defaulting to `Vethuq().settings.search.normalize.leetspeak`
+        - off for `like` unless that says otherwise) `like` reads look-alike characters as the
+        letters they stand for - `h3ll0` or `p@55w0rd` for `hello` or `password`, and the other
+        way round (a query too short or letterless to have look-alikes is searched as it is, and
+        `SearchMatch.score` is the share of it matched as typed); `noise-fuzzy` finds
+        `content`'s characters hidden by stray punctuation or whitespace (letters are never
+        noise), look-alike symbols and typos at once - `h..e llo`, `h @ 3 l l 0` and `helo`
+        for `hello` - closest first (it uses `threshold` and `leet_level` too, and `noise`, one of
         `SEARCH_NOISE_LEVELS`, says how much noise is skipped, defaulting to
         `Vethuq().settings.search.noise_fuzzy.noise`). `case_sensitive`
         defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
-        `fuzzy`, `leetspeak` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
+        `lexical`, `fuzzy` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
         `full-text` and `proximity` never are. `threshold` (`fuzzy` and `noise-fuzzy` only)
         is the minimum similarity between `content`'s words and the words found: a
         name from `SEARCH_FUZZY_PRESETS`, a percentage (`"80%"`) or a number above 0
@@ -1203,8 +1240,8 @@ class Search:
         and `matched_by` (hits found by several engines are merged into one).
 
         `case_sensitive`, `threshold`, `distance`, `leet_level` and `noise` default to their
-        settings and reach the engines that can use them (`like`/`fuzzy`/`leetspeak`/
-        `noise-fuzzy`, `fuzzy`/`noise-fuzzy`, `proximity`, `leetspeak`/`noise-fuzzy`,
+        settings and reach the engines that can use them (`like`/`lexical`/
+        `fuzzy`/`noise-fuzzy`, `fuzzy`/`noise-fuzzy`, `proximity`, `like`/`noise-fuzzy`,
         `noise-fuzzy`);
         `proximity` is skipped for a query of fewer than two terms.
         `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
@@ -1248,7 +1285,7 @@ class Search:
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
         `engine`, `case_sensitive` and (for `fuzzy` or
-        `proximity`) `threshold` or `distance`, (for `leetspeak`) `leet_level`, or (for
+        `proximity`) `threshold` or `distance`, (for `like` or `noise-fuzzy`) `leet_level`, or (for
         `noise-fuzzy`) `noise` the search ran with to record them
         in the file.
         """

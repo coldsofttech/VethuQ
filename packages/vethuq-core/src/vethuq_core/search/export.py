@@ -67,7 +67,7 @@ class Export:
     ) -> None:
         """Write `matches` for `query` to `output` as `format_` ('json' or 'html').
 
-        `engine`, `case_sensitive`, and - for the fuzzy, proximity, leetspeak and
+        `engine`, `case_sensitive`, and - for the fuzzy, proximity, like (look-alikes) and
         noise-fuzzy engines - the `threshold`, `distance`, `level` or `noise` record how the
         search was run, so the export can be reproduced; they're omitted from the file when
         `engine` is None, and `threshold`/`distance`/`level`/`noise` when they are.

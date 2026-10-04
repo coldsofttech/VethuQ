@@ -82,7 +82,7 @@ class SearchEngine(Protocol):
         setting; an engine that isn't tolerant raises `ValueError` if given
         one. `distance` is the most words a `proximity` search allows between
         its first and last term, None meaning the user's setting; other engines
-        raise `ValueError` if given one. `level` is the leetspeak engine's substitution level
+        raise `ValueError` if given one. `level` is the leetspeak normalization's level
         (`SearchSettings.LEETSPEAK_LEVELS`), None meaning the user's setting; other engines
         raise `ValueError` if given one. `noise` is the noise-fuzzy engine's noise level
         (`SearchSettings.NOISE_LEVELS`), None meaning the user's setting; other engines raise

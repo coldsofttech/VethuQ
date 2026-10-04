@@ -4,7 +4,7 @@ import pytest
 from vethuq_core.db import Db
 from vethuq_core.db.queries.documents import Document
 from vethuq_core.db.queries.ocr import Ocr
-from vethuq_core.leet import Leet
+from vethuq_core.search.normalizers.leetspeak import Leet
 
 
 def _add_document(conn, file_type="pdf", path="/docs/a.pdf"):

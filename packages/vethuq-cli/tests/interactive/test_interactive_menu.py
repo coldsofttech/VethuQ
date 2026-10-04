@@ -360,41 +360,56 @@ class TestInteractiveSearchEngines:
         assert "Search fuzzy threshold set to loose." in result.stdout
         assert "Search fuzzy threshold: loose" in result.stdout
 
-    def test_settings_leetspeak_level_navigation(self, use_temp_db):
+    def test_settings_normalize_leetspeak_navigation(self, use_temp_db):
         use_temp_db()
 
-        # Settings > Search > Leetspeak Level > Set extended; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n2\nextended\n1\n0\n0\n0\n8\n")
+        # Settings > Search > Normalize > Leetspeak > Set extended; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\nextended\n1\n0\n0\n0\n0\n8\n")
 
         assert result.exit_code == 0
-        assert "Search leetspeak level set to extended." in result.stdout
-        assert "Search leetspeak level: extended" in result.stdout
+        assert "Search leetspeak set to extended." in result.stdout
+        assert "Search leetspeak: extended" in result.stdout
 
-    def test_leetspeak_asks_for_case_and_a_level(self, use_temp_db):
+    def test_settings_normalize_case_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Normalize > Case > Set match; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n7\n1\n2\nmatch\n1\n0\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search case set to match." in result.stdout
+        assert "Search case: match" in result.stdout
+
+    def test_settings_normalize_rejects_an_unknown_value(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\ninsane\n0\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "off, basic, standard, extended" in result.output
+
+    def test_noise_fuzzy_accepts_off_as_the_leet_level(self, use_temp_db):
         _seed_page(use_temp_db(), "say h3ll0 to all")
 
-        # Search > text > engine (leetspeak) > case-sensitive? no > level extended, then exit.
-        result = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\nextended\n8\n")
+        # Search > text > engine > case-sensitive? no > fuzziness > leet level off > noise, exit.
+        result = runner.invoke(app, [], input="1\nhello\nnoise-fuzzy\nn\n\noff\n\n8\n")
 
         assert result.exit_code == 0
-        assert "Results: 1 match (engine: leetspeak, leet level extended)" in result.stdout
-        assert "Case-sensitive?" in result.stdout
+        assert "No matches found." in result.stdout
 
-    def test_leetspeak_level_defaults_to_the_stored_one_and_rejects_nonsense(self, use_temp_db):
+    def test_like_does_not_ask_about_look_alikes(self, use_temp_db):
         db_path = use_temp_db()
         _seed_page(db_path, "say h3ll0 to all")
         storage = open_storage(db_path)
         try:
-            SearchSettings.set_leetspeak_level(storage, "standard")
+            SearchSettings.set_leetspeak(storage, "basic")
         finally:
             storage.close()
 
-        default = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\n\n8\n")
-        bad = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\ninsane\n8\n")
+        result = runner.invoke(app, [], input="1\nhello\nlike\nn\n8\n")
 
-        assert "leet level standard" in default.stdout
-        assert "Results:" not in bad.output
-        assert "level must be one of" in bad.output
+        assert "Leet level" not in result.stdout
+        assert "h3ll0" in result.stdout  # the stored setting applied
 
     def test_settings_noise_level_navigation(self, use_temp_db):
         use_temp_db()

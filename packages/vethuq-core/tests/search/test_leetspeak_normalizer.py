@@ -1,5 +1,5 @@
 import pytest
-from vethuq_core.leet import Leet
+from vethuq_core.search.normalizers.leetspeak import Leet
 from vethuq_core.settings import SearchSettings
 
 
@@ -30,9 +30,12 @@ class TestClasses:
         assert "|" in Leet.classes("extended")  # but its single-character ones stay
 
     def test_levels_match_the_settings(self):
-        from vethuq_core.leet import LEVEL_TABLES
+        from vethuq_core.search.normalizers.leetspeak import LEVEL_TABLES
 
-        assert tuple(LEVEL_TABLES) == SearchSettings.LEETSPEAK_LEVELS
+        assert tuple(level for level in LEVEL_TABLES if level != "off") == (
+            SearchSettings.LEETSPEAK_LEVELS
+        )
+        assert LEVEL_TABLES["off"] == () and Leet.classes("off") == {}
 
 
 class TestNoise:

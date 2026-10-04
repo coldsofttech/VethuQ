@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from functools import cache
 
+from vethuq_core.search.normalizers.base import Folded
+
 # Letter -> what it is written as, added at each level (cumulative).
 BASIC = {
     "a": ("4", "@"),
@@ -53,6 +55,7 @@ EXTENDED = {
     "w": ("\\/\\/",),
 }
 LEVEL_TABLES = {
+    "off": (),
     "basic": (BASIC,),
     "standard": (BASIC, STANDARD),
     "extended": (BASIC, STANDARD, EXTENDED),
@@ -163,3 +166,25 @@ class Leet:
             lowered = char.lower()
             parts.append(classes.get(lowered, lowered))
         return "".join(parts)
+
+
+class LeetspeakNormalizer:
+    """Folds look-alike characters into the letters they stand for (`h3ll0` is `hello`).
+
+    Single characters only - `3` for `e`, `@` for `a`, and at higher levels `8`, `!`, `(` and
+    so on - so positions never move. The multi-character spellings (`|\\|` for `n`) are not
+    folded. Characters that can stand for several letters (`1` is `i` or `l`) share a class
+    with all of them. It reads letters of either case, so it can follow the case normalizer.
+    """
+
+    name = "leetspeak"
+    levels = ("off", "basic", "standard", "extended")
+    identity = "off"
+
+    def fold(self, text: str, level: str) -> Folded:
+        if level == self.identity:
+            return Folded(text)
+        return Folded(text.translate(Leet.folding(level, True)))
+
+    def char_table(self, level: str) -> dict[int, str] | None:
+        return {} if level == self.identity else Leet.folding(level, True)

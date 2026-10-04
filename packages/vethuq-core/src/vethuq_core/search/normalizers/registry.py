@@ -1,0 +1,58 @@
+"""Normalizer registry: which `Normalizer` implementations exist and how they're applied."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from vethuq_core.search.normalizers.base import Normalizer
+from vethuq_core.search.normalizers.common import Pipeline
+
+
+class Normalizers:
+    # The order they are applied in: Unicode first (so the rest see settled characters), then
+    # case, then look-alikes (which read letters of either case).
+    ORDER = ("unicode", "case", "leetspeak")
+
+    _normalizers: dict[str, Normalizer] = {}
+
+    @staticmethod
+    def register(normalizer: Normalizer) -> None:
+        """Make a normalizer available under its name, replacing any existing one."""
+        Normalizers._normalizers[normalizer.name] = normalizer
+
+    @staticmethod
+    def get(name: str) -> Normalizer:
+        try:
+            return Normalizers._normalizers[name]
+        except KeyError:
+            raise ValueError(
+                f"Unknown normalizer {name!r}; available: {sorted(Normalizers._normalizers)}"
+            ) from None
+
+    @staticmethod
+    def available() -> list[str]:
+        """Names of the registered normalizers, in the order they are applied."""
+        known = set(Normalizers._normalizers)
+        ordered = [name for name in Normalizers.ORDER if name in known]
+        return ordered + sorted(known - set(ordered))
+
+    @staticmethod
+    def pipeline(levels: Mapping[str, str]) -> Pipeline:
+        """The normalizers named in `levels`, at those levels, in application order.
+
+        Raises `ValueError` for an unknown normalizer or a level it doesn't have.
+        """
+        steps = []
+        for name in Normalizers.available():
+            if name not in levels:
+                continue
+            normalizer = Normalizers.get(name)
+            if levels[name] not in normalizer.levels:
+                raise ValueError(
+                    f"{name} must be one of {', '.join(normalizer.levels)}, not {levels[name]!r}"
+                )
+            steps.append((normalizer, levels[name]))
+        unknown = set(levels) - {normalizer.name for normalizer, _ in steps}
+        if unknown:
+            raise ValueError(f"Unknown normalizer {sorted(unknown)[0]!r}")
+        return Pipeline(steps)

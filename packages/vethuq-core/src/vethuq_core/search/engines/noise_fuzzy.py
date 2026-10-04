@@ -1,14 +1,14 @@
 """The `noise-fuzzy` search engine: words hidden by stray characters, look-alikes and typos.
 
 Finds `hello` in "h..e llo", in "h @ e # l l o", in "h3ll0", in "helo" and in any mix of
-those. It is `fuzzy` and `leetspeak` combined with tolerance for noise, working in the order
-the text is cleaned up:
+those. It is `fuzzy` and the look-alike normalization combined with tolerance for noise,
+working in the order the text is cleaned up:
 
 1. **Noise is ignored.** Whitespace and punctuation between characters are skipped, as far as
    the noise setting allows. Letters and digits are never noise.
 2. **Look-alikes are folded.** The characters of the chosen leetspeak level that stand for a
    letter (`3` for `e`, `@` for `a`) are read as that letter; single characters only - the
-   multi-character spellings (`|\\|`) are for `leetspeak`.
+   multi-character spellings (`|\\|`) are not folded.
 3. **Typos are tolerated.** What is left must be within the fuzzy threshold of the query's
    characters, by the same edit rules as `fuzzy` (insert, delete, substitute or swap two
    neighbours; at most 2).
@@ -26,10 +26,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vethuq_core.leet import Leet
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.fuzzy import FuzzySearchEngine
+from vethuq_core.search.normalizers.leetspeak import Leet
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -56,7 +56,7 @@ class NoiseFuzzySearchEngine:
     Ranked: pages by their best match, a match scoring 1.0 when the text is the query as
     typed and less with every edit, look-alike substitution and noise character it took
     (`SearchMatch.score`). Honours `case_sensitive` (a case difference is one edit, as in
-    `fuzzy`), `threshold` (the fuzzy threshold), `level` (the leetspeak level) and `noise`
+    `fuzzy`), `threshold` (the fuzzy threshold), `level` (the leetspeak normalization) and `noise`
     (see `SearchSettings.NOISE_LEVELS`), each defaulting to its setting.
     """
 
@@ -93,9 +93,9 @@ class NoiseFuzzySearchEngine:
             else SearchSettings.parse_fuzzy_threshold(threshold)
         )
         leet_level = (
-            SearchSettings.get_leetspeak_level(self._storage)
+            SearchSettings.resolve_leetspeak(self._storage, SearchSettings.DEFAULT_LEETSPEAK)
             if level is None
-            else SearchSettings.parse_leetspeak_level(level)
+            else SearchSettings.parse_leetspeak(level)
         )
         noise_level = (
             SearchSettings.get_noise_level(self._storage)

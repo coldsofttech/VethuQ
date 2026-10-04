@@ -38,9 +38,12 @@ proximity_app = typer.Typer(help="Configure the `proximity` search engine.")
 proximity_distance_app = typer.Typer(
     help="Configure how many words may separate your first and last word for `proximity` search."
 )
-leetspeak_app = typer.Typer(help="Configure the `leetspeak` search engine.")
-leetspeak_level_app = typer.Typer(
-    help="Configure which look-alike characters `leetspeak` search recognizes."
+normalize_app = typer.Typer(
+    help="Configure what counts as the same character in a search: case, look-alikes."
+)
+normalize_case_app = typer.Typer(help="Configure whether upper and lower case are the same.")
+normalize_leetspeak_app = typer.Typer(
+    help="Configure whether look-alike characters (3 for e, @ for a) count as the letters."
 )
 noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
 noise_fuzzy_noise_app = typer.Typer(
@@ -104,8 +107,9 @@ search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 search_app.add_typer(proximity_app, name="proximity")
 proximity_app.add_typer(proximity_distance_app, name="distance")
-search_app.add_typer(leetspeak_app, name="leetspeak")
-leetspeak_app.add_typer(leetspeak_level_app, name="level")
+search_app.add_typer(normalize_app, name="normalize")
+normalize_app.add_typer(normalize_case_app, name="case")
+normalize_app.add_typer(normalize_leetspeak_app, name="leetspeak")
 search_app.add_typer(noise_fuzzy_app, name="noise-fuzzy")
 noise_fuzzy_app.add_typer(noise_fuzzy_noise_app, name="noise")
 app.add_typer(index_app, name="index")
@@ -347,14 +351,10 @@ def search_engine_show() -> None:
         "a set number of words of each other, such as `payment` and `termination` in the same "
         "clause. How near is set by `settings search proximity distance`. One result per "
         "passage, best pages first. Never case-sensitive.\n\n"
-        "leetspeak - finds your words written with look-alike characters (`h3ll0` or `p@55w0rd` "
-        "for `hello` or `password`, and the other way round). Every character must match, as a "
-        "whole word. Which substitutions count is set by `settings search leetspeak level`. "
-        "Words spelled as typed first.\n\n"
         "noise-fuzzy - finds your characters hidden by stray punctuation or whitespace, "
         "look-alike symbols and typos all at once (`h..e llo`, `h @ e # l l o`, `h3ll0` and "
-        "`helo` for `hello`). Uses the fuzzy threshold, the leetspeak level and how much noise "
-        "is skipped (`settings search noise-fuzzy noise`). Cleanest text first."
+        "`helo` for `hello`). Uses the fuzzy threshold, the leetspeak normalization and how "
+        "much noise is skipped (`settings search noise-fuzzy noise`). Cleanest text first."
     ),
 )
 def search_engine_set(
@@ -409,7 +409,8 @@ def case_sensitive_show() -> None:
 def case_sensitive_enable() -> None:
     """Make `search` match case by default (`--no-case-sensitive` overrides).
 
-    Acted on by the 'like', 'lexical', 'fuzzy', 'leetspeak' and 'noise-fuzzy' engines.
+    Acted on by the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' engines. The same as
+    `settings search normalize case` set to `match` / `ignore`.
     """
     storage = open_storage()
     try:
@@ -1435,18 +1436,18 @@ def backups_location_reset() -> None:
     )
 
 
-@leetspeak_level_app.command("show")
-def leetspeak_level_show() -> None:
-    """Show which look-alike characters `search --engine leetspeak` recognizes."""
+@normalize_case_app.command("show")
+def normalize_case_show() -> None:
+    """Show whether `search` treats upper and lower case as the same."""
     storage = open_storage()
     try:
         console.print(
             SettingsPanel.build(
                 Text.assemble(
-                    ("Search leetspeak level: ", "white"),
-                    (SearchSettings.get_leetspeak_level(storage), Theme.VALUE),
+                    ("Search case: ", "white"),
+                    (SearchSettings.get_case(storage), Theme.VALUE),
                 ),
-                "Leetspeak Level",
+                "Case",
                 Theme.PRIMARY,
             )
         )
@@ -1454,44 +1455,107 @@ def leetspeak_level_show() -> None:
         storage.close()
 
 
-@leetspeak_level_app.command(
+@normalize_case_app.command(
     "set",
     help=(
-        "Set which look-alike characters `search --engine leetspeak` recognizes. Each level "
-        "includes the one before it, and a search always finds both the plain and the "
-        "disguised spelling, so `hello` finds `h3ll0` and `h3ll0` finds `hello`.\n\n"
-        "Levels:\n\n"
-        "basic (the default) - the common ones: 0 for o, 1 for i or l, 3 for e, 4 or @ for a, "
-        "5 or $ for s, 7 for t. `password` finds `p@55w0rd`.\n\n"
-        "standard - also 8 for b, 9 or 6 for g, 2 for z, + for t, and ! or | for i or l.\n\n"
-        "extended - also multi-character forms such as |\\| for n, |< for k, |) for d, "
-        "\\/\\/ for w, ph for f and () for o, and ( [ { for c. Finds the most, with more "
-        "chance of unrelated matches."
+        "Set whether `search` treats upper and lower case as the same letter, when "
+        "`--case-sensitive` / `--no-case-sensitive` isn't given.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own: `like`, `lexical`, `fuzzy` and `noise-fuzzy` "
+        "ignore case, `exact` always matches it, `full-text` and `proximity` never do.\n\n"
+        "ignore - upper and lower case are the same, for the engines that can honour it.\n\n"
+        "match - case must match, for the engines that can honour it (`like`, `lexical`, "
+        "`fuzzy`, `noise-fuzzy`; for the fuzzy ones a difference in case is one edit)."
     ),
 )
-def leetspeak_level_set(
-    level: str = typer.Argument(
+def normalize_case_set(
+    case: str = typer.Argument(
         ...,
-        metavar="LEVEL",
-        help=f"One of: {', '.join(SearchSettings.LEETSPEAK_LEVELS)}.",
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.CASE_VALUES)}.",
     ),
 ) -> None:
-    """Set which look-alike characters `search --engine leetspeak` recognizes."""
+    """Set whether `search` treats upper and lower case as the same."""
     storage = open_storage()
     try:
         try:
-            SearchSettings.set_leetspeak_level(storage, level)
+            SearchSettings.set_case(storage, case)
         except ValueError as exc:
             error_console.print(f"Error: {exc}", style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
         console.print(
             SettingsPanel.build(
                 Text.assemble(
-                    ("Search leetspeak level set to ", "white"),
-                    (level.strip().lower(), Theme.VALUE),
+                    ("Search case set to ", "white"),
+                    (case.strip().lower(), Theme.VALUE),
                     (".", "white"),
                 ),
-                "Leetspeak Level",
+                "Case",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_leetspeak_app.command("show")
+def normalize_leetspeak_show() -> None:
+    """Show whether `search` reads look-alike characters as the letters they stand for."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak: ", "white"),
+                    (SearchSettings.get_leetspeak(storage), Theme.VALUE),
+                ),
+                "Leetspeak",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_leetspeak_app.command(
+    "set",
+    help=(
+        "Set whether `search` reads look-alike characters as the letters they stand for, when "
+        "`--leet-level` isn't given. `hello` then finds `h3ll0`, and `p@55w0rd` finds "
+        "`password`, in both directions. Each level includes the one before it.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own: `noise-fuzzy` and the look-alike results of the "
+        "default combined search use `basic`; `like` doesn't read look-alikes.\n\n"
+        "off - no look-alikes, for every engine (`noise-fuzzy` then treats them as typos).\n\n"
+        "basic - 0 for o, 1 for i or l, 3 for e, 4 or @ for a, 5 or $ for s, 7 for t.\n\n"
+        "standard - also 8 for b, 9 or 6 for g, 2 for z, + for t, and ! or | for i or l.\n\n"
+        "extended - also ( [ { for c. Finds the most, with more chance of unrelated matches.\n\n"
+        "Honoured by `like` and `noise-fuzzy`."
+    ),
+)
+def normalize_leetspeak_set(
+    leetspeak: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.LEETSPEAK_VALUES)}.",
+    ),
+) -> None:
+    """Set whether `search` reads look-alike characters as the letters they stand for."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_leetspeak(storage, leetspeak)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak set to ", "white"),
+                    (leetspeak.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Leetspeak",
                 Theme.OK,
             )
         )

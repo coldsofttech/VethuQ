@@ -36,9 +36,6 @@ _NO_MATCH_HINTS = {
     "numbers must match exactly). Try `--fuzziness loose` or `--engine like`.",
     "proximity": "`proximity` needs every word within the distance of the others, as whole "
     "words. Try `--distance loose` or `--engine full-text`.",
-    "leetspeak": "`leetspeak` only finds whole words spelled with look-alike characters (e.g. "
-    "`h3ll0` for `hello`), with no typos, and the query needs a letter in it. Try "
-    "`vethuq settings search leetspeak level extended` or `--engine fuzzy`.",
     "noise-fuzzy": "`noise-fuzzy` finds your characters hidden by a little stray punctuation or "
     "whitespace, look-alike symbols and a typo or two - not letters in between. Try "
     "`--noise medium` (or `high`), `--fuzziness loose` or `--leet-level extended`.",
@@ -102,7 +99,10 @@ class SearchHelp:
         "and any hit found less strictly than the page's best. Each engine applies the "
         "options it can.\n\n"
         "like - finds CONTENT anywhere, even inside a word, ignoring case. "
-        '`mus` finds "Museum". Results are ordered by file path.\n\n'
+        '`mus` finds "Museum". With --leet-level (or `vethuq settings search normalize '
+        "leetspeak`) look-alike characters count as the letters they stand for, both ways: "
+        "`hello` finds `h3ll0` and `p@55w0rd` finds `password`. Results are ordered by file "
+        "path.\n\n"
         "lexical - finds CONTENT anywhere, even inside a word, like `like`, but lists the "
         "best-matching pages first. Needs at least 3 characters.\n\n"
         "exact - finds CONTENT exactly as typed: same case, as a whole word. `Museum` finds "
@@ -119,12 +119,6 @@ class SearchHelp:
         '"phrase" to keep words together) sit within --distance words of each other, such '
         "as `payment` and `termination` in the same clause. One result per passage, best "
         "pages first. Never case-sensitive.\n\n"
-        "leetspeak - finds words written with look-alike characters: `hello` finds `h3ll0` "
-        "and `h3ll0` finds `hello` (as does `password` for `p@55w0rd`). Every character of "
-        "CONTENT must match, as whole words; at least 3 characters, one a letter. Which "
-        "substitutions are recognized is set by `vethuq settings search leetspeak level` "
-        "(basic, standard or extended), or per search by --leet-level. Honours "
-        "--case-sensitive; spelled as typed first.\n\n"
         "noise-fuzzy - finds CONTENT's characters hidden by stray punctuation or whitespace, "
         "look-alike symbols and typos, all at once: `h..e llo`, `h @ e # l l o`, `h3ll0` and "
         "`helo` all find `hello`. The noise is ignored (letters never are), look-alikes are "
@@ -155,9 +149,9 @@ def search(
             "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads), 'proximity' (all your words near each other), 'leetspeak' (words "
-            "written with look-alike characters, e.g. h3ll0) or 'noise-fuzzy' (words hidden by "
-            "stray characters, look-alikes and typos at once, e.g. h..e l1o). Defaults to "
+            "misreads), 'proximity' (all your words near each other) or 'noise-fuzzy' (words "
+            "hidden by stray characters, look-alikes and typos at once, e.g. h..e l1o). "
+            "Defaults to "
             "`vethuq settings search engine`."
         ),
     ),
@@ -165,7 +159,7 @@ def search(
         None,
         "--case-sensitive/--no-case-sensitive",
         help=(
-            "Match case. Only 'like', 'lexical', 'fuzzy', 'leetspeak' and 'noise-fuzzy' honour it "
+            "Match case. Only 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' honour it "
             "(default: "
             "`vethuq settings search case-sensitive`); 'exact' is always case-sensitive, "
             "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
@@ -203,9 +197,9 @@ def search(
         None,
         "--leet-level",
         help=(
-            "Leetspeak and noise-fuzzy only: which look-alike characters to recognize - "
-            "'basic', 'standard' or 'extended'. Default: `vethuq settings search leetspeak "
-            "level`."
+            "Like and noise-fuzzy only: which look-alike characters count as the letters "
+            "they stand for - 'off', 'basic', 'standard' or 'extended'. Default: `vethuq "
+            "settings search normalize leetspeak` (off for like, basic for noise-fuzzy)."
         ),
     ),
     noise: str | None = typer.Option(

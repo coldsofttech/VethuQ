@@ -3,7 +3,7 @@
 import sqlite3
 from datetime import UTC, datetime
 
-from vethuq_core.leet import Leet
+from vethuq_core.search.normalizers.leetspeak import Leet
 
 
 class SearchData:

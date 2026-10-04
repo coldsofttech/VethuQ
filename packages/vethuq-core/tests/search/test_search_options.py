@@ -20,7 +20,7 @@ class TestResolveOptions:
             False,
             None,
             None,
-            None,
+            "off",
             None,
         )
 
@@ -31,7 +31,7 @@ class TestResolveOptions:
             True,
             None,
             None,
-            None,
+            "off",
             None,
         )
         assert Search.resolve_options(storage, "like", False) == (
@@ -39,7 +39,7 @@ class TestResolveOptions:
             False,
             None,
             None,
-            None,
+            "off",
             None,
         )
 

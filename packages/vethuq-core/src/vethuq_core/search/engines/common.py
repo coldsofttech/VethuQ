@@ -32,9 +32,11 @@ class SearchEngineHelpers:
 
     @staticmethod
     def require_no_level(engine: str, level: str | None) -> None:
-        """Reject a leetspeak `level` for an engine that isn't leetspeak."""
+        """Reject a leetspeak `level` for an engine that doesn't read look-alikes."""
         if level is not None:
-            raise ValueError(f"The {engine} engine has no leetspeak level; only leetspeak does.")
+            raise ValueError(
+                f"The {engine} engine has no leetspeak level; only like and noise-fuzzy do."
+            )
 
     @staticmethod
     def require_no_noise(engine: str, noise: str | None) -> None:

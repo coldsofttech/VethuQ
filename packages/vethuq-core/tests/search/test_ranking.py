@@ -142,11 +142,11 @@ class TestRanking:
     ):
         SearchData.seed_page(conn, "say h..e 9ame to all", "/d/a.pdf")
 
-        strict = {"threshold": 0.9}  # so the 9 for a g can't pass as a typo
-        assert Search.indexed_pages(storage, "he game", **strict) == []  # too much noise
-        assert Search.indexed_pages(storage, "he game", noise="medium", **strict) == []  # 9 != g
+        # (a threshold of 0.9 so that the 9 for a g can't pass as a typo)
+        assert Search.indexed_pages(storage, "he game", threshold=0.9) == []  # too much noise
+        assert Search.indexed_pages(storage, "he game", threshold=0.9, noise="medium") == []
         (page,) = Search.indexed_pages(
-            storage, "he game", noise="medium", level="standard", **strict
+            storage, "he game", threshold=0.9, noise="medium", level="standard"
         )
         assert (page.engine, page.hits[0].matched) == ("noise-fuzzy", "h..e 9ame")
 
@@ -188,7 +188,6 @@ class TestRanking:
             "lexical",
             "proximity",
             "full-text",
-            "leetspeak",
             "fuzzy",
             "noise-fuzzy",
         )
@@ -208,7 +207,6 @@ class TestRanking:
             "like",
             "lexical",
             "full-text",
-            "leetspeak",
             "fuzzy",
             "noise-fuzzy",
         )
@@ -231,7 +229,6 @@ class TestRanking:
             "like",
             "lexical",
             "full-text",
-            "leetspeak",
             "fuzzy",
             "noise-fuzzy",
         )
@@ -322,14 +319,14 @@ class TestRanking:
 
     def test_agreement_breaks_ties(self, conn: sqlite3.Connection, storage: Storage):
         # Both pages are Contains-tier with one hit; only one is also found by
-        # full-text, leetspeak and fuzzy (and, with `like`, by lexical).
+        # full-text and fuzzy (and, with `like`, by lexical).
         SearchData.seed_page(conn, "the museumgoers", "/d/a_alone.pdf")
         SearchData.seed_page(conn, "the Museum", "/d/z_agreed.pdf")
 
         pages = Search.indexed_pages(storage, "museum")
 
         assert [(p.file_name, p.engine, len(p.matched_by)) for p in pages] == [
-            ("z_agreed.pdf", "like", 6),
+            ("z_agreed.pdf", "like", 5),
             ("a_alone.pdf", "like", 2),
         ]
 
@@ -400,7 +397,7 @@ class TestRanking:
     ):
         SearchData.seed_page(conn, "Visit the Museum today", "/d/a.pdf")
 
-        for engine in ("like", "exact", "full-text", "leetspeak", "fuzzy", "noise-fuzzy"):
+        for engine in ("like", "exact", "full-text", "fuzzy", "noise-fuzzy"):
             (match,) = Search.indexed_content(storage, "Museum", engine=engine)
             assert match.engine == engine
             assert (match.start, match.end) == (10, 16)

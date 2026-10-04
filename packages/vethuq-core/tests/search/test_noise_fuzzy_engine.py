@@ -1,8 +1,8 @@
 import pytest
 from search_data import SearchData
-from vethuq_core.leet import Leet
 from vethuq_core.search import Search, SearchOptionError
 from vethuq_core.search.engines.noise_fuzzy import NoiseFuzzySearchEngine
+from vethuq_core.search.normalizers.leetspeak import Leet
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings, Settings
 
 
@@ -177,7 +177,7 @@ class TestLevels:
 
     def test_the_stored_leetspeak_level_is_the_default(self, conn, storage):
         SearchData.seed_page(conn, "a 9ame today")
-        SearchSettings.set_leetspeak_level(storage, "standard")
+        SearchSettings.set_leetspeak(storage, "standard")
 
         assert _found(storage, "game") == ["9ame"]
         assert _found(storage, "game", level="basic") == []
@@ -294,7 +294,7 @@ class TestShortAndOddQueries:
             Search.indexed_content(storage, "hello", engine="noise-fuzzy", distance=3)
 
     def test_other_engines_reject_a_noise_level(self, storage):
-        for engine in ("like", "lexical", "exact", "full-text", "fuzzy", "proximity", "leetspeak"):
+        for engine in ("like", "lexical", "exact", "full-text", "fuzzy", "proximity"):
             with pytest.raises(ValueError, match="noise level"):
                 Search.indexed_content(storage, "museum", engine=engine, noise="low")
 
@@ -470,7 +470,7 @@ class TestOptions:
         assert Search.resolve_options(storage, "noise-fuzzy", None).case_sensitive is True
 
     def test_a_noise_level_is_only_for_noise_fuzzy_and_all(self, storage):
-        for engine in ("like", "fuzzy", "leetspeak", "proximity"):
+        for engine in ("like", "fuzzy", "proximity"):
             with pytest.raises(SearchOptionError) as error:
                 Search.resolve_options(storage, engine, None, noise="low")
             assert error.value.option == "noise"
@@ -484,17 +484,27 @@ class TestOptions:
 
     def test_other_engines_carry_no_noise(self, storage):
         assert Search.resolve_options(storage, "fuzzy", None).noise is None
-        assert Search.resolve_options(storage, "leetspeak", None).noise is None
+        assert Search.resolve_options(storage, "like", None).noise is None
 
     def test_threshold_and_level_are_also_for_noise_fuzzy(self, storage):
         assert Search.resolve_options(storage, "noise-fuzzy", None, threshold=0.9).threshold == 0.9
         assert Search.resolve_options(storage, "noise-fuzzy", None, level="extended").level == (
             "extended"
         )
+        assert Search.resolve_options(storage, "noise-fuzzy", None, level="off").level == "off"
         with pytest.raises(SearchOptionError, match="noise-fuzzy"):
             Search.resolve_options(storage, "like", None, threshold=0.9)
         with pytest.raises(SearchOptionError, match="noise-fuzzy"):
-            Search.resolve_options(storage, "like", None, level="basic")
+            Search.resolve_options(storage, "fuzzy", None, level="basic")
+
+    def test_leetspeak_off_turns_the_look_alikes_off(self, conn, storage):
+        SearchData.seed_page(conn, "say h3ll0 to all")
+
+        assert _found(storage, "hello") == ["h3ll0"]
+        assert _found(storage, "hello", level="off") == []  # 3 and 0 are two edits now
+        SearchSettings.set_leetspeak(storage, "off")
+        assert _found(storage, "hello") == []
+        assert _found(storage, "hello", level="basic") == ["h3ll0"]
 
     def test_the_skeleton_helper_is_what_the_index_uses(self):
         assert Leet.skeleton("h @ 3 l l 0") == "haeiio"

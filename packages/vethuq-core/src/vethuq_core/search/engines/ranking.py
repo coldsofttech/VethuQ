@@ -30,7 +30,9 @@ from dataclasses import dataclass, replace
 
 from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
 from vethuq_core.search.engines.common import SearchEngineHelpers
+from vethuq_core.search.engines.like import LikeSearchEngine
 from vethuq_core.search.engines.registry import SearchEngines
+from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
 
@@ -200,11 +202,30 @@ class Ranking:
         noise: str | None,
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
-        search = SearchEngines.get(storage, engine).search
-        if engine in ("like", "lexical"):
-            return search(query, context_chars=chars, case_sensitive=case_sensitive)
         if engine == "leetspeak":
-            return search(query, context_chars=chars, case_sensitive=case_sensitive, level=level)
+            # A tier, not an engine: `like` with look-alikes read as the letters they stand for,
+            # keeping the hits that needed that. Text as typed is `like`'s, a stricter tier.
+            lookalikes = level or SearchSettings.resolve_leetspeak(
+                storage, SearchSettings.DEFAULT_LEETSPEAK
+            )
+            if lookalikes == SearchSettings.LEETSPEAK_OFF or not LikeSearchEngine.has_lookalikes(
+                query
+            ):
+                return []
+            hits = SearchEngines.get(storage, "like").search(
+                query, context_chars=chars, case_sensitive=case_sensitive, level=lookalikes
+            )
+            return [replace(hit, engine="leetspeak") for hit in hits if (hit.score or 0.0) < 1.0]
+        search = SearchEngines.get(storage, engine).search
+        if engine == "like":
+            return search(
+                query,
+                context_chars=chars,
+                case_sensitive=case_sensitive,
+                level=SearchSettings.LEETSPEAK_OFF,
+            )
+        if engine == "lexical":
+            return search(query, context_chars=chars, case_sensitive=case_sensitive)
         if engine == "fuzzy":
             return search(
                 query, context_chars=chars, case_sensitive=case_sensitive, threshold=threshold
@@ -237,9 +258,9 @@ class Ranking:
         """Search with every engine and return the pages found, best first.
 
         Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`,
-        `leetspeak`, `fuzzy` and `noise-fuzzy` (`exact` always matches case, `full-text` and
+        `fuzzy` and `noise-fuzzy` (`exact` always matches case, `full-text` and
         `proximity` never do), `threshold` only `fuzzy` and `noise-fuzzy`, `distance` only
-        `proximity`, `level` only `leetspeak` and `noise-fuzzy` and `noise` only `noise-fuzzy`,
+        `proximity`, `level` only `like` and `noise-fuzzy` and `noise` only `noise-fuzzy`,
         each defaulting to the user's setting. An engine that can't search the query
         (`proximity` needs two terms, `lexical` three characters) is skipped rather than
         failing the search.

@@ -157,7 +157,7 @@ Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
 `client.settings.search.export_format` if not given, and must be one of
 `SEARCH_EXPORT_FORMATS`. Pass the `engine`, `case_sensitive` and (for
-`fuzzy` or `proximity`) `threshold` or `distance`, or (for `leetspeak`) `leet_level`, the
+`fuzzy` or `proximity`) `threshold` or `distance`, or (for `like` or `noise-fuzzy`) `leet_level`, the
 search ran with to record them in the file.
 
 ```python
@@ -170,7 +170,7 @@ client.search.export(matches, "invoice", "results.html", "html")
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
 order, occurrences within a page in text order) — or best match first for
-the `full-text`, `fuzzy`, `proximity`, `leetspeak` and `noise-fuzzy` engines. Only successfully indexed documents are
+the `full-text`, `fuzzy`, `proximity` and `noise-fuzzy` engines. Only successfully indexed documents are
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
@@ -184,7 +184,13 @@ are never rejected.
 `client.settings.search.engine`:
 
 - `"all"` — every engine at once, the pages ranked together (the default)
-- `"like"` — `content` anywhere, even inside a word, ignoring case
+- `"like"` — `content` anywhere, even inside a word, ignoring case. With `leet_level`
+  (`"off"`, `"basic"`, `"standard"` or `"extended"`; default
+  `client.settings.search.normalize.leetspeak`, off for `"like"` unless that says
+  otherwise) look-alike characters count as the letters they stand for, both ways
+  (`"hello"` finds `h3ll0`, `"p@55w0rd"` finds `password`); a `content` under 3 characters or
+  without a letter is searched as it is, and `SearchMatch.score` is then the share of it
+  matched as typed (1.0 = no look-alike)
 - `"exact"` — `content` as typed: same case, as a whole word
 - `"full-text"` — pages containing `content`'s words (any case, English word
   forms; `"quote a phrase"`, end a word with `*` for a prefix), ranked by
@@ -197,12 +203,6 @@ are never rejected.
   `"quoted phrases"`, in any order) sit within `distance` words of each other, one
   `SearchMatch` per passage spanning its first to its last term, on pages ranked by
   relevance (`SearchMatch.score`)
-- `"leetspeak"` — `content` written with look-alike characters, as whole words, in
-  either direction (`"hello"` finds `h3ll0`, `"p@55w0rd"` finds `password`); no typo
-  tolerance, at least 3 characters with a letter among them. Which substitutions count is
-  `client.settings.search.leetspeak.level`. Best first: `SearchMatch.score` is the
-  share of `content`'s characters matched as typed (1.0 = none substituted). `leet_level`
-  (one of `SEARCH_LEETSPEAK_LEVELS`) overrides that setting for one call
 - `"noise-fuzzy"` — `content`'s characters hidden by stray punctuation or whitespace (letters
   are never noise), look-alike symbols and typos at once: `"hello"` finds `h..e llo`,
   `h @ 3 l l 0`, `h3ll0` and `helo`. It uses `threshold` (as `"fuzzy"`) and `leet_level`
@@ -213,7 +213,7 @@ are never rejected.
   noise character. No minimum query length
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
-only `"like"`, `"fuzzy"`, `"leetspeak"` and `"noise-fuzzy"` act on it (`"exact"` is always case-sensitive,
+only `"like"`, `"lexical"`, `"fuzzy"` and `"noise-fuzzy"` act on it (`"exact"` is always case-sensitive,
 `"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
 counts as one edit). `threshold` (`"fuzzy"` and `"noise-fuzzy"` only) is the minimum similarity between
 `content`'s words and the words found — `1 − edits ÷ length of the longer
@@ -239,7 +239,7 @@ for match in client.search.run("invoice"):
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
 `"exact"` (Exact), `"like"` (Contains), `"proximity"` (Near), `"full-text"` (Word),
-`"leetspeak"` (Lookalike), `"fuzzy"` (Similar), `"noise-fuzzy"` (Obscured), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
+`"leetspeak"` (Lookalike - `"like"` reading look-alikes), `"fuzzy"` (Similar), `"noise-fuzzy"` (Obscured), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
 label the CLI and the UI show) — and within a tier by that engine's own signal, so
 a page is one result however many engines found it. `case_sensitive`, `threshold`
 and `distance` default to their settings and reach only the engines that can use
@@ -327,16 +327,14 @@ client.search.run("late fee", engine="proximity", distance=5)
 client.search.run("payment", engine="proximity")  # raises SearchQueryError: needs two terms
 ```
 
-**`"leetspeak"`** finds words written with look-alike characters, both ways:
+**Look-alikes** (`leet_level`) with `"like"`:
 
 ```python
-client.search.run("hello", engine="leetspeak")  # finds "hello", "h3ll0", "He11o"
-client.search.run("p@55w0rd", engine="leetspeak")  # finds "password" and "p@55w0rd"
-client.search.run("hello", engine="leetspeak", case_sensitive=True)  # not "H3LL0"
-client.search.run("hi", engine="leetspeak")  # raises SearchQueryError: needs 3 characters
-client.search.run("nice", engine="leetspeak", leet_level="extended")  # finds "|\\|ice"
-client.search.run("hello", engine="leetspeak", threshold=0.8)  # raises SearchOptionError
-client.search.run("hello", engine="like", leet_level="basic")  # raises SearchOptionError
+client.search.run("hello", engine="like", leet_level="basic")  # "hello", "h3ll0", "He11o"
+client.search.run("p@55w0rd", engine="like", leet_level="basic")  # "password", "p@55w0rd"
+client.search.run("hello", engine="like", leet_level="basic", case_sensitive=True)  # not "H3LL0"
+client.search.run("game", engine="like", leet_level="standard")  # also "9ame"
+client.search.run("hello", engine="fuzzy", leet_level="basic")  # raises SearchOptionError
 ```
 
 **`"noise-fuzzy"`** finds text hidden by noise, look-alikes and typos together:
@@ -421,14 +419,15 @@ Invalid values raise `InvalidSettingValueError`.
 ### `client.settings.search.case_sensitive`
 
 - `get()` — whether `search` matches case by default (`False` by default; only
-  the `like`, `fuzzy` and `leetspeak` engines act on it)
+  the `like`, `lexical`, `fuzzy` and `noise-fuzzy` engines act on it; the same as
+  `client.settings.search.normalize.case` being `"match"`)
 - `set(enabled)`
 
 ### `client.settings.search.engine`
 
 - `get()` — default engine `search` uses (`"all"` by default: every engine, ranked together)
 - `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"all"`, `"like"`, `"exact"`,
-  `"full-text"`, `"fuzzy"`, `"proximity"`, `"leetspeak"`); raises `InvalidSettingValueError`
+  `"full-text"`, `"fuzzy"`, `"proximity"`, `"noise-fuzzy"`); raises `InvalidSettingValueError`
   otherwise
 
 ### `client.settings.search.fuzzy.threshold`
@@ -447,14 +446,22 @@ Invalid values raise `InvalidSettingValueError`.
   10, `"loose"` 30) or a number of words from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`;
   raises `InvalidSettingValueError` otherwise
 
-### `client.settings.search.leetspeak.level`
+### `client.settings.search.normalize.case`
 
-- `get()` — the stored default level for the `leetspeak` engine: a name from
-  `SEARCH_LEETSPEAK_LEVELS` (`"basic"` by default)
-- `set(level)` — `"basic"` (`0` `1` `3` `4` `5` `7` `@` `$`), `"standard"` (adds `2` `6` `8` `9`
-  `+` `!` `|`) or `"extended"` (adds multi-character forms such as `|\|` for `n`); each
-  level includes the one before it. The substitution table is built in. Raises
-  `InvalidSettingValueError` otherwise
+- `get()` — whether upper and lower case are the same letter, a name from `SEARCH_CASE_VALUES`:
+  `"auto"` (the default — each engine's own), `"ignore"` or `"match"`
+- `set(value)` — one of those, for the engines that can honour it (`like`, `lexical`,
+  `fuzzy`, `noise-fuzzy`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.normalize.leetspeak`
+
+- `get()` — whether look-alike characters (`3` for `e`, `@` for `a`) count as the letters they
+  stand for, a name from `SEARCH_LEETSPEAK_VALUES`: `"auto"` (the default — each engine's own:
+  `"basic"` for `noise-fuzzy` and the combined search, none for `like`), `"off"`, `"basic"`,
+  `"standard"` or `"extended"`
+- `set(value)` — one of those; each level includes the one before it (`SEARCH_LEETSPEAK_LEVELS`
+  lists the three). The substitution table is built in. Honoured by `like` and `noise-fuzzy`;
+  raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.noise_fuzzy.noise`
 

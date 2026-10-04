@@ -70,8 +70,6 @@ from vethuq_cli.settings import (
     integrity_check_interval_show,
     integrity_check_set,
     integrity_check_show,
-    leetspeak_level_set,
-    leetspeak_level_show,
     location_set,
     location_show,
     log_level_set,
@@ -80,6 +78,10 @@ from vethuq_cli.settings import (
     log_retention_show,
     noise_fuzzy_noise_set,
     noise_fuzzy_noise_show,
+    normalize_case_set,
+    normalize_case_show,
+    normalize_leetspeak_set,
+    normalize_leetspeak_show,
     proximity_distance_set,
     proximity_distance_show,
     removed_retention_set,
@@ -222,15 +224,17 @@ class InteractiveMenu:
             default_case_sensitive = SearchSettings.is_case_sensitive(storage)
             default_threshold = SearchSettings.get_fuzzy_threshold_setting(storage)
             default_distance = SearchSettings.get_proximity_distance_setting(storage)
-            default_level = SearchSettings.get_leetspeak_level(storage)
+            default_level = SearchSettings.resolve_leetspeak(
+                storage, SearchSettings.DEFAULT_LEETSPEAK
+            )
             default_noise = SearchSettings.get_noise_level(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
-        # Only `like`, `lexical`, `fuzzy`, `leetspeak`, `noise-fuzzy` and `all` (which includes
-        # them) have a choice to make:
+        # Only `like`, `lexical`, `fuzzy`, `noise-fuzzy` and `all` (which includes them) have a
+        # choice to make:
         # `exact` is always case-sensitive while `full-text` and `proximity` never are,
         # so asking would have no effect. `all` uses the stored threshold and distance.
         case_sensitive: bool | None = None
@@ -239,7 +243,6 @@ class InteractiveMenu:
             "like",
             "lexical",
             "fuzzy",
-            "leetspeak",
             "noise-fuzzy",
         ):
             case_sensitive = Confirm.ask(
@@ -262,8 +265,8 @@ class InteractiveMenu:
                 default=default_distance,
             )
         leet_level: str | None = None
-        if engine in ("leetspeak", "noise-fuzzy"):
-            levels = ", ".join(SearchSettings.LEETSPEAK_LEVELS)
+        if engine == "noise-fuzzy":
+            levels = ", ".join(SearchSettings.LEETSPEAK_VALUES[1:])
             leet_level = Prompt.ask(
                 f"Leet level ({levels})", console=console, default=default_level
             )
@@ -529,19 +532,48 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(proximity_distance_set, distance=distance)
 
     @staticmethod
-    def _settings_leetspeak_level_menu() -> None:
+    def _settings_normalize_value_menu(
+        title: str,
+        values: tuple[str, ...],
+        show: Callable[..., None],
+        set_: Callable[..., None],
+        argument: str,
+    ) -> None:
+        while True:
+            choice = InteractiveMenu._select(title, [("1", "Show"), ("2", "Set"), ("0", "Back")])
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(show)
+            elif choice == "2":
+                value = Prompt.ask(f"Value ({', '.join(values)})", console=console)
+                InteractiveMenu._run_safely(set_, **{argument: value})
+
+    @staticmethod
+    def _settings_normalize_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Search > Leetspeak Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Search > Normalize",
+                [("1", "Case"), ("2", "Leetspeak"), ("0", "Back")],
             )
             if choice == "0":
                 return
             if choice == "1":
-                InteractiveMenu._run_safely(leetspeak_level_show)
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Normalize > Case",
+                    SearchSettings.CASE_VALUES,
+                    normalize_case_show,
+                    normalize_case_set,
+                    "case",
+                )
             elif choice == "2":
-                levels = ", ".join(SearchSettings.LEETSPEAK_LEVELS)
-                level = Prompt.ask(f"Level ({levels})", console=console)
-                InteractiveMenu._run_safely(leetspeak_level_set, level=level)
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Normalize > Leetspeak",
+                    SearchSettings.LEETSPEAK_VALUES,
+                    normalize_leetspeak_show,
+                    normalize_leetspeak_set,
+                    "leetspeak",
+                )
 
     @staticmethod
     def _settings_noise_menu() -> None:
@@ -570,7 +602,7 @@ class InteractiveMenu:
                     ("4", "Case Sensitive"),
                     ("5", "Fuzzy Threshold"),
                     ("6", "Proximity Distance"),
-                    ("7", "Leetspeak Level"),
+                    ("7", "Normalize"),
                     ("8", "Noise Level"),
                     ("0", "Back"),
                 ],
@@ -590,7 +622,7 @@ class InteractiveMenu:
             elif choice == "6":
                 InteractiveMenu._settings_proximity_distance_menu()
             elif choice == "7":
-                InteractiveMenu._settings_leetspeak_level_menu()
+                InteractiveMenu._settings_normalize_menu()
             elif choice == "8":
                 InteractiveMenu._settings_noise_menu()
 

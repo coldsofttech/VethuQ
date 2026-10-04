@@ -677,99 +677,54 @@ def _seed_pages(db_path, path: str, pages: list[str]) -> None:
             conn.close()
 
 
-class TestSearchLeetspeak:
-    def test_finds_look_alike_spellings_both_ways(self, use_temp_db):
+class TestSearchLookalikes:
+    def test_like_finds_look_alike_spellings_both_ways_when_asked(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "the p@55w0rd is secret")
         _seed_indexed_pdf(db_path, "/docs/b.pdf", "the password is secret")
 
-        plain = runner.invoke(app, ["search", "password", "--engine", "leetspeak"])
-        disguised = runner.invoke(app, ["search", "p@55w0rd", "--engine", "leetspeak"])
+        off = runner.invoke(app, ["search", "password", "--engine", "like"])
+        plain = runner.invoke(
+            app, ["search", "password", "--engine", "like", "--leet-level", "basic"]
+        )
+        disguised = runner.invoke(
+            app, ["search", "p@55w0rd", "--engine", "like", "--leet-level", "basic"]
+        )
 
-        assert plain.exit_code == 0 and disguised.exit_code == 0
-        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in plain.stdout
+        assert "Results: 1 match (engine: like)" in off.stdout
+        assert "Results: 2 matches (engine: like, leet level basic)" in plain.stdout
         assert "p@55w0rd" in plain.stdout and "password" in plain.stdout
-        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in disguised.stdout
+        assert "Results: 2 matches (engine: like, leet level basic)" in disguised.stdout
 
     def test_honours_case_sensitive(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "say H3LL0 and h3ll0")
 
-        loose = runner.invoke(app, ["search", "hello", "--engine", "leetspeak"])
+        loose = runner.invoke(app, ["search", "hello", "--engine", "like", "--leet-level", "basic"])
         strict = runner.invoke(
-            app, ["search", "hello", "--engine", "leetspeak", "--case-sensitive"]
+            app,
+            ["search", "hello", "--engine", "like", "--leet-level", "basic", "--case-sensitive"],
         )
 
-        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in loose.stdout
-        assert "Results: 1 match (engine: leetspeak, case-sensitive" in strict.stdout
+        assert "Results: 2 matches (engine: like, leet level basic)" in loose.stdout
+        assert "Results: 1 match (engine: like, case-sensitive" in strict.stdout
 
-    def test_uses_the_stored_level(self, use_temp_db):
+    def test_the_stored_setting_is_the_default_and_the_flag_beats_it(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
 
-        basic = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
-        runner.invoke(app, ["settings", "search", "leetspeak", "level", "set", "standard"])
-        standard = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
+        basic = runner.invoke(app, ["search", "game", "--engine", "like", "--leet-level", "basic"])
+        runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "set", "standard"])
+        stored = runner.invoke(app, ["search", "game", "--engine", "like"])
+        overridden = runner.invoke(
+            app, ["search", "game", "--engine", "like", "--leet-level", "off"]
+        )
 
         assert "No matches found." in basic.stdout
-        assert "leetspeak level" in basic.stdout  # the hint towards a higher level
-        assert "Results: 1 match (engine: leetspeak, leet level standard)" in standard.stdout
+        assert "Results: 1 match (engine: like, leet level standard)" in stored.stdout
+        assert "No matches found." in overridden.stdout
 
-    def test_leet_level_flag_beats_the_setting(self, use_temp_db):
-        db_path = use_temp_db()
-        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
-
-        basic = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
-        standard = runner.invoke(
-            app, ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
-        )
-        combined = runner.invoke(app, ["search", "game", "--leet-level", "standard"])
-
-        assert "No matches found." in basic.stdout
-        assert "Results: 1 match (engine: leetspeak, leet level standard)" in standard.stdout
-        assert "[Lookalike]" in combined.stdout
-        # The setting is untouched.
-        shown = runner.invoke(app, ["settings", "search", "leetspeak", "level", "show"])
-        assert "basic" in shown.stdout
-
-    def test_leet_level_flag_is_validated(self, use_temp_db):
-        use_temp_db()
-
-        invalid = runner.invoke(
-            app, ["search", "hello", "--engine", "leetspeak", "--leet-level", "insane"]
-        )
-        wrong_engine = runner.invoke(
-            app, ["search", "hello", "--engine", "like", "--leet-level", "basic"]
-        )
-
-        assert invalid.exit_code != 0 and "level must be one of" in _flatten(invalid.output)
-        assert "--leet-level" in _flatten(invalid.output)
-        assert wrong_engine.exit_code != 0
-        assert "Only the leetspeak and noise-fuzzy engines have a level" in _flatten(
-            wrong_engine.output
-        )
-
-    def test_export_records_the_leet_level(self, use_temp_db, tmp_path):
-        db_path = use_temp_db()
-        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
-        as_json = tmp_path / "out.json"
-        as_html = tmp_path / "out.html"
-
-        runner.invoke(
-            app,
-            ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
-            + ["--export", str(as_json)],
-        )
-        runner.invoke(
-            app,
-            ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
-            + ["--export", str(as_html), "--format", "html"],
-        )
-
-        assert json.loads(as_json.read_text())["leet_level"] == "standard"
-        assert "leet level standard" in as_html.read_text()
-
-    def test_all_engines_labels_a_disguised_page_lookalike(self, use_temp_db):
+    def test_the_combined_search_labels_a_disguised_page_lookalike(self, use_temp_db):
         db_path = use_temp_db()
         _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h3ll0 to all")
 
@@ -780,28 +735,68 @@ class TestSearchLeetspeak:
         assert "Page: 1 of 1 [ocr] [Lookalike]  also: Obscured" in lines
         assert "say h3ll0 to all" in lines
 
-    def test_rejects_fuzzy_and_proximity_options(self, use_temp_db):
+    def test_the_combined_search_uses_the_flag_and_the_setting(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
+
+        basic = runner.invoke(app, ["search", "game"])
+        standard = runner.invoke(app, ["search", "game", "--leet-level", "standard"])
+        runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "set", "off"])
+        off = runner.invoke(app, ["search", "hello"])
+
+        assert "[Lookalike]" not in basic.stdout  # a 9 is a g only from standard on
+        assert "[Lookalike]" in standard.stdout
+        assert "[Lookalike]" not in off.stdout
+
+    def test_leet_level_flag_is_validated(self, use_temp_db):
+        use_temp_db()
+
+        invalid = runner.invoke(
+            app, ["search", "hello", "--engine", "like", "--leet-level", "insane"]
+        )
+        wrong_engine = runner.invoke(
+            app, ["search", "hello", "--engine", "fuzzy", "--leet-level", "basic"]
+        )
+
+        assert invalid.exit_code != 0
+        assert "off, basic, standard, extended" in _flatten(invalid.output)
+        assert "--leet-level" in _flatten(invalid.output)
+        assert wrong_engine.exit_code != 0
+        assert "Only the like and noise-fuzzy engines have a leetspeak level" in _flatten(
+            wrong_engine.output
+        )
+
+    def test_export_records_the_leet_level(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
+        as_json = tmp_path / "out.json"
+        as_html = tmp_path / "out.html"
+        base = ["search", "game", "--engine", "like", "--leet-level", "standard"]
+
+        runner.invoke(app, [*base, "--export", str(as_json)])
+        runner.invoke(app, [*base, "--export", str(as_html), "--format", "html"])
+
+        assert json.loads(as_json.read_text())["leet_level"] == "standard"
+        assert "leet level standard" in as_html.read_text()
+
+    def test_leetspeak_is_no_longer_an_engine(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "hello", "--engine", "leetspeak"])
+
+        assert result.exit_code != 0
+        assert "not one of" in _flatten(result.output)
+
+    def test_other_engines_still_reject_fuzzy_and_proximity_options(self, use_temp_db):
         use_temp_db()
 
         threshold = runner.invoke(
-            app, ["search", "hello", "--engine", "leetspeak", "--threshold", "0.8"]
-        )
-        distance = runner.invoke(
-            app, ["search", "hello", "--engine", "leetspeak", "--distance", "5"]
+            app, ["search", "hello", "--engine", "like", "--threshold", "0.8"]
         )
 
         assert threshold.exit_code != 0 and "Only the fuzzy and noise-fuzzy engines" in _flatten(
             threshold.output
         )
-        assert distance.exit_code != 0 and "Only the proximity engine" in _flatten(distance.output)
-
-    def test_too_short_a_query_is_reported(self, use_temp_db):
-        use_temp_db()
-
-        result = runner.invoke(app, ["search", "hi", "--engine", "leetspeak"])
-
-        assert result.exit_code != 0
-        assert "at least 3 characters" in _flatten(result.output)
 
 
 class TestSearchNoiseFuzzy:
@@ -959,8 +954,8 @@ class TestSearchAll:
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
         assert "Search Results: 1 page (engine: all)" in lines
-        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Lookalike," in lines
-        assert "Similar, Obscured" in lines  # the label wraps rather than cutting off
+        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Similar," in lines
+        assert "Obscured" in lines  # the label wraps rather than cutting off
 
     def test_ranks_pages_exact_then_contains_then_word_then_similar(self, use_temp_db):
         db_path = use_temp_db()
@@ -1063,7 +1058,6 @@ class TestSearchAll:
             "like",
             "lexical",
             "full-text",
-            "leetspeak",
             "fuzzy",
             "noise-fuzzy",
         ]
