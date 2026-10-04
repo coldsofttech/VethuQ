@@ -375,7 +375,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Leetspeak > Set extended; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\nextended\n1\n0\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\nextended\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search leetspeak set to extended." in result.stdout
@@ -385,7 +385,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Case > Set match; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n1\n2\nmatch\n1\n0\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n7\n1\n2\nmatch\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search case set to match." in result.stdout
@@ -395,7 +395,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Normalize > Unicode > Set full; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n7\n3\n2\nfull\n1\n0\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n7\n3\n2\nfull\n1\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search unicode set to full." in result.stdout
@@ -404,7 +404,7 @@ class TestInteractiveSearchEngines:
     def test_settings_normalize_rejects_an_unknown_value(self, use_temp_db):
         use_temp_db()
 
-        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\ninsane\n0\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n7\n2\n2\ninsane\n0\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "off, basic, standard, extended" in result.output
@@ -413,7 +413,7 @@ class TestInteractiveSearchEngines:
         _seed_page(use_temp_db(), "say h3ll0 to all")
 
         # Search > text > engine > case-sensitive? no > fuzziness > leet level off > noise, exit.
-        result = runner.invoke(app, [], input="1\nhello\nnoise-fuzzy\nn\n\noff\n\n8\n")
+        result = runner.invoke(app, [], input="1\nhello\nnoise-fuzzy\nn\n\noff\n\n10\n")
 
         assert result.exit_code == 0
         assert "No matches found." in result.stdout
@@ -436,7 +436,7 @@ class TestInteractiveSearchEngines:
         use_temp_db()
 
         # Settings > Search > Noise Level > Set high; Show; back out.
-        result = runner.invoke(app, [], input="4\n2\n8\n2\nhigh\n1\n0\n0\n0\n8\n")
+        result = runner.invoke(app, [], input="4\n2\n8\n2\nhigh\n1\n0\n0\n0\n10\n")
 
         assert result.exit_code == 0
         assert "Search noise level set to high." in result.stdout
@@ -447,7 +447,7 @@ class TestInteractiveSearchEngines:
 
         # Search > text > engine > case-sensitive? no > fuzziness > leet level > noise, then exit.
         result = runner.invoke(
-            app, [], input="1\nhello\nnoise-fuzzy\nn\nloose\nstandard\nmedium\n8\n"
+            app, [], input="1\nhello\nnoise-fuzzy\nn\nloose\nstandard\nmedium\n10\n"
         )
 
         assert result.exit_code == 0

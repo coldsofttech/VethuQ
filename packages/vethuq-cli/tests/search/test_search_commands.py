@@ -959,7 +959,7 @@ class TestSearchNoiseFuzzy:
         )
 
         # (the panel title is cut off at 80 columns; the export keeps every option)
-        assert "engine: noise-fuzzy, threshold 80%, leet level bas" in _flatten(result.stdout)
+        assert "engine: noise-fuzzy, threshold 80%, leet level ba" in _flatten(result.stdout)
 
     def test_noise_flag_beats_the_setting(self, use_temp_db):
         db_path = use_temp_db()
@@ -997,7 +997,7 @@ class TestSearchNoiseFuzzy:
         )
 
         assert "No matches found." in game.stdout
-        assert "9ame" in standard.stdout and "threshold 90%, leet level sta" in standard.stdout
+        assert "9ame" in standard.stdout and "threshold 90%, leet level st" in standard.stdout
         assert "Museurn" in loose.stdout and "threshold 65%" in loose.stdout
 
     def test_honours_case_sensitive(self, use_temp_db):

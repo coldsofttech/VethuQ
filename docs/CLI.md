@@ -954,7 +954,7 @@ vethuq file-types list --all
 
 ## `search-engines`
 
-Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
+Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
 
 ### `list [--all]`
 

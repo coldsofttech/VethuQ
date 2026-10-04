@@ -31,6 +31,12 @@
       "default": false
     },
     {
+      "id": "noise-fuzzy",
+      "label": "Noise-tolerant fuzzy",
+      "extra": "search-noise-fuzzy",
+      "default": false
+    },
+    {
       "id": "proximity",
       "label": "Proximity",
       "extra": "search-proximity",

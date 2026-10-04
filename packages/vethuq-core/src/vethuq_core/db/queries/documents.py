@@ -818,7 +818,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {narrowed}"
-            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'pdf' "
+            "(di.status = 'indexed' OR di.reindex_pending) AND s.is_active = 1 "
+            "AND di.file_type = 'pdf' "
             "ORDER BY di.file_path, pp.page_number",
             (match_expr,) if match_expr is not None else (),
         ).fetchall()
@@ -845,7 +846,8 @@ class Document:
             "JOIN document_index di ON di.document_id = carrier.document_id "
             "JOIN sources s ON s.id = di.source_id "
             f"WHERE {narrowed}"
-            "di.status = 'indexed' AND s.is_active = 1 AND di.file_type = 'image' "
+            "(di.status = 'indexed' OR di.reindex_pending) AND s.is_active = 1 "
+            "AND di.file_type = 'image' "
             "ORDER BY di.file_path",
             (match_expr,) if match_expr is not None else (),
         ).fetchall()

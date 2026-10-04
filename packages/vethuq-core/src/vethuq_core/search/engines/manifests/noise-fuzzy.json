@@ -1,0 +1,8 @@
+{
+  "id": "noise-fuzzy",
+  "label": "Noise-tolerant fuzzy",
+  "extra": "search-noise-fuzzy",
+  "requires": [],
+  "modules": [],
+  "default": false
+}

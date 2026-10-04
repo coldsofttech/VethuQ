@@ -31,6 +31,10 @@ time.
 | `cffi` | 2.1.1 | MIT-0 | 20 KB dist-info, 0.6 MB package (`_cffi_backend` is a loose `.pyd` in `lib/`) | `cryptography`, which `modelscope_hub` requires | C foreign-function interface used by `cryptography` | With `cryptography`/`modelscope_hub` only |
 | `chardet` | 7.6.0 | 0BSD | 31 KB dist-info, 2.4 MB package (loose in `lib/`) | `paddlex`, `requests` | Guesses a text file's encoding | No, `paddlex` imports it |
 | `charset_normalizer` | 3.5.1 | MIT | 64 KB dist-info, 0.7 MB package (loose in `lib/`) | `requests` | Encoding detection for HTTP responses | No, `requests` imports it |
+| `click` | 8.5.0 | BSD-3-Clause | 18 KB dist-info, 0.9 MB package | `aistudio-sdk`, `huggingface_hub` 2.0.0 | Command-line framework behind those packages' own CLIs | Probably, see below |
+| `colorama` | 0.4.6 | BSD-3-Clause | 34 KB dist-info, 0.1 MB package | `typer` (on Windows, VethuQ's CLI framework), `tqdm`, `colorlog` | Makes ANSI colour codes work in Windows consoles | No, the CLI depends on it through `typer` |
+| `colorlog` | 6.12.0 | MIT | 27 KB dist-info, 60 KB package | `paddlex` | Coloured log output | No, `paddlex` imports it |
+| `crc32c` | 2.9.post0 | LGPL-2.1-or-later | 57 KB dist-info, 0.16 MB package (loose in `lib/`) | `bce-python-sdk` | CRC32C checksums for Baidu Cloud uploads | Yes, see below |
 
 ### aistudio-sdk
 
@@ -104,6 +108,32 @@ time.
   text files it reads, and `requests` can use it too.
 - **`charset_normalizer`.** `requests` requires it for response decoding.
 - **Removable.** Neither, while `paddlex` and `requests` stay.
+
+### click
+
+- **Not used by VethuQ's own code.** VethuQ's CLI uses `typer`, which no longer needs it here.
+- **Why it is installed.** The command-line modules of `aistudio-sdk` (`aistudio_sdk/cmdline.py`)
+  and `huggingface_hub` (`huggingface_hub/cli/`) import it for their own `aistudio` and `hf`
+  commands. VethuQ never runs those.
+- **Removable.** Probably, along with those CLI modules, which are not on VethuQ's path. Untested.
+
+### colorama and colorlog
+
+- **`colorama`.** `typer` requires it on Windows, so VethuQ's own CLI needs it; `tqdm` (progress
+  bars) and `colorlog` use it too. Keep.
+- **`colorlog`.** `paddlex/utils/logging.py` imports it at the top, to colour PaddleX's log
+  lines. Required while `paddlex` is.
+
+### crc32c
+
+- **Not used by VethuQ's own code.**
+- **Why it is installed.** `bce-python-sdk` (`baidubce/utils.py`) imports it inside a
+  `try`/`except ImportError`, falling back to a slower pure-Python path, so it is optional there.
+- **Licence note.** LGPL-2.1-or-later, the second LGPL entry after `python-bidi`; it is already
+  listed in the installer's third-party license summary (`installer/LICENSE.md`). It ships as
+  loose files in `lib/` (its own folder with a compiled extension).
+- **Removable.** Yes, with no loss of function, if `bce-python-sdk` stays (see above). It could
+  be excluded in `vethuq.spec` to drop an LGPL component. Untested.
 
 ## To add
 
