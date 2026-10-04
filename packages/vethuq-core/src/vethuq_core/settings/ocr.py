@@ -28,6 +28,11 @@ class OcrSettings:
         Settings.set(storage, OcrSettings.RETRY_ATTEMPTS_KEY, str(attempts))
 
     @staticmethod
+    def reset_retry_attempts(storage: Storage) -> None:
+        """Back to the default number of retries."""
+        OcrSettings.set_retry_attempts(storage, OcrSettings.DEFAULT_RETRY_ATTEMPTS)
+
+    @staticmethod
     def get_stability_check_seconds(storage: Storage) -> float:
         """Seconds between the two stats that confirm a file has stopped changing before
         it's indexed. 1 by default; 0 disables the check."""
@@ -39,6 +44,13 @@ class OcrSettings:
         if seconds < 0:
             raise InvalidSettingValueError("seconds must be non-negative")
         Settings.set(storage, OcrSettings.STABILITY_CHECK_SECONDS_KEY, str(seconds))
+
+    @staticmethod
+    def reset_stability_check_seconds(storage: Storage) -> None:
+        """Back to the default stability check."""
+        OcrSettings.set_stability_check_seconds(
+            storage, OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS
+        )
 
     @staticmethod
     def get_engine(storage: Storage) -> str:
@@ -58,3 +70,8 @@ class OcrSettings:
         if value not in OcrSettings.ENGINE_MODES:
             raise InvalidSettingValueError(f"value must be one of {OcrSettings.ENGINE_MODES}")
         Settings.set(storage, OcrSettings.ENGINE_KEY, value)
+
+    @staticmethod
+    def reset_engine(storage: Storage) -> None:
+        """Back to the default engine mode."""
+        OcrSettings.set_engine(storage, OcrSettings.DEFAULT_ENGINE)

@@ -36,6 +36,11 @@ class DbSettings:
         Settings.set(storage, DbSettings.BACKUP_KEY, value)
 
     @staticmethod
+    def reset_backup(storage: Storage) -> None:
+        """Back to the default: automatic backups enabled."""
+        DbSettings.set_backup(storage, DbSettings.DEFAULT_BACKUP)
+
+    @staticmethod
     def get_backup_interval_minutes(storage: Storage) -> int:
         """Minutes between automatic backups. 1 day by default."""
         value = Settings.get(storage, DbSettings.BACKUP_INTERVAL_MINUTES_KEY)
@@ -50,6 +55,11 @@ class DbSettings:
         Settings.set(storage, DbSettings.BACKUP_INTERVAL_MINUTES_KEY, str(minutes))
 
     @staticmethod
+    def reset_backup_interval_minutes(storage: Storage) -> None:
+        """Back to the default interval between automatic backups."""
+        DbSettings.set_backup_interval_minutes(storage, DbSettings.DEFAULT_BACKUP_INTERVAL_MINUTES)
+
+    @staticmethod
     def get_backup_retention_days(storage: Storage) -> int:
         """Days automatic backups are kept before being pruned. 7 by default."""
         value = Settings.get(storage, DbSettings.BACKUP_RETENTION_DAYS_KEY)
@@ -62,6 +72,11 @@ class DbSettings:
         if days < 1:
             raise InvalidSettingValueError("days must be at least 1")
         Settings.set(storage, DbSettings.BACKUP_RETENTION_DAYS_KEY, str(days))
+
+    @staticmethod
+    def reset_backup_retention_days(storage: Storage) -> None:
+        """Back to the default number of days automatic backups are kept."""
+        DbSettings.set_backup_retention_days(storage, DbSettings.DEFAULT_BACKUP_RETENTION_DAYS)
 
     @staticmethod
     def get_integrity_check(storage: Storage) -> str:
@@ -84,6 +99,11 @@ class DbSettings:
         Settings.set(storage, DbSettings.INTEGRITY_CHECK_KEY, value)
 
     @staticmethod
+    def reset_integrity_check(storage: Storage) -> None:
+        """Back to the default: 'auto'."""
+        DbSettings.set_integrity_check(storage, DbSettings.DEFAULT_INTEGRITY_CHECK)
+
+    @staticmethod
     def get_integrity_check_interval_minutes(storage: Storage) -> int:
         """Minutes between automatic integrity checks when `integrity_check` is 'auto'.
         1 day by default.
@@ -98,3 +118,10 @@ class DbSettings:
         if minutes < 0:
             raise InvalidSettingValueError("minutes must be non-negative")
         Settings.set(storage, DbSettings.INTEGRITY_CHECK_INTERVAL_MINUTES_KEY, str(minutes))
+
+    @staticmethod
+    def reset_integrity_check_interval_minutes(storage: Storage) -> None:
+        """Back to the default interval between automatic integrity checks."""
+        DbSettings.set_integrity_check_interval_minutes(
+            storage, DbSettings.DEFAULT_INTEGRITY_CHECK_INTERVAL_MINUTES
+        )

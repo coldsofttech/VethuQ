@@ -8,7 +8,7 @@ from tkinter import ttk
 from vethuq_core.search import Search
 from vethuq_core.storage import Storage
 
-from vethuq_ui.icons import get_file_icon
+from vethuq_ui.icons import Icons
 from vethuq_ui.tooltip import TreeviewTooltip
 from vethuq_ui.widgets import Widgets
 
@@ -110,6 +110,6 @@ class SearchView(ttk.Frame):
                 tk.END,
                 iid=iid,
                 text=self.truncate_name(display_name),
-                image=get_file_icon(file.file_path),
+                image=Icons.for_file(file.file_path),
                 values=(file.file_path,),
             )

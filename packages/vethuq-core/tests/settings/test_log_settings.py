@@ -21,3 +21,19 @@ class TestLogSettings:
 
         with pytest.raises(ValueError):
             LogSettings.set_retention_days(storage, 0)
+
+
+class TestLogSettingsReset:
+    def test_reset_level_goes_back_to_info(self, storage):
+        LogSettings.set_level(storage, "debug")
+
+        LogSettings.reset_level(storage)
+
+        assert LogSettings.get_level(storage) == LogSettings.DEFAULT_LEVEL
+
+    def test_reset_retention_goes_back_to_default(self, storage):
+        LogSettings.set_retention_days(storage, 30)
+
+        LogSettings.reset_retention_days(storage)
+
+        assert LogSettings.get_retention_days(storage) == LogSettings.DEFAULT_RETENTION_DAYS

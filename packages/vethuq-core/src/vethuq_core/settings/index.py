@@ -37,6 +37,11 @@ class IndexSettings:
         Settings.set(storage, IndexSettings.THREAD_WORKERS_KEY, value)
 
     @staticmethod
+    def reset_thread_workers(storage: Storage) -> None:
+        """Back to the default (disabled)."""
+        IndexSettings.set_thread_workers(storage, IndexSettings.DEFAULT_THREAD_WORKERS)
+
+    @staticmethod
     def get_stale_lock(storage: Storage) -> str:
         """Whether a lock left behind by a run that didn't exit cleanly is auto-cleared
         on the next run. 'auto' by default.
@@ -54,3 +59,8 @@ class IndexSettings:
                 f"value must be one of {IndexSettings.STALE_LOCK_VALUES}"
             )
         Settings.set(storage, IndexSettings.STALE_LOCK_KEY, value)
+
+    @staticmethod
+    def reset_stale_lock(storage: Storage) -> None:
+        """Back to the default ('auto')."""
+        IndexSettings.set_stale_lock(storage, IndexSettings.DEFAULT_STALE_LOCK)

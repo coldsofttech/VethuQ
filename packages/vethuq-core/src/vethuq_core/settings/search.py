@@ -75,6 +75,13 @@ class SearchSettings:
         Settings.set(storage, SearchSettings.SNIPPET_CONTEXT_CHARS_KEY, str(chars))
 
     @staticmethod
+    def reset_snippet_context_chars(storage: Storage) -> None:
+        """Back to the default snippet context."""
+        SearchSettings.set_snippet_context_chars(
+            storage, SearchSettings.DEFAULT_SNIPPET_CONTEXT_CHARS
+        )
+
+    @staticmethod
     def get_export_format(storage: Storage) -> str:
         """Default format `search --export` writes to when none is given. 'json' by default."""
         value = Settings.get(storage, SearchSettings.EXPORT_FORMAT_KEY)
@@ -101,6 +108,11 @@ class SearchSettings:
         Settings.set(storage, SearchSettings.EXPORT_FORMAT_KEY, format_)
 
     @staticmethod
+    def reset_export_format(storage: Storage) -> None:
+        """Back to the default export format."""
+        SearchSettings.set_export_format(storage, SearchSettings.DEFAULT_EXPORT_FORMAT)
+
+    @staticmethod
     def get_engine(storage: Storage) -> str:
         """Default engine `search` uses when none is given. 'all' (every engine) by default."""
         value = Settings.get(storage, SearchSettings.ENGINE_KEY)
@@ -111,6 +123,11 @@ class SearchSettings:
         if engine not in SearchSettings.ENGINES:
             raise InvalidSettingValueError(f"engine must be one of {SearchSettings.ENGINES}")
         Settings.set(storage, SearchSettings.ENGINE_KEY, engine)
+
+    @staticmethod
+    def reset_engine(storage: Storage) -> None:
+        """Back to the default search engine."""
+        SearchSettings.set_engine(storage, SearchSettings.DEFAULT_ENGINE)
 
     @staticmethod
     def parse_case(value: str, *, allow_auto: bool = False) -> str:
@@ -162,6 +179,11 @@ class SearchSettings:
     @staticmethod
     def set_case_sensitive(storage: Storage, enabled: bool) -> None:
         SearchSettings.set_case(storage, "match" if enabled else "ignore")
+
+    @staticmethod
+    def reset_case(storage: Storage) -> None:
+        """Back to `auto`: each engine's own case handling."""
+        SearchSettings.set_case(storage, SearchSettings.NORMALIZE_AUTO)
 
     @staticmethod
     def parse_fuzzy_threshold(value: str | float) -> float:
@@ -227,6 +249,11 @@ class SearchSettings:
         Settings.set(storage, SearchSettings.FUZZY_THRESHOLD_KEY, value.strip().lower())
 
     @staticmethod
+    def reset_fuzzy_threshold(storage: Storage) -> None:
+        """Back to the default fuzzy threshold."""
+        SearchSettings.set_fuzzy_threshold(storage, SearchSettings.DEFAULT_FUZZY_THRESHOLD)
+
+    @staticmethod
     def parse_proximity_distance(value: str | int) -> int:
         """Resolve a proximity distance to a number of words.
 
@@ -282,6 +309,11 @@ class SearchSettings:
         Settings.set(storage, SearchSettings.PROXIMITY_DISTANCE_KEY, value.strip().lower())
 
     @staticmethod
+    def reset_proximity_distance(storage: Storage) -> None:
+        """Back to the default proximity distance."""
+        SearchSettings.set_proximity_distance(storage, SearchSettings.DEFAULT_PROXIMITY_DISTANCE)
+
+    @staticmethod
     def parse_unicode(value: str, *, allow_auto: bool = False) -> str:
         """Resolve a Unicode setting: `off`, `basic` (NFC), `full` (NFKC, accents folded) or
         (when stored) `auto`. Raises `InvalidSettingValueError` for anything else."""
@@ -310,6 +342,11 @@ class SearchSettings:
             SearchSettings.NORMALIZE_UNICODE_KEY,
             SearchSettings.parse_unicode(value, allow_auto=True),
         )
+
+    @staticmethod
+    def reset_unicode(storage: Storage) -> None:
+        """Back to `auto`: each engine's own Unicode handling."""
+        SearchSettings.set_unicode(storage, SearchSettings.NORMALIZE_AUTO)
 
     @staticmethod
     def resolve_unicode(storage: Storage, default: str) -> str:
@@ -355,6 +392,11 @@ class SearchSettings:
         )
 
     @staticmethod
+    def reset_leetspeak(storage: Storage) -> None:
+        """Back to `auto`: each engine's own leetspeak handling."""
+        SearchSettings.set_leetspeak(storage, SearchSettings.NORMALIZE_AUTO)
+
+    @staticmethod
     def resolve_leetspeak(storage: Storage, default: str) -> str:
         """The leetspeak level to use: the stored one, or `default` (an engine's own) on `auto`."""
         stored = SearchSettings.get_leetspeak(storage)
@@ -388,3 +430,8 @@ class SearchSettings:
     def set_noise_level(storage: Storage, level: str) -> None:
         """Store the default noise level: `low`, `medium` or `high`."""
         Settings.set(storage, SearchSettings.NOISE_KEY, SearchSettings.parse_noise_level(level))
+
+    @staticmethod
+    def reset_noise_level(storage: Storage) -> None:
+        """Back to the default noise level."""
+        SearchSettings.set_noise_level(storage, SearchSettings.DEFAULT_NOISE)

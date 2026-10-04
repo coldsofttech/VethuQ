@@ -170,7 +170,6 @@ __all__ = [
     "ProcessingMetric",
     "RemovedRetentionSettings",
     "Search",
-    "SearchCaseSensitiveSettings",
     "SearchEngineSettings",
     "SearchFuzzySettings",
     "SearchFuzzyThresholdSettings",
@@ -442,6 +441,14 @@ class GPUSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset GPU use for OCR to the default (disabled)."""
+        storage = _open_storage()
+        try:
+            _GpuSettings.reset(storage)
+        finally:
+            storage.close()
+
 
 class SnippetSettings:
     """How much context `search` shows around a match.
@@ -465,6 +472,14 @@ class SnippetSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_snippet_context_chars(storage, chars)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the snippet context to the default (80 characters)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_snippet_context_chars(storage)
         finally:
             storage.close()
 
@@ -495,6 +510,14 @@ class ExportFormatSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the export format to the default ('json')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_export_format(storage)
+        finally:
+            storage.close()
+
 
 class SearchEngineSettings:
     """The default engine `search` matches with.
@@ -521,27 +544,11 @@ class SearchEngineSettings:
         finally:
             storage.close()
 
-
-class SearchCaseSensitiveSettings:
-    """Whether `search` matches case by default (the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy'
-    engines honour it). The same as `settings.search.normalize.case` being `"match"`.
-
-    Not instantiated directly — use `Vethuq().settings.search.case_sensitive`.
-    """
-
-    def get(self) -> bool:
-        """Whether `search` matches case-sensitively by default. `False` by default."""
+    def reset(self) -> None:
+        """Reset the default search engine to 'all'."""
         storage = _open_storage()
         try:
-            return _SearchSettings.is_case_sensitive(storage)
-        finally:
-            storage.close()
-
-    def set(self, enabled: bool) -> None:
-        """Set whether `search` matches case-sensitively by default."""
-        storage = _open_storage()
-        try:
-            _SearchSettings.set_case_sensitive(storage, enabled)
+            _SearchSettings.reset_engine(storage)
         finally:
             storage.close()
 
@@ -571,6 +578,14 @@ class SearchFuzzyThresholdSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_fuzzy_threshold(storage, str(threshold))
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the fuzzy threshold to the default ('balanced')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_fuzzy_threshold(storage)
         finally:
             storage.close()
 
@@ -611,6 +626,14 @@ class SearchProximityDistanceSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the proximity distance to the default ('medium')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_proximity_distance(storage)
+        finally:
+            storage.close()
+
 
 class SearchProximitySettings:
     """Configure the `proximity` search engine. Not instantiated directly — use
@@ -647,6 +670,14 @@ class SearchNormalizeCaseSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset case handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_case(storage)
+        finally:
+            storage.close()
+
 
 class SearchNormalizeLeetspeakSettings:
     """Whether `search` reads look-alike characters (`3` for `e`, `@` for `a`) as the letters.
@@ -677,6 +708,14 @@ class SearchNormalizeLeetspeakSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset leetspeak handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_leetspeak(storage)
+        finally:
+            storage.close()
+
 
 class SearchNormalizeUnicodeSettings:
     """Whether `search` treats characters that are written differently as the same.
@@ -703,6 +742,14 @@ class SearchNormalizeUnicodeSettings:
         storage = _open_storage()
         try:
             _SearchSettings.set_unicode(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset Unicode handling to 'auto' (each engine's own default)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_unicode(storage)
         finally:
             storage.close()
 
@@ -743,6 +790,14 @@ class SearchNoiseLevelSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the noise level to the default ('low')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_noise_level(storage)
+        finally:
+            storage.close()
+
 
 class SearchNoiseFuzzySettings:
     """Configure the `noise-fuzzy` search engine. Not instantiated directly — use
@@ -759,7 +814,6 @@ class SearchSettings:
         self.snippet = SnippetSettings()
         self.export_format = ExportFormatSettings()
         self.engine = SearchEngineSettings()
-        self.case_sensitive = SearchCaseSensitiveSettings()
         self.fuzzy = SearchFuzzySettings()
         self.proximity = SearchProximitySettings()
         self.normalize = SearchNormalizeSettings()
@@ -789,6 +843,14 @@ class RemovedRetentionSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset how long a removed source is kept to the default (7 days)."""
+        storage = _open_storage()
+        try:
+            _SourceSettings.reset_removed_retention_minutes(storage)
+        finally:
+            storage.close()
+
 
 class OcrRetrySettings:
     """How many times to retry a file's OCR after a transient failure. Not instantiated
@@ -810,6 +872,14 @@ class OcrRetrySettings:
         storage = _open_storage()
         try:
             _OcrSettings.set_retry_attempts(storage, attempts)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset how many times to retry a file's OCR to the default (3)."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_retry_attempts(storage)
         finally:
             storage.close()
 
@@ -846,6 +916,14 @@ class ThreadWorkersSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the worker thread count to the default ('0', disabled)."""
+        storage = _open_storage()
+        try:
+            _IndexSettings.reset_thread_workers(storage)
+        finally:
+            storage.close()
+
 
 class StabilityCheckSettings:
     """How long a file must stay unchanged before it's indexed. Not instantiated
@@ -868,6 +946,14 @@ class StabilityCheckSettings:
         storage = _open_storage()
         try:
             _OcrSettings.set_stability_check_seconds(storage, seconds)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the stability check to the default (1 second)."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_stability_check_seconds(storage)
         finally:
             storage.close()
 
@@ -902,6 +988,14 @@ class StaleLockSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset stale lock handling to the default ('auto')."""
+        storage = _open_storage()
+        try:
+            _IndexSettings.reset_stale_lock(storage)
+        finally:
+            storage.close()
+
 
 class OcrEngineSettings:
     """How thoroughly OCR looks for rotated text. Not instantiated directly — use
@@ -932,6 +1026,14 @@ class OcrEngineSettings:
         storage = _open_storage()
         try:
             _OcrSettings.set_engine(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset how thoroughly OCR looks for rotated text to the default ('quick')."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_engine(storage)
         finally:
             storage.close()
 
@@ -981,6 +1083,22 @@ class IntegrityCheckSettings:
         storage = _open_storage()
         try:
             _DbSettings.set_integrity_check_interval_minutes(storage, minutes)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset automatic integrity checks to the default ('auto')."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_integrity_check(storage)
+        finally:
+            storage.close()
+
+    def reset_interval_minutes(self) -> None:
+        """Reset the interval between automatic integrity checks to the default (1 day)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_integrity_check_interval_minutes(storage)
         finally:
             storage.close()
 
@@ -1040,6 +1158,30 @@ class BackupSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset automatic backups to the default ('enable')."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup(storage)
+        finally:
+            storage.close()
+
+    def reset_interval_minutes(self) -> None:
+        """Reset the interval between automatic backups to the default (1 day)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup_interval_minutes(storage)
+        finally:
+            storage.close()
+
+    def reset_retention_days(self) -> None:
+        """Reset how long automatic backups are kept to the default (7 days)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup_retention_days(storage)
+        finally:
+            storage.close()
+
 
 class LogLevelSettings:
     """Verbosity of VethuQ's log files. Not instantiated directly — use
@@ -1065,6 +1207,14 @@ class LogLevelSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the log level to the default ('info')."""
+        storage = _open_storage()
+        try:
+            _LogSettings.reset_level(storage)
+        finally:
+            storage.close()
+
 
 class LogRetentionSettings:
     """How many days of daily log files are kept. Not instantiated directly — use
@@ -1086,6 +1236,14 @@ class LogRetentionSettings:
         storage = _open_storage()
         try:
             _LogSettings.set_retention_days(storage, days)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset how many days of log files are kept to the default (15)."""
+        storage = _open_storage()
+        try:
+            _LogSettings.reset_retention_days(storage)
         finally:
             storage.close()
 
@@ -1228,7 +1386,7 @@ class Search:
         compatibility forms, so `cafe` finds `café` - for `like`, `fuzzy` and `noise-fuzzy`, and
         for `exact` only when passed here; the other engines raise `SearchOptionError`. A search
         with it on reads every page rather than using the text indexes. `case_sensitive`
-        defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
+        defaults to `Vethuq().settings.search.normalize.case` and only `like`,
         `lexical`, `fuzzy` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
         `full-text` and `proximity` never are. `threshold` (`fuzzy` and `noise-fuzzy` only)
         is the minimum similarity between `content`'s words and the words found: a

@@ -13,11 +13,23 @@ from vethuq_core.storage import Storage, open_storage
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
-from vethuq_ui.logging_setup import UiLogging
+from vethuq_ui.logging import UiLogging
 from vethuq_ui.ribbon import Ribbon, RibbonActions
 from vethuq_ui.search_view import SearchView
 from vethuq_ui.source_list import SourceListView
 from vethuq_ui.status_bar import StatusBar
+from vethuq_ui.windows.settings.about import AboutWindow
+from vethuq_ui.windows.settings.database.field_window import DatabaseFieldWindow
+from vethuq_ui.windows.settings.index.retention import RemovedRetentionWindow
+from vethuq_ui.windows.settings.index.stability import StabilityCheckWindow
+from vethuq_ui.windows.settings.index.stale_lock import StaleLockWindow
+from vethuq_ui.windows.settings.index.workers import ThreadWorkersWindow
+from vethuq_ui.windows.settings.location import LocationWindow
+from vethuq_ui.windows.settings.logs.field_window import LogFieldWindow
+from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
+from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
+from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
+from vethuq_ui.windows.settings.search.field_window import SearchFieldWindow
 
 _logger = UiLogging.logger
 
@@ -57,6 +69,73 @@ class MainWindow(tk.Tk):
                 toggle_pause_resume=lambda: self.index_controls.toggle_pause_resume(),
                 stop=lambda: self.index_controls.stop(),
                 delete_source=lambda: self.sources.delete_selected(),
+                show_about=lambda: AboutWindow.show(self),
+                show_gpu=lambda: GpuWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_ocr_retry=lambda: OcrRetryWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_ocr_engine=lambda: OcrEngineWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_search_field=lambda name: SearchFieldWindow.show(
+                    self,
+                    name,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_removed_retention=lambda: RemovedRetentionWindow.show(
+                    self, self.storage, self.status_bar.show_message
+                ),
+                show_stability_check=lambda: StabilityCheckWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_thread_workers=lambda: ThreadWorkersWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_stale_lock=lambda: StaleLockWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_db_field=lambda name: DatabaseFieldWindow.show(
+                    self,
+                    name,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_log_field=lambda name: LogFieldWindow.show(
+                    self,
+                    name,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_app_location=lambda: LocationWindow.show(
+                    self, LocationWindow.App, self.status_bar.show_message
+                ),
+                show_backups_location=lambda: LocationWindow.show(
+                    self, LocationWindow.Backups, self.status_bar.show_message
+                ),
             ),
         )
         self.ribbon.pack(side=tk.TOP, fill=tk.X)

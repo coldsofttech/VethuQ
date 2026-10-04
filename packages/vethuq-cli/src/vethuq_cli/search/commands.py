@@ -223,7 +223,7 @@ def search(
         help=(
             "Match case. Only 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' honour it "
             "(default: "
-            "`vethuq settings search case-sensitive`); 'exact' is always case-sensitive, "
+            "`vethuq settings search normalize case`); 'exact' is always case-sensitive, "
             "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
         ),
     ),

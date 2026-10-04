@@ -21,3 +21,10 @@ class SourceSettings:
         if minutes < 0:
             raise InvalidSettingValueError("minutes must be non-negative")
         Settings.set(storage, SourceSettings.REMOVED_RETENTION_MINUTES_KEY, str(minutes))
+
+    @staticmethod
+    def reset_removed_retention_minutes(storage: Storage) -> None:
+        """Back to the default retention (7 days)."""
+        SourceSettings.set_removed_retention_minutes(
+            storage, SourceSettings.DEFAULT_REMOVED_RETENTION_MINUTES
+        )

@@ -3,12 +3,12 @@
 Both kinds load from the checked-in assets under `assets/icons/`
 (generated via `scripts/dev/generate_icons.py`):
 
-- `get_file_icon` - file-type badges for the search results list. Any
-  extension without a generated asset yet falls back to the real Windows
-  shell icon, then to a plain gray square as a last resort.
-- `get_icon` - ribbon action icons (Search, Sources, GPU, ...), looked up
-  by logical name rather than file suffix. Returns None for a name with no
-  asset yet, so callers can fall back to a text-only control.
+- `Icons.for_file` - file-type badges for the search results list. An extension without a
+  generated asset yet shows the generic file icon, then a plain grey square if even that is
+  missing.
+- `Icons.get` - ribbon action icons (Search, Sources, GPU, ...), looked up by logical name
+  rather than file suffix. Returns None for a name with no asset yet, so callers can fall back
+  to a text-only control.
 """
 
 from __future__ import annotations
@@ -19,112 +19,61 @@ from typing import Any
 
 from PIL import Image, ImageTk
 
-try:
-    import win32api
-    import win32con
-    import win32gui
-    import win32ui
 
-    _SHELL_ICONS_AVAILABLE = True
-except ImportError:
-    _SHELL_ICONS_AVAILABLE = False
+class Icons:
+    _DIR = Path(__file__).resolve().parent / "assets" / "icons"
+    FILE_SIZE = 16
+    RIBBON_SIZE = 32
+    GENERIC_FILE = "file"
+    MISSING_COLOUR = "#757575"
 
-_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "icons"
-_ICON_SIZE = 16
-_RIBBON_ICON_SIZE = 32
+    # .jpeg has no asset of its own - it's the same format as .jpg.
+    _SUFFIX_ALIASES = {".jpeg": "jpg"}
 
-# .jpeg has no asset of its own - it's the same format as .jpg.
-_SUFFIX_ASSET_ALIASES = {".jpeg": "jpg"}
+    _cache: dict[str, Any] = {}
 
-_icon_cache: dict[str, Any] = {}
-
-
-def _load_asset(asset_path: Path, size: int) -> Any | None:
-    if not asset_path.is_file():
-        return None
-    image = Image.open(asset_path).convert("RGBA")
-    if image.size != (size, size):
-        image = image.resize((size, size), Image.Resampling.LANCZOS)
-    return ImageTk.PhotoImage(image)
-
-
-def _static_asset_icon(suffix: str) -> Any | None:
-    """Load a checked-in icon asset for `suffix` (e.g. ".pdf" -> assets/icons/pdf.png)."""
-    stem = _SUFFIX_ASSET_ALIASES.get(suffix, suffix.lstrip("."))
-    return _load_asset(_ASSETS_DIR / f"{stem}.png", _ICON_SIZE)
-
-
-def _shell_icon_for_suffix(suffix: str) -> Any | None:
-    """Extract the OS-registered small icon for `suffix` (e.g. ".pdf")."""
-    flags = win32con.SHGFI_ICON | win32con.SHGFI_SMALLICON | win32con.SHGFI_USEFILEATTRIBUTES
-    _, _, _, _, icon_handle = win32gui.SHGetFileInfo(
-        f"placeholder{suffix}", win32con.FILE_ATTRIBUTE_NORMAL, flags
-    )
-    if not icon_handle:
-        return None
-
-    width = win32api.GetSystemMetrics(win32con.SM_CXSMICON)
-    height = win32api.GetSystemMetrics(win32con.SM_CYSMICON)
-
-    screen_dc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
-    mem_dc = screen_dc.CreateCompatibleDC()
-    bitmap = win32ui.CreateBitmap()
-    bitmap.CreateCompatibleBitmap(screen_dc, width, height)
-    mem_dc.SelectObject(bitmap)
-    try:
-        win32gui.DrawIconEx(
-            mem_dc.GetHandleOutput(), 0, 0, icon_handle, width, height, 0, None, win32con.DI_NORMAL
-        )
-        bitmap_bits = bitmap.GetBitmapBits(True)
-        image = Image.frombuffer("RGBA", (width, height), bitmap_bits, "raw", "BGRA", 0, 1)
+    @staticmethod
+    def load(path: Path, size: int) -> Any | None:
+        """The image at `path` scaled to `size` x `size`, or None if there is no such file."""
+        if not path.is_file():
+            return None
+        image = Image.open(path).convert("RGBA")
+        if image.size != (size, size):
+            image = image.resize((size, size), Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(image)
-    finally:
-        win32gui.DestroyIcon(icon_handle)
-        win32gui.DeleteObject(bitmap.GetHandle())
-        mem_dc.DeleteDC()
-        screen_dc.DeleteDC()
 
+    @staticmethod
+    def for_file(file_path: str | Path) -> Any:
+        """The badge for `file_path`'s extension, cached per extension."""
+        suffix = Path(file_path).suffix.lower() or ".file"
+        key = f"file:{suffix}"
+        if key not in Icons._cache:
+            stem = Icons._SUFFIX_ALIASES.get(suffix, suffix.lstrip("."))
+            icon = Icons.load(Icons._DIR / f"{stem}.png", Icons.FILE_SIZE)
+            if icon is None:
+                icon = Icons.load(Icons._DIR / f"{Icons.GENERIC_FILE}.png", Icons.FILE_SIZE)
+            if icon is None:
+                icon = tk.PhotoImage(width=Icons.FILE_SIZE, height=Icons.FILE_SIZE)
+                icon.put(Icons.MISSING_COLOUR, to=(0, 0, Icons.FILE_SIZE, Icons.FILE_SIZE))
+            Icons._cache[key] = icon
+        return Icons._cache[key]
 
-def get_file_icon(file_path: str | Path) -> Any:
-    """Return the icon for `file_path`'s extension, cached per extension.
+    @staticmethod
+    def get(name: str, size: int = RIBBON_SIZE) -> Any | None:
+        """A ribbon/action icon by logical name (e.g. "search"), cached.
 
-    Prefers a checked-in asset (see module docstring), then the OS-registered
-    shell icon, then a plain gray square when neither is available.
-    """
-    suffix = Path(file_path).suffix.lower() or ".file"
-    if suffix in _icon_cache:
-        return _icon_cache[suffix]
-
-    icon = _static_asset_icon(suffix)
-    if icon is None and _SHELL_ICONS_AVAILABLE:
-        try:
-            icon = _shell_icon_for_suffix(suffix)
-        except Exception:
-            icon = None
-    if icon is None:
-        icon = tk.PhotoImage(width=16, height=16)
-        icon.put("#757575", to=(0, 0, 16, 16))
-
-    _icon_cache[suffix] = icon
-    return icon
-
-
-def get_icon(name: str, size: int = _RIBBON_ICON_SIZE) -> Any | None:
-    """Return a ribbon/action icon by logical name (e.g. "search"), cached.
-
-    Returns None when no asset exists yet for that name - callers should
-    fall back to a text-only control rather than a missing image. `size`
-    defaults to the ribbon tab buttons' 32px; pass 16 for an inline control
-    like the search bar's Go button, to match the file-type badges' size.
-    """
-    cache_key = f"ribbon:{name}:{size}"
-    if cache_key in _icon_cache:
-        return _icon_cache[cache_key]
-
-    icon = _load_asset(_ASSETS_DIR / f"{name}.png", size)
-    if icon is not None:
-        _icon_cache[cache_key] = icon
-    return icon
+        Returns None when no asset exists yet for that name - callers should fall back to a
+        text-only control rather than a missing image. `size` defaults to the ribbon buttons'
+        32px; pass 16 for an inline control like the search bar's Go button, to match the
+        file-type badges' size.
+        """
+        key = f"ribbon:{name}:{size}"
+        if key not in Icons._cache:
+            icon = Icons.load(Icons._DIR / f"{name}.png", size)
+            if icon is None:
+                return None
+            Icons._cache[key] = icon
+        return Icons._cache[key]
 
 
 class Brand:
@@ -137,14 +86,14 @@ class Brand:
     def logo(size: int) -> Any | None:
         """The icon as a `size` x `size` image, or None if the asset is missing."""
         if size not in Brand._cache:
-            image = _load_asset(Brand._DIR / "vethuq.png", size)
+            image = Icons.load(Brand._DIR / "vethuq.png", size)
             if image is None:
                 return None
             Brand._cache[size] = image
         return Brand._cache[size]
 
     @staticmethod
-    def apply_window_icon(window: tk.Tk) -> None:
+    def apply_window_icon(window: tk.Tk | tk.Toplevel) -> None:
         """Title bar and taskbar icon; best-effort, a missing asset leaves Tk's default."""
         try:
             window.iconbitmap(default=str(Brand._DIR / "vethuq.ico"))

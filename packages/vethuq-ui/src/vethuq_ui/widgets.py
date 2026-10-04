@@ -6,10 +6,22 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
-from vethuq_ui.icons import get_icon
+from vethuq_ui.buttons.danger import DangerButtonStyle
+from vethuq_ui.icons import Icons
 
 
 class Widgets:
+    @staticmethod
+    def danger_button(parent: tk.Misc, text: str) -> ttk.Button:
+        """A red button for a destructive action, shaped like sv_ttk's own buttons (see
+        `DangerButtonStyle`) and coloured from the palette's `danger` token."""
+        return ttk.Button(parent, text=text, width=9, style=DangerButtonStyle.ensure(parent))
+
+    @staticmethod
+    def set_danger_enabled(button: ttk.Button, enabled: bool) -> None:
+        """Red and clickable when enabled, light grey when not."""
+        button.state(["!disabled"] if enabled else ["disabled"])
+
     @staticmethod
     def icon_button_kwargs(
         name: str, glyph: str, caption: str, *, compound: str = tk.TOP, size: int | None = None
@@ -19,10 +31,10 @@ class Widgets:
         look. `compound` places the icon relative to the text (`tk.TOP` for
         the ribbon's icon-above-caption buttons, `tk.LEFT` for an inline one
         like the search bar's Go button). `size` defaults to the ribbon tab
-        buttons' 32px (see `get_icon`); pass 16 for an inline control like
+        buttons' 32px (see `Icons.get`); pass 16 for an inline control like
         Go, to match the file-type badges' size.
         """
-        icon = get_icon(name) if size is None else get_icon(name, size)
+        icon = Icons.get(name) if size is None else Icons.get(name, size)
         if icon is not None:
             return {"image": icon, "text": caption, "compound": compound}
         separator = "\n" if compound == tk.TOP else " "

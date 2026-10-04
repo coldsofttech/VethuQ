@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -19,7 +20,7 @@ from vethuq_core.settings import (
     SearchSettings,
     SourceSettings,
 )
-from vethuq_core.storage import default_db_path, open_storage
+from vethuq_core.storage import Storage, default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.theme import Theme
@@ -51,9 +52,6 @@ normalize_leetspeak_app = typer.Typer(
 noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
 noise_fuzzy_noise_app = typer.Typer(
     help="Configure how much stray punctuation and whitespace `noise-fuzzy` search skips."
-)
-case_sensitive_app = typer.Typer(
-    help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
 index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
@@ -105,7 +103,6 @@ app.add_typer(search_app, name="search")
 search_app.add_typer(snippet_app, name="snippet")
 search_app.add_typer(export_format_app, name="export-format")
 search_app.add_typer(search_engine_app, name="engine")
-search_app.add_typer(case_sensitive_app, name="case-sensitive")
 search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 search_app.add_typer(proximity_app, name="proximity")
@@ -184,6 +181,17 @@ def gpu_disable() -> None:
         console.print(
             SettingsPanel.build("GPU disabled. OCR will run on CPU.", "GPU", "bright_black")
         )
+    finally:
+        storage.close()
+
+
+@gpu_app.command("reset")
+def gpu_reset() -> None:
+    """Reset GPU use for OCR to the default (disabled)."""
+    storage = open_storage()
+    try:
+        GpuSettings.reset(storage)
+        console.print(SettingsPanel.build("GPU reset to the default (disabled).", "GPU", Theme.OK))
     finally:
         storage.close()
 
@@ -389,56 +397,125 @@ def search_engine_set(
         storage.close()
 
 
-@case_sensitive_app.command("show")
-def case_sensitive_show() -> None:
-    """Show whether `search` matches case by default."""
-    storage = open_storage()
-    try:
-        enabled = SearchSettings.is_case_sensitive(storage)
-        console.print(
-            SettingsPanel.build(
-                Text.assemble(
-                    ("Search case-sensitive: ", "white"),
-                    ("enabled" if enabled else "disabled", Theme.VALUE),
-                ),
-                "Case Sensitive",
-                Theme.PRIMARY,
+class ResetPanel:
+    @staticmethod
+    def run(reset: Callable[[Storage], None], title: str, label: str, default: object) -> None:
+        """Reset one setting through `reset` and say what it went back to."""
+        storage = open_storage()
+        try:
+            reset(storage)
+            console.print(
+                SettingsPanel.build(
+                    Text.assemble(
+                        (f"{label} reset to the default (", "white"),
+                        (str(default), Theme.VALUE),
+                        (").", "white"),
+                    ),
+                    title,
+                    Theme.OK,
+                )
             )
-        )
-    finally:
-        storage.close()
+        finally:
+            storage.close()
 
 
-@case_sensitive_app.command("enable")
-def case_sensitive_enable() -> None:
-    """Make `search` match case by default (`--no-case-sensitive` overrides).
-
-    Acted on by the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' engines. The same as
-    `settings search normalize case` set to `match` / `ignore`.
-    """
-    storage = open_storage()
-    try:
-        SearchSettings.set_case_sensitive(storage, True)
-        console.print(
-            SettingsPanel.build("Search will match case by default.", "Case Sensitive", Theme.OK)
-        )
-    finally:
-        storage.close()
+@snippet_app.command("reset")
+def snippet_reset() -> None:
+    """Reset how many characters of context `search` shows around a match to the default."""
+    ResetPanel.run(
+        SearchSettings.reset_snippet_context_chars,
+        "Snippet",
+        "Snippet context",
+        f"{SearchSettings.DEFAULT_SNIPPET_CONTEXT_CHARS} characters",
+    )
 
 
-@case_sensitive_app.command("disable")
-def case_sensitive_disable() -> None:
-    """Make `search` ignore case by default (the default)."""
-    storage = open_storage()
-    try:
-        SearchSettings.set_case_sensitive(storage, False)
-        console.print(
-            SettingsPanel.build(
-                "Search will ignore case by default.", "Case Sensitive", "bright_black"
-            )
-        )
-    finally:
-        storage.close()
+@export_format_app.command("reset")
+def export_format_reset() -> None:
+    """Reset the default format `search --export` writes to."""
+    ResetPanel.run(
+        SearchSettings.reset_export_format,
+        "Export Format",
+        "Export format",
+        SearchSettings.DEFAULT_EXPORT_FORMAT,
+    )
+
+
+@search_engine_app.command("reset")
+def search_engine_reset() -> None:
+    """Reset the default search engine."""
+    ResetPanel.run(
+        SearchSettings.reset_engine,
+        "Search Engine",
+        "Search engine",
+        SearchSettings.DEFAULT_ENGINE,
+    )
+
+
+@fuzzy_threshold_app.command("reset")
+def fuzzy_threshold_reset() -> None:
+    """Reset the default fuzzy threshold."""
+    ResetPanel.run(
+        SearchSettings.reset_fuzzy_threshold,
+        "Fuzzy Threshold",
+        "Fuzzy threshold",
+        SearchSettings.DEFAULT_FUZZY_THRESHOLD,
+    )
+
+
+@proximity_distance_app.command("reset")
+def proximity_distance_reset() -> None:
+    """Reset the default proximity distance."""
+    ResetPanel.run(
+        SearchSettings.reset_proximity_distance,
+        "Proximity Distance",
+        "Proximity distance",
+        SearchSettings.DEFAULT_PROXIMITY_DISTANCE,
+    )
+
+
+@normalize_case_app.command("reset")
+def normalize_case_reset() -> None:
+    """Reset case handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_case,
+        "Normalize Case",
+        "Case handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@normalize_unicode_app.command("reset")
+def normalize_unicode_reset() -> None:
+    """Reset Unicode handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_unicode,
+        "Normalize Unicode",
+        "Unicode handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@normalize_leetspeak_app.command("reset")
+def normalize_leetspeak_reset() -> None:
+    """Reset leetspeak handling to `auto` (each engine's own default)."""
+    ResetPanel.run(
+        SearchSettings.reset_leetspeak,
+        "Normalize Leetspeak",
+        "Leetspeak handling",
+        SearchSettings.NORMALIZE_AUTO,
+    )
+
+
+@noise_fuzzy_noise_app.command("reset")
+def noise_fuzzy_noise_reset() -> None:
+    """Reset how much noise `noise-fuzzy` search skips to the default."""
+    ResetPanel.run(
+        SearchSettings.reset_noise_level,
+        "Noise-Fuzzy Noise",
+        "Noise level",
+        SearchSettings.DEFAULT_NOISE,
+    )
 
 
 @fuzzy_threshold_app.command("show")
@@ -678,6 +755,111 @@ def retry_set(
                     (".", "white"),
                 ),
                 "OCR Retry",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@retry_app.command("reset")
+def retry_reset() -> None:
+    """Reset how many times a file's OCR is retried to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_retry_attempts(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR retry attempts reset to the default (", "white"),
+                    (str(OcrSettings.DEFAULT_RETRY_ATTEMPTS), Theme.VALUE),
+                    (").", "white"),
+                ),
+                "OCR Retry",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@removed_retention_app.command("reset")
+def removed_retention_reset() -> None:
+    """Reset how long a removed source is kept to the default."""
+    storage = open_storage()
+    try:
+        SourceSettings.reset_removed_retention_minutes(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Removed source retention reset to the default (", "white"),
+                    (str(SourceSettings.DEFAULT_REMOVED_RETENTION_MINUTES), Theme.VALUE),
+                    (" minutes).", "white"),
+                ),
+                "Removed Retention",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@stability_check_app.command("reset")
+def stability_check_reset() -> None:
+    """Reset how long a file must stay unchanged before it's indexed to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_stability_check_seconds(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Stability check reset to the default (", "white"),
+                    (f"{OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS:g}", Theme.VALUE),
+                    (" seconds).", "white"),
+                ),
+                "Stability Check",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@thread_workers_app.command("reset")
+def thread_workers_reset() -> None:
+    """Reset how many worker threads background indexing uses to the default."""
+    storage = open_storage()
+    try:
+        IndexSettings.reset_thread_workers(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Thread workers reset to the default (", "white"),
+                    (IndexSettings.DEFAULT_THREAD_WORKERS, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "Thread Workers",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@stale_lock_app.command("reset")
+def stale_lock_reset() -> None:
+    """Reset stale lock handling to the default."""
+    storage = open_storage()
+    try:
+        IndexSettings.reset_stale_lock(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Stale lock handling reset to the default (", "white"),
+                    (IndexSettings.DEFAULT_STALE_LOCK, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "Stale Lock",
                 Theme.OK,
             )
         )
@@ -947,6 +1129,61 @@ def integrity_check_interval_set(
         storage.close()
 
 
+@integrity_check_app.command("reset")
+def integrity_check_reset() -> None:
+    """Reset automatic integrity checks to the default."""
+    ResetPanel.run(
+        DbSettings.reset_integrity_check,
+        "Integrity Check",
+        "Integrity check",
+        DbSettings.DEFAULT_INTEGRITY_CHECK,
+    )
+
+
+@integrity_check_interval_app.command("reset")
+def integrity_check_interval_reset() -> None:
+    """Reset the interval between automatic integrity checks to the default."""
+    ResetPanel.run(
+        DbSettings.reset_integrity_check_interval_minutes,
+        "Integrity Check Interval",
+        "Integrity check interval",
+        f"{DbSettings.DEFAULT_INTEGRITY_CHECK_INTERVAL_MINUTES} minutes",
+    )
+
+
+@backup_app.command("reset")
+def backup_reset() -> None:
+    """Reset automatic database backups to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup,
+        "Backup",
+        "Automatic backup",
+        DbSettings.DEFAULT_BACKUP,
+    )
+
+
+@backup_interval_app.command("reset")
+def backup_interval_reset() -> None:
+    """Reset the interval between automatic backups to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup_interval_minutes,
+        "Backup Interval",
+        "Backup interval",
+        f"{DbSettings.DEFAULT_BACKUP_INTERVAL_MINUTES} minutes",
+    )
+
+
+@backup_retention_app.command("reset")
+def backup_retention_reset() -> None:
+    """Reset how long automatic backups are kept to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup_retention_days,
+        "Backup Retention",
+        "Backup retention",
+        f"{DbSettings.DEFAULT_BACKUP_RETENTION_DAYS} days",
+    )
+
+
 @backup_app.command("show")
 def backup_show() -> None:
     """Show whether automatic database backups are enabled."""
@@ -1157,6 +1394,27 @@ def engine_set(
         storage.close()
 
 
+@engine_app.command("reset")
+def engine_reset() -> None:
+    """Reset how thoroughly OCR looks for rotated text to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_engine(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR engine reset to the default (", "white"),
+                    (OcrSettings.DEFAULT_ENGINE, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "OCR Engine",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
 @log_level_app.command("show")
 def log_level_show() -> None:
     """Show the current log level."""
@@ -1218,6 +1476,28 @@ def log_level_set(
         )
     finally:
         storage.close()
+
+
+@log_level_app.command("reset")
+def log_level_reset() -> None:
+    """Reset how verbose VethuQ's log files are to the default."""
+    ResetPanel.run(
+        LogSettings.reset_level,
+        "Log Level",
+        "Log level",
+        LogSettings.DEFAULT_LEVEL,
+    )
+
+
+@log_retention_app.command("reset")
+def log_retention_reset() -> None:
+    """Reset how many days of daily log files are kept to the default."""
+    ResetPanel.run(
+        LogSettings.reset_retention_days,
+        "Log Retention",
+        "Log retention",
+        f"{LogSettings.DEFAULT_RETENTION_DAYS} days",
+    )
 
 
 @log_retention_app.command("show")
