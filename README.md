@@ -63,4 +63,16 @@ OCR runs on CPU by default. If your machine has a supported GPU, you can turn GP
 
 Curious how indexing has been performing? `vethuq stats show` displays processing and confidence statistics — how long OCR takes and how confident the results are, per file type and text source. `vethuq stats reset` clears them if you want a fresh baseline.
 
+## What V1 doesn't do
+
+To set expectations, these are deliberately out of scope for V1:
+
+- Word, Excel, and PowerPoint files
+- Email files
+- Archives (zip and similar)
+- Searching across languages, or semantic (meaning-based) search
+- Cloud or hybrid OCR — OCR runs locally only
+- Automatic OCR-engine selection
+- OCR previews and advanced OCR remediation
+
 See [docs/CLI.md](docs/CLI.md) for the full command reference, [docs/PYTHON_API.md](docs/PYTHON_API.md) for the library, or [docs/DESKTOP.md](docs/DESKTOP.md) for the desktop app.
