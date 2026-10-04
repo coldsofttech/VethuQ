@@ -70,6 +70,12 @@ class SearchEngines:
         return ProximitySearchEngine(storage)
 
     @staticmethod
+    def _leetspeak_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.leetspeak import LeetspeakSearchEngine
+
+        return LeetspeakSearchEngine(storage)
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines, sorted."""
         return sorted(SearchEngines._factories)
@@ -81,3 +87,4 @@ SearchEngines.register("exact", SearchEngines._exact_factory)
 SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)
 SearchEngines.register("proximity", SearchEngines._proximity_factory)
+SearchEngines.register("leetspeak", SearchEngines._leetspeak_factory)

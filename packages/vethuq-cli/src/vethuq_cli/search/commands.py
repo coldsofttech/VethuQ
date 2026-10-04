@@ -36,6 +36,9 @@ _NO_MATCH_HINTS = {
     "numbers must match exactly). Try `--fuzziness loose` or `--engine like`.",
     "proximity": "`proximity` needs every word within the distance of the others, as whole "
     "words. Try `--distance loose` or `--engine full-text`.",
+    "leetspeak": "`leetspeak` only finds whole words spelled with look-alike characters (e.g. "
+    "`h3ll0` for `hello`), with no typos, and the query needs a letter in it. Try "
+    "`vethuq settings search leetspeak level extended` or `--engine fuzzy`.",
 }
 
 
@@ -83,9 +86,10 @@ class SearchHelp:
         "indexed documents are searched.\n\n"
         "--engine picks how CONTENT is matched:\n\n"
         "all (the default) - runs every engine and lists each page once, ranked by the "
-        "strictest way it matched: Exact, Contains, Relevant, Near, Word, then Similar. Each "
-        "page is labelled with that, the other engines that found it, and any hit found less "
-        "strictly than the page's best. Each engine applies the options it can.\n\n"
+        "strictest way it matched: Exact, Contains, Relevant, Near, Word, Lookalike, then "
+        "Similar. Each page is labelled with that, the other engines that found it, and any "
+        "hit found less strictly than the page's best. Each engine applies the options it "
+        "can.\n\n"
         "like - finds CONTENT anywhere, even inside a word, ignoring case. "
         '`mus` finds "Museum". Results are ordered by file path.\n\n'
         "lexical - finds CONTENT anywhere, even inside a word, like `like`, but lists the "
@@ -104,9 +108,15 @@ class SearchHelp:
         '"phrase" to keep words together) sit within --distance words of each other, such '
         "as `payment` and `termination` in the same clause. One result per passage, best "
         "pages first. Never case-sensitive.\n\n"
+        "leetspeak - finds words written with look-alike characters: `hello` finds `h3ll0` "
+        "and `h3ll0` finds `hello` (as does `password` for `p@55w0rd`). Every character of "
+        "CONTENT must match, as whole words; at least 3 characters, one a letter. Which "
+        "substitutions are recognized is set by `vethuq settings search leetspeak level` "
+        "(basic, standard or extended). Honours --case-sensitive; spelled as typed first.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
         "`e` to export what's been found and close the pager, `h` (with the default `all` "
-        "engine) to see what Exact, Contains, Relevant, Near, Word and Similar mean, `q` to close "
+        "engine) to see what Exact, Contains, Relevant, Near, Word, Lookalike and Similar "
+        "mean, `q` to close "
         "without exporting. A file with several matching pages prints its file name as a bold "
         "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
         "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
@@ -126,7 +136,8 @@ def search(
             "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads) or 'proximity' (all your words near each other). Defaults to "
+            "misreads), 'proximity' (all your words near each other) or 'leetspeak' (words written "
+            "with look-alike characters, e.g. h3ll0). Defaults to "
             "`vethuq settings search engine`."
         ),
     ),
@@ -134,9 +145,9 @@ def search(
         None,
         "--case-sensitive/--no-case-sensitive",
         help=(
-            "Match case. Only 'like', 'lexical' and 'fuzzy' honour it (default: `vethuq settings "
-            "search case-sensitive`); 'exact' is always case-sensitive, 'full-text' and "
-            "'proximity' never are. With 'all', each engine applies what it can."
+            "Match case. Only 'like', 'lexical', 'fuzzy' and 'leetspeak' honour it (default: "
+            "`vethuq settings search case-sensitive`); 'exact' is always case-sensitive, "
+            "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
         ),
     ),
     threshold: str | None = typer.Option(

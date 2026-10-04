@@ -119,7 +119,7 @@ class Search:
             if case_sensitive:
                 raise SearchOptionError(
                     f"The {resolved_engine} engine is always case-insensitive; "
-                    "use the like, exact or fuzzy engine for a case-sensitive search.",
+                    "use the like, exact, fuzzy or leetspeak engine for a case-sensitive search.",
                     "case_sensitive",
                 )
             if resolved_engine == "proximity":
@@ -134,8 +134,8 @@ class Search:
             if case_sensitive is False:
                 raise SearchOptionError(
                     "The exact engine is always case-sensitive; "
-                    "use the like, full-text, fuzzy or proximity engine for a "
-                    "case-insensitive search.",
+                    "use the like, full-text, fuzzy, proximity or leetspeak engine "
+                    "for a case-insensitive search.",
                     "case_sensitive",
                 )
             return SearchOptions(resolved_engine, True)

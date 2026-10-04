@@ -170,7 +170,7 @@ client.search.export(matches, "invoice", "results.html", "html")
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
 order, occurrences within a page in text order) — or best match first for
-the `full-text`, `fuzzy` and `proximity` engines. Only successfully indexed documents are
+the `full-text`, `fuzzy`, `proximity` and `leetspeak` engines. Only successfully indexed documents are
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
@@ -197,9 +197,14 @@ are never rejected.
   `"quoted phrases"`, in any order) sit within `distance` words of each other, one
   `SearchMatch` per passage spanning its first to its last term, on pages ranked by
   relevance (`SearchMatch.score`)
+- `"leetspeak"` — `content` written with look-alike characters, as whole words, in
+  either direction (`"hello"` finds `h3ll0`, `"p@55w0rd"` finds `password`); no typo
+  tolerance, at least 3 characters with a letter among them. Which substitutions count is
+  `client.settings.search.leetspeak.level`. Best first: `SearchMatch.score` is the
+  share of `content`'s characters matched as typed (1.0 = none substituted)
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
-only `"like"` and `"fuzzy"` act on it (`"exact"` is always case-sensitive,
+only `"like"`, `"fuzzy"` and `"leetspeak"` act on it (`"exact"` is always case-sensitive,
 `"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
 counts as one edit). `threshold` (`"fuzzy"` only) is the minimum similarity between
 `content`'s words and the words found — `1 − edits ÷ length of the longer
@@ -225,7 +230,7 @@ for match in client.search.run("invoice"):
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
 `"exact"` (Exact), `"like"` (Contains), `"proximity"` (Near), `"full-text"` (Word),
-`"fuzzy"` (Similar), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
+`"leetspeak"` (Lookalike), `"fuzzy"` (Similar), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
 label the CLI and the UI show) — and within a tier by that engine's own signal, so
 a page is one result however many engines found it. `case_sensitive`, `threshold`
 and `distance` default to their settings and reach only the engines that can use
@@ -313,6 +318,16 @@ client.search.run("late fee", engine="proximity", distance=5)
 client.search.run("payment", engine="proximity")  # raises SearchQueryError: needs two terms
 ```
 
+**`"leetspeak"`** finds words written with look-alike characters, both ways:
+
+```python
+client.search.run("hello", engine="leetspeak")  # finds "hello", "h3ll0", "He11o"
+client.search.run("p@55w0rd", engine="leetspeak")  # finds "password" and "p@55w0rd"
+client.search.run("hello", engine="leetspeak", case_sensitive=True)  # not "H3LL0"
+client.search.run("hi", engine="leetspeak")  # raises SearchQueryError: needs 3 characters
+client.search.run("hello", engine="leetspeak", threshold=0.8)  # raises SearchOptionError
+```
+
 ## `client.settings`
 
 Mirrors `vethuq settings ...` in the CLI — see [docs/CLI.md](CLI.md).
@@ -385,14 +400,15 @@ Invalid values raise `InvalidSettingValueError`.
 ### `client.settings.search.case_sensitive`
 
 - `get()` — whether `search` matches case by default (`False` by default; only
-  the `like` engine acts on it)
+  the `like`, `fuzzy` and `leetspeak` engines act on it)
 - `set(enabled)`
 
 ### `client.settings.search.engine`
 
 - `get()` — default engine `search` uses (`"all"` by default: every engine, ranked together)
 - `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"all"`, `"like"`, `"exact"`,
-  `"full-text"`, `"fuzzy"`, `"proximity"`); raises `InvalidSettingValueError` otherwise
+  `"full-text"`, `"fuzzy"`, `"proximity"`, `"leetspeak"`); raises `InvalidSettingValueError`
+  otherwise
 
 ### `client.settings.search.fuzzy.threshold`
 
@@ -409,6 +425,15 @@ Invalid values raise `InvalidSettingValueError`.
 - `set(distance)` — a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3 words, `"medium"`
   10, `"loose"` 30) or a number of words from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`;
   raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.leetspeak.level`
+
+- `get()` — the stored default level for the `leetspeak` engine: a name from
+  `SEARCH_LEETSPEAK_LEVELS` (`"basic"` by default)
+- `set(level)` — `"basic"` (`0` `1` `3` `4` `5` `7` `@` `$`), `"standard"` (adds `2` `6` `8` `9`
+  `+` `!` `|`) or `"extended"` (adds multi-character forms such as `|\|` for `n`); each
+  level includes the one before it. The substitution table is built in. Raises
+  `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 
@@ -566,10 +591,10 @@ A page found by the combined search, returned by `client.search.run_pages`:
 - `file_id`, `file_name`, `file_path`, `page_number`, `total_pages`, `duplicate_of_path`, `source`
 - `engine` — the strictest engine that found anything on the page (its tier)
 - `matched_by` — every engine that did, strictest first
-- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`) or its best word similarity (`fuzzy`)
+- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`), the share of the query matched as typed (`leetspeak`) or its best word similarity (`fuzzy`)
 - `hits` — its `SearchMatch`es, ordered by engine strictness then position; hits that overlap are merged into one
 
-`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Similar 83%"`).
+`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Lookalike"`, `"Similar 83%"`).
 
 ## `ProcessingMetric`
 
@@ -586,7 +611,7 @@ One occurrence of the query on a page, returned by `client.search.run`:
 - `before`, `matched`, `after` (the match split out for highlighting)
 - `truncated_before`, `truncated_after`
 - `source` (`"native"`, `"ocr"` or `"mixed"` — how the page's text was obtained)
-- `score` (higher is better; the `full-text` and `proximity` engines' relevance or the `fuzzy` engine's word similarity, otherwise `None`)
+- `score` (higher is better; the `full-text` and `proximity` engines' relevance or the `fuzzy` engine's word similarity or the `leetspeak` engine's share matched as typed, otherwise `None`)
 - `duplicate_of_path` (set if this file's content matched an already-indexed file)
 - `start`, `end` (where the match sits in the page's text, newlines counted as spaces)
 - `engine` (the engine that found it — for the combined search, the strictest that did) and `matched_by` (every engine that found it, strictest first; only set by the combined search)

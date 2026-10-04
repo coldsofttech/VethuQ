@@ -216,13 +216,27 @@ A test enforces that no core module outside `db/` and `storage/` imports
     first term to last. `SearchSettings.PROXIMITY_PRESETS` names the distances
     (`tight` 3, `medium` 10, `loose` 30); `parse_proximity_distance` also takes
     1-100. Always case-insensitive; fewer than two terms is a `SearchQueryError`.
+  - `leetspeak` (`search/engines/leetspeak.py`) — the query's words written with
+    look-alike characters (`h3ll0`, `p@55w0rd`), in either direction, as whole
+    words. A built-in table (letter → spellings, cumulative per level in
+    `SearchSettings.LEETSPEAK_LEVELS`: `basic`, `standard`, `extended`; stored only
+    as `search_leetspeak_level`) is turned into one regular expression per query:
+    the query is split into units (a multi-character spelling such as `|\|` is one
+    unit) and each unit matches every spelling that can mean one of the letters it
+    can mean, so both directions and ambiguous characters (`1` is `i` or `l`) fall
+    out of one rule. Candidate pages come from the trigram index via
+    `narrowing_expression`: any three consecutive units are written as one of a
+    handful of spellings, so the rarest window's spellings are `OR`ed; otherwise
+    every page is examined. `SearchMatch.score` is the share of the query's
+    characters matched as typed. Whole words only, no typo tolerance, never
+    narrower than three characters, one of them a letter.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
 `Search.resolve_options` picks the engine, case sensitivity, (fuzzy only)
 threshold and (proximity only) distance from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+(and, read by the `leetspeak` engine itself, `search_leetspeak_level`) settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 ### Combined search and ranking
 
@@ -230,16 +244,18 @@ settings, rejecting (with `SearchOptionError`) combinations an engine can't hono
 engine, groups their hits by page and ranks the pages, returning `PageResult`s
 (`search.search_indexed_pages`; `search_indexed_content(engine="all")` flattens them).
 Engine scores aren't comparable, so ranking is by **match quality**, not by blending
-numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `fuzzy`
-(`proximity` above `full-text` because every page it finds `full-text` finds too),
+numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `leetspeak` > `fuzzy`
+(`proximity` above `full-text` because every page it finds `full-text` finds too;
+`leetspeak` below `full-text` as it takes no other word forms or orders, but above
+`fuzzy` as it only swaps known look-alike characters rather than guessing at edits),
 pages are ordered by the strictest engine that found them, then by that engine's own
-signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, best
-similarity for `fuzzy`), then by how many engines agreed, then by path and page.
+signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, share
+matched as typed for `leetspeak`, best similarity for `fuzzy`), then by how many engines agreed, then by path and page.
 Since the engines' matches nest, a page is one result and overlapping hits are
 merged (`_merge_overlapping`): the union span, labelled with the strictest engine,
 listing every engine in `matched_by`; a `proximity` passage thereby absorbs the word
 hits inside it. `ENGINE_BADGES` names the tiers for users (Exact, Contains, Near,
-Word, Similar) and is shared by the CLI and the UI. Each engine gets only the
+Word, Lookalike, Similar) and is shared by the CLI and the UI. Each engine gets only the
 options it accepts, and `proximity` is skipped for one-term queries.
 `SearchMatch.start`/`end`/`engine`/`matched_by` carry what the merge needs.
 

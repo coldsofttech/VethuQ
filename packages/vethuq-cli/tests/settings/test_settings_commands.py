@@ -430,6 +430,45 @@ class TestSearchEngineSettings:
         assert "medium" in shown.stdout
 
 
+class TestLeetspeakLevel:
+    def test_show_defaults_to_basic(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "leetspeak", "level", "show"])
+
+        assert result.exit_code == 0
+        assert "basic" in result.stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "leetspeak", "level", "show"]
+
+        for level in ("standard", "extended", "Basic"):
+            result = runner.invoke(app, ["settings", "search", "leetspeak", "level", "set", level])
+            assert result.exit_code == 0
+            assert f"set to {level.lower()}" in result.stdout
+            assert level.lower() in runner.invoke(app, show).stdout
+
+    def test_set_rejects_an_unknown_level(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "leetspeak", "level", "set", "insane"])
+        shown = runner.invoke(app, ["settings", "search", "leetspeak", "level", "show"])
+
+        assert result.exit_code == 1
+        assert "basic, standard, extended" in result.output
+        assert "basic" in shown.stdout
+
+    def test_engine_can_be_the_default(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "search", "engine", "set", "leetspeak"])
+        shown = runner.invoke(app, ["settings", "search", "engine", "show"])
+
+        assert set_result.exit_code == 0
+        assert "leetspeak" in shown.stdout
+
+
 class TestBackupSettings:
     def test_defaults(self, use_temp_db):
         use_temp_db()

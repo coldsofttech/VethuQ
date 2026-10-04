@@ -360,6 +360,26 @@ class TestInteractiveSearchEngines:
         assert "Search fuzzy threshold set to loose." in result.stdout
         assert "Search fuzzy threshold: loose" in result.stdout
 
+    def test_settings_leetspeak_level_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Leetspeak Level > Set extended; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n7\n2\nextended\n1\n0\n0\n0\n8\n")
+
+        assert result.exit_code == 0
+        assert "Search leetspeak level set to extended." in result.stdout
+        assert "Search leetspeak level: extended" in result.stdout
+
+    def test_leetspeak_asks_for_case_but_no_level(self, use_temp_db):
+        _seed_page(use_temp_db(), "say h3ll0 to all")
+
+        # Search > text > engine (leetspeak) > case-sensitive? no, then exit.
+        result = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\n8\n")
+
+        assert result.exit_code == 0
+        assert "Results: 1 match (engine: leetspeak)" in result.stdout
+        assert "Case-sensitive?" in result.stdout
+
     _CONTRACT = "The payment is due within thirty days, subject to the termination clause."
 
     def test_proximity_asks_for_a_distance_and_no_case_question(self, use_temp_db):

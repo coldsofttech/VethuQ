@@ -12,13 +12,22 @@ class TestRanking:
         return {page.file_name: page for page in Search.indexed_pages(storage, query, **kwargs)}
 
     def test_tiers_and_badges(self):
-        assert Ranking.TIERS == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
+        assert Ranking.TIERS == (
+            "exact",
+            "like",
+            "lexical",
+            "proximity",
+            "full-text",
+            "leetspeak",
+            "fuzzy",
+        )
         assert [Ranking.BADGES[e] for e in Ranking.TIERS] == [
             "Exact",
             "Contains",
             "Relevant",
             "Near",
             "Word",
+            "Lookalike",
             "Similar",
         ]
         assert Ranking.engine_rank("exact") < Ranking.engine_rank("like")
@@ -48,6 +57,62 @@ class TestRanking:
             ("e_similar.pdf", "fuzzy"),
         ]
 
+    def test_a_lookalike_page_ranks_below_the_real_word_and_above_a_typo(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "say Hello to all", "/d/d_word.pdf")
+        SearchData.seed_page(conn, "say h3ll0 to all", "/d/c_lookalike.pdf")
+        SearchData.seed_page(conn, "say hellp to all", "/d/e_similar.pdf")
+        SearchData.seed_page(conn, "say hello to all", "/d/a_exact.pdf")
+
+        pages = Search.indexed_pages(storage, "hello")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("a_exact.pdf", "exact"),
+            ("d_word.pdf", "like"),
+            ("c_lookalike.pdf", "leetspeak"),
+            ("e_similar.pdf", "fuzzy"),
+        ]
+        lookalike = next(p for p in pages if p.engine == "leetspeak")
+        assert lookalike.matched_by == ("leetspeak",)
+        (hit,) = lookalike.hits
+        assert (hit.matched, Ranking.hit_badge(hit)) == ("h3ll0", "Lookalike")
+
+    def test_a_disguised_word_is_found_by_a_plain_query_and_the_other_way_round(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "the p@55w0rd is secret", "/d/a.pdf")
+        SearchData.seed_page(conn, "the password is secret", "/d/b.pdf")
+
+        plain = TestRanking._pages(storage, "password")
+        disguised = TestRanking._pages(storage, "p@55w0rd")
+
+        assert (plain["b.pdf"].engine, plain["a.pdf"].engine) == ("exact", "leetspeak")
+        assert (disguised["a.pdf"].engine, disguised["b.pdf"].engine) == ("exact", "leetspeak")
+
+    def test_lookalike_pages_order_by_how_much_was_disguised(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "p@55w0rd", "/d/a_more.pdf")
+        SearchData.seed_page(conn, "p@ssword", "/d/z_less.pdf")
+
+        pages = Search.indexed_pages(storage, "password")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("z_less.pdf", "leetspeak"),
+            ("a_more.pdf", "leetspeak"),
+        ]
+        assert pages[0].score > pages[1].score
+
+    def test_a_query_too_short_for_leetspeak_is_skipped_without_failing(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "go to the museum", "/d/a.pdf")
+
+        (page,) = Search.indexed_pages(storage, "go")
+
+        assert "leetspeak" not in page.matched_by
+
     def test_a_page_is_one_result_listing_every_engine_that_found_it(
         self, conn: sqlite3.Connection, storage: Storage
     ):
@@ -56,7 +121,15 @@ class TestRanking:
         (page,) = Search.indexed_pages(storage, "payment termination")
 
         assert page.engine == "exact"
-        assert page.matched_by == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
+        assert page.matched_by == (
+            "exact",
+            "like",
+            "lexical",
+            "proximity",
+            "full-text",
+            "leetspeak",
+            "fuzzy",
+        )
 
     def test_engines_finding_the_same_words_give_one_hit_labelled_by_the_strictest(
         self, conn: sqlite3.Connection, storage: Storage
@@ -68,7 +141,7 @@ class TestRanking:
         (hit,) = page.hits
         assert (hit.engine, hit.matched) == ("exact", "Museum")
         # one word, so proximity had nothing to do and was skipped without failing the search
-        assert hit.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
+        assert hit.matched_by == ("exact", "like", "lexical", "full-text", "leetspeak", "fuzzy")
         assert Ranking.hit_badge(hit) == "Exact"
 
     def test_different_words_stay_separate_hits_best_first(
@@ -83,7 +156,7 @@ class TestRanking:
             ("Muzeum", "fuzzy"),
         ]
         assert Ranking.hit_badge(page.hits[1]) == "Similar 83%"
-        assert page.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
+        assert page.matched_by == ("exact", "like", "lexical", "full-text", "leetspeak", "fuzzy")
 
     def test_hits_that_overlap_merge_into_their_union(
         self, conn: sqlite3.Connection, storage: Storage
@@ -171,14 +244,14 @@ class TestRanking:
 
     def test_agreement_breaks_ties(self, conn: sqlite3.Connection, storage: Storage):
         # Both pages are Contains-tier with one hit; only one is also found by
-        # full-text and fuzzy (and, with `like`, by lexical).
+        # full-text, leetspeak and fuzzy (and, with `like`, by lexical).
         SearchData.seed_page(conn, "the museumgoers", "/d/a_alone.pdf")
         SearchData.seed_page(conn, "the Museum", "/d/z_agreed.pdf")
 
         pages = Search.indexed_pages(storage, "museum")
 
         assert [(p.file_name, p.engine, len(p.matched_by)) for p in pages] == [
-            ("z_agreed.pdf", "like", 4),
+            ("z_agreed.pdf", "like", 5),
             ("a_alone.pdf", "like", 2),
         ]
 
@@ -249,7 +322,7 @@ class TestRanking:
     ):
         SearchData.seed_page(conn, "Visit the Museum today", "/d/a.pdf")
 
-        for engine in ("like", "exact", "full-text", "fuzzy"):
+        for engine in ("like", "exact", "full-text", "leetspeak", "fuzzy"):
             (match,) = Search.indexed_content(storage, "Museum", engine=engine)
             assert match.engine == engine
             assert (match.start, match.end) == (10, 16)

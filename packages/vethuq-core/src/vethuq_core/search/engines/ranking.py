@@ -5,12 +5,15 @@ relevance, a word similarity, no score at all. Rather than blend the numbers,
 pages are ranked by *match quality* - how strict the strictest engine that found
 them is - and only ordered by an engine's own signal within a tier:
 
-    Exact > Contains > Relevant > Near > Word > Similar
+    Exact > Contains > Relevant > Near > Word > Lookalike > Similar
 
-(`exact` > `like` > `lexical` > `proximity` > `full-text` > `fuzzy`.) `proximity` outranks
-`full-text` because every page it finds, `full-text` finds too: both need all the
-terms, so ranking them the other way round would leave "the words are close
-together" with no way to raise a page.
+(`exact` > `like` > `lexical` > `proximity` > `full-text` > `leetspeak` > `fuzzy`.)
+`proximity` outranks `full-text` because every page it finds, `full-text` finds too: both
+need all the terms, so ranking them the other way round would leave "the words are close
+together" with no way to raise a page. `leetspeak` sits between `full-text` and `fuzzy`:
+it only swaps known look-alike characters (`3` for `e`) in the very words typed, which is
+more certain than `fuzzy`'s guess that a word with a few edits is the one meant, but it
+doesn't tolerate the other word forms and word orders `full-text` does.
 
 Because the engines' matches nest (an exact match is also a substring, a word and
 a similar word), a good match is usually found by three or four of them. So a page
@@ -37,7 +40,8 @@ class PageResult:
     ordered by their engine's strictness, then by position in the page; each hit
     carries its own `engine` and `matched_by`. `score` is what the page was ordered
     by within its tier: the number of hits (`exact`, `like`), its BM25 relevance
-    (`lexical`, `proximity`, `full-text`) or its best word similarity (`fuzzy`).
+    (`lexical`, `proximity`, `full-text`), its best word similarity (`fuzzy`) or the share of the
+    query it matched as typed (`leetspeak`).
     """
 
     file_id: int
@@ -55,7 +59,7 @@ class PageResult:
 
 class Ranking:
     # Strictest first: the order pages are ranked in, and `matched_by` is listed in.
-    TIERS = ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
+    TIERS = ("exact", "like", "lexical", "proximity", "full-text", "leetspeak", "fuzzy")
 
     # What each engine is called to users, in the CLI and the UI alike.
     BADGES = {
@@ -64,6 +68,7 @@ class Ranking:
         "lexical": "Relevant",
         "proximity": "Near",
         "full-text": "Word",
+        "leetspeak": "Lookalike",
         "fuzzy": "Similar",
     }
 
@@ -74,6 +79,8 @@ class Ranking:
         "lexical": "your text anywhere, even inside a longer word, best-matching pages first",
         "proximity": "all your words (two or more) close together, within the distance setting",
         "full-text": "all your words as whole words, any case and word form (e.g. plurals)",
+        "leetspeak": "your words written with look-alike characters (h3ll0 for hello, p@55w0rd "
+        "for password)",
         "fuzzy": "a word close to yours, tolerating typos and OCR misreads (the % is how close)",
     }
 
@@ -177,7 +184,7 @@ class Ranking:
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
         search = SearchEngines.get(storage, engine).search
-        if engine in ("like", "lexical"):
+        if engine in ("like", "lexical", "leetspeak"):
             return search(query, context_chars=chars, case_sensitive=case_sensitive)
         if engine == "fuzzy":
             return search(
@@ -199,8 +206,8 @@ class Ranking:
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first.
 
-        Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`
-        and `fuzzy` (`exact` always matches case, `full-text` and `proximity` never do),
+        Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`,
+        `leetspeak` and `fuzzy` (`exact` always matches case, `full-text` and `proximity` never do),
         `threshold` only `fuzzy` and `distance` only `proximity`, each defaulting to the
         user's setting. An engine that can't search the query (`proximity` needs two
         terms, `lexical` three characters) is skipped rather than failing the search.

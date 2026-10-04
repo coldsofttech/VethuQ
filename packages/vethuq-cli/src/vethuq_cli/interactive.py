@@ -70,6 +70,8 @@ from vethuq_cli.settings import (
     integrity_check_interval_show,
     integrity_check_set,
     integrity_check_show,
+    leetspeak_level_set,
+    leetspeak_level_show,
     location_set,
     location_show,
     log_level_set,
@@ -223,11 +225,12 @@ class InteractiveMenu:
         engine = Prompt.ask(
             "Engine", console=console, choices=list(SearchSettings.ENGINES), default=default_engine
         )
-        # Only `like`, `lexical`, `fuzzy` and `all` (which includes them) have a choice to make:
+        # Only `like`, `lexical`, `fuzzy`, `leetspeak` and `all` (which includes them) have a
+        # choice to make:
         # `exact` is always case-sensitive while `full-text` and `proximity` never are,
         # so asking would have no effect. `all` uses the stored threshold and distance.
         case_sensitive: bool | None = None
-        if engine in (SearchSettings.ENGINE_ALL, "like", "lexical", "fuzzy"):
+        if engine in (SearchSettings.ENGINE_ALL, "like", "lexical", "fuzzy", "leetspeak"):
             case_sensitive = Confirm.ask(
                 "Case-sensitive?", console=console, default=default_case_sensitive
             )
@@ -503,6 +506,21 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(proximity_distance_set, distance=distance)
 
     @staticmethod
+    def _settings_leetspeak_level_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Search > Leetspeak Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._run_safely(leetspeak_level_show)
+            elif choice == "2":
+                levels = ", ".join(SearchSettings.LEETSPEAK_LEVELS)
+                level = Prompt.ask(f"Level ({levels})", console=console)
+                InteractiveMenu._run_safely(leetspeak_level_set, level=level)
+
+    @staticmethod
     def _settings_search_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -514,6 +532,7 @@ class InteractiveMenu:
                     ("4", "Case Sensitive"),
                     ("5", "Fuzzy Threshold"),
                     ("6", "Proximity Distance"),
+                    ("7", "Leetspeak Level"),
                     ("0", "Back"),
                 ],
             )
@@ -531,6 +550,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_fuzzy_threshold_menu()
             elif choice == "6":
                 InteractiveMenu._settings_proximity_distance_menu()
+            elif choice == "7":
+                InteractiveMenu._settings_leetspeak_level_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

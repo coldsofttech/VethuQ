@@ -15,7 +15,16 @@ class SearchSettings:
     ENGINE_KEY = "search_engine"
     DEFAULT_ENGINE = "all"
     ENGINE_ALL = "all"  # not an engine: runs every engine and ranks the pages together
-    ENGINES = (ENGINE_ALL, "like", "lexical", "exact", "full-text", "fuzzy", "proximity")
+    ENGINES = (
+        ENGINE_ALL,
+        "like",
+        "lexical",
+        "exact",
+        "full-text",
+        "fuzzy",
+        "proximity",
+        "leetspeak",
+    )
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
     DEFAULT_FUZZY_THRESHOLD = "balanced"
@@ -27,6 +36,11 @@ class SearchSettings:
     # Most words the `proximity` engine lets sit between its first and last term, by name.
     PROXIMITY_PRESETS = {"tight": 3, "medium": 10, "loose": 30}
     PROXIMITY_MAX_DISTANCE = 100
+    LEETSPEAK_LEVEL_KEY = "search_leetspeak_level"
+    DEFAULT_LEETSPEAK_LEVEL = "basic"
+    # How many character substitutions the `leetspeak` engine recognizes, each level
+    # including the one before it.
+    LEETSPEAK_LEVELS = ("basic", "standard", "extended")
 
     @staticmethod
     def get_snippet_context_chars(storage: Storage) -> int:
@@ -208,3 +222,34 @@ class SearchSettings:
         """Store the default proximity distance: a preset name or a number of words."""
         SearchSettings.parse_proximity_distance(value)  # validate
         Settings.set(storage, SearchSettings.PROXIMITY_DISTANCE_KEY, value.strip().lower())
+
+    @staticmethod
+    def parse_leetspeak_level(value: str) -> str:
+        """Resolve a leetspeak level name (`basic`, `standard` or `extended`).
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        text = value.strip().lower() if isinstance(value, str) else ""
+        if text not in SearchSettings.LEETSPEAK_LEVELS:
+            raise InvalidSettingValueError(
+                f"level must be one of {', '.join(SearchSettings.LEETSPEAK_LEVELS)}"
+            )
+        return text
+
+    @staticmethod
+    def get_leetspeak_level(storage: Storage) -> str:
+        """Which substitutions the `leetspeak` engine recognizes. 'basic' by default."""
+        value = Settings.get(storage, SearchSettings.LEETSPEAK_LEVEL_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_LEETSPEAK_LEVEL
+        try:
+            return SearchSettings.parse_leetspeak_level(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_LEETSPEAK_LEVEL
+
+    @staticmethod
+    def set_leetspeak_level(storage: Storage, level: str) -> None:
+        """Store the default leetspeak level: `basic`, `standard` or `extended`."""
+        Settings.set(
+            storage, SearchSettings.LEETSPEAK_LEVEL_KEY, SearchSettings.parse_leetspeak_level(level)
+        )

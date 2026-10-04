@@ -125,7 +125,7 @@ class ResultRenderer:
     @staticmethod
     def page_label(page: PageResult, accent: str) -> Text:
         """`Page: 1 of 3 [ocr] [Exact]  also: Contains, Word` - how a ranked page was found."""
-        label = Text(style=accent)
+        label = Text(style=accent, no_wrap=False, overflow="fold")
         if page.page_number is not None:
             label.append(f"Page: {page.page_number} of {page.total_pages} ")
         label.append(f"[{page.source}] ")

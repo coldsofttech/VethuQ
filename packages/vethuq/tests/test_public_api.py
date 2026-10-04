@@ -148,6 +148,7 @@ def test_settings_defaults(client: vethuq.Vethuq):
     assert client.settings.search.export_format.get() == "json"
     assert client.settings.search.engine.get() == "all"
     assert client.settings.search.case_sensitive.get() is False
+    assert client.settings.search.leetspeak.level.get() == "basic"
     assert client.settings.index.removed_retention.get() == 7 * 24 * 60
     assert client.settings.ocr.retry.get() == 3
     assert client.settings.index.thread_workers.get() == "0"
@@ -190,6 +191,7 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     client.settings.search.export_format.set("html")
     client.settings.search.engine.set("full-text")
     client.settings.search.case_sensitive.set(True)
+    client.settings.search.leetspeak.level.set("extended")
     client.settings.index.removed_retention.set(30)
     client.settings.ocr.retry.set(5)
     client.settings.index.thread_workers.set(vethuq.ThreadWorkersSettings.AUTO)
@@ -203,6 +205,7 @@ def test_settings_values_round_trip(client: vethuq.Vethuq):
     assert client.settings.search.export_format.get() == "html"
     assert client.settings.search.engine.get() == "full-text"
     assert client.settings.search.case_sensitive.get() is True
+    assert client.settings.search.leetspeak.level.get() == "extended"
     assert client.settings.index.removed_retention.get() == 30
     assert client.settings.ocr.retry.get() == 5
     assert client.settings.index.thread_workers.get() == vethuq.ThreadWorkersSettings.AUTO
@@ -231,6 +234,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
     [
         lambda s: s.search.snippet.set(-1),
         lambda s: s.search.export_format.set("pdf"),
+        lambda s: s.search.leetspeak.level.set("insane"),
         lambda s: s.index.removed_retention.set(-1),
         lambda s: s.ocr.retry.set(-1),
         lambda s: s.index.thread_workers.set("not-a-number"),
@@ -243,6 +247,7 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
     ids=[
         "snippet",
         "export_format",
+        "leetspeak_level",
         "removed_retention",
         "ocr_retry",
         "thread_workers",
@@ -402,6 +407,23 @@ def test_search_case_sensitive_applies_to_like(indexed_client: vethuq.Vethuq):
     assert [m.file_path for m in matches] == ["/docs/scan.png"]
 
 
+def test_search_leetspeak_engine_finds_look_alike_spellings(indexed_client: vethuq.Vethuq):
+    matches = indexed_client.search.run("1nv01c3", engine="leetspeak")
+
+    assert [m.matched for m in matches] == ["Invoice", "INVOICE"]
+    assert {m.engine for m in matches} == {"leetspeak"}
+    assert "leetspeak" in vethuq.SEARCH_ENGINES
+    assert "leetspeak" in vethuq.ENGINE_TIERS
+    assert vethuq.ENGINE_BADGES["leetspeak"] == "Lookalike"
+    assert vethuq.SEARCH_LEETSPEAK_LEVELS == ("basic", "standard", "extended")
+
+
+def test_search_leetspeak_honours_case_sensitive(indexed_client: vethuq.Vethuq):
+    matches = indexed_client.search.run("INV01C3", engine="leetspeak", case_sensitive=True)
+
+    assert [m.matched for m in matches] == ["INVOICE"]
+
+
 def test_search_uses_the_configured_engine(indexed_client: vethuq.Vethuq):
     indexed_client.settings.search.engine.set("exact")
 
@@ -414,6 +436,8 @@ def test_search_uses_the_configured_engine(indexed_client: vethuq.Vethuq):
         {"engine": "nope"},
         {"engine": "full-text", "case_sensitive": True},
         {"engine": "exact", "case_sensitive": False},
+        {"engine": "leetspeak", "threshold": 0.8},
+        {"engine": "leetspeak", "distance": 3},
     ],
 )
 def test_search_rejects_unusable_engine_options(indexed_client: vethuq.Vethuq, kwargs):

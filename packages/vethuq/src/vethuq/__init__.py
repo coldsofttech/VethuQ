@@ -87,6 +87,7 @@ SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
+SEARCH_LEETSPEAK_LEVELS = _SearchSettings.LEETSPEAK_LEVELS
 SEARCH_PROXIMITY_MAX_DISTANCE = _SearchSettings.PROXIMITY_MAX_DISTANCE
 STALE_LOCK_VALUES = _IndexSettings.STALE_LOCK_VALUES
 BACKUP_VALUES = _DbSettings.BACKUP_VALUES
@@ -110,6 +111,7 @@ __all__ = [
     "SEARCH_ENGINES",
     "SEARCH_EXPORT_FORMATS",
     "SEARCH_FUZZY_PRESETS",
+    "SEARCH_LEETSPEAK_LEVELS",
     "SEARCH_PROXIMITY_MAX_DISTANCE",
     "SEARCH_PROXIMITY_PRESETS",
     "STALE_LOCK_VALUES",
@@ -157,6 +159,8 @@ __all__ = [
     "SearchEngineSettings",
     "SearchFuzzySettings",
     "SearchFuzzyThresholdSettings",
+    "SearchLeetspeakLevelSettings",
+    "SearchLeetspeakSettings",
     "SearchIndexRebuildResult",
     "SearchMatch",
     "SearchOptionError",
@@ -596,6 +600,42 @@ class SearchProximitySettings:
         self.distance = SearchProximityDistanceSettings()
 
 
+class SearchLeetspeakLevelSettings:
+    """Which look-alike characters `leetspeak` search recognizes.
+
+    Not instantiated directly — use `Vethuq().settings.search.leetspeak.level`.
+    """
+
+    def get(self) -> str:
+        """The stored level, a name from `SEARCH_LEETSPEAK_LEVELS`. `"basic"` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_leetspeak_level(storage)
+        finally:
+            storage.close()
+
+    def set(self, level: str) -> None:
+        """Set the default level: `"basic"` (0 1 3 4 5 7 @ $), `"standard"` (adds 2 6 8 9 + ! |)
+        or `"extended"` (adds multi-character forms such as `|\\|` for n and `ph` for f). Each
+        level includes the one before it.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_leetspeak_level(storage, level)
+        finally:
+            storage.close()
+
+
+class SearchLeetspeakSettings:
+    """Configure the `leetspeak` search engine. Not instantiated directly — use
+    `Vethuq().settings.search.leetspeak`."""
+
+    def __init__(self) -> None:
+        self.level = SearchLeetspeakLevelSettings()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
@@ -606,6 +646,7 @@ class SearchSettings:
         self.case_sensitive = SearchCaseSensitiveSettings()
         self.fuzzy = SearchFuzzySettings()
         self.proximity = SearchProximitySettings()
+        self.leetspeak = SearchLeetspeakSettings()
 
 
 class RemovedRetentionSettings:
@@ -1035,8 +1076,8 @@ class Search:
 
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
-        page in text order) - or best match first for the `full-text`, `fuzzy` and
-        `proximity` engines. Only successfully indexed documents are considered.
+        page in text order) - or best match first for the `full-text`, `fuzzy`, `proximity` and
+        `leetspeak` engines. Only successfully indexed documents are considered.
         `context_chars` defaults to `Vethuq().settings.search.snippet` if not given.
 
         `engine` is one of `SEARCH_ENGINES` and defaults to
@@ -1047,9 +1088,13 @@ class Search:
         a word with * for a prefix), best matches first; `fuzzy` finds words
         close to `content`'s - typos and OCR misreads such as `Musuem` or
         `Museurn` for `Museum` - closest first (words under 4 letters and
-        anything with a digit must match exactly). `case_sensitive`
-        defaults to `Vethuq().settings.search.case_sensitive` and only `like`
-        and `fuzzy` act on it - `exact` is always case-sensitive and
+        anything with a digit must match exactly); `leetspeak` finds `content`'s words
+        written with look-alike characters - `h3ll0` or `p@55w0rd` for `hello` or
+        `password`, and the other way round - as whole words, spelled-as-typed first
+        (which substitutions count is `Vethuq().settings.search.leetspeak.level`; it needs
+        at least 3 characters, one a letter). `case_sensitive`
+        defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
+        `fuzzy` and `leetspeak` act on it - `exact` is always case-sensitive and
         `full-text` and `proximity` never are. `threshold` (`fuzzy` only)
         is the minimum similarity between `content`'s words and the words found: a
         name from `SEARCH_FUZZY_PRESETS`, a percentage (`"80%"`) or a number above 0
@@ -1103,7 +1148,7 @@ class Search:
         and `matched_by` (hits found by several engines are merged into one).
 
         `case_sensitive`, `threshold` and `distance` default to their settings and
-        reach the engines that can use them (`like`/`fuzzy`, `fuzzy`, `proximity`);
+        reach the engines that can use them (`like`/`fuzzy`/`leetspeak`, `fuzzy`, `proximity`);
         `proximity` is skipped for a query of fewer than two terms.
         `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
         `SearchOptionError` for an invalid `threshold` or `distance`. This is what

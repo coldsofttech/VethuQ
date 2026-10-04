@@ -671,6 +671,77 @@ def _seed_pages(db_path, path: str, pages: list[str]) -> None:
             conn.close()
 
 
+class TestSearchLeetspeak:
+    def test_finds_look_alike_spellings_both_ways(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "the p@55w0rd is secret")
+        _seed_indexed_pdf(db_path, "/docs/b.pdf", "the password is secret")
+
+        plain = runner.invoke(app, ["search", "password", "--engine", "leetspeak"])
+        disguised = runner.invoke(app, ["search", "p@55w0rd", "--engine", "leetspeak"])
+
+        assert plain.exit_code == 0 and disguised.exit_code == 0
+        assert "Results: 2 matches (engine: leetspeak)" in plain.stdout
+        assert "p@55w0rd" in plain.stdout and "password" in plain.stdout
+        assert "Results: 2 matches (engine: leetspeak)" in disguised.stdout
+
+    def test_honours_case_sensitive(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say H3LL0 and h3ll0")
+
+        loose = runner.invoke(app, ["search", "hello", "--engine", "leetspeak"])
+        strict = runner.invoke(
+            app, ["search", "hello", "--engine", "leetspeak", "--case-sensitive"]
+        )
+
+        assert "Results: 2 matches (engine: leetspeak)" in loose.stdout
+        assert "Results: 1 match (engine: leetspeak, case-sensitive)" in strict.stdout
+
+    def test_uses_the_stored_level(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
+
+        basic = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
+        runner.invoke(app, ["settings", "search", "leetspeak", "level", "set", "standard"])
+        standard = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
+
+        assert "No matches found." in basic.stdout
+        assert "leetspeak level" in basic.stdout  # the hint towards a higher level
+        assert "Results: 1 match (engine: leetspeak)" in standard.stdout
+
+    def test_all_engines_labels_a_disguised_page_lookalike(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "say h3ll0 to all")
+
+        result = runner.invoke(app, ["search", "hello"])
+
+        assert result.exit_code == 0
+        lines = _content_lines(result.stdout)
+        assert "Page: 1 of 1 [ocr] [Lookalike]" in lines
+        assert "say h3ll0 to all" in lines
+
+    def test_rejects_fuzzy_and_proximity_options(self, use_temp_db):
+        use_temp_db()
+
+        threshold = runner.invoke(
+            app, ["search", "hello", "--engine", "leetspeak", "--threshold", "0.8"]
+        )
+        distance = runner.invoke(
+            app, ["search", "hello", "--engine", "leetspeak", "--distance", "5"]
+        )
+
+        assert threshold.exit_code != 0 and "Only the fuzzy engine" in _flatten(threshold.output)
+        assert distance.exit_code != 0 and "Only the proximity engine" in _flatten(distance.output)
+
+    def test_too_short_a_query_is_reported(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["search", "hi", "--engine", "leetspeak"])
+
+        assert result.exit_code != 0
+        assert "at least 3 characters" in _flatten(result.output)
+
+
 class TestSearchAll:
     def test_labels_each_page_with_how_it_was_found(self, use_temp_db):
         db_path = use_temp_db()
@@ -681,7 +752,8 @@ class TestSearchAll:
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
         assert "Search Results: 1 page (engine: all)" in lines
-        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Similar" in lines
+        assert "Page: 1 of 1 [ocr] [Exact]  also: Contains, Relevant, Word, Lookalike," in lines
+        assert "Similar" in lines  # the label wraps rather than cutting off
 
     def test_ranks_pages_exact_then_contains_then_word_then_similar(self, use_temp_db):
         db_path = use_temp_db()
@@ -784,6 +856,7 @@ class TestSearchAll:
             "like",
             "lexical",
             "full-text",
+            "leetspeak",
             "fuzzy",
         ]
         html_text = as_html.read_text()

@@ -38,6 +38,10 @@ proximity_app = typer.Typer(help="Configure the `proximity` search engine.")
 proximity_distance_app = typer.Typer(
     help="Configure how many words may separate your first and last word for `proximity` search."
 )
+leetspeak_app = typer.Typer(help="Configure the `leetspeak` search engine.")
+leetspeak_level_app = typer.Typer(
+    help="Configure which look-alike characters `leetspeak` search recognizes."
+)
 case_sensitive_app = typer.Typer(
     help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
@@ -96,6 +100,8 @@ search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 search_app.add_typer(proximity_app, name="proximity")
 proximity_app.add_typer(proximity_distance_app, name="distance")
+search_app.add_typer(leetspeak_app, name="leetspeak")
+leetspeak_app.add_typer(leetspeak_level_app, name="level")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -334,7 +340,11 @@ def search_engine_show() -> None:
         "proximity - finds passages where all your words (two or more, any order) sit within "
         "a set number of words of each other, such as `payment` and `termination` in the same "
         "clause. How near is set by `settings search proximity distance`. One result per "
-        "passage, best pages first. Never case-sensitive."
+        "passage, best pages first. Never case-sensitive.\n\n"
+        "leetspeak - finds your words written with look-alike characters (`h3ll0` or `p@55w0rd` "
+        "for `hello` or `password`, and the other way round). Every character must match, as a "
+        "whole word. Which substitutions count is set by `settings search leetspeak level`. "
+        "Words spelled as typed first."
     ),
 )
 def search_engine_set(
@@ -387,7 +397,8 @@ def case_sensitive_show() -> None:
 
 @case_sensitive_app.command("enable")
 def case_sensitive_enable() -> None:
-    """Make `search` match case by default ('like'/'fuzzy'; `--no-case-sensitive` overrides)."""
+    """Make `search` match case by default ('like'/'fuzzy'/'leetspeak'; `--no-case-sensitive`
+    overrides)."""
     storage = open_storage()
     try:
         SearchSettings.set_case_sensitive(storage, True)
@@ -1410,3 +1421,67 @@ def backups_location_reset() -> None:
             Theme.OK,
         )
     )
+
+
+@leetspeak_level_app.command("show")
+def leetspeak_level_show() -> None:
+    """Show which look-alike characters `search --engine leetspeak` recognizes."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak level: ", "white"),
+                    (SearchSettings.get_leetspeak_level(storage), Theme.VALUE),
+                ),
+                "Leetspeak Level",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@leetspeak_level_app.command(
+    "set",
+    help=(
+        "Set which look-alike characters `search --engine leetspeak` recognizes. Each level "
+        "includes the one before it, and a search always finds both the plain and the "
+        "disguised spelling, so `hello` finds `h3ll0` and `h3ll0` finds `hello`.\n\n"
+        "Levels:\n\n"
+        "basic (the default) - the common ones: 0 for o, 1 for i or l, 3 for e, 4 or @ for a, "
+        "5 or $ for s, 7 for t. `password` finds `p@55w0rd`.\n\n"
+        "standard - also 8 for b, 9 or 6 for g, 2 for z, + for t, and ! or | for i or l.\n\n"
+        "extended - also multi-character forms such as |\\| for n, |< for k, |) for d, "
+        "\\/\\/ for w, ph for f and () for o, and ( [ { for c. Finds the most, with more "
+        "chance of unrelated matches."
+    ),
+)
+def leetspeak_level_set(
+    level: str = typer.Argument(
+        ...,
+        metavar="LEVEL",
+        help=f"One of: {', '.join(SearchSettings.LEETSPEAK_LEVELS)}.",
+    ),
+) -> None:
+    """Set which look-alike characters `search --engine leetspeak` recognizes."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_leetspeak_level(storage, level)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak level set to ", "white"),
+                    (level.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Leetspeak Level",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
