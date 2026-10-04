@@ -10,7 +10,7 @@ from tkinter import ttk
 from vethuq_core.settings import GpuSettings
 from vethuq_core.storage import Storage
 
-from vethuq_ui.icons import get_icon
+from vethuq_ui.icons import Brand, get_icon
 from vethuq_ui.widgets import Widgets
 
 
@@ -37,6 +37,10 @@ class Ribbon(ttk.Notebook):
 
         home_tab = ttk.Frame(self)
         self.add(home_tab, text="Home")
+        logo = Brand.logo(36)
+        if logo is not None:
+            logo_label = ttk.Label(home_tab, image=logo)
+            logo_label.pack(side=tk.RIGHT, padx=10, pady=2)
         ttk.Button(
             home_tab,
             command=actions.show_search,

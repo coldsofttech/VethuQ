@@ -118,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Searching is now faster on large libraries, and still matches text anywhere within a word, case-insensitively.
 - Indexing now reports why a file couldn't be read — removed mid-run, password-protected, or corrupted — instead of a generic failure, and doesn't retry it.
 - Files VethuQ can't read, such as `.txt` or `.csv`, are now listed as "Unsupported file format" instead of being silently ignored.
+- The Windows installer has new OCR engine and language pages (PaddleOCR and English for now) ahead of the file types and search engines pages, shows the size of each component, and uses the new VethuQ icon (also in the app window, the interactive CLI banner and the shortcuts). Its license is now a formatted page with the logo.
 
 ### Changed
 
@@ -138,3 +139,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Searching no longer returns matches from files whose source has been removed.
 - Permanently purging removed sources no longer fails with a database error when two of them shared duplicate-flagged content, and no longer leaves `index history` pointing at a source that's gone.
 - A document's indexed result is now saved all-or-nothing, so a failure partway through can no longer leave it marked `indexed` with missing pages or metrics.
+- Databases already at schema version 30 are now upgraded so search over normalized text works, instead of failing with "no such column: old.norm_text" while indexing.

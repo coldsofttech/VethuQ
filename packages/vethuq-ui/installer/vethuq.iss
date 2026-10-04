@@ -42,7 +42,13 @@ AppVerName={#MyAppName} v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 ; VethuQ's own license plus a summary of the bundled third-party licenses (not the repo LICENSE).
-LicenseFile=LICENSE.txt
+; LICENSE.rtf is generated from LICENSE.md (with the logo) by scripts/dev/generate_brand.py.
+LicenseFile=LICENSE.rtf
+; The VethuQ icon: the installer/uninstaller exe, Apps & Features, and the wizard's side and header images.
+SetupIconFile=vethuq.ico
+UninstallDisplayIcon={app}\vethuq-worker.exe
+WizardImageFile=wizard_large.bmp
+WizardSmallImageFile=wizard_small.bmp
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 DefaultDirName={autopf}\{#MyAppName}
@@ -73,13 +79,27 @@ DisableProgramGroupPage=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+; Component sizes (KB) come from release.py as /DAppSizeKB= etc., because the [Files] entries carry a
+; Check and so Setup cannot total them itself; without them a plain compile shows no sizes.
+#ifndef AppSizeKB
+  #define AppSizeKB 0
+#endif
+#ifndef CliSizeKB
+  #define CliSizeKB 0
+#endif
+#ifndef CoreSizeKB
+  #define CoreSizeKB 0
+#endif
+#define SizeLabel(KB) KB > 0 ? " (" + Str((KB + 512) / 1024) + " MB)" : ""
+#define SizeBytes(KB) Str(KB * 1024)
+
 [Components]
-Name: "app"; Description: "Desktop application"; Types: full desktop
-Name: "cli"; Description: "Command-line interface (vethuq)"; Types: full cli
+Name: "app"; Description: "Desktop application{#SizeLabel(AppSizeKB)}"; Types: full desktop; ExtraDiskSpaceRequired: {#SizeBytes(AppSizeKB)}
+Name: "cli"; Description: "Command-line interface (vethuq){#SizeLabel(CliSizeKB)}"; Types: full cli; ExtraDiskSpaceRequired: {#SizeBytes(CliSizeKB)}
 ; The background index worker - both the desktop app and the CLI's "index
 ; run" spawn it, so it (and the library folder it needs) is required either
 ; way. Shown, not hidden, so it's clear why it can't be unchecked.
-Name: "core"; Description: "Core runtime (required)"; Types: full desktop cli; Flags: fixed
+Name: "core"; Description: "Core runtime (required){#SizeLabel(CoreSizeKB)}"; Types: full desktop cli; Flags: fixed; ExtraDiskSpaceRequired: {#SizeBytes(CoreSizeKB)}
 
 [Types]
 Name: "full"; Description: "Desktop application and CLI (recommended)"
@@ -88,6 +108,8 @@ Name: "cli"; Description: "Command-line interface only"
 Name: "custom"; Description: "Custom installation"; Flags: iscustom
 
 [Files]
+; The shortcuts point at this file, so their icon never depends on the exe's embedded one.
+Source: "vethuq.ico"; DestDir: "{app}"; Flags: ignoreversion; Components: app; Check: FilesNeeded
 Source: "..\..\..\build\desktop\VethuQ\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: app; Check: FilesNeeded
 Source: "..\..\..\build\desktop\VethuQ\{#MyAppCliExeName}"; DestDir: "{app}"; Flags: ignoreversion; Components: cli; Check: FilesNeeded
 Source: "..\..\..\build\desktop\VethuQ\vethuq-worker.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: core; Check: FilesNeeded
@@ -97,8 +119,8 @@ Source: "..\..\..\build\desktop\VethuQ\lib\*"; DestDir: "{app}\lib"; Flags: igno
 Source: "{srcexe}"; DestDir: "{app}"; DestName: "{#MySetupCopyName}"; Flags: external ignoreversion; Check: ShouldCopySetup
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Components: app
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: app
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Components: app
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Tasks: desktopicon; Components: app
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Components: app
@@ -112,6 +134,9 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 #include "filetypes.iss"
 { ...and the search engines' manifests: SearchEngineCount, SearchEngineId/Label/Default. }
 #include "search_engines.iss"
+{ ...and the OCR engines' and languages' manifests: OcrEngine* and Language* likewise. }
+#include "ocr_engines.iss"
+#include "languages.iss"
 
 const
   SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
@@ -196,6 +221,8 @@ end;
 var
   TypesPage: TInputOptionWizardPage;
   EnginesPage: TInputOptionWizardPage;
+  OcrPage: TInputOptionWizardPage;
+  LanguagePage: TInputOptionWizardPage;
 
 function EnginesFile: string;
 begin
@@ -327,6 +354,77 @@ begin
     end;
   ForceDirectories(ExtractFilePath(EnginesFile));
   SaveStringToFile(EnginesFile, '{ "enabled": [' + Json + '] }', False);
+end;
+
+function OcrFile: string;
+begin
+  Result := ExpandConstant('{localappdata}\VethuQ\ocr_engines.json');
+end;
+
+function LanguageFile: string;
+begin
+  Result := ExpandConstant('{localappdata}\VethuQ\languages.json');
+end;
+
+function DefaultOcrIndex: Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to OcrEngineCount - 1 do
+    if OcrEngineDefault(I) then
+    begin
+      Result := I;
+      Exit;
+    end;
+end;
+
+function DefaultLanguageIndex: Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to LanguageCount - 1 do
+    if LanguageDefault(I) then
+    begin
+      Result := I;
+      Exit;
+    end;
+end;
+
+{ OCR engine and language pages: single choice (radio), one option each for now. }
+procedure InitOcrPages;
+var
+  I: Integer;
+begin
+  OcrPage := CreateInputOptionPage(
+    wpSelectComponents, 'OCR engine',
+    'Which OCR engine should VethuQ use to read scanned pages?',
+    'Only one engine is available at the moment.',
+    True, False
+  );
+  for I := 0 to OcrEngineCount - 1 do
+    OcrPage.Add(OcrEngineLabel(I));
+  OcrPage.SelectedValueIndex := DefaultOcrIndex;
+
+  LanguagePage := CreateInputOptionPage(
+    OcrPage.ID, 'Language',
+    'Which language should OCR recognise?',
+    'Only one language is available at the moment.',
+    True, False
+  );
+  for I := 0 to LanguageCount - 1 do
+    LanguagePage.Add(LanguageLabel(I));
+  LanguagePage.SelectedValueIndex := DefaultLanguageIndex;
+end;
+
+procedure SaveOcrSelection;
+begin
+  ForceDirectories(ExtractFilePath(OcrFile));
+  SaveStringToFile(OcrFile,
+    '{ "engine": "' + OcrEngineId(OcrPage.SelectedValueIndex) + '" }', False);
+  SaveStringToFile(LanguageFile,
+    '{ "language": "' + LanguageId(LanguagePage.SelectedValueIndex) + '" }', False);
 end;
 
 const
@@ -465,8 +563,10 @@ begin
   MaintPage.Add('Uninstall VethuQ');
   MaintPage.SelectedValueIndex := MaintChange;
 
+  InitOcrPages;
+
   TypesPage := CreateInputOptionPage(
-    wpSelectComponents, 'File types',
+    LanguagePage.ID, 'File types',
     'Which file types should VethuQ read?',
     'Types that are not selected are not scanned or indexed. ' +
     'Run this installer again to add more later.',
@@ -538,6 +638,10 @@ begin
   if MemoComponentsInfo <> '' then Result := Result + MemoComponentsInfo + NewLine + NewLine;
   if MemoGroupInfo <> '' then Result := Result + MemoGroupInfo + NewLine + NewLine;
   if MemoTasksInfo <> '' then Result := Result + MemoTasksInfo + NewLine + NewLine;
+  Result := Result + 'OCR engine:' + NewLine + Space + Space +
+    OcrEngineLabel(OcrPage.SelectedValueIndex) + NewLine + NewLine;
+  Result := Result + 'Language:' + NewLine + Space + Space +
+    LanguageLabel(LanguagePage.SelectedValueIndex) + NewLine + NewLine;
   Result := Result + 'File types:' + NewLine + Types + NewLine;
   Result := Result + 'Search engines:' + NewLine + Engines;
 end;
@@ -571,7 +675,8 @@ begin
     if PageID = wpLicense then
       Result := True
     else if MaintPage.SelectedValueIndex = MaintRepair then
-      Result := (PageID = wpSelectComponents) or (PageID = TypesPage.ID) or
+      Result := (PageID = wpSelectComponents) or (PageID = OcrPage.ID) or
+        (PageID = LanguagePage.ID) or (PageID = TypesPage.ID) or
         (PageID = EnginesPage.ID) or (PageID = wpSelectTasks);
   end;
 end;
@@ -616,6 +721,7 @@ begin
   end;
   if CurStep = ssPostInstall then
   begin
+    SaveOcrSelection;
     SaveTypeSelection;
     SaveEngineSelection;
     if WizardIsTaskSelected('addtopath') then

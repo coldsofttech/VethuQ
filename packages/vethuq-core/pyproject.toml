@@ -27,6 +27,8 @@ dependencies = [
 
 # BEGIN generated from the manifests - run scripts/dev/sync_extras.py
 [project.optional-dependencies]
+lang-en = []
+ocr-paddle = ["paddleocr>=3.0"]
 search-exact = ["vethuq-search-exact"]
 search-full-text = ["vethuq-search-full-text"]
 search-fuzzy = ["vethuq-search-fuzzy"]

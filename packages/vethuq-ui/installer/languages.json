@@ -1,0 +1,10 @@
+{
+  "languages": [
+    {
+      "id": "en",
+      "label": "English",
+      "extra": "lang-en",
+      "default": true
+    }
+  ]
+}

@@ -44,6 +44,7 @@ from vethuq_cli.index.commands import resume as index_resume
 from vethuq_cli.index.commands import run as index_run
 from vethuq_cli.index.commands import status as index_status
 from vethuq_cli.index.commands import stop as index_stop
+from vethuq_cli.logo import Logo
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import search as run_search
 from vethuq_cli.search_engines import list_engines as search_engines_list
@@ -120,12 +121,23 @@ class _Quit(Exception):
 class InteractiveMenu:
     @staticmethod
     def _print_banner() -> None:
+        # The icon as half-block art beside the name, where the terminal has colour for it.
+        content: Table | str = ""
+        if console.color_system is not None:
+            content = Table.grid(padding=(0, 2))
+            content.add_column(no_wrap=True)
+            content.add_column(vertical="middle")
+            content.add_row(
+                Text.from_markup(Logo.markup()),
+                Text.assemble((f"{APP_NAME}\n", Theme.BRAND), (APP_TAGLINE, "bright_black")),
+            )
+        framed = content == ""
         console.print(
             Panel(
-                "",
-                title=Text(APP_NAME, style=Theme.BRAND),
+                content,
+                title=Text(APP_NAME, style=Theme.BRAND) if framed else None,
                 title_align="left",
-                subtitle=Text(APP_TAGLINE, style="bright_black"),
+                subtitle=Text(APP_TAGLINE, style="bright_black") if framed else None,
                 subtitle_align="left",
                 border_style=Theme.PRIMARY,
                 expand=True,

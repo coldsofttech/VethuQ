@@ -1,0 +1,8 @@
+{
+  "id": "en",
+  "label": "English",
+  "extra": "lang-en",
+  "requires": [],
+  "modules": [],
+  "default": true
+}

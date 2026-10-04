@@ -125,3 +125,30 @@ def get_icon(name: str, size: int = _RIBBON_ICON_SIZE) -> Any | None:
     if icon is not None:
         _icon_cache[cache_key] = icon
     return icon
+
+
+class Brand:
+    """The VethuQ icon: the window/taskbar icon and the small logo inside the app."""
+
+    _DIR = Path(__file__).resolve().parent / "assets" / "brand"
+    _cache: dict[int, Any] = {}
+
+    @staticmethod
+    def logo(size: int) -> Any | None:
+        """The icon as a `size` x `size` image, or None if the asset is missing."""
+        if size not in Brand._cache:
+            image = _load_asset(Brand._DIR / "vethuq.png", size)
+            if image is None:
+                return None
+            Brand._cache[size] = image
+        return Brand._cache[size]
+
+    @staticmethod
+    def apply_window_icon(window: tk.Tk) -> None:
+        """Title bar and taskbar icon; best-effort, a missing asset leaves Tk's default."""
+        try:
+            window.iconbitmap(default=str(Brand._DIR / "vethuq.ico"))
+        except tk.TclError:
+            image = Brand.logo(64)
+            if image is not None:
+                window.iconphoto(True, image)
