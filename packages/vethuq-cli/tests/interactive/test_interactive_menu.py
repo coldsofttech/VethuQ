@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 from vethuq_cli.main import app
 from vethuq_core.db import Db
+from vethuq_core.db.queries.documents import Document
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import open_storage
 
@@ -135,7 +136,9 @@ class TestInteractiveMenu:
         result = runner.invoke(app, [], input="3\n10\ny\n0\n10\n")
 
         assert result.exit_code == 0
-        assert "8 rebuilt, 0 failed" in " ".join(result.output.split())
+        assert f"{len(Document.SEARCH_INDEXES)} rebuilt, 0 failed" in " ".join(
+            result.output.split()
+        )
 
     def test_settings_gpu_status_navigation(self, use_temp_db):
         use_temp_db()

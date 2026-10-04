@@ -285,7 +285,7 @@ class TestMigration:
         try:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
             assert {"pdf_pages_noise", "image_pages_noise"} <= tables
-            assert Db.SCHEMA_VERSION == 31
+            assert Db.SCHEMA_VERSION >= 31
         finally:
             conn.close()
 

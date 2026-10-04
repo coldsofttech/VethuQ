@@ -18,7 +18,8 @@ def test_rebuilds_every_search_index_and_reports_progress(db_path):
     assert result.ok
     assert list(result.rebuilt) == list(Document.SEARCH_INDEXES)
     assert [s[0] for s in seen] == list(Document.SEARCH_INDEXES)
-    assert [s[1:] for s in seen] == [(i, 8) for i in range(1, 9)]
+    total = len(Document.SEARCH_INDEXES)
+    assert [s[1:] for s in seen] == [(i, total) for i in range(1, total + 1)]
 
 
 def test_one_failing_index_does_not_stop_the_others(db_path, monkeypatch):
@@ -34,7 +35,7 @@ def test_one_failing_index_does_not_stop_the_others(db_path, monkeypatch):
 
     assert not result.ok
     assert result.failed == {"pdf_pages_words": "malformed"}
-    assert len(result.rebuilt) == 7
+    assert len(result.rebuilt) == len(Document.SEARCH_INDEXES) - 1
 
 
 def test_refuses_while_an_index_run_is_active(db_path, monkeypatch):

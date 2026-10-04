@@ -17,6 +17,7 @@ from vethuq_cli.filetypes import app as types_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.logs import LogsCommand
+from vethuq_cli.ocr import app as ocr_app
 from vethuq_cli.search import SearchHelp
 from vethuq_cli.search import search as search_command
 from vethuq_cli.search_engines import app as search_engines_app
@@ -35,6 +36,7 @@ app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")
 app.add_typer(types_app, name="file-types")
 app.add_typer(search_engines_app, name="search-engines")
+app.add_typer(ocr_app, name="ocr")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 

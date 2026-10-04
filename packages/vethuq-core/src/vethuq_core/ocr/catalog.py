@@ -36,6 +36,10 @@ class OcrComponentInfo:
     # The language's name in its own script, for the UI and CLI (not the installer, whose
     # script files are not Unicode-safe); empty when it has none worth showing.
     native_label: str = ""
+    # The OCR models the component needs downloaded, by name. An engine lists the ones every
+    # language shares (detection, orientation); a language lists its own per engine id.
+    models: tuple[str, ...] = ()
+    engine_models: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @staticmethod
     def from_manifest(data: dict[str, Any]) -> OcrComponentInfo:
@@ -49,7 +53,20 @@ class OcrComponentInfo:
             script=str(data.get("script", "")),
             paddle_lang=str(data.get("paddle_lang", "")),
             native_label=str(data.get("native_label", "")),
+            models=tuple(data.get("models", ()))
+            if isinstance(data.get("models", ()), list)
+            else (),
+            engine_models=tuple(
+                (str(engine), tuple(names))
+                for engine, names in (
+                    data["models"].items() if isinstance(data.get("models"), dict) else ()
+                )
+            ),
         )
+
+    def models_for(self, engine_id: str) -> tuple[str, ...]:
+        """The models this language needs under OCR engine `engine_id` (empty if none listed)."""
+        return next((names for engine, names in self.engine_models if engine == engine_id), ())
 
     @property
     def display_label(self) -> str:

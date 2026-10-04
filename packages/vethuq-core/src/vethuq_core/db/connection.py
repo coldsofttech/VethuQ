@@ -25,7 +25,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 31
+    SCHEMA_VERSION = 32
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS sources (
     added_at TEXT NOT NULL,
     last_scanned_at TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
-    removed_at TEXT
+    removed_at TEXT,
+    languages TEXT
 );
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -89,7 +90,8 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     image_width INTEGER,
     image_height INTEGER,
     ocr_phase INTEGER NOT NULL DEFAULT 1,
-    ocr_angles TEXT NOT NULL DEFAULT '0'
+    ocr_angles TEXT NOT NULL DEFAULT '0',
+    ocr_langs TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS image_pages (
@@ -105,7 +107,26 @@ CREATE TABLE IF NOT EXISTS image_pages (
     image_width INTEGER,
     image_height INTEGER,
     ocr_phase INTEGER NOT NULL DEFAULT 1,
-    ocr_angles TEXT NOT NULL DEFAULT '0'
+    ocr_angles TEXT NOT NULL DEFAULT '0',
+    ocr_langs TEXT NOT NULL DEFAULT ''
+);
+
+-- The OCR passes a file gets, one row per (file, language), in the order they run: the
+-- language the pass reads, whether it was chosen by default, by detection or by the user, and
+-- how the pass went. `document_id` is the `document_index` row that carries the pages, like
+-- `pdf_pages.document_id`.
+CREATE TABLE IF NOT EXISTS document_languages (
+    document_id INTEGER NOT NULL REFERENCES document_index(id) ON DELETE CASCADE,
+    language TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'done', 'error', 'skipped')),
+    source TEXT NOT NULL DEFAULT 'default' CHECK (source IN ('default', 'auto', 'manual')),
+    confidence REAL,
+    error_message TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    PRIMARY KEY (document_id, language)
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -430,6 +451,14 @@ END;
                 # backfilled the (then still empty) indexes - idempotent.
                 conn.executescript(Db._SCHEMA)
             conn.execute("UPDATE schema_version SET version = ?", (Db.SCHEMA_VERSION,))
+        # The word indexes for scripts whose marks are part of the word: created here, after
+        # the tables and migrations, because whether they can exist depends on this SQLite.
+        if not Document.ensure_complex_word_indexes(conn):
+            _logger.warning(
+                "This SQLite (%s) cannot build the word index Telugu full-text search needs; "
+                "full-text and proximity search will not find Telugu words",
+                sqlite3.sqlite_version,
+            )
         # Created after the table (and any migration adding these columns to it)
         # rather than inline in `_SCHEMA`, since that script runs before
         # migrations and would otherwise fail against a pre-migration table.

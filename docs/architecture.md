@@ -320,6 +320,61 @@ Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected
 by name or chained in front of another as a fallback. Callers are unchanged.
 
+### Languages and scripts
+
+`vethuq_core.languages` says what a piece of text *is*, so OCR, normalizers and search never name a
+language themselves:
+
+- `Scripts` (no dependencies; the database layer imports it) lists the Unicode ranges of each
+  writing system and whether Unicode `full` normalization may strip its combining marks
+  (`Script.strips_marks`: Latin yes - an accent is not part of the letter; Telugu no - its vowel
+  signs and virama are part of the syllable). `Scripts.contains/present/dominant` find the scripts
+  in a text.
+- `Languages` (loaded lazily, since it reads the OCR catalog) lists the enabled languages and which
+  of them a text calls for.
+
+Languages are manifests (`ocr/languages/manifests/<id>.json`: `script`, `paddle_lang`,
+`native_label`, the `models` they need) like the OCR engines and search engines, and `sync_extras.py`
+turns them into the `lang-<id>` extras and the installer's catalog. English is the default and always
+enabled; any other language is a marker package (`vethuq-lang-te`) and counts as installed when its
+module imports. It is *enabled* when it is also in the installer's selection (`languages.json`,
+`{"enabled": [...]}`; no file means every installed language).
+
+Schema v32 adds the language bookkeeping, none of which changes how existing (English) pages are
+stored or searched:
+
+| Column / table | Purpose |
+| --- | --- |
+| `sources.languages` | Comma-separated language ids a source is read in; `NULL` means use the setting. |
+| `pdf_pages.ocr_langs`, `image_pages.ocr_langs` | Languages whose passes contributed to a page's text; empty (every page written before v32) means just the one in its `language` column. |
+| `document_languages` | One row per (file, language) OCR pass, in the order they run: `position`, `status` (`pending`/`processing`/`done`/`error`/`skipped`), `source` (`default`/`auto`/`manual`), `confidence`, timestamps. Keyed by the `document_index` row that carries the pages; removed with it. |
+| `pdf_pages_words_complex`, `image_pages_words_complex` | A second word index for scripts whose marks are part of the word. |
+
+**The mark-aware word index.** SQLite's `unicode61` tokenizer treats combining marks as separators, so
+the plain word indexes split a Telugu word at every vowel sign (`అమ్మ` becomes `అమ` and `మ`). Rather
+than change that tokenizer - which would change how every English page is indexed - the
+`*_words_complex` indexes use `unicode61 ... categories 'L* N* Co Mn Mc'` (no stemming) and hold only
+the pages that contain a character of such a script (`Scripts.keeps_marks_glob`, tested with `GLOB` in
+the triggers). English pages never enter them and the plain indexes are untouched. They are
+external-content tables like the others, kept in sync by triggers; the UPDATE trigger removes the old
+entry and adds the new one in a single statement list so the order is fixed. FTS5's own `rebuild`
+would index every page, so `Document.rebuild_search_index` empties them (`delete-all`) and refills them
+from the matching pages. They need an SQLite new enough for the tokenizer's `categories` option
+(probed once, `Document.complex_words_supported`); without it they are not created, a warning is
+logged, and rebuilding them is a no-op.
+
+### OCR models
+
+`vethuq_core.ocr.models.OcrModels` finds, downloads and removes the OCR models without importing
+PaddleX (the desktop UI and CLI do not ship it). Each model is a folder under
+`<cache>/official_models/<name>` in PaddleX's own cache. Which models exist comes from the manifests:
+the engine's (`ocr/engines/manifests/paddle.json`) lists the ones every language shares - detection
+and page/line orientation - and each language's lists its recognizer. Downloading runs in a child
+process (`ocr/models/fetch.py`; the worker executable in the desktop build, via its `--fetch-models`
+flag) that is the only code importing PaddleX and prints one JSON status line per model. Clearing a
+language keeps the shared models unless asked; `clean` removes only models VethuQ's manifests name,
+never other folders in the shared cache. See `vethuq ocr models` in [CLI.md](CLI.md).
+
 ### Background indexing: worker threads
 
 `vethuq_core.index.runner.IndexRunner._run_worker` (the detached process `vethuq

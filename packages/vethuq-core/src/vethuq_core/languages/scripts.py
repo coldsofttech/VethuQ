@@ -88,6 +88,22 @@ class Scripts:
         return max(counts, key=lambda script_id: counts[script_id])
 
     @staticmethod
+    def keeps_marks_glob() -> str:
+        """An SQLite `GLOB` pattern matching text with a character of any script whose combining
+        marks are part of the word (see `Script.strips_marks`), e.g. `*[\u0c00-\u0c7f]*`.
+
+        The database uses it to tell the pages that need the mark-aware word index from the rest,
+        which never touch it.
+        """
+        body = "".join(
+            f"{chr(first)}-{chr(last)}"
+            for script in Scripts.REGISTRY.values()
+            if not script.strips_marks
+            for first, last in script.ranges
+        )
+        return f"*[{body}]*"
+
+    @staticmethod
     def strips_marks(char: str) -> bool:
         """Whether a combining mark following `char` may be folded away by Unicode `full`.
 

@@ -608,6 +608,24 @@ class Migration:
         if from_version < 30:
             Migration._track_metrics_per_extension(conn)
 
+        if from_version < 32:
+            # A source can name the OCR languages it is read in (`languages`, a comma-separated
+            # list of language ids; NULL means "use the setting"), and a page records which
+            # languages' passes its text came from (`ocr_langs`; empty means just the one in
+            # its `language` column, which is how every page written before now reads). Both
+            # are added only if missing. No backfill: updating every page would fire the text
+            # indexes' triggers for nothing. The `document_languages` table and the word
+            # indexes for scripts with combining marks are created by `Db`.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
+            if "languages" not in columns:
+                conn.execute("ALTER TABLE sources ADD COLUMN languages TEXT")
+            for table in Document.PAGE_TABLES:
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if "ocr_langs" not in columns:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN ocr_langs TEXT NOT NULL DEFAULT ''"
+                    )
+
     @staticmethod
     def _track_metrics_per_extension(conn: sqlite3.Connection) -> None:
         """Rebuild `processing_metrics` and `confidence_metrics` keyed by file extension.

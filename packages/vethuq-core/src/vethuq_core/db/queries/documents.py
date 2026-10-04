@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable
 
+from vethuq_core.languages.scripts import Scripts
 from vethuq_core.search.normalizers import Leet, Normalizers
 
 
@@ -16,6 +17,16 @@ class Document:
         "image_pages_trigram",
         "image_pages_words",
     )
+    # The word indexes for scripts whose combining marks are part of the word (Telugu vowel signs
+    # and virama): `unicode61` splits a word at each such mark unless told they are word
+    # characters, so these use a tokenizer that does, and hold only the pages that have one of
+    # those scripts - the plain word indexes above never see a difference. They need an SQLite
+    # new enough for the tokenizer's `categories` option; without it they are not created.
+    COMPLEX_SEARCH_INDEXES = (
+        "pdf_pages_words_complex",
+        "image_pages_words_complex",
+    )
+    COMPLEX_TOKENIZER = "unicode61 remove_diacritics 0 categories 'L* N* Co Mn Mc'"
     # The indexes over text derived from it and recorded with it (see `DERIVED_TEXT`).
     DERIVED_SEARCH_INDEXES = (
         "pdf_pages_noise",
@@ -23,7 +34,7 @@ class Document:
         "pdf_pages_norm",
         "image_pages_norm",
     )
-    SEARCH_INDEXES = (*TEXT_SEARCH_INDEXES, *DERIVED_SEARCH_INDEXES)
+    SEARCH_INDEXES = (*TEXT_SEARCH_INDEXES, *COMPLEX_SEARCH_INDEXES, *DERIVED_SEARCH_INDEXES)
 
     PAGE_TABLES = ("pdf_pages", "image_pages")
 
@@ -88,6 +99,90 @@ class Document:
                 )
         return "\n".join(statements) + "\n"
 
+    _complex_supported: bool | None = None
+
+    @staticmethod
+    def complex_words_supported(conn: sqlite3.Connection) -> bool:
+        """Whether this SQLite can build the mark-aware word index (a property of the library,
+        so it is probed once per process)."""
+        if Document._complex_supported is None:
+            try:
+                conn.execute(
+                    "CREATE VIRTUAL TABLE temp.vethuq_tokenizer_probe USING fts5("
+                    f't, tokenize="{Document.COMPLEX_TOKENIZER}")'
+                )
+                conn.execute("DROP TABLE temp.vethuq_tokenizer_probe")
+                Document._complex_supported = True
+            except sqlite3.OperationalError:
+                Document._complex_supported = False
+        return Document._complex_supported
+
+    @staticmethod
+    def complex_words_triggers(table: str) -> dict[str, str]:
+        """The statements keeping `<table>_words_complex` in step with `<table>`, by trigger name.
+
+        Only pages with a character of a mark-keeping script are indexed. The UPDATE trigger
+        removes the old text's entry (if it was indexed) and then adds the new text's (if it
+        belongs), in one trigger so the order is fixed; separate UPDATE triggers would fire in
+        no defined order and could corrupt an external-content index.
+        """
+        index = f"{table}_words_complex"
+        glob = Scripts.keeps_marks_glob().replace("'", "''")
+        return {
+            f"{index}_ai": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_ai AFTER INSERT ON {table} BEGIN "
+                f"INSERT INTO {index}(rowid, ocr_text) "
+                f"SELECT new.id, new.ocr_text WHERE new.ocr_text GLOB '{glob}'; END"
+            ),
+            f"{index}_ad": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_ad AFTER DELETE ON {table} BEGIN "
+                f"INSERT INTO {index}({index}, rowid, ocr_text) "
+                f"SELECT 'delete', old.id, old.ocr_text WHERE old.ocr_text GLOB '{glob}'; END"
+            ),
+            f"{index}_au": (
+                f"CREATE TRIGGER IF NOT EXISTS {index}_au "
+                f"AFTER UPDATE OF ocr_text ON {table} BEGIN "
+                f"INSERT INTO {index}({index}, rowid, ocr_text) "
+                f"SELECT 'delete', old.id, old.ocr_text WHERE old.ocr_text GLOB '{glob}'; "
+                f"INSERT INTO {index}(rowid, ocr_text) "
+                f"SELECT new.id, new.ocr_text WHERE new.ocr_text GLOB '{glob}'; END"
+            ),
+        }
+
+    @staticmethod
+    def has_search_index(conn: sqlite3.Connection, index: str) -> bool:
+        return (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (index,)
+            ).fetchone()
+            is not None
+        )
+
+    @staticmethod
+    def ensure_complex_word_indexes(conn: sqlite3.Connection) -> bool:
+        """Create the mark-aware word indexes and their triggers where missing, filling a new
+        index from the pages that already belong in it. Returns whether they are available
+        (False when this SQLite is too old for the tokenizer; nothing is created then)."""
+        if not Document.complex_words_supported(conn):
+            return False
+        glob = Scripts.keeps_marks_glob()
+        for table in Document.PAGE_TABLES:
+            index = f"{table}_words_complex"
+            created = not Document.has_search_index(conn, index)
+            if created:
+                conn.execute(
+                    f"CREATE VIRTUAL TABLE {index} USING fts5(ocr_text, content='{table}', "
+                    f"content_rowid='id', tokenize=\"{Document.COMPLEX_TOKENIZER}\")"
+                )
+                conn.execute(
+                    f"INSERT INTO {index}(rowid, ocr_text) "
+                    f"SELECT id, ocr_text FROM {table} WHERE ocr_text GLOB ?",
+                    (glob,),
+                )
+            for statement in Document.complex_words_triggers(table).values():
+                conn.execute(statement)
+        return True
+
     @staticmethod
     def derived_text(text: str) -> tuple[str, str]:
         """`(noise_text, norm_text)` for a page's `text`."""
@@ -129,6 +224,8 @@ class Document:
         """
         if index not in Document.SEARCH_INDEXES:
             raise ValueError(f"Unknown search index: {index}")
+        if index in Document.COMPLEX_SEARCH_INDEXES:
+            return Document._rebuild_complex_index(conn, index)
         table, kind = index.rsplit("_", 1)
         if index in Document.DERIVED_SEARCH_INDEXES:
             # Updating the text would fire the index's own UPDATE trigger, which 'delete's
@@ -142,6 +239,27 @@ class Document:
                 conn.execute(Document.derived_triggers(table, kind)[update])
         conn.execute(f"INSERT INTO {index}({index}) VALUES ('rebuild')")
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+    @staticmethod
+    def _rebuild_complex_index(conn: sqlite3.Connection, index: str) -> int:
+        """Re-read the pages that belong in the mark-aware word index `index`; returns how many.
+
+        FTS5's own 'rebuild' would index every page of the content table, so the index is
+        emptied and refilled from the matching pages instead. An index that does not exist
+        (an SQLite without the tokenizer) has nothing to rebuild.
+        """
+        if not Document.ensure_complex_word_indexes(conn):
+            return 0
+        table = index.removesuffix("_words_complex")
+        conn.execute(f"INSERT INTO {index}({index}) VALUES ('delete-all')")
+        conn.execute(
+            f"INSERT INTO {index}(rowid, ocr_text) "
+            f"SELECT id, ocr_text FROM {table} WHERE ocr_text GLOB ?",
+            (Scripts.keeps_marks_glob(),),
+        )
+        return conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE ocr_text GLOB ?", (Scripts.keeps_marks_glob(),)
+        ).fetchone()[0]
 
     @staticmethod
     def get_id_for_index_row(

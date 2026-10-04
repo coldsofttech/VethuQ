@@ -6,5 +6,6 @@
   "modules": [],
   "script": "latin",
   "paddle_lang": "en",
+  "models": { "paddle": ["en_PP-OCRv5_mobile_rec"] },
   "default": true
 }

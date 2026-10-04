@@ -1032,6 +1032,12 @@ class IndexRunner:
 
     @staticmethod
     def main() -> None:
+        if len(sys.argv) > 1 and sys.argv[1] == "--fetch-models":
+            # The desktop build's only OCR-capable executable is this one, so the
+            # `vethuq ocr models download` command runs the download here.
+            from vethuq_core.ocr.models.fetch import ModelFetch
+
+            sys.exit(ModelFetch.main(sys.argv[2:]))
         db_path = Path(sys.argv[1])
         target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"

@@ -7,5 +7,6 @@
   "modules": ["vethuq_lang_te"],
   "script": "telugu",
   "paddle_lang": "te",
+  "models": { "paddle": ["te_PP-OCRv5_mobile_rec"] },
   "default": false
 }

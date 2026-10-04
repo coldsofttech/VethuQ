@@ -942,6 +942,40 @@ vethuq file-types list
 vethuq file-types list --all
 ```
 
+## `ocr models`
+
+OCR needs a few model files per language: text detection and page/line orientation, which every language shares, and a recognizer for each language (`en_PP-OCRv5_mobile_rec`, `te_PP-OCRv5_mobile_rec`, ...). OCR downloads a missing model the first time it needs it; these commands let you do that ahead of time (before going offline, say), inspect what is on disk, and remove what you no longer need. The models live in PaddleX's own cache - `$PADDLE_PDX_CACHE_HOME`, or `.paddlex` in your home folder, under `official_models` - so a model downloaded by either is found by both.
+
+`--lang` takes a language id (`en`, `te`); repeat it, comma-separate it, or pass `all` for every enabled language. A language that is not installed or enabled is refused with the command to install it (`pip install vethuq[lang-te]`, or re-run the installer).
+
+### `status [--lang LANG]`
+
+Lists the models of every enabled language (or the ones named): which languages use each, its size, and whether it is downloaded, and where the folder is.
+
+### `download [--lang LANG] [--force]`
+
+Downloads the models that are missing for every enabled language (or the ones named). `--force` downloads them again even if they are there. Needs the internet. A model that fails is reported with its reason and the rest still download; the command exits 1 if any failed.
+
+### `clear --lang LANG [--include-shared] [--force]`
+
+Deletes a language's recognizer. Asks first unless `--force`. The language is required, so nothing is deleted by accident. The detection and orientation models stay, because the other languages still read with them; add `--include-shared` to remove those too. A deleted model is downloaded again the next time it is needed.
+
+### `reset --lang LANG [--force]`
+
+Deletes a language's recognizer and downloads it again, to repair a damaged download. Needs the internet; if the download fails the model stays deleted and is fetched again by the next OCR run or `download`.
+
+### `clean [--force]`
+
+Removes what nothing uses: models of languages that are not enabled, and empty leftover folders from interrupted downloads. Models of enabled languages stay. Folders in the cache that are not VethuQ models belong to another program using PaddleX and are never touched; they are listed as left alone.
+
+```bash
+vethuq ocr models status
+vethuq ocr models download --lang te
+vethuq ocr models reset --lang te
+vethuq ocr models clear --lang te --include-shared
+vethuq ocr models clean
+```
+
 ## `search-engines`
 
 Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
