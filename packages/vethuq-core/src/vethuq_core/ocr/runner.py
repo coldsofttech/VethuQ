@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.deepening import Deepening
+from vethuq_core.ocr.passes import LanguagePasses
 from vethuq_core.ocr.pending import Pending
 from vethuq_core.ocr.quick import Quick
 from vethuq_core.ocr.scheduler import Scheduler
@@ -47,6 +48,7 @@ class Ocr:
         on_files_queued: Callable[[int], None] | None = None,
         on_unit_start: Callable[[str, int], None] | None = None,
         on_unit_done: Callable[[str], None] | None = None,
+        languages: str | None = None,
     ) -> list[str]:
         """Index everything under the sources `resolve_sources()` returns, phase by phase.
 
@@ -69,6 +71,7 @@ class Ocr:
         """
         attempted: set[str] = set()
         skip_units: set[tuple[str, int]] = set()
+        skip_languages: set[tuple[int, str]] = set()
         processed: list[str] = []
         first = True
 
@@ -90,6 +93,7 @@ class Ocr:
                 should_stop=should_stop,
                 exclude_paths=attempted,
                 on_pending=None if first else on_files_queued,
+                languages=languages,
             )
             first = False
             attempted.update(done)
@@ -99,6 +103,18 @@ class Ocr:
 
             if should_stop is not None and should_stop():
                 break
+            # Every file has had its first language; the others that were queued for a file
+            # (English first, then the rest) are read before any rotated-text work starts.
+            language_passes = LanguagePasses.run_batch(
+                storage,
+                sources,
+                should_stop=should_stop,
+                has_quick_work=quick_work_waiting,
+                skip_units=skip_languages,
+            )
+            if language_passes:
+                continue
+
             passes = Deepening.run_batch(
                 storage,
                 sources,

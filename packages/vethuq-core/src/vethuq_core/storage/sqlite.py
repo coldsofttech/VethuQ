@@ -37,6 +37,9 @@ class _SourceStoreMixin:
     def insert_source(self, path: str, source_type: str, added_at: str) -> int:
         return Source.insert(self._conn, path, source_type, added_at)
 
+    def set_source_languages(self, source_id: int, languages: str | None) -> None:
+        return Source.set_languages(self._conn, source_id, languages)
+
     def list_source_rows(self, include_inactive: bool) -> list[sqlite3.Row]:
         return Source.list_rows(self._conn, include_inactive)
 
@@ -573,6 +576,49 @@ class _OcrStoreMixin:
 
     def complete_ocr_document_phase(self, document_id: int, phase: int, completed_at: str) -> None:
         return Ocr.Phase.complete_document(self._conn, document_id, phase, completed_at)
+
+    def replace_document_languages(
+        self, document_id: int, rows: Sequence[tuple[str, int, str, str, float | None]]
+    ) -> None:
+        return Ocr.Language.replace(self._conn, document_id, rows)
+
+    def get_document_languages(self, document_id: int) -> list[sqlite3.Row]:
+        return Ocr.Language.get(self._conn, document_id)
+
+    def update_document_language(
+        self,
+        document_id: int,
+        language: str,
+        status: str,
+        confidence: float | None,
+        error_message: str | None,
+        started_at: str | None,
+        completed_at: str | None,
+    ) -> None:
+        return Ocr.Language.update(
+            self._conn,
+            document_id,
+            language,
+            status,
+            confidence,
+            error_message,
+            started_at,
+            completed_at,
+        )
+
+    def list_pending_language_passes(self, source_ids: Sequence[int]) -> list[sqlite3.Row]:
+        return Ocr.Language.list_pending(self._conn, source_ids)
+
+    def list_ocr_document_pages(self, table: str, document_id: int) -> list[sqlite3.Row]:
+        return Ocr.Language.list_pages(self._conn, table, document_id)
+
+    def update_ocr_page_languages(
+        self, table: str, page_id: int, language: str, ocr_langs: str
+    ) -> None:
+        return Ocr.Language.update_page_languages(self._conn, table, page_id, language, ocr_langs)
+
+    def reset_processing_language_passes(self) -> int:
+        return Ocr.Language.reset_processing(self._conn)
 
 
 class _IntegrityStoreMixin:

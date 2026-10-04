@@ -37,10 +37,11 @@ class PageOcr:
             language=result.language,
             image_width=result.image_width,
             image_height=result.image_height,
+            lines=result.lines,
         )
 
     @staticmethod
-    def ocr_page(storage: Storage, page: ReadPage) -> PageResult:
+    def ocr_page(storage: Storage, page: ReadPage, language: str | None = None) -> PageResult:
         """Classify a page as native, scanned, or mixed and extract accordingly.
 
         Native text is taken directly from the page's text layer with no OCR at all.
@@ -54,7 +55,7 @@ class PageOcr:
             return PageResult(text=native_text.strip(), confidence=1.0, source="native")
 
         if PageOcr.is_native_text(native_text) and image_regions:
-            engine = Engines.get(storage)
+            engine = Engines.get(storage, language)
             regions = [engine.recognize(page.render(region)) for region in image_regions]
             combined_text = "\n".join([native_text.strip(), *(region.text for region in regions)])
             combined_confidence = sum(region.confidence for region in regions) / len(regions)
@@ -69,10 +70,15 @@ class PageOcr:
                 image_height=last.image_height,
             )
 
-        return PageOcr.page_result(Engines.get(storage).recognize(page.render(None)))
+        return PageOcr.page_result(Engines.get(storage, language).recognize(page.render(None)))
 
     @staticmethod
-    def ocr_document(storage: Storage, reader: DocumentReader, file_path: Path) -> list[PageResult]:
+    def ocr_document(
+        storage: Storage,
+        reader: DocumentReader,
+        file_path: Path,
+        language: str | None = None,
+    ) -> list[PageResult]:
         """Extract every page of `file_path`, logging what failed and where.
 
         A failure while the reader produces a page (opening the file, its native
@@ -101,13 +107,13 @@ class PageOcr:
                 raise
             page_number += 1
             try:
-                results.append(PageOcr.ocr_page(storage, page))
+                results.append(PageOcr.ocr_page(storage, page, language))
             except Exception as exc:
                 _logger.error(
                     "OCR failed: file=%s page=%d engine=%s error=%s: %s",
                     file_path,
                     page_number,
-                    PageOcr.engine_name(storage),
+                    PageOcr.engine_name(storage, language),
                     type(exc).__name__,
                     exc,
                     exc_info=True,
@@ -115,9 +121,9 @@ class PageOcr:
                 raise
 
     @staticmethod
-    def engine_name(storage: Storage) -> str:
+    def engine_name(storage: Storage, language: str | None = None) -> str:
         """The calling thread's OCR engine label for log lines - never raises."""
         try:
-            return Engines.get(storage).name
+            return Engines.get(storage, language).name
         except Exception:  # noqa: BLE001 - only used to enrich a log line
             return "unknown"

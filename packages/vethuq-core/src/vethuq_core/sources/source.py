@@ -52,6 +52,9 @@ class Source:
     last_scanned_at: str | None
     is_active: bool
     removed_at: str | None
+    # Comma-separated language ids this source is read in (`en,te`, or `auto`); None means the
+    # global `ocr_languages` setting applies.
+    languages: str | None = None
 
     @classmethod
     def _from_row(cls, row: Row) -> Source:
@@ -64,10 +67,11 @@ class Source:
             last_scanned_at=row["last_scanned_at"],
             is_active=bool(row["is_active"]),
             removed_at=row["removed_at"],
+            languages=row["languages"] if "languages" in row.keys() else None,  # noqa: SIM118
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        data: dict[str, object] = {
             "id": self.id,
             "path": self.path,
             "type": self.source_type,
@@ -75,6 +79,9 @@ class Source:
             "added_at": self.added_at,
             "last_scanned_at": self.last_scanned_at,
         }
+        if self.languages:
+            data["languages"] = self.languages
+        return data
 
 
 @dataclass(frozen=True)
@@ -153,8 +160,37 @@ class Sources:
         return path_or_id
 
     @staticmethod
-    def add(storage: Storage, path: str | Path) -> Source:
+    def _languages_value(languages: str | Sequence[str] | None) -> str | None:
+        """The stored form of a language choice (`en,te`), validated; None for no choice."""
+        from vethuq_core.languages import LanguageSelection
+
+        ids = LanguageSelection.parse(languages)
+        return LanguageSelection.format(ids) if ids else None
+
+    @staticmethod
+    def set_languages(
+        storage: Storage, path_or_id: str | Path | int, languages: str | Sequence[str] | None
+    ) -> Source:
+        """Choose the OCR languages `path_or_id`'s files are read in (None: back to the setting).
+
+        Takes effect for files indexed from now on; already indexed files keep what they have
+        until re-indexed (`vethuq index reindex`). Raises `UnknownLanguageError` for an unknown
+        language id and `SourceNotFoundError` if no active source matches.
+        """
+        value = Sources._languages_value(languages)
+        source = Sources.get(storage, path_or_id)
+        storage.set_source_languages(source.id, value)
+        storage.commit()
+        return Sources.get(storage, source.id)
+
+    @staticmethod
+    def add(
+        storage: Storage, path: str | Path, languages: str | Sequence[str] | None = None
+    ) -> Source:
         """Register a file or folder as a source. Folders are indexed recursively.
+
+        `languages` names the OCR languages the source is read in (`"te"`, `"en,te"`, `"auto"`);
+        left out, the global `ocr_languages` setting applies.
 
         Re-adding a path that was previously removed reactivates that source
         (reset to 'pending') rather than failing.
@@ -162,6 +198,7 @@ class Sources:
         Raises SourcePathError if the path does not exist or is neither a file nor
         a folder, and SourceAlreadyExistsError if it is already an active source.
         """
+        language_value = Sources._languages_value(languages)
         resolved = Path(path).expanduser().resolve()
 
         if not resolved.exists():
@@ -180,12 +217,16 @@ class Sources:
             if existing["is_active"]:
                 raise SourceAlreadyExistsError(f"Path is already registered: {resolved}")
             storage.reactivate_source(existing["id"], source_type, added_at)
+            if language_value is not None:
+                storage.set_source_languages(existing["id"], language_value)
             storage.commit()
             row = storage.get_source_by_id(existing["id"])
             assert row is not None
             return Source._from_row(row)
 
         new_id = storage.insert_source(str(resolved), source_type, added_at)
+        if language_value is not None:
+            storage.set_source_languages(new_id, language_value)
         storage.commit()
 
         row = storage.get_source_by_id(new_id)

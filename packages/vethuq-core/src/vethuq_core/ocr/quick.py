@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,12 +16,15 @@ import psutil
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.errors import LanguageUnavailableError
+from vethuq_core.languages import UnknownLanguageError
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.content_gate import ContentGate
 from vethuq_core.ocr.document import Document
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
+from vethuq_core.ocr.plan import FirstPass, LanguagePlan, LanguageRow
 from vethuq_core.ocr.scheduler import Scheduler
 from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import (
@@ -56,6 +59,7 @@ class Quick:
         reader: DocumentReader,
         file_path: Path,
         db_lock: threading.Lock | None = None,
+        language: str | None = None,
     ) -> tuple[list[PageResult] | None, int, Exception | None]:
         """Retry OCR itself (no DB writes) up to the configured attempt count.
 
@@ -77,7 +81,10 @@ class Quick:
         while attempt < max_attempts and pages is None:
             attempt += 1
             try:
-                pages = PageOcr.ocr_document(storage, reader, file_path)
+                if language:
+                    pages = PageOcr.ocr_document(storage, reader, file_path, language)
+                else:
+                    pages = PageOcr.ocr_document(storage, reader, file_path)
             except UnreadableFileError as exc:
                 # Vanished, password-protected, or corrupted - the same on every
                 # attempt, so retrying would only repeat the failure.
@@ -110,6 +117,8 @@ class Quick:
         last_exc: Exception | None,
         peak_memory_mb: float,
         cpu_percent: float,
+        *,
+        language_rows: Sequence[LanguageRow] | None = None,
     ) -> bool:
         """Commit one document's processing result as a single atomic transaction.
 
@@ -146,6 +155,8 @@ class Quick:
                     Document.mark_error(storage, document_id, str(last_exc))
                     return False
                 Document.store_pages(storage, document_id, file_type, pages)
+                if language_rows is not None:
+                    storage.replace_document_languages(document_id, language_rows)
                 Document.mark_indexed(storage, document_id)
                 Metrics.update_processing(storage, document_id, file_type)
                 Metrics.update_confidence(storage, document_id, file_type)
@@ -167,6 +178,7 @@ class Quick:
         only_failed: bool = False,
         on_file_done: Callable[[str], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
+        languages: str | None = None,
     ) -> list[str]:
         """Run OCR over supported files under `source` and index the results.
 
@@ -258,7 +270,7 @@ class Quick:
 
             file_type = Readers.for_path(file_path).file_type
             succeeded = Quick.process_file(
-                storage, source, file_path, file_type, db_lock=threading.Lock()
+                storage, source, file_path, file_type, db_lock=threading.Lock(), languages=languages
             )
             if succeeded is None:
                 # Already claimed by another run, vanished, or still being written -
@@ -330,6 +342,7 @@ class Quick:
         file_type: str,
         *,
         db_lock: threading.Lock,
+        languages: str | None = None,
     ) -> bool | None:
         """Index one file, retrying from the claim if it changes while being read.
 
@@ -346,7 +359,7 @@ class Quick:
         result: bool | None = False
         for _ in range(max_attempts):
             result, changed = Quick.process_file_once(
-                storage, source, file_path, file_type, db_lock=db_lock
+                storage, source, file_path, file_type, db_lock=db_lock, languages=languages
             )
             if not changed:
                 return result
@@ -360,6 +373,7 @@ class Quick:
         file_type: str,
         *,
         db_lock: threading.Lock,
+        languages: str | None = None,
     ) -> tuple[bool | None, bool]:
         """Index one file: upsert its row, dedupe by checksum, and OCR it if new content.
 
@@ -413,10 +427,30 @@ class Quick:
         process.cpu_percent(interval=None)  # prime; the next call reports usage since now
         mem_before = process.memory_info().rss
 
+        # The languages the file may be read in: `languages` (a flag on this run), else the
+        # source's own, else the setting. One that isn't installed fails the file clearly
+        # instead of reading it in the wrong language.
+        candidates = None
+        language_error: Exception | None = None
+        try:
+            with db_lock:
+                candidates = LanguagePlan.candidates(storage, source, languages)
+        except (LanguageUnavailableError, UnknownLanguageError) as exc:
+            language_error = exc
+
         reader = Readers.for_path(file_path)
-        if FsPath.is_within(file_path, source.path):
+        pages: list[PageResult] | None
+        last_exc: Exception | None
+        if language_error is not None:
+            pages, attempts_used, last_exc = None, 1, language_error
+        elif FsPath.is_within(file_path, source.path):
+            assert candidates is not None
+            # Only a language other than the default is passed on, so English reads go exactly
+            # the way they did before other languages existed.
+            language = Quick.engine_language(candidates.first)
+            extra = {"language": language} if language else {}
             pages, attempts_used, last_exc = Quick.run_with_retries(
-                storage, reader, file_path, db_lock=db_lock
+                storage, reader, file_path, db_lock=db_lock, **extra
             )
         else:
             _logger.warning("File resolves outside its source, skipped: %s", file_path)
@@ -437,6 +471,12 @@ class Quick:
                 )
                 pages, last_exc = None, Quick.FileChangedError(file_path)
 
+        # What the first language's read means for the other candidates (see `LanguagePlan`).
+        first_pass: FirstPass | None = None
+        if pages is not None and candidates is not None:
+            first_pass = LanguagePlan.after_first_pass(candidates, pages)
+            pages = first_pass.pages
+
         with db_lock:
             peak_memory_mb = max(mem_before, process.memory_info().rss) / (1024 * 1024)
             cpu_percent = process.cpu_percent(interval=None)
@@ -449,6 +489,7 @@ class Quick:
                 last_exc,
                 peak_memory_mb,
                 cpu_percent,
+                language_rows=first_pass.rows if first_pass is not None else None,
             )
 
         if succeeded:
@@ -473,6 +514,14 @@ class Quick:
                 last_exc,
             )
         return succeeded, changed
+
+    @staticmethod
+    def engine_language(language_id: str) -> str | None:
+        """`language_id` as `PageOcr` takes it: None for the default language, so reading a file
+        in English goes exactly the way it did before other languages existed."""
+        from vethuq_core.languages import Languages
+
+        return None if language_id == Languages.default().id else language_id
 
     @staticmethod
     def run_auto_elastic(
@@ -584,6 +633,7 @@ class Quick:
         should_stop: Callable[[], bool] | None = None,
         exclude_paths: Collection[str] = (),
         on_pending: Callable[[int], None] | None = None,
+        languages: str | None = None,
     ) -> list[str]:
         """Like `Quick.run`, but across every source in `sources` at once.
 
@@ -697,7 +747,12 @@ class Quick:
                 gate.enter(index, item.path)
             try:
                 succeeded = Quick.process_file(
-                    storage, item.source, item.path, item.file_type, db_lock=db_lock
+                    storage,
+                    item.source,
+                    item.path,
+                    item.file_type,
+                    db_lock=db_lock,
+                    languages=languages,
                 )
             finally:
                 if gate is not None:

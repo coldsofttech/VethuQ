@@ -27,9 +27,11 @@ _logger = Logs.get_logger("index")
 
 
 class PaddleOcrEngine:
-    """English-language PaddleOCR engine."""
+    """PaddleOCR engine for one language (English unless built for another)."""
 
     LANGUAGE = "en"
+    # What a page records as its language; the model code PaddleOCR is built with.
+    _language = LANGUAGE
 
     NOT_INSTALLED_MESSAGE = "The OCR engine (PaddleOCR) isn't installed."
     NOT_INSTALLED_HINT = "Reinstall VethuQ to restore it."
@@ -50,7 +52,8 @@ class PaddleOcrEngine:
                 PaddleOcrEngine.NOT_INSTALLED_MESSAGE, PaddleOcrEngine.NOT_INSTALLED_HINT
             )
 
-    def __init__(self, use_gpu: bool = False) -> None:
+    def __init__(self, use_gpu: bool = False, language: str = LANGUAGE) -> None:
+        self._language = language
         try:
             from paddleocr import PaddleOCR
         except ImportError as exc:
@@ -61,7 +64,7 @@ class PaddleOcrEngine:
 
         try:
             self._ocr = PaddleOCR(
-                lang=PaddleOcrEngine.LANGUAGE,
+                lang=language,
                 device=PaddleOcrEngine.resolve_device(use_gpu),
                 # Corrects whole-page rotation (0/90/180/270) and per-line rotated
                 # text so scanned/photographed pages that aren't perfectly upright
@@ -109,7 +112,7 @@ class PaddleOcrEngine:
 
     @property
     def language(self) -> str:
-        return PaddleOcrEngine.LANGUAGE
+        return self._language
 
     def recognize(self, image: str | np.ndarray) -> OcrResult:
         import cv2
@@ -128,7 +131,7 @@ class PaddleOcrEngine:
             text="\n".join(texts),
             confidence=confidence,
             engine=self._name,
-            language=PaddleOcrEngine.LANGUAGE,
+            language=self._language,
             image_width=width,
             image_height=height,
             lines=tuple((text, float(score)) for text, score in zip(texts, scores, strict=False)),

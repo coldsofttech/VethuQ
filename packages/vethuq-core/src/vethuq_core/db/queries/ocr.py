@@ -218,3 +218,114 @@ class Ocr:
                 "WHERE document_id = ? AND phase = ?",
                 (completed_at, completed_at, document_id, phase),
             )
+
+    class Language:
+        """The per-file OCR language passes (`document_languages`) and the page text they read."""
+
+        _PAGES_SQL = {
+            "pdf_pages": (
+                "SELECT id, page_number, ocr_text, confidence, source, language, ocr_langs "
+                "FROM pdf_pages WHERE document_id = ? ORDER BY page_number"
+            ),
+            "image_pages": (
+                "SELECT id, 1 AS page_number, ocr_text, confidence, 'ocr' AS source, language, "
+                "ocr_langs FROM image_pages WHERE document_id = ?"
+            ),
+        }
+        _PAGE_LANGUAGES_SQL = {
+            "pdf_pages": "UPDATE pdf_pages SET language = ?, ocr_langs = ? WHERE id = ?",
+            "image_pages": "UPDATE image_pages SET language = ?, ocr_langs = ? WHERE id = ?",
+        }
+
+        @staticmethod
+        def replace(
+            conn: sqlite3.Connection,
+            document_id: int,
+            rows: Sequence[tuple[str, int, str, str, float | None]],
+        ) -> None:
+            """Set a file's passes to `rows`: `(language, position, status, source, confidence)`."""
+            conn.execute("DELETE FROM document_languages WHERE document_id = ?", (document_id,))
+            conn.executemany(
+                "INSERT INTO document_languages "
+                "(document_id, language, position, status, source, confidence) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [(document_id, *row) for row in rows],
+            )
+
+        @staticmethod
+        def get(conn: sqlite3.Connection, document_id: int) -> list[sqlite3.Row]:
+            return conn.execute(
+                "SELECT language, position, status, source, confidence, error_message, "
+                "started_at, completed_at FROM document_languages "
+                "WHERE document_id = ? ORDER BY position",
+                (document_id,),
+            ).fetchall()
+
+        @staticmethod
+        def update(
+            conn: sqlite3.Connection,
+            document_id: int,
+            language: str,
+            status: str,
+            confidence: float | None,
+            error_message: str | None,
+            started_at: str | None,
+            completed_at: str | None,
+        ) -> None:
+            conn.execute(
+                "UPDATE document_languages SET status = ?, confidence = COALESCE(?, confidence), "
+                "error_message = ?, started_at = COALESCE(?, started_at), "
+                "completed_at = ? WHERE document_id = ? AND language = ?",
+                (
+                    status,
+                    confidence,
+                    error_message,
+                    started_at,
+                    completed_at,
+                    document_id,
+                    language,
+                ),
+            )
+
+        @staticmethod
+        def list_pending(conn: sqlite3.Connection, source_ids: Sequence[int]) -> list[sqlite3.Row]:
+            """The next pending pass of every indexed file under `source_ids`, in queue order
+            (earlier positions first, so every file gets its second language before any gets its
+            third); a file's pass waits for the ones before it."""
+            if not source_ids:
+                return []
+            return conn.execute(
+                "SELECT dl.document_id, dl.language, dl.position, dl.source AS choice_source, "
+                "d.file_path, d.file_type, d.source_id, d.document_id AS logical_document_id "
+                "FROM document_languages dl JOIN document_index d ON d.id = dl.document_id "
+                "WHERE dl.status = 'pending' AND d.status = 'indexed' AND d.reindex_pending = 0 "
+                f"AND d.source_id IN ({Ocr._marks(source_ids)}) "
+                "AND NOT EXISTS (SELECT 1 FROM document_languages e "
+                "WHERE e.document_id = dl.document_id AND e.position < dl.position "
+                "AND e.status IN ('pending', 'processing')) "
+                "ORDER BY dl.position, d.id",
+                tuple(source_ids),
+            ).fetchall()
+
+        @staticmethod
+        def count_pending(conn: sqlite3.Connection, source_ids: Sequence[int]) -> int:
+            return len(Ocr.Language.list_pending(conn, source_ids))
+
+        @staticmethod
+        def list_pages(conn: sqlite3.Connection, table: str, document_id: int) -> list[sqlite3.Row]:
+            return conn.execute(Ocr.Language._PAGES_SQL[table], (document_id,)).fetchall()
+
+        @staticmethod
+        def update_page_languages(
+            conn: sqlite3.Connection, table: str, page_id: int, language: str, ocr_langs: str
+        ) -> None:
+            conn.execute(Ocr.Language._PAGE_LANGUAGES_SQL[table], (language, ocr_langs, page_id))
+
+        @staticmethod
+        def reset_processing(conn: sqlite3.Connection) -> int:
+            """Put passes a crashed run left 'processing' back to 'pending'; returns how many."""
+            cursor = conn.execute(
+                "UPDATE document_languages SET status = 'pending', started_at = NULL "
+                "WHERE status = 'processing'"
+            )
+            return cursor.rowcount

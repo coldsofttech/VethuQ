@@ -14,6 +14,9 @@ class OcrSettings:
     ENGINE_KEY = "index_engine"
     DEFAULT_ENGINE = "quick"
     ENGINE_MODES = ("quick", "moderate", "deep")
+    LANGUAGES_KEY = "ocr_languages"
+    # `auto` is every enabled language, which is just English on an install with no other.
+    DEFAULT_LANGUAGES = "auto"
 
     @staticmethod
     def get_retry_attempts(storage: Storage) -> int:
@@ -75,3 +78,39 @@ class OcrSettings:
     def reset_engine(storage: Storage) -> None:
         """Back to the default engine mode."""
         OcrSettings.set_engine(storage, OcrSettings.DEFAULT_ENGINE)
+
+    @staticmethod
+    def get_languages(storage: Storage) -> str:
+        """The OCR languages files are read in unless a source or a command says otherwise.
+
+        `auto` (the default) means every enabled language - English alone unless another
+        language is installed, in which case which of them a file is in is detected. It can also
+        name languages (`en`, `te`, `en,te`), which are then the candidates; one is used
+        directly, several are detected between.
+        """
+        value = Settings.get(storage, OcrSettings.LANGUAGES_KEY)
+        return value if value else OcrSettings.DEFAULT_LANGUAGES
+
+    @staticmethod
+    def set_languages(storage: Storage, value: str | list[str]) -> str:
+        """Choose the default OCR languages; returns the stored form (`en,te`).
+
+        Raises `InvalidSettingValueError` for nothing, or for a language no manifest declares.
+        Whether a language is installed is checked when OCR runs.
+        """
+        from vethuq_core.languages import LanguageSelection, UnknownLanguageError
+
+        try:
+            ids = LanguageSelection.parse(value)
+        except UnknownLanguageError as exc:
+            raise InvalidSettingValueError(str(exc)) from exc
+        if not ids:
+            raise InvalidSettingValueError("choose at least one language, or 'auto'")
+        stored = LanguageSelection.format(ids)
+        Settings.set(storage, OcrSettings.LANGUAGES_KEY, stored)
+        return stored
+
+    @staticmethod
+    def reset_languages(storage: Storage) -> None:
+        """Back to `auto`."""
+        OcrSettings.set_languages(storage, OcrSettings.DEFAULT_LANGUAGES)

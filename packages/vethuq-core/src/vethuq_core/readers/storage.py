@@ -8,7 +8,7 @@ aggregated.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from vethuq_core.storage import Storage
 
@@ -24,6 +24,10 @@ class PageResult:
     language: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    # The engine's own lines with their confidence, kept in memory so a page read in more than
+    # one language can drop the lines a wrong-language read made up. Never stored, and not part
+    # of what makes two results equal.
+    lines: tuple[tuple[str, float], ...] = field(default=(), compare=False, repr=False)
 
     def phase_columns(self) -> tuple[int, str]:
         """`(ocr_phase, ocr_angles)` to store for a page just read at 0 degrees.

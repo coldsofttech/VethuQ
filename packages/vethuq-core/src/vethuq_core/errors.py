@@ -56,3 +56,9 @@ class StaleLockError(StartupError):
     """A lock file exists but its process is no longer running."""
 
     exit_code = 15
+
+
+class LanguageUnavailableError(StartupError):
+    """An OCR language was asked for that isn't installed, enabled or known."""
+
+    exit_code = 16

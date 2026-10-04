@@ -42,6 +42,8 @@ class SourceStore(Protocol):
 
     def insert_source(self, path: str, source_type: str, added_at: str) -> int: ...
 
+    def set_source_languages(self, source_id: int, languages: str | None) -> None: ...
+
     def list_source_rows(self, include_inactive: bool) -> Sequence[Row]: ...
 
     def soft_delete_source(self, source_id: int, removed_at: str) -> None: ...
@@ -383,6 +385,33 @@ class OcrStore(Protocol):
     def complete_ocr_document_phase(
         self, document_id: int, phase: int, completed_at: str
     ) -> None: ...
+
+    def replace_document_languages(
+        self, document_id: int, rows: Sequence[tuple[str, int, str, str, float | None]]
+    ) -> None: ...
+
+    def get_document_languages(self, document_id: int) -> Sequence[Row]: ...
+
+    def update_document_language(
+        self,
+        document_id: int,
+        language: str,
+        status: str,
+        confidence: float | None,
+        error_message: str | None,
+        started_at: str | None,
+        completed_at: str | None,
+    ) -> None: ...
+
+    def list_pending_language_passes(self, source_ids: Sequence[int]) -> Sequence[Row]: ...
+
+    def list_ocr_document_pages(self, table: str, document_id: int) -> Sequence[Row]: ...
+
+    def update_ocr_page_languages(
+        self, table: str, page_id: int, language: str, ocr_langs: str
+    ) -> None: ...
+
+    def reset_processing_language_passes(self) -> int: ...
 
 
 class IntegrityStore(Protocol):

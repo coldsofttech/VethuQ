@@ -17,8 +17,16 @@ from vethuq_core.languages.scripts import Script, Scripts
 
 if TYPE_CHECKING:
     from vethuq_core.languages.languages import Languages
+    from vethuq_core.languages.selection import Candidates, LanguageSelection, UnknownLanguageError
 
-__all__ = ["Languages", "Script", "Scripts"]
+__all__ = [
+    "Candidates",
+    "LanguageSelection",
+    "Languages",
+    "Script",
+    "Scripts",
+    "UnknownLanguageError",
+]
 
 
 def __getattr__(name: str) -> Any:
@@ -26,4 +34,8 @@ def __getattr__(name: str) -> Any:
         from vethuq_core.languages.languages import Languages
 
         return Languages
+    if name in ("Candidates", "LanguageSelection", "UnknownLanguageError"):
+        from vethuq_core.languages import selection
+
+        return getattr(selection, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

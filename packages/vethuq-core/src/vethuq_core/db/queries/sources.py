@@ -41,6 +41,10 @@ class Source:
         )
 
     @staticmethod
+    def set_languages(conn: sqlite3.Connection, source_id: int, languages: str | None) -> None:
+        conn.execute("UPDATE sources SET languages = ? WHERE id = ?", (languages, source_id))
+
+    @staticmethod
     def insert(conn: sqlite3.Connection, path: str, source_type: str, added_at: str) -> int:
         cursor = conn.execute(
             """
