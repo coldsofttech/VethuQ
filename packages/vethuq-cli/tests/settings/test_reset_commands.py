@@ -2,8 +2,10 @@ import pytest
 from typer.testing import CliRunner
 from vethuq_cli.main import app
 from vethuq_core.settings import (
+    DbSettings,
     GpuSettings,
     IndexSettings,
+    LogSettings,
     OcrSettings,
     SearchSettings,
     SourceSettings,
@@ -55,6 +57,48 @@ CASES = {
         ["settings", "index", "stale-lock", "reset"],
         IndexSettings.get_stale_lock,
         IndexSettings.DEFAULT_STALE_LOCK,
+    ),
+    "db-integrity-check": (
+        ["settings", "db", "integrity-check", "set", "disable"],
+        ["settings", "db", "integrity-check", "reset"],
+        DbSettings.get_integrity_check,
+        DbSettings.DEFAULT_INTEGRITY_CHECK,
+    ),
+    "db-integrity-check-interval": (
+        ["settings", "db", "integrity-check", "interval", "set", "5"],
+        ["settings", "db", "integrity-check", "interval", "reset"],
+        DbSettings.get_integrity_check_interval_minutes,
+        DbSettings.DEFAULT_INTEGRITY_CHECK_INTERVAL_MINUTES,
+    ),
+    "db-backup": (
+        ["settings", "db", "backup", "set", "disable"],
+        ["settings", "db", "backup", "reset"],
+        DbSettings.get_backup,
+        DbSettings.DEFAULT_BACKUP,
+    ),
+    "db-backup-interval": (
+        ["settings", "db", "backup", "interval", "set", "5"],
+        ["settings", "db", "backup", "interval", "reset"],
+        DbSettings.get_backup_interval_minutes,
+        DbSettings.DEFAULT_BACKUP_INTERVAL_MINUTES,
+    ),
+    "db-backup-retention": (
+        ["settings", "db", "backup", "retention", "set", "30"],
+        ["settings", "db", "backup", "retention", "reset"],
+        DbSettings.get_backup_retention_days,
+        DbSettings.DEFAULT_BACKUP_RETENTION_DAYS,
+    ),
+    "logs-level": (
+        ["settings", "logs", "level", "set", "debug"],
+        ["settings", "logs", "level", "reset"],
+        LogSettings.get_level,
+        LogSettings.DEFAULT_LEVEL,
+    ),
+    "logs-retention": (
+        ["settings", "logs", "retention", "set", "30"],
+        ["settings", "logs", "retention", "reset"],
+        LogSettings.get_retention_days,
+        LogSettings.DEFAULT_RETENTION_DAYS,
     ),
     "search-snippet": (
         ["settings", "search", "snippet", "set", "5"],

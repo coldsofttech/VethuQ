@@ -34,4 +34,5 @@ class TestOcrSettings:
 
         # Read the stored value: the shared conftest stubs get_stability_check_seconds to 0.
         stored = Settings.get(storage, OcrSettings.STABILITY_CHECK_SECONDS_KEY)
+        assert stored is not None
         assert float(stored) == OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS

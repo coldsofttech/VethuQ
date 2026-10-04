@@ -191,9 +191,7 @@ def gpu_reset() -> None:
     storage = open_storage()
     try:
         GpuSettings.reset(storage)
-        console.print(
-            SettingsPanel.build("GPU reset to the default (disabled).", "GPU", Theme.OK)
-        )
+        console.print(SettingsPanel.build("GPU reset to the default (disabled).", "GPU", Theme.OK))
     finally:
         storage.close()
 
@@ -1131,6 +1129,61 @@ def integrity_check_interval_set(
         storage.close()
 
 
+@integrity_check_app.command("reset")
+def integrity_check_reset() -> None:
+    """Reset automatic integrity checks to the default."""
+    ResetPanel.run(
+        DbSettings.reset_integrity_check,
+        "Integrity Check",
+        "Integrity check",
+        DbSettings.DEFAULT_INTEGRITY_CHECK,
+    )
+
+
+@integrity_check_interval_app.command("reset")
+def integrity_check_interval_reset() -> None:
+    """Reset the interval between automatic integrity checks to the default."""
+    ResetPanel.run(
+        DbSettings.reset_integrity_check_interval_minutes,
+        "Integrity Check Interval",
+        "Integrity check interval",
+        f"{DbSettings.DEFAULT_INTEGRITY_CHECK_INTERVAL_MINUTES} minutes",
+    )
+
+
+@backup_app.command("reset")
+def backup_reset() -> None:
+    """Reset automatic database backups to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup,
+        "Backup",
+        "Automatic backup",
+        DbSettings.DEFAULT_BACKUP,
+    )
+
+
+@backup_interval_app.command("reset")
+def backup_interval_reset() -> None:
+    """Reset the interval between automatic backups to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup_interval_minutes,
+        "Backup Interval",
+        "Backup interval",
+        f"{DbSettings.DEFAULT_BACKUP_INTERVAL_MINUTES} minutes",
+    )
+
+
+@backup_retention_app.command("reset")
+def backup_retention_reset() -> None:
+    """Reset how long automatic backups are kept to the default."""
+    ResetPanel.run(
+        DbSettings.reset_backup_retention_days,
+        "Backup Retention",
+        "Backup retention",
+        f"{DbSettings.DEFAULT_BACKUP_RETENTION_DAYS} days",
+    )
+
+
 @backup_app.command("show")
 def backup_show() -> None:
     """Show whether automatic database backups are enabled."""
@@ -1423,6 +1476,28 @@ def log_level_set(
         )
     finally:
         storage.close()
+
+
+@log_level_app.command("reset")
+def log_level_reset() -> None:
+    """Reset how verbose VethuQ's log files are to the default."""
+    ResetPanel.run(
+        LogSettings.reset_level,
+        "Log Level",
+        "Log level",
+        LogSettings.DEFAULT_LEVEL,
+    )
+
+
+@log_retention_app.command("reset")
+def log_retention_reset() -> None:
+    """Reset how many days of daily log files are kept to the default."""
+    ResetPanel.run(
+        LogSettings.reset_retention_days,
+        "Log Retention",
+        "Log retention",
+        f"{LogSettings.DEFAULT_RETENTION_DAYS} days",
+    )
 
 
 @log_retention_app.command("show")

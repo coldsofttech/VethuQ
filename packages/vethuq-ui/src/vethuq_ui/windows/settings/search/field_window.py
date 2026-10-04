@@ -1,4 +1,4 @@
-"""A window for one search setting: Snippet, Export format or Engine from the ribbon."""
+"""The Search windows opened from the Search tab: one window per search setting."""
 
 from __future__ import annotations
 
@@ -7,88 +7,35 @@ from collections.abc import Callable
 
 from vethuq_core.storage import Storage
 
-from vethuq_ui.dialogs import show_error
-from vethuq_ui.windows.settings.base import SettingsWindow
-from vethuq_ui.windows.settings.reset import ResetAction
-from vethuq_ui.windows.settings.search.fields import SearchField, SearchFields
+from vethuq_ui.windows.settings.field_window import FieldWindow
+from vethuq_ui.windows.settings.fields import SettingField
+from vethuq_ui.windows.settings.search.fields import SearchFields
 
 
 class SearchFieldWindow:
+    # The ribbon names a setting; this says which field edits it.
+    FIELDS: dict[str, Callable[[Storage], SettingField]] = {
+        "snippet": SearchFields.snippet,
+        "export-format": SearchFields.export_format,
+        "engine": SearchFields.engine,
+        "fuzzy-threshold": SearchFields.fuzzy_threshold,
+        "proximity-distance": SearchFields.proximity_distance,
+        "noise": SearchFields.noise,
+        "case": SearchFields.case,
+        "leetspeak": SearchFields.leetspeak,
+        "unicode": SearchFields.unicode,
+    }
+
     @staticmethod
     def show(
         parent: tk.Tk | tk.Toplevel,
-        key: str,
+        name: str,
         storage: Storage,
-        make_field: Callable[[Storage], SearchField],
         on_status: Callable[[str], None] = lambda _text: None,
         on_applied: Callable[[], None] = lambda: None,
     ) -> None:
-        field = make_field(storage)
-        opened = SettingsWindow.open(parent, key, f"Search {field.label}")
-        if opened is None:
-            return
-        window, body = opened
-        SettingsWindow.heading(body, field.label, field.note)
-        field.build(body).pack(anchor=tk.W)
-
-        def apply() -> None:
-            try:
-                field.save()
-            except ValueError as exc:
-                show_error(window, f"Search {field.label}", str(exc))
-                return
-            on_status(f"{field.status} set to {field.pending()}")
-            on_applied()
-            window.destroy()
-
-        buttons = SettingsWindow.buttons(window, body, apply)
-        ResetAction.add(
-            window,
-            buttons,
-            title=f"Search {field.label}",
-            default_label=field.default,
-            is_default=field.is_default,
-            reset=field.reset_saved,
-            status=f"{field.status} reset to the default ({field.default})",
-            on_status=on_status,
-            on_applied=on_applied,
-        )
-        SettingsWindow.place(window)
-
-    @staticmethod
-    def snippet(
-        parent: tk.Tk | tk.Toplevel,
-        storage: Storage,
-        on_status: Callable[[str], None],
-        on_applied: Callable[[], None],
-    ) -> None:
-        SearchFieldWindow.show(
-            parent, "search-snippet", storage, SearchFields.snippet, on_status, on_applied
-        )
-
-    @staticmethod
-    def export_format(
-        parent: tk.Tk | tk.Toplevel,
-        storage: Storage,
-        on_status: Callable[[str], None],
-        on_applied: Callable[[], None],
-    ) -> None:
-        SearchFieldWindow.show(
-            parent,
-            "search-export-format",
-            storage,
-            SearchFields.export_format,
-            on_status,
-            on_applied,
-        )
-
-    @staticmethod
-    def engine(
-        parent: tk.Tk | tk.Toplevel,
-        storage: Storage,
-        on_status: Callable[[str], None],
-        on_applied: Callable[[], None],
-    ) -> None:
-        SearchFieldWindow.show(
-            parent, "search-engine", storage, SearchFields.engine, on_status, on_applied
+        make_field = SearchFieldWindow.FIELDS[name]
+        title = f"Search {make_field(storage).label}"
+        FieldWindow.show(
+            parent, f"search-{name}", title, storage, make_field, on_status, on_applied
         )

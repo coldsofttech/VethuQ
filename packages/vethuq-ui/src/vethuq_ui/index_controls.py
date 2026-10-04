@@ -17,7 +17,7 @@ from vethuq_core.index import (
 from vethuq_core.sources import SourceNotFoundError
 
 from vethuq_ui.dialogs import show_error
-from vethuq_ui.icons import get_icon
+from vethuq_ui.icons import Icons
 from vethuq_ui.ribbon import Ribbon
 from vethuq_ui.status_bar import StatusBar
 
@@ -129,7 +129,7 @@ class IndexControls:
     def update_buttons(self, state: IndexState | None) -> None:
         running = state is not None and state.is_active
         paused = state is not None and state.is_paused
-        icon = get_icon("resume" if paused else "pause")
+        icon = Icons.get("resume" if paused else "pause")
         if icon is not None:
             self._ribbon.pause_resume_button.config(image=icon)
         self._ribbon.pause_resume_button.config(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageTk
 from vethuq_core.branding import Palette
@@ -67,28 +68,24 @@ class DangerButtonStyle:
             border=DangerButtonStyle._RADIUS,
             sticky="nswe",
         )
-        style.layout(
-            DangerButtonStyle.STYLE,
-            [
-                (
-                    DangerButtonStyle._ELEMENT,
-                    {
-                        "sticky": "nswe",
-                        "children": [
-                            (
-                                "Button.padding",
-                                {
-                                    "sticky": "nswe",
-                                    "children": [
-                                        ("Button.label", {"expand": "1", "sticky": "nswe"})
-                                    ],
-                                },
-                            )
-                        ],
-                    },
-                )
-            ],
-        )
+        layout: Any = [
+            (
+                DangerButtonStyle._ELEMENT,
+                {
+                    "sticky": "nswe",
+                    "children": [
+                        (
+                            "Button.padding",
+                            {
+                                "sticky": "nswe",
+                                "children": [("Button.label", {"expand": "1", "sticky": "nswe"})],
+                            },
+                        )
+                    ],
+                },
+            )
+        ]
+        style.layout(DangerButtonStyle.STYLE, layout)
         style.configure(
             DangerButtonStyle.STYLE,
             padding=(8, 2, 8, 3),

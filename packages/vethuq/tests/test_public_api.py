@@ -206,6 +206,13 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
     client.settings.index.stability_check.set(0)
     client.settings.index.thread_workers.set("4")
     client.settings.index.stale_lock.set("disable")
+    client.settings.db.integrity_check.set("disable")
+    client.settings.db.integrity_check.set_interval_minutes(5)
+    client.settings.db.backup.set("disable")
+    client.settings.db.backup.set_interval_minutes(5)
+    client.settings.db.backup.set_retention_days(30)
+    client.settings.logs.level.set("debug")
+    client.settings.logs.retention.set(30)
 
     for setting in (
         search.snippet,
@@ -224,8 +231,15 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
         client.settings.index.stability_check,
         client.settings.index.thread_workers,
         client.settings.index.stale_lock,
+        client.settings.db.integrity_check,
+        client.settings.db.backup,
+        client.settings.logs.level,
+        client.settings.logs.retention,
     ):
         setting.reset()
+    client.settings.db.integrity_check.reset_interval_minutes()
+    client.settings.db.backup.reset_interval_minutes()
+    client.settings.db.backup.reset_retention_days()
 
     assert search.snippet.get() == 80
     assert search.export_format.get() == "json"
@@ -239,6 +253,13 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
     assert client.settings.ocr.engine.get() == "quick"
     assert client.settings.index.thread_workers.get() == "0"
     assert client.settings.index.stale_lock.get() == "auto"
+    assert client.settings.db.integrity_check.get() == "auto"
+    assert client.settings.db.integrity_check.get_interval_minutes() == 1440
+    assert client.settings.db.backup.get() == "enable"
+    assert client.settings.db.backup.get_interval_minutes() == 1440
+    assert client.settings.db.backup.get_retention_days() == 7
+    assert client.settings.logs.level.get() == "info"
+    assert client.settings.logs.retention.get() == 15
 
 
 def test_settings_values_round_trip(client: vethuq.Vethuq):

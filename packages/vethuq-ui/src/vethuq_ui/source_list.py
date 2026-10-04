@@ -15,7 +15,7 @@ from vethuq_core.storage import Storage
 
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.history_pane import HistoryPane
-from vethuq_ui.icons import get_icon
+from vethuq_ui.icons import Icons
 from vethuq_ui.tooltip import TreeviewTooltip
 from vethuq_ui.widgets import Widgets
 
@@ -111,7 +111,7 @@ class SourceListView(ttk.Frame):
             done, total = Sources.progress(self._storage, source.id)
             noun = "file" if total == 1 else "files"
             icon_kwargs: dict[str, Any] = {}
-            icon = get_icon(source.source_type, 16)
+            icon = Icons.get(source.source_type, 16)
             if icon is not None:
                 icon_kwargs["image"] = icon
             self.tree.insert(

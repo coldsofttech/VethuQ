@@ -49,8 +49,11 @@ from vethuq_cli.logs import LogsCommand
 from vethuq_cli.search import search as run_search
 from vethuq_cli.search_engines import list_engines as search_engines_list
 from vethuq_cli.settings import (
+    backup_interval_reset,
     backup_interval_set,
     backup_interval_show,
+    backup_reset,
+    backup_retention_reset,
     backup_retention_set,
     backup_retention_show,
     backup_set,
@@ -71,14 +74,18 @@ from vethuq_cli.settings import (
     gpu_enable,
     gpu_reset,
     gpu_status,
+    integrity_check_interval_reset,
     integrity_check_interval_set,
     integrity_check_interval_show,
+    integrity_check_reset,
     integrity_check_set,
     integrity_check_show,
     location_set,
     location_show,
+    log_level_reset,
     log_level_set,
     log_level_show,
+    log_retention_reset,
     log_retention_set,
     log_retention_show,
     noise_fuzzy_noise_reset,
@@ -471,7 +478,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Snippet",
-                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -490,7 +497,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Export Format",
-                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -509,7 +516,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Engine",
-                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -526,7 +533,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Fuzzy Threshold",
-                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -627,7 +634,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Noise Level",
-                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")]
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -762,7 +769,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Integrity Check > Interval",
-                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -773,13 +780,15 @@ class InteractiveMenu:
                     "Minutes between automatic integrity checks when 'auto'", console=console
                 )
                 InteractiveMenu._run_safely(integrity_check_interval_set, minutes=minutes)
+            elif choice == "3":
+                InteractiveMenu._run_safely(integrity_check_interval_reset)
 
     @staticmethod
     def _settings_integrity_check_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Integrity Check",
-                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("0", "Back")],
+                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("4", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -794,13 +803,15 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(integrity_check_set, value=value)
             elif choice == "3":
                 InteractiveMenu._settings_integrity_check_interval_menu()
+            elif choice == "4":
+                InteractiveMenu._run_safely(integrity_check_reset)
 
     @staticmethod
     def _settings_backup_interval_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Backup > Interval",
-                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -809,13 +820,15 @@ class InteractiveMenu:
             elif choice == "2":
                 minutes = IntPrompt.ask("Minutes between automatic backups", console=console)
                 InteractiveMenu._run_safely(backup_interval_set, value=minutes)
+            elif choice == "3":
+                InteractiveMenu._run_safely(backup_interval_reset)
 
     @staticmethod
     def _settings_backup_retention_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Backup > Retention",
-                [("1", "Show"), ("2", "Set"), ("0", "Back")],
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -824,13 +837,22 @@ class InteractiveMenu:
             elif choice == "2":
                 days = IntPrompt.ask("Days automatic backups are kept", console=console)
                 InteractiveMenu._run_safely(backup_retention_set, value=days)
+            elif choice == "3":
+                InteractiveMenu._run_safely(backup_retention_reset)
 
     @staticmethod
     def _settings_backup_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Backup",
-                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("4", "Retention"), ("0", "Back")],
+                [
+                    ("1", "Show"),
+                    ("2", "Set"),
+                    ("3", "Interval"),
+                    ("4", "Retention"),
+                    ("5", "Reset"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -847,6 +869,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_backup_interval_menu()
             elif choice == "4":
                 InteractiveMenu._settings_backup_retention_menu()
+            elif choice == "5":
+                InteractiveMenu._run_safely(backup_reset)
 
     @staticmethod
     def _settings_engine_menu() -> None:
@@ -992,7 +1016,8 @@ class InteractiveMenu:
     def _settings_log_level_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Logs > Level", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Logs > Level",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -1005,12 +1030,15 @@ class InteractiveMenu:
                     choices=list(LogSettings.LEVEL_VALUES),
                 )
                 InteractiveMenu._run_safely(log_level_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._run_safely(log_level_reset)
 
     @staticmethod
     def _settings_log_retention_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Logs > Retention", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Logs > Retention",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -1019,6 +1047,8 @@ class InteractiveMenu:
             elif choice == "2":
                 days = IntPrompt.ask("Days of daily log files to keep", console=console)
                 InteractiveMenu._run_safely(log_retention_set, days=days)
+            elif choice == "3":
+                InteractiveMenu._run_safely(log_retention_reset)
 
     @staticmethod
     def _settings_logs_menu() -> None:

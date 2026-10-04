@@ -544,7 +544,6 @@ class SearchEngineSettings:
         finally:
             storage.close()
 
-
     def reset(self) -> None:
         """Reset the default search engine to 'all'."""
         storage = _open_storage()
@@ -1087,6 +1086,22 @@ class IntegrityCheckSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset automatic integrity checks to the default ('auto')."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_integrity_check(storage)
+        finally:
+            storage.close()
+
+    def reset_interval_minutes(self) -> None:
+        """Reset the interval between automatic integrity checks to the default (1 day)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_integrity_check_interval_minutes(storage)
+        finally:
+            storage.close()
+
 
 class BackupSettings:
     """Whether a compressed database backup is taken automatically when the database is opened.
@@ -1143,6 +1158,30 @@ class BackupSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset automatic backups to the default ('enable')."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup(storage)
+        finally:
+            storage.close()
+
+    def reset_interval_minutes(self) -> None:
+        """Reset the interval between automatic backups to the default (1 day)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup_interval_minutes(storage)
+        finally:
+            storage.close()
+
+    def reset_retention_days(self) -> None:
+        """Reset how long automatic backups are kept to the default (7 days)."""
+        storage = _open_storage()
+        try:
+            _DbSettings.reset_backup_retention_days(storage)
+        finally:
+            storage.close()
+
 
 class LogLevelSettings:
     """Verbosity of VethuQ's log files. Not instantiated directly — use
@@ -1168,6 +1207,14 @@ class LogLevelSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the log level to the default ('info')."""
+        storage = _open_storage()
+        try:
+            _LogSettings.reset_level(storage)
+        finally:
+            storage.close()
+
 
 class LogRetentionSettings:
     """How many days of daily log files are kept. Not instantiated directly — use
@@ -1189,6 +1236,14 @@ class LogRetentionSettings:
         storage = _open_storage()
         try:
             _LogSettings.set_retention_days(storage, days)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset how many days of log files are kept to the default (15)."""
+        storage = _open_storage()
+        try:
+            _LogSettings.reset_retention_days(storage)
         finally:
             storage.close()
 

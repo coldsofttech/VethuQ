@@ -16,5 +16,9 @@ class PrimaryButton:
         parent: tk.Misc, text: str, command: Callable[[], None] | None = None, width: int = 9
     ) -> ttk.Button:
         return ttk.Button(
-            parent, text=text, width=width, style=PrimaryButton.STYLE, command=command
+            parent,
+            text=text,
+            width=width,
+            style=PrimaryButton.STYLE,
+            command=command if command is not None else "",
         )

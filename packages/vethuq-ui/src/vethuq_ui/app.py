@@ -10,25 +10,26 @@ import sv_ttk
 from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
+from vethuq_ui.dialogs import show_error
+from vethuq_ui.icons import Brand
+from vethuq_ui.index_controls import IndexControls
+from vethuq_ui.logging import UiLogging
+from vethuq_ui.ribbon import Ribbon, RibbonActions
+from vethuq_ui.search_view import SearchView
+from vethuq_ui.source_list import SourceListView
+from vethuq_ui.status_bar import StatusBar
 from vethuq_ui.windows.settings.about import AboutWindow
+from vethuq_ui.windows.settings.database.field_window import DatabaseFieldWindow
 from vethuq_ui.windows.settings.index.retention import RemovedRetentionWindow
 from vethuq_ui.windows.settings.index.stability import StabilityCheckWindow
 from vethuq_ui.windows.settings.index.stale_lock import StaleLockWindow
 from vethuq_ui.windows.settings.index.workers import ThreadWorkersWindow
 from vethuq_ui.windows.settings.location import LocationWindow
-from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
+from vethuq_ui.windows.settings.logs.field_window import LogFieldWindow
 from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
+from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
 from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
-from vethuq_ui.windows.settings.search.all import SearchSettingsWindow
 from vethuq_ui.windows.settings.search.field_window import SearchFieldWindow
-from vethuq_ui.dialogs import show_error
-from vethuq_ui.icons import Brand
-from vethuq_ui.index_controls import IndexControls
-from vethuq_ui.logging_setup import UiLogging
-from vethuq_ui.ribbon import Ribbon, RibbonActions
-from vethuq_ui.search_view import SearchView
-from vethuq_ui.source_list import SourceListView
-from vethuq_ui.status_bar import StatusBar
 
 _logger = UiLogging.logger
 
@@ -87,26 +88,9 @@ class MainWindow(tk.Tk):
                     self.status_bar.show_message,
                     self.ribbon.refresh_setting_icons,
                 ),
-                show_search_snippet=lambda: SearchFieldWindow.snippet(
+                show_search_field=lambda name: SearchFieldWindow.show(
                     self,
-                    self.storage,
-                    self.status_bar.show_message,
-                    self.ribbon.refresh_setting_icons,
-                ),
-                show_search_export_format=lambda: SearchFieldWindow.export_format(
-                    self,
-                    self.storage,
-                    self.status_bar.show_message,
-                    self.ribbon.refresh_setting_icons,
-                ),
-                show_search_engine=lambda: SearchFieldWindow.engine(
-                    self,
-                    self.storage,
-                    self.status_bar.show_message,
-                    self.ribbon.refresh_setting_icons,
-                ),
-                show_search_settings=lambda: SearchSettingsWindow.show(
-                    self,
+                    name,
                     self.storage,
                     self.status_bar.show_message,
                     self.ribbon.refresh_setting_icons,
@@ -128,6 +112,20 @@ class MainWindow(tk.Tk):
                 ),
                 show_stale_lock=lambda: StaleLockWindow.show(
                     self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_db_field=lambda name: DatabaseFieldWindow.show(
+                    self,
+                    name,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_log_field=lambda name: LogFieldWindow.show(
+                    self,
+                    name,
                     self.storage,
                     self.status_bar.show_message,
                     self.ribbon.refresh_setting_icons,
