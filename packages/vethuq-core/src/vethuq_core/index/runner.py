@@ -86,6 +86,9 @@ class IndexState:
     engine: str = "quick"
     phase: int = 1
     deepened_pages: int = 0
+    # Files under the run's targets that no reader handles ('unsupported' rows). They're
+    # never OCR'd, so they're not part of `failed_files`.
+    unsupported_files: int = 0
     # Why a run ended as "failed" when the worker couldn't say so itself (it died).
     error: str | None = None
 
@@ -440,6 +443,20 @@ class IndexRunner:
     def is_stalled(state: IndexState) -> bool:
         """Whether an active run's worker is alive but has stopped refreshing its state (hung)."""
         return state.is_active and state.heartbeat_age_seconds > IndexRunner.STALE_HEARTBEAT_SECONDS
+
+    @staticmethod
+    def _count_unsupported(db_path: Path, target: str | None) -> int:
+        """How many files under `target`'s sources are recorded as 'unsupported'."""
+        storage = open_storage(db_path)
+        try:
+            return sum(
+                row["count"]
+                for source in IndexRunner.resolve_targets(storage, target)
+                for row in storage.count_document_index_by_status(source.id)
+                if row["status"] == "unsupported"
+            )
+        finally:
+            storage.close()
 
     @staticmethod
     def _write_state(db_path: Path, state: IndexState) -> None:
@@ -876,8 +893,18 @@ class IndexRunner:
             heartbeat = IndexRunner._Heartbeat(db_path, state, state_lock)
             heartbeat.start()
 
+            unsupported_counted = False
+
             def on_file_start(file_path: str) -> None:
+                nonlocal unsupported_counted
                 IndexRunner._logger.info("Processing %s", file_path)
+                if not unsupported_counted:
+                    # Every source is scanned (unsupported files recorded) before the
+                    # first file is processed, so one count here is enough.
+                    unsupported_counted = True
+                    unsupported = IndexRunner._count_unsupported(db_path, target)
+                    with state_lock:
+                        state.unsupported_files = unsupported
                 with state_lock:
                     state.phase = 1
                     state.current_files.append(file_path)
@@ -963,6 +990,7 @@ class IndexRunner:
             )
 
             heartbeat.stop()
+            state.unsupported_files = IndexRunner._count_unsupported(db_path, target)
             final_status = "stopped" if stopped else "completed"
             IndexRunner._logger.info(
                 "Index run %d %s: processed=%d failed=%d",

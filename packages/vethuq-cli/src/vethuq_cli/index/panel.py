@@ -148,6 +148,7 @@ class StatePanel:
             )
         failed_style = Theme.ERROR if state.failed_files else "default"
         table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
+        table.add_row("Unsupported", Text(str(state.unsupported_files)))
 
         if state.thread_workers_setting == "0":
             workers_label = "disabled (sequential)"
