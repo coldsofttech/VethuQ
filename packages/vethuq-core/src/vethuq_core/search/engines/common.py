@@ -31,6 +31,29 @@ class SearchEngineHelpers:
             raise ValueError(f"The {engine} engine has no word distance; only proximity does.")
 
     @staticmethod
+    def require_no_level(engine: str, level: str | None) -> None:
+        """Reject a leetspeak `level` for an engine that doesn't read look-alikes."""
+        if level is not None:
+            raise ValueError(
+                f"The {engine} engine has no leetspeak level; only like and noise-fuzzy do."
+            )
+
+    @staticmethod
+    def require_no_noise(engine: str, noise: str | None) -> None:
+        """Reject a noise level for an engine that isn't noise-fuzzy."""
+        if noise is not None:
+            raise ValueError(f"The {engine} engine has no noise level; only noise-fuzzy does.")
+
+    @staticmethod
+    def require_no_unicode(engine: str, unicode: str | None) -> None:
+        """Reject a Unicode level for an engine that has no Unicode normalization to set."""
+        if unicode is not None:
+            raise ValueError(
+                f"The {engine} engine has no unicode setting; only like, exact, fuzzy and "
+                "noise-fuzzy do."
+            )
+
+    @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:
         """Total page count of every PDF with OCR pages, keyed by its carrier document id."""
         return {
@@ -96,6 +119,19 @@ class SearchEngineHelpers:
         return '"' + query.replace('"', '""') + '"'
 
     @staticmethod
+    def norm_match(text: str) -> str | None:
+        """`text` as a quoted FTS5 phrase for the trigram index over the normalized text, or
+        None if its normalized form is under 3 characters (every page is then a candidate).
+
+        The index holds each page's text folded as coarsely as any normalization does, so a
+        page that has `text` at any normalization level has this phrase in it - an
+        approximation only at the edges of combining characters.
+        """
+        from vethuq_core.search.normalizers import Normalizers
+
+        return SearchEngineHelpers.trigram_match(Normalizers.index_form(text))
+
+    @staticmethod
     def search_substring_pages(
         storage: Storage,
         query: str,
@@ -103,6 +139,7 @@ class SearchEngineHelpers:
         *,
         context_chars: int | None,
         engine: str,
+        candidates: str = "raw",
     ) -> list[SearchMatch]:
         """Find `query` on indexed pages, one `SearchMatch` per span `find` yields for a page.
 
@@ -121,20 +158,37 @@ class SearchEngineHelpers:
         pages) is returned as its own row, reusing the carrier's text, so it still
         surfaces as its own search result. Ordered by file path (pages of the same
         PDF in page order, occurrences within a page in text order).
+
+        `candidates` says which index narrows them: `"raw"` (the trigram index over the text, for
+        text as it is), `"norm"` (the one over the text folded as coarsely as any normalization
+        does - see `Normalizers.index_form` - for a query that is normalized) or `"none"`.
         """
         if not query:
             return []
 
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(storage)
-        pattern = SearchEngineHelpers.like_pattern(query)
-        match_expr = SearchEngineHelpers.trigram_match(query)
+        if candidates == "raw":
+            pattern = SearchEngineHelpers.like_pattern(query)
+            match_expr = SearchEngineHelpers.trigram_match(query)
+            rows = (
+                *storage.search_indexed_pdf_pages(pattern, match_expr),
+                *storage.search_indexed_image_pages(pattern, match_expr),
+            )
+        elif candidates == "norm":
+            expression = SearchEngineHelpers.norm_match(query)
+            rows = (
+                *storage.search_norm_candidate_pdf_pages(expression),
+                *storage.search_norm_candidate_image_pages(expression),
+            )
+        else:
+            rows = (
+                *storage.search_candidate_pdf_pages(None),
+                *storage.search_candidate_image_pages(None),
+            )
 
         matches: list[SearchMatch] = []
-        for row in (
-            *storage.search_indexed_pdf_pages(pattern, match_expr),
-            *storage.search_indexed_image_pages(pattern, match_expr),
-        ):
+        for row in rows:
             page_number = row["page_number"]
             text = row["ocr_text"].replace("\n", " ")
             total_pages = page_counts.get(row["canonical_id"]) if page_number is not None else None

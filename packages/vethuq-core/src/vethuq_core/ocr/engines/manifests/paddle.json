@@ -1,0 +1,8 @@
+{
+  "id": "paddle",
+  "label": "PaddleOCR",
+  "extra": "ocr-paddle",
+  "requires": ["paddleocr>=3.0"],
+  "modules": [],
+  "default": true
+}

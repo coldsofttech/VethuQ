@@ -49,7 +49,7 @@ _DEFAULT_SIZE = 16
 _BASE_RENDER_SIZE = 128
 _NEAR_WHITE_THRESHOLD = 250
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_OUT_DIR = _REPO_ROOT / "packages" / "vethuq-ui" / "src" / "vethuq_ui" / "assets" / "icons"
 
 _RECOLORABLE_FILL_RE = re.compile(r'fill="(currentColor|#000000?|#000|black)"', re.IGNORECASE)

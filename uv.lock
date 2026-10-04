@@ -33,6 +33,7 @@ members = [
     "vethuq-search-full-text",
     "vethuq-search-fuzzy",
     "vethuq-search-lexical",
+    "vethuq-search-noise-fuzzy",
     "vethuq-search-proximity",
     "vethuq-type-jpg",
     "vethuq-type-png",
@@ -3024,6 +3025,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+ocr-paddle = [
+    { name = "paddleocr" },
+]
 search-exact = [
     { name = "vethuq-search-exact" },
 ]
@@ -3035,6 +3039,9 @@ search-fuzzy = [
 ]
 search-lexical = [
     { name = "vethuq-search-lexical" },
+]
+search-noise-fuzzy = [
+    { name = "vethuq-search-noise-fuzzy" },
 ]
 search-proximity = [
     { name = "vethuq-search-proximity" },
@@ -3053,6 +3060,7 @@ type-png = [
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "paddleocr", specifier = ">=3.0" },
+    { name = "paddleocr", marker = "extra == 'ocr-paddle'", specifier = ">=3.0" },
     { name = "paddlepaddle", specifier = ">=3.0" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
@@ -3064,11 +3072,12 @@ requires-dist = [
     { name = "vethuq-search-full-text", marker = "extra == 'search-full-text'", editable = "packages/vethuq-search-full-text" },
     { name = "vethuq-search-fuzzy", marker = "extra == 'search-fuzzy'", editable = "packages/vethuq-search-fuzzy" },
     { name = "vethuq-search-lexical", marker = "extra == 'search-lexical'", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-noise-fuzzy", marker = "extra == 'search-noise-fuzzy'", editable = "packages/vethuq-search-noise-fuzzy" },
     { name = "vethuq-search-proximity", marker = "extra == 'search-proximity'", editable = "packages/vethuq-search-proximity" },
     { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
     { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
-provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
+provides-extras = ["lang-en", "ocr-paddle", "search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-noise-fuzzy", "search-proximity", "type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-cli"
@@ -3102,6 +3111,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+ocr-paddle = [
+    { name = "paddleocr" },
+]
 search-exact = [
     { name = "vethuq-search-exact" },
 ]
@@ -3113,6 +3125,9 @@ search-fuzzy = [
 ]
 search-lexical = [
     { name = "vethuq-search-lexical" },
+]
+search-noise-fuzzy = [
+    { name = "vethuq-search-noise-fuzzy" },
 ]
 search-proximity = [
     { name = "vethuq-search-proximity" },
@@ -3131,6 +3146,7 @@ type-png = [
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "paddleocr", specifier = ">=3.0" },
+    { name = "paddleocr", marker = "extra == 'ocr-paddle'", specifier = ">=3.0" },
     { name = "paddlepaddle", specifier = ">=3.0" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=5.9" },
@@ -3140,11 +3156,12 @@ requires-dist = [
     { name = "vethuq-search-full-text", marker = "extra == 'search-full-text'", editable = "packages/vethuq-search-full-text" },
     { name = "vethuq-search-fuzzy", marker = "extra == 'search-fuzzy'", editable = "packages/vethuq-search-fuzzy" },
     { name = "vethuq-search-lexical", marker = "extra == 'search-lexical'", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-noise-fuzzy", marker = "extra == 'search-noise-fuzzy'", editable = "packages/vethuq-search-noise-fuzzy" },
     { name = "vethuq-search-proximity", marker = "extra == 'search-proximity'", editable = "packages/vethuq-search-proximity" },
     { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
     { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
-provides-extras = ["search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-proximity", "type-jpg", "type-pdf", "type-png"]
+provides-extras = ["lang-en", "ocr-paddle", "search-exact", "search-full-text", "search-fuzzy", "search-lexical", "search-like", "search-noise-fuzzy", "search-proximity", "type-jpg", "type-pdf", "type-png"]
 
 [[package]]
 name = "vethuq-search-exact"
@@ -3165,6 +3182,11 @@ source = { editable = "packages/vethuq-search-fuzzy" }
 name = "vethuq-search-lexical"
 version = "0.1.0"
 source = { editable = "packages/vethuq-search-lexical" }
+
+[[package]]
+name = "vethuq-search-noise-fuzzy"
+version = "0.1.0"
+source = { editable = "packages/vethuq-search-noise-fuzzy" }
 
 [[package]]
 name = "vethuq-search-proximity"
@@ -3221,6 +3243,7 @@ dev = [
     { name = "vethuq-search-full-text" },
     { name = "vethuq-search-fuzzy" },
     { name = "vethuq-search-lexical" },
+    { name = "vethuq-search-noise-fuzzy" },
     { name = "vethuq-search-proximity" },
     { name = "vethuq-type-jpg" },
     { name = "vethuq-type-png" },
@@ -3246,6 +3269,7 @@ dev = [
     { name = "vethuq-search-full-text", editable = "packages/vethuq-search-full-text" },
     { name = "vethuq-search-fuzzy", editable = "packages/vethuq-search-fuzzy" },
     { name = "vethuq-search-lexical", editable = "packages/vethuq-search-lexical" },
+    { name = "vethuq-search-noise-fuzzy", editable = "packages/vethuq-search-noise-fuzzy" },
     { name = "vethuq-search-proximity", editable = "packages/vethuq-search-proximity" },
     { name = "vethuq-type-jpg", editable = "packages/vethuq-type-jpg" },
     { name = "vethuq-type-png", editable = "packages/vethuq-type-png" },

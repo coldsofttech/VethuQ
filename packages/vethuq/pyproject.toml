@@ -16,11 +16,14 @@ dependencies = [
 
 # BEGIN generated from the manifests - run scripts/dev/sync_extras.py
 [project.optional-dependencies]
+lang-en = []
+ocr-paddle = ["paddleocr>=3.0"]
 search-exact = ["vethuq-search-exact"]
 search-full-text = ["vethuq-search-full-text"]
 search-fuzzy = ["vethuq-search-fuzzy"]
 search-lexical = ["vethuq-search-lexical"]
 search-like = []
+search-noise-fuzzy = ["vethuq-search-noise-fuzzy"]
 search-proximity = ["vethuq-search-proximity"]
 type-jpg = ["vethuq-type-jpg"]
 type-pdf = ["pymupdf>=1.24"]

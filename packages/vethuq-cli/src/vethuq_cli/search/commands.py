@@ -36,7 +36,62 @@ _NO_MATCH_HINTS = {
     "numbers must match exactly). Try `--fuzziness loose` or `--engine like`.",
     "proximity": "`proximity` needs every word within the distance of the others, as whole "
     "words. Try `--distance loose` or `--engine full-text`.",
+    "noise-fuzzy": "`noise-fuzzy` finds your characters hidden by a little stray punctuation or "
+    "whitespace, look-alike symbols and a typo or two - not letters in between. Try "
+    "`--noise medium` (or `high`), `--fuzziness loose` or `--leet-level extended`.",
 }
+
+
+_NORMALIZERS = {"unicode": "unicode", "case": "case", "leetspeak": "leetspeak", "leet": "leetspeak"}
+
+
+def _apply_normalize(
+    entries: list[str] | None,
+    case_sensitive: bool | None,
+    leet_level: str | None,
+    unicode: str | None,
+) -> tuple[bool | None, str | None, str | None]:
+    """`--normalize NAME=VALUE[,NAME=VALUE...]` folded into the options it stands for.
+
+    `case=match|ignore` is `--case-sensitive` / `--no-case-sensitive`, `leetspeak=LEVEL` is
+    `--leet-level` and `unicode=LEVEL` is the Unicode normalization; giving the same one twice
+    is an error.
+    """
+    for entry in entries or []:
+        for part in entry.split(","):
+            name, separator, value = part.partition("=")
+            normalizer = _NORMALIZERS.get(name.strip().lower())
+            if not separator or normalizer is None or not value.strip():
+                raise typer.BadParameter(
+                    f"{part!r} is not NAME=VALUE with NAME one of unicode, case, leetspeak.",
+                    param_hint="--normalize",
+                )
+            value = value.strip().lower()
+            if normalizer == "case":
+                if value not in ("ignore", "match"):
+                    raise typer.BadParameter(
+                        "case must be one of ignore, match.", param_hint="--normalize"
+                    )
+                if case_sensitive is not None:
+                    raise typer.BadParameter(
+                        "case is given twice (--normalize and --case-sensitive).",
+                        param_hint="--normalize",
+                    )
+                case_sensitive = value == "match"
+            elif normalizer == "leetspeak":
+                if leet_level is not None:
+                    raise typer.BadParameter(
+                        "leetspeak is given twice (--normalize and --leet-level).",
+                        param_hint="--normalize",
+                    )
+                leet_level = value
+            else:
+                if unicode is not None:
+                    raise typer.BadParameter(
+                        "unicode is given twice in --normalize.", param_hint="--normalize"
+                    )
+                unicode = value
+    return case_sensitive, leet_level, unicode
 
 
 def _resolve_options(
@@ -46,6 +101,9 @@ def _resolve_options(
     threshold: str | None,
     fuzziness: str | None,
     distance: str | None,
+    leet_level: str | None = None,
+    noise: str | None = None,
+    unicode: str | None = None,
 ) -> SearchOptions:
     """`Search.resolve_options`, with an unusable combination reported as a usage error.
 
@@ -64,7 +122,9 @@ def _resolve_options(
             )
         threshold = str(preset)
     try:
-        return Search.resolve_options(storage, engine, case_sensitive, threshold, distance)
+        return Search.resolve_options(
+            storage, engine, case_sensitive, threshold, distance, leet_level, noise, unicode
+        )
     except SearchOptionError as exc:
         if exc.option == "engine":
             hint = "--engine"
@@ -72,6 +132,12 @@ def _resolve_options(
             hint = "--fuzziness" if fuzziness is not None else "--threshold"
         elif exc.option == "distance":
             hint = "--distance"
+        elif exc.option == "level":
+            hint = "--leet-level"
+        elif exc.option == "noise":
+            hint = "--noise"
+        elif exc.option == "unicode":
+            hint = "--normalize"
         else:
             hint = "--case-sensitive" if case_sensitive else "--no-case-sensitive"
         raise typer.BadParameter(str(exc), param_hint=hint) from exc
@@ -83,11 +149,17 @@ class SearchHelp:
         "indexed documents are searched.\n\n"
         "--engine picks how CONTENT is matched:\n\n"
         "all (the default) - runs every engine and lists each page once, ranked by the "
-        "strictest way it matched: Exact, Contains, Relevant, Near, Word, then Similar. Each "
-        "page is labelled with that, the other engines that found it, and any hit found less "
-        "strictly than the page's best. Each engine applies the options it can.\n\n"
+        "strictest way it matched: Exact, Contains, Relevant, Near, Word, Similar, "
+        "then Obscured. A hit that needed look-alikes or accent folding ranks after those "
+        "matched as typed and says so (Contains · look-alike). Each page is labelled with "
+        "that, the other engines that found it, and any hit found less strictly than the "
+        "page's best. Each engine applies the "
+        "options it can.\n\n"
         "like - finds CONTENT anywhere, even inside a word, ignoring case. "
-        '`mus` finds "Museum". Results are ordered by file path.\n\n'
+        '`mus` finds "Museum". With --leet-level (or `vethuq settings search normalize '
+        "leetspeak`) look-alike characters count as the letters they stand for, both ways: "
+        "`hello` finds `h3ll0` and `p@55w0rd` finds `password`. Results are ordered by file "
+        "path.\n\n"
         "lexical - finds CONTENT anywhere, even inside a word, like `like`, but lists the "
         "best-matching pages first. Needs at least 3 characters.\n\n"
         "exact - finds CONTENT exactly as typed: same case, as a whole word. `Museum` finds "
@@ -104,9 +176,22 @@ class SearchHelp:
         '"phrase" to keep words together) sit within --distance words of each other, such '
         "as `payment` and `termination` in the same clause. One result per passage, best "
         "pages first. Never case-sensitive.\n\n"
+        "noise-fuzzy - finds CONTENT's characters hidden by stray punctuation or whitespace, "
+        "look-alike symbols and typos, all at once: `h..e llo`, `h @ e # l l o`, `h3ll0` and "
+        "`helo` all find `hello`. The noise is ignored (letters never are), look-alikes are "
+        "folded (single characters of --leet-level) and what is left must be within "
+        "--threshold or --fuzziness of CONTENT, as in `fuzzy`. How much noise is skipped is "
+        "set by --noise (low, medium or high) or `vethuq settings search noise-fuzzy noise`. "
+        "Honours --case-sensitive; the cleanest text first.\n\n"
+        "--normalize decides what counts as the same character, whichever engine matches: "
+        "unicode=full folds accents and compatibility forms (`cafe` finds `café`), case=match "
+        "or ignore, leetspeak=basic|standard|extended reads look-alikes as letters. They are "
+        "also the settings under `vethuq settings search normalize`, which each engine's own "
+        "defaults fill in; `exact` only takes them when asked for here.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
         "`e` to export what's been found and close the pager, `h` (with the default `all` "
-        "engine) to see what Exact, Contains, Relevant, Near, Word and Similar mean, `q` to close "
+        "engine) to see what Exact, Contains, Relevant, Near, Word, Similar and "
+        "Obscured (and the look-alike and accents modifiers) mean, `q` to close "
         "without exporting. A file with several matching pages prints its file name as a bold "
         "heading and its `File:` path line once, followed by one `Page: X of Y` and a "
         "boxed, highlighted snippet per match; consecutive files alternate accent colors. "
@@ -126,7 +211,9 @@ def search(
             "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads) or 'proximity' (all your words near each other). Defaults to "
+            "misreads), 'proximity' (all your words near each other) or 'noise-fuzzy' (words "
+            "hidden by stray characters, look-alikes and typos at once, e.g. h..e l1o). "
+            "Defaults to "
             "`vethuq settings search engine`."
         ),
     ),
@@ -134,16 +221,18 @@ def search(
         None,
         "--case-sensitive/--no-case-sensitive",
         help=(
-            "Match case. Only 'like', 'lexical' and 'fuzzy' honour it (default: `vethuq settings "
-            "search case-sensitive`); 'exact' is always case-sensitive, 'full-text' and "
-            "'proximity' never are. With 'all', each engine applies what it can."
+            "Match case. Only 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' honour it "
+            "(default: "
+            "`vethuq settings search case-sensitive`); 'exact' is always case-sensitive, "
+            "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
         ),
     ),
     threshold: str | None = typer.Option(
         None,
         "--threshold",
         help=(
-            "Fuzzy only: the minimum similarity between your words and the words found, as a "
+            "Fuzzy and noise-fuzzy only: the minimum similarity between your words and the "
+            "words found, as a "
             "percentage (80%) or a number above 0 and up to 1 (0.8). Default: `vethuq settings "
             "search fuzzy threshold`."
         ),
@@ -152,7 +241,8 @@ def search(
         None,
         "--fuzziness",
         help=(
-            "Fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' (0.80) or "
+            "Fuzzy and noise-fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' "
+            "(0.80) or "
             "'loose' (0.65)."
         ),
     ),
@@ -163,6 +253,36 @@ def search(
             "Proximity only: the most words between your first and last word - a number from "
             "1 to 100, or 'tight' (3), 'medium' (10) or 'loose' (30). Default: `vethuq "
             "settings search proximity distance`."
+        ),
+    ),
+    leet_level: str | None = typer.Option(
+        None,
+        "--leet-level",
+        help=(
+            "Like and noise-fuzzy only: which look-alike characters count as the letters "
+            "they stand for - 'off', 'basic', 'standard' or 'extended'. Default: `vethuq "
+            "settings search normalize leetspeak` (off for like, basic for noise-fuzzy)."
+        ),
+    ),
+    normalize: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--normalize",
+        help=(
+            "What counts as the same character, as NAME=VALUE (repeat, or separate with commas): "
+            "unicode=off|basic|full (basic composes characters, full also folds accents and "
+            "compatibility forms - like, exact, fuzzy and noise-fuzzy; by default basic for like "
+            "and exact, full for fuzzy and noise-fuzzy), case=ignore|match (the "
+            "same as --no-case-sensitive / --case-sensitive) and leetspeak=off|basic|standard|"
+            "extended (the same as --leet-level). Defaults: `vethuq settings search normalize`."
+        ),
+    ),
+    noise: str | None = typer.Option(
+        None,
+        "--noise",
+        help=(
+            "Noise-fuzzy only: how much stray punctuation and whitespace may sit inside a "
+            "match - 'low' (1 in a row, 2 in all), 'medium' (3, 6) or 'high' (6, 12). "
+            "Default: `vethuq settings search noise-fuzzy noise`."
         ),
     ),
     export: str | None = typer.Option(
@@ -182,7 +302,20 @@ def search(
     """Search indexed content for CONTENT and print matching pages."""
     storage = open_storage()
     try:
-        options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness, distance)
+        case_sensitive, leet_level, unicode = _apply_normalize(
+            normalize, case_sensitive, leet_level, None
+        )
+        options = _resolve_options(
+            storage,
+            engine,
+            case_sensitive,
+            threshold,
+            fuzziness,
+            distance,
+            leet_level,
+            noise,
+            unicode,
+        )
         pages: list[PageResult] | None = None
         try:
             if options.engine == SearchSettings.ENGINE_ALL:
@@ -192,6 +325,9 @@ def search(
                     case_sensitive=options.case_sensitive,
                     threshold=options.threshold,
                     distance=options.distance,
+                    level=options.level,
+                    noise=options.noise,
+                    unicode=options.unicode,
                 )
                 matches = Ranking.flatten(pages)
             else:
@@ -202,6 +338,9 @@ def search(
                     case_sensitive=options.case_sensitive,
                     threshold=options.threshold,
                     distance=options.distance,
+                    level=options.level,
+                    noise=options.noise,
+                    unicode=options.unicode,
                 )
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
@@ -228,6 +367,9 @@ def search(
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
+                noise=options.noise,
+                unicode=options.unicode,
             )
             console.print(
                 ResultRenderer.message_panel(
@@ -262,6 +404,9 @@ def search(
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
+                noise=options.noise,
+                unicode=options.unicode,
             )
             console.print(
                 ResultRenderer.message_panel(

@@ -75,6 +75,12 @@ class SearchEngines:
         return ProximitySearchEngine(storage)
 
     @staticmethod
+    def _noise_fuzzy_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.noise_fuzzy import NoiseFuzzySearchEngine
+
+        return NoiseFuzzySearchEngine(storage)
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines that are installed and enabled, sorted."""
         return sorted(n for n in SearchEngines._factories if SearchEngineCatalog.is_name_enabled(n))
@@ -86,3 +92,4 @@ SearchEngines.register("exact", SearchEngines._exact_factory)
 SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)
 SearchEngines.register("proximity", SearchEngines._proximity_factory)
+SearchEngines.register("noise-fuzzy", SearchEngines._noise_fuzzy_factory)

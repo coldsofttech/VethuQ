@@ -135,6 +135,7 @@ def _exe(analysis, name, *, console):
         [],
         exclude_binaries=True,
         name=name,
+        icon=str(Path(SPECPATH) / "vethuq.ico"),
         console=console,
         upx=False,
         # Renames the onedir library folder each exe looks for its libs in

@@ -1,0 +1,10 @@
+{
+  "ocr_engines": [
+    {
+      "id": "paddle",
+      "label": "PaddleOCR",
+      "extra": "ocr-paddle",
+      "default": true
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.search import PageResult, SearchMatch, SearchOptions
 from vethuq_core.search.engines import Ranking
+from vethuq_core.settings import SearchSettings
 
 from vethuq_cli.theme import Theme
 
@@ -23,10 +24,20 @@ class ResultRenderer:
         parts = [f"engine: {options.engine}"]
         if options.case_sensitive:
             parts.append("case-sensitive")
-        if options.engine == "fuzzy" and options.threshold is not None:
+        if options.engine in ("fuzzy", "noise-fuzzy") and options.threshold is not None:
             parts.append(f"threshold {options.threshold:.0%}")
         if options.engine == "proximity" and options.distance is not None:
             parts.append(f"within {options.distance} words")
+        if options.level is not None and (
+            options.engine == "noise-fuzzy" or (options.engine == "like" and options.level != "off")
+        ):
+            parts.append(f"leet level {options.level}")
+        if options.engine == "noise-fuzzy" and options.noise is not None:
+            parts.append(f"noise {options.noise}")
+        if options.unicode is not None and options.unicode != SearchSettings.UNICODE_DEFAULTS.get(
+            options.engine
+        ):
+            parts.append(f"unicode {options.unicode}")
         return ", ".join(parts)
 
     @staticmethod
@@ -49,8 +60,11 @@ class ResultRenderer:
         table.add_column(style="bright_black")
         for engine in Ranking.active_tiers():
             table.add_row(f"[{Ranking.BADGES[engine]}]", Ranking.MEANINGS[engine])
+        for modifier, meaning in Ranking.MODIFIERS.items():
+            table.add_row(f"· {modifier}", meaning)
         footer = Text(
-            "Ranked strictest first; a page's label is its strictest match and `also:` "
+            "Ranked strictest first, a hit that needed a modifier after those matched as typed; "
+            "a page's label is its strictest match and `also:` "
             "lists the other ways it was found.",
             style="bright_black",
             no_wrap=False,
@@ -125,7 +139,7 @@ class ResultRenderer:
     @staticmethod
     def page_label(page: PageResult, accent: str) -> Text:
         """`Page: 1 of 3 [ocr] [Exact]  also: Contains, Word` - how a ranked page was found."""
-        label = Text(style=accent)
+        label = Text(style=accent, no_wrap=False, overflow="fold")
         if page.page_number is not None:
             label.append(f"Page: {page.page_number} of {page.total_pages} ")
         label.append(f"[{page.source}] ")

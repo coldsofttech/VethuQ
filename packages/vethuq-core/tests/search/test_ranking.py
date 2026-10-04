@@ -3,6 +3,7 @@ import sqlite3
 from search_data import SearchData
 from vethuq_core.search import PageResult, Search
 from vethuq_core.search.engines import Ranking
+from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
 
@@ -12,7 +13,15 @@ class TestRanking:
         return {page.file_name: page for page in Search.indexed_pages(storage, query, **kwargs)}
 
     def test_tiers_and_badges(self):
-        assert Ranking.TIERS == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
+        assert Ranking.TIERS == (
+            "exact",
+            "like",
+            "lexical",
+            "proximity",
+            "full-text",
+            "fuzzy",
+            "noise-fuzzy",
+        )
         assert [Ranking.BADGES[e] for e in Ranking.TIERS] == [
             "Exact",
             "Contains",
@@ -20,6 +29,7 @@ class TestRanking:
             "Near",
             "Word",
             "Similar",
+            "Obscured",
         ]
         assert Ranking.engine_rank("exact") < Ranking.engine_rank("like")
         assert Ranking.engine_rank("like") < Ranking.engine_rank("fuzzy")
@@ -48,6 +58,140 @@ class TestRanking:
             ("e_similar.pdf", "fuzzy"),
         ]
 
+    def test_a_lookalike_page_ranks_below_the_real_word_and_above_a_typo(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "say Hello to all", "/d/d_word.pdf")
+        SearchData.seed_page(conn, "say h3ll0 to all", "/d/c_lookalike.pdf")
+        SearchData.seed_page(conn, "say hellp to all", "/d/e_similar.pdf")
+        SearchData.seed_page(conn, "say hello to all", "/d/a_exact.pdf")
+
+        pages = Search.indexed_pages(storage, "hello")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("a_exact.pdf", "exact"),
+            ("d_word.pdf", "like"),
+            ("c_lookalike.pdf", "like"),
+            ("e_similar.pdf", "fuzzy"),
+        ]
+        lookalike = next(p for p in pages if p.file_name == "c_lookalike.pdf")
+        assert lookalike.matched_by == ("like", "noise-fuzzy")
+        assert lookalike.modifiers == ("look-alike",)
+        (hit,) = lookalike.hits
+        assert (hit.matched, Ranking.hit_badge(hit)) == ("h3ll0", "Contains · look-alike")
+        assert next(p for p in pages if p.file_name == "d_word.pdf").modifiers == ()
+
+    def test_a_disguised_word_is_found_by_a_plain_query_and_the_other_way_round(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "the p@55w0rd is secret", "/d/a.pdf")
+        SearchData.seed_page(conn, "the password is secret", "/d/b.pdf")
+
+        plain = TestRanking._pages(storage, "password")
+        disguised = TestRanking._pages(storage, "p@55w0rd")
+
+        assert (plain["b.pdf"].engine, plain["a.pdf"].engine) == ("exact", "like")
+        assert (disguised["a.pdf"].engine, disguised["b.pdf"].engine) == ("exact", "like")
+        assert (plain["a.pdf"].modifiers, disguised["b.pdf"].modifiers) == (
+            ("look-alike",),
+            ("look-alike",),
+        )
+
+    def test_lookalike_pages_order_by_how_much_was_disguised(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "p@55w0rd", "/d/a_more.pdf")
+        SearchData.seed_page(conn, "p@ssword", "/d/z_less.pdf")
+
+        pages = Search.indexed_pages(storage, "password")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("z_less.pdf", "like"),
+            ("a_more.pdf", "like"),
+        ]
+        assert pages[0].score > pages[1].score
+
+    def test_a_hit_that_needed_accent_folding_ranks_after_one_matched_as_typed(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "a visit to the ＣＡＦＥ", "/d/a_accent.pdf")
+        SearchData.seed_page(conn, "a visit to the Cafe", "/d/b_plain.pdf")
+
+        pages = Search.indexed_pages(storage, "Cafe", unicode="full")
+
+        assert [(p.file_name, p.engine, p.modifiers) for p in pages] == [
+            ("b_plain.pdf", "exact", ()),
+            ("a_accent.pdf", "like", ("accents",)),
+        ]
+        assert Ranking.hit_badge(pages[1].hits[0]) == "Contains · accents"
+
+    def test_a_query_too_short_for_look_alikes_has_no_modifiers(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "go to the museum", "/d/a.pdf")
+
+        (page,) = Search.indexed_pages(storage, "go")
+
+        assert page.modifiers == ()
+
+    def test_text_hidden_by_noise_ranks_last_as_obscured(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "say hello to all", "/d/a_exact.pdf")
+        SearchData.seed_page(conn, "say h3ll0 to all", "/d/b_lookalike.pdf")
+        SearchData.seed_page(conn, "say hellp to all", "/d/c_similar.pdf")
+        SearchData.seed_page(conn, "say h.ell0 to all", "/d/d_obscured.pdf")
+
+        pages = Search.indexed_pages(storage, "hello")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("a_exact.pdf", "exact"),
+            ("b_lookalike.pdf", "like"),
+            ("c_similar.pdf", "fuzzy"),
+            ("d_obscured.pdf", "noise-fuzzy"),
+        ]
+        obscured = pages[-1]
+        assert obscured.matched_by == ("noise-fuzzy",)
+        (hit,) = obscured.hits
+        assert (hit.matched, Ranking.hit_badge(hit)) == ("h.ell0", "Obscured")
+
+    def test_the_noise_level_and_leet_level_reach_the_noise_fuzzy_run(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "say h..e 9ame to all", "/d/a.pdf")
+
+        # (a threshold of 0.9 so that the 9 for a g can't pass as a typo)
+        assert Search.indexed_pages(storage, "he game", threshold=0.9) == []  # too much noise
+        assert Search.indexed_pages(storage, "he game", threshold=0.9, noise="medium") == []
+        (page,) = Search.indexed_pages(
+            storage, "he game", threshold=0.9, noise="medium", level="standard"
+        )
+        assert (page.engine, page.hits[0].matched) == ("noise-fuzzy", "h..e 9ame")
+
+    def test_the_stored_noise_level_applies_to_the_combined_search(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "say h..e llo to all", "/d/a.pdf")
+        assert Search.indexed_pages(storage, "hello") == []
+
+        SearchSettings.set_noise_level(storage, "medium")
+
+        assert [p.engine for p in Search.indexed_pages(storage, "hello")] == ["noise-fuzzy"]
+
+    def test_obscured_pages_are_ordered_by_how_cleanly_they_hide_it(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "h.e.l.l.o", "/d/a_more.pdf")
+        SearchData.seed_page(conn, "h.e.l.lo", "/d/z_less.pdf")
+
+        pages = Search.indexed_pages(storage, "hello", noise="medium")
+
+        assert [(p.file_name, p.engine) for p in pages] == [
+            ("z_less.pdf", "noise-fuzzy"),
+            ("a_more.pdf", "noise-fuzzy"),
+        ]
+        assert pages[0].score > pages[1].score
+
     def test_a_page_is_one_result_listing_every_engine_that_found_it(
         self, conn: sqlite3.Connection, storage: Storage
     ):
@@ -56,7 +200,15 @@ class TestRanking:
         (page,) = Search.indexed_pages(storage, "payment termination")
 
         assert page.engine == "exact"
-        assert page.matched_by == ("exact", "like", "lexical", "proximity", "full-text", "fuzzy")
+        assert page.matched_by == (
+            "exact",
+            "like",
+            "lexical",
+            "proximity",
+            "full-text",
+            "fuzzy",
+            "noise-fuzzy",
+        )
 
     def test_engines_finding_the_same_words_give_one_hit_labelled_by_the_strictest(
         self, conn: sqlite3.Connection, storage: Storage
@@ -68,7 +220,14 @@ class TestRanking:
         (hit,) = page.hits
         assert (hit.engine, hit.matched) == ("exact", "Museum")
         # one word, so proximity had nothing to do and was skipped without failing the search
-        assert hit.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
+        assert hit.matched_by == (
+            "exact",
+            "like",
+            "lexical",
+            "full-text",
+            "fuzzy",
+            "noise-fuzzy",
+        )
         assert Ranking.hit_badge(hit) == "Exact"
 
     def test_different_words_stay_separate_hits_best_first(
@@ -83,7 +242,14 @@ class TestRanking:
             ("Muzeum", "fuzzy"),
         ]
         assert Ranking.hit_badge(page.hits[1]) == "Similar 83%"
-        assert page.matched_by == ("exact", "like", "lexical", "full-text", "fuzzy")
+        assert page.matched_by == (
+            "exact",
+            "like",
+            "lexical",
+            "full-text",
+            "fuzzy",
+            "noise-fuzzy",
+        )
 
     def test_hits_that_overlap_merge_into_their_union(
         self, conn: sqlite3.Connection, storage: Storage
@@ -95,7 +261,7 @@ class TestRanking:
 
         (hit,) = page.hits
         assert (hit.matched, hit.engine) == ("museums", "like")
-        assert hit.matched_by == ("like", "lexical", "full-text", "fuzzy")
+        assert hit.matched_by == ("like", "lexical", "full-text", "fuzzy", "noise-fuzzy")
         assert (hit.before, hit.after) == ("two ", " here")
         assert page.engine == "like"
 
@@ -178,7 +344,7 @@ class TestRanking:
         pages = Search.indexed_pages(storage, "museum")
 
         assert [(p.file_name, p.engine, len(p.matched_by)) for p in pages] == [
-            ("z_agreed.pdf", "like", 4),
+            ("z_agreed.pdf", "like", 5),
             ("a_alone.pdf", "like", 2),
         ]
 
@@ -249,7 +415,7 @@ class TestRanking:
     ):
         SearchData.seed_page(conn, "Visit the Museum today", "/d/a.pdf")
 
-        for engine in ("like", "exact", "full-text", "fuzzy"):
+        for engine in ("like", "exact", "full-text", "fuzzy", "noise-fuzzy"):
             (match,) = Search.indexed_content(storage, "Museum", engine=engine)
             assert match.engine == engine
             assert (match.start, match.end) == (10, 16)
@@ -258,4 +424,4 @@ class TestRanking:
     def test_resolving_all_accepts_every_option(self, storage: Storage):
         options = Search.resolve_options(storage, "all", True, threshold="loose", distance="tight")
 
-        assert options == ("all", True, 0.65, 3)
+        assert options == ("all", True, 0.65, 3, "basic", "low", None)

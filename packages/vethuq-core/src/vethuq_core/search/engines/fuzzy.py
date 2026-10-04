@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from vethuq_core.search.engines.base import SearchMatch
 from vethuq_core.search.engines.common import SearchEngineHelpers
+from vethuq_core.search.normalizers import Normalizers
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -62,34 +63,62 @@ class FuzzySearchEngine:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
+        noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
+        SearchEngineHelpers.require_no_level(self.name, level)
+        SearchEngineHelpers.require_no_noise(self.name, noise)
         SearchEngineHelpers.require_no_distance(self.name, distance)
+        folding = (
+            SearchSettings.resolve_unicode(
+                self._storage, SearchSettings.UNICODE_DEFAULTS[self.name]
+            )
+            if unicode is None
+            else SearchSettings.parse_unicode(unicode)
+        )
+        pipeline = Normalizers.pipeline({"unicode": folding}) if folding != "off" else None
         limit = (
             SearchSettings.get_fuzzy_threshold(self._storage)
             if threshold is None
             else SearchSettings.parse_fuzzy_threshold(threshold)
         )
         words = [
-            w if case_sensitive else w.casefold() for w in FuzzySearchEngine._WORD.findall(query)
+            w if case_sensitive else w.casefold()
+            for w in FuzzySearchEngine._WORD.findall(
+                pipeline.fold(query).text if pipeline else query
+            )
         ]
         words = list(dict.fromkeys(words))
         if not words:
             return []
 
-        expression = FuzzySearchEngine.narrowing_expression((w.casefold() for w in words), limit)
+        # The norm index holds each page's text folded as coarsely as any normalization does,
+        # and a fold never adds edits between two words, so the query's folded words narrow it.
+        expression = FuzzySearchEngine.narrowing_expression(
+            (Normalizers.index_form(w) for w in words), limit
+        )
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
 
         ranked: list[tuple[float, str, int, list[SearchMatch]]] = []
         for row in (
-            *self._storage.search_candidate_pdf_pages(expression),
-            *self._storage.search_candidate_image_pages(expression),
+            *self._storage.search_norm_candidate_pdf_pages(expression),
+            *self._storage.search_norm_candidate_image_pages(expression),
         ):
             text = row["ocr_text"].replace("\n", " ")
-            found = FuzzySearchEngine._page_hits(text, words, limit, case_sensitive)
+            folded = pipeline.fold(text) if pipeline else None
+            found = FuzzySearchEngine._page_hits(
+                folded.text if folded else text, words, limit, case_sensitive
+            )
             if found is None:
                 continue
             hits, page_score = found
+            if folded is not None:
+                hits = [
+                    FuzzySearchEngine._Hit(*folded.original(hit.start, hit.end), hit.score)
+                    for hit in hits
+                ]
             page_number = row["page_number"]
             total_pages = page_counts.get(row["canonical_id"]) if page_number is not None else None
             page_matches = [

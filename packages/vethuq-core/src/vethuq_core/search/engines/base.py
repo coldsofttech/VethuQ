@@ -34,6 +34,8 @@ class SearchMatch:
     end: int | None = None  # ...and ends
     engine: str | None = None  # the engine that found it, or the strictest one that did
     matched_by: tuple[str, ...] = ()  # every engine that found it, strictest first (`all` only)
+    # The normalizations it needed to match as typed (`accents`, `look-alike`); `all` only
+    modifiers: tuple[str, ...] = ()
 
 
 class SearchQueryError(ValueError):
@@ -67,6 +69,9 @@ class SearchEngine(Protocol):
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
+        noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         """Return one `SearchMatch` per occurrence of `query`.
 
@@ -80,6 +85,12 @@ class SearchEngine(Protocol):
         setting; an engine that isn't tolerant raises `ValueError` if given
         one. `distance` is the most words a `proximity` search allows between
         its first and last term, None meaning the user's setting; other engines
+        raise `ValueError` if given one. `level` is the leetspeak normalization's level
+        (`SearchSettings.LEETSPEAK_LEVELS`), None meaning the user's setting; other engines
+        raise `ValueError` if given one. `noise` is the noise-fuzzy engine's noise level
+        (`SearchSettings.NOISE_LEVELS`), None meaning the user's setting; other engines raise
+        `ValueError` if given one. `unicode` is the Unicode normalization (`off`, `basic` or
+        `full`) of the engines that take one (`like`, `exact`, `fuzzy`, `noise-fuzzy`); the others
         raise `ValueError` if given one. An empty `query` matches nothing, and a
         query an engine can't search raises `SearchQueryError`. May raise
         `SearchEngineUnavailable`.
@@ -106,6 +117,9 @@ class FallbackSearchEngine:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
+        noise: str | None = None,
+        unicode: str | None = None,
     ) -> list[SearchMatch]:
         try:
             return self._primary.search(
@@ -114,6 +128,9 @@ class FallbackSearchEngine:
                 case_sensitive=case_sensitive,
                 threshold=threshold,
                 distance=distance,
+                level=level,
+                noise=noise,
+                unicode=unicode,
             )
         except SearchEngineUnavailable:
             return self._fallback.search(
@@ -122,4 +139,7 @@ class FallbackSearchEngine:
                 case_sensitive=case_sensitive,
                 threshold=threshold,
                 distance=distance,
+                level=level,
+                noise=noise,
+                unicode=unicode,
             )

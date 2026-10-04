@@ -15,7 +15,16 @@ class SearchSettings:
     ENGINE_KEY = "search_engine"
     DEFAULT_ENGINE = "all"
     ENGINE_ALL = "all"  # not an engine: runs every engine and ranks the pages together
-    ENGINES = (ENGINE_ALL, "like", "lexical", "exact", "full-text", "fuzzy", "proximity")
+    ENGINES = (
+        ENGINE_ALL,
+        "like",
+        "lexical",
+        "exact",
+        "full-text",
+        "fuzzy",
+        "proximity",
+        "noise-fuzzy",
+    )
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
     DEFAULT_FUZZY_THRESHOLD = "balanced"
@@ -27,6 +36,31 @@ class SearchSettings:
     # Most words the `proximity` engine lets sit between its first and last term, by name.
     PROXIMITY_PRESETS = {"tight": 3, "medium": 10, "loose": 30}
     PROXIMITY_MAX_DISTANCE = 100
+    LEETSPEAK_LEVELS = ("basic", "standard", "extended")
+    # The normalizers (see `vethuq_core.search.normalizers`): what counts as the same character.
+    # Each setting is `auto` (every engine's own default) or a value that applies to every
+    # engine that can honour it.
+    NORMALIZE_AUTO = "auto"
+    NORMALIZE_CASE_KEY = "search_normalize_case"
+    CASE_VALUES = (NORMALIZE_AUTO, "ignore", "match")
+    NORMALIZE_LEETSPEAK_KEY = "search_normalize_leetspeak"
+    LEETSPEAK_OFF = "off"
+    LEETSPEAK_VALUES = (NORMALIZE_AUTO, LEETSPEAK_OFF, *LEETSPEAK_LEVELS)
+    # What `auto` is for the engines that look through look-alikes unless told not to, and for
+    # the combined search (whose look-alike results come from it).
+    DEFAULT_LEETSPEAK = "basic"
+    LEGACY_LEETSPEAK_KEY = "search_leetspeak_level"  # before it was a normalizer
+    NORMALIZE_UNICODE_KEY = "search_normalize_unicode"
+    UNICODE_LEVELS = ("off", "basic", "full")  # nothing, NFC, NFKC with accents folded
+    UNICODE_VALUES = (NORMALIZE_AUTO, *UNICODE_LEVELS)
+    # What `auto` is for each engine that takes a Unicode level: `exact` and `like` compose
+    # characters (NFC), the fuzzy engines also fold accents.
+    UNICODE_DEFAULTS = {"exact": "basic", "like": "basic", "fuzzy": "full", "noise-fuzzy": "full"}
+    NOISE_KEY = "search_noise_level"
+    DEFAULT_NOISE = "low"
+    # How much stray punctuation and whitespace the `noise-fuzzy` engine skips inside a match,
+    # by name: (most in a row between two characters, most in the whole match).
+    NOISE_LEVELS = {"low": (1, 2), "medium": (3, 6), "high": (6, 12)}
 
     @staticmethod
     def get_snippet_context_chars(storage: Storage) -> int:
@@ -79,17 +113,55 @@ class SearchSettings:
         Settings.set(storage, SearchSettings.ENGINE_KEY, engine)
 
     @staticmethod
-    def is_case_sensitive(storage: Storage) -> bool:
-        """Whether `search` matches case-sensitively by default. Disabled by default.
+    def parse_case(value: str, *, allow_auto: bool = False) -> str:
+        """Resolve a case setting: `ignore`, `match` or (when stored) `auto`.
 
-        Only the `like` and `fuzzy` engines act on it: `exact` is always case-sensitive
-        and `full-text` never is.
+        Raises `InvalidSettingValueError` for anything else.
         """
-        return Settings.get(storage, SearchSettings.CASE_SENSITIVE_KEY) == "true"
+        text = value.strip().lower() if isinstance(value, str) else ""
+        allowed = SearchSettings.CASE_VALUES if allow_auto else SearchSettings.CASE_VALUES[1:]
+        if text not in allowed:
+            raise InvalidSettingValueError(f"case must be one of {', '.join(allowed)}")
+        return text
+
+    @staticmethod
+    def get_case(storage: Storage) -> str:
+        """The stored case setting: `ignore`, `match` or `auto` (each engine's own default).
+
+        A database that only has the older on/off setting reads it as `match` / `ignore`.
+        """
+        value = Settings.get(storage, SearchSettings.NORMALIZE_CASE_KEY)
+        if value is not None:
+            try:
+                return SearchSettings.parse_case(value, allow_auto=True)
+            except InvalidSettingValueError:
+                return SearchSettings.NORMALIZE_AUTO
+        legacy = Settings.get(storage, SearchSettings.CASE_SENSITIVE_KEY)
+        if legacy in ("true", "false"):
+            return "match" if legacy == "true" else "ignore"
+        return SearchSettings.NORMALIZE_AUTO
+
+    @staticmethod
+    def set_case(storage: Storage, value: str) -> None:
+        """Store the case setting: `auto`, `ignore` or `match`."""
+        Settings.set(
+            storage,
+            SearchSettings.NORMALIZE_CASE_KEY,
+            SearchSettings.parse_case(value, allow_auto=True),
+        )
+
+    @staticmethod
+    def is_case_sensitive(storage: Storage) -> bool:
+        """Whether `search` matches case by default: only if the case setting is `match`.
+
+        Acted on by the `like`, `lexical`, `fuzzy` and `noise-fuzzy` engines: `exact` is always
+        case-sensitive and `full-text` and `proximity` never are.
+        """
+        return SearchSettings.get_case(storage) == "match"
 
     @staticmethod
     def set_case_sensitive(storage: Storage, enabled: bool) -> None:
-        Settings.set(storage, SearchSettings.CASE_SENSITIVE_KEY, "true" if enabled else "false")
+        SearchSettings.set_case(storage, "match" if enabled else "ignore")
 
     @staticmethod
     def parse_fuzzy_threshold(value: str | float) -> float:
@@ -208,3 +280,111 @@ class SearchSettings:
         """Store the default proximity distance: a preset name or a number of words."""
         SearchSettings.parse_proximity_distance(value)  # validate
         Settings.set(storage, SearchSettings.PROXIMITY_DISTANCE_KEY, value.strip().lower())
+
+    @staticmethod
+    def parse_unicode(value: str, *, allow_auto: bool = False) -> str:
+        """Resolve a Unicode setting: `off`, `basic` (NFC), `full` (NFKC, accents folded) or
+        (when stored) `auto`. Raises `InvalidSettingValueError` for anything else."""
+        text = value.strip().lower() if isinstance(value, str) else ""
+        allowed = SearchSettings.UNICODE_VALUES if allow_auto else SearchSettings.UNICODE_LEVELS
+        if text not in allowed:
+            raise InvalidSettingValueError(f"unicode must be one of {', '.join(allowed)}")
+        return text
+
+    @staticmethod
+    def get_unicode(storage: Storage) -> str:
+        """The stored Unicode setting: a level, or `auto` (each engine's own default)."""
+        value = Settings.get(storage, SearchSettings.NORMALIZE_UNICODE_KEY)
+        if value is None:
+            return SearchSettings.NORMALIZE_AUTO
+        try:
+            return SearchSettings.parse_unicode(value, allow_auto=True)
+        except InvalidSettingValueError:
+            return SearchSettings.NORMALIZE_AUTO
+
+    @staticmethod
+    def set_unicode(storage: Storage, value: str) -> None:
+        """Store the Unicode setting: `auto`, `off`, `basic` or `full`."""
+        Settings.set(
+            storage,
+            SearchSettings.NORMALIZE_UNICODE_KEY,
+            SearchSettings.parse_unicode(value, allow_auto=True),
+        )
+
+    @staticmethod
+    def resolve_unicode(storage: Storage, default: str) -> str:
+        """The Unicode level to use: the stored one, or `default` (an engine's own, see
+        `UNICODE_DEFAULTS`) on `auto`."""
+        stored = SearchSettings.get_unicode(storage)
+        return default if stored == SearchSettings.NORMALIZE_AUTO else stored
+
+    @staticmethod
+    def parse_leetspeak(value: str, *, allow_auto: bool = False) -> str:
+        """Resolve a leetspeak setting: `off`, `basic`, `standard`, `extended` or (when stored)
+        `auto`. Raises `InvalidSettingValueError` for anything else."""
+        text = value.strip().lower() if isinstance(value, str) else ""
+        allowed = (
+            SearchSettings.LEETSPEAK_VALUES if allow_auto else SearchSettings.LEETSPEAK_VALUES[1:]
+        )
+        if text not in allowed:
+            raise InvalidSettingValueError(f"leetspeak must be one of {', '.join(allowed)}")
+        return text
+
+    @staticmethod
+    def get_leetspeak(storage: Storage) -> str:
+        """The stored leetspeak setting: a level, `off`, or `auto` (each engine's own default).
+
+        A database that only has the older level setting reads it as that level.
+        """
+        for key in (SearchSettings.NORMALIZE_LEETSPEAK_KEY, SearchSettings.LEGACY_LEETSPEAK_KEY):
+            value = Settings.get(storage, key)
+            if value is not None:
+                try:
+                    return SearchSettings.parse_leetspeak(value, allow_auto=True)
+                except InvalidSettingValueError:
+                    break
+        return SearchSettings.NORMALIZE_AUTO
+
+    @staticmethod
+    def set_leetspeak(storage: Storage, value: str) -> None:
+        """Store the leetspeak setting: `auto`, `off`, `basic`, `standard` or `extended`."""
+        Settings.set(
+            storage,
+            SearchSettings.NORMALIZE_LEETSPEAK_KEY,
+            SearchSettings.parse_leetspeak(value, allow_auto=True),
+        )
+
+    @staticmethod
+    def resolve_leetspeak(storage: Storage, default: str) -> str:
+        """The leetspeak level to use: the stored one, or `default` (an engine's own) on `auto`."""
+        stored = SearchSettings.get_leetspeak(storage)
+        return default if stored == SearchSettings.NORMALIZE_AUTO else stored
+
+    @staticmethod
+    def parse_noise_level(value: str) -> str:
+        """Resolve a noise level name (`low`, `medium` or `high`).
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        text = value.strip().lower() if isinstance(value, str) else ""
+        if text not in SearchSettings.NOISE_LEVELS:
+            raise InvalidSettingValueError(
+                f"noise must be one of {', '.join(SearchSettings.NOISE_LEVELS)}"
+            )
+        return text
+
+    @staticmethod
+    def get_noise_level(storage: Storage) -> str:
+        """How much noise the `noise-fuzzy` engine skips. 'low' by default."""
+        value = Settings.get(storage, SearchSettings.NOISE_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_NOISE
+        try:
+            return SearchSettings.parse_noise_level(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_NOISE
+
+    @staticmethod
+    def set_noise_level(storage: Storage, level: str) -> None:
+        """Store the default noise level: `low`, `medium` or `high`."""
+        Settings.set(storage, SearchSettings.NOISE_KEY, SearchSettings.parse_noise_level(level))

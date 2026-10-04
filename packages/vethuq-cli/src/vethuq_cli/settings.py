@@ -38,6 +38,20 @@ proximity_app = typer.Typer(help="Configure the `proximity` search engine.")
 proximity_distance_app = typer.Typer(
     help="Configure how many words may separate your first and last word for `proximity` search."
 )
+normalize_app = typer.Typer(
+    help="Configure what counts as the same character in a search: case, look-alikes."
+)
+normalize_case_app = typer.Typer(help="Configure whether upper and lower case are the same.")
+normalize_unicode_app = typer.Typer(
+    help="Configure whether characters written differently count as the same (café, cafe)."
+)
+normalize_leetspeak_app = typer.Typer(
+    help="Configure whether look-alike characters (3 for e, @ for a) count as the letters."
+)
+noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
+noise_fuzzy_noise_app = typer.Typer(
+    help="Configure how much stray punctuation and whitespace `noise-fuzzy` search skips."
+)
 case_sensitive_app = typer.Typer(
     help="Configure whether `search` matches case by default (only the 'like' engine honours it)."
 )
@@ -96,6 +110,12 @@ search_app.add_typer(fuzzy_app, name="fuzzy")
 fuzzy_app.add_typer(fuzzy_threshold_app, name="threshold")
 search_app.add_typer(proximity_app, name="proximity")
 proximity_app.add_typer(proximity_distance_app, name="distance")
+search_app.add_typer(normalize_app, name="normalize")
+normalize_app.add_typer(normalize_case_app, name="case")
+normalize_app.add_typer(normalize_leetspeak_app, name="leetspeak")
+normalize_app.add_typer(normalize_unicode_app, name="unicode")
+search_app.add_typer(noise_fuzzy_app, name="noise-fuzzy")
+noise_fuzzy_app.add_typer(noise_fuzzy_noise_app, name="noise")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -334,7 +354,11 @@ def search_engine_show() -> None:
         "proximity - finds passages where all your words (two or more, any order) sit within "
         "a set number of words of each other, such as `payment` and `termination` in the same "
         "clause. How near is set by `settings search proximity distance`. One result per "
-        "passage, best pages first. Never case-sensitive."
+        "passage, best pages first. Never case-sensitive.\n\n"
+        "noise-fuzzy - finds your characters hidden by stray punctuation or whitespace, "
+        "look-alike symbols and typos all at once (`h..e llo`, `h @ e # l l o`, `h3ll0` and "
+        "`helo` for `hello`). Uses the fuzzy threshold, the leetspeak normalization and how "
+        "much noise is skipped (`settings search noise-fuzzy noise`). Cleanest text first."
     ),
 )
 def search_engine_set(
@@ -387,7 +411,11 @@ def case_sensitive_show() -> None:
 
 @case_sensitive_app.command("enable")
 def case_sensitive_enable() -> None:
-    """Make `search` match case by default ('like'/'fuzzy'; `--no-case-sensitive` overrides)."""
+    """Make `search` match case by default (`--no-case-sensitive` overrides).
+
+    Acted on by the 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' engines. The same as
+    `settings search normalize case` set to `match` / `ignore`.
+    """
     storage = open_storage()
     try:
         SearchSettings.set_case_sensitive(storage, True)
@@ -1410,3 +1438,266 @@ def backups_location_reset() -> None:
             Theme.OK,
         )
     )
+
+
+@normalize_case_app.command("show")
+def normalize_case_show() -> None:
+    """Show whether `search` treats upper and lower case as the same."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search case: ", "white"),
+                    (SearchSettings.get_case(storage), Theme.VALUE),
+                ),
+                "Case",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_case_app.command(
+    "set",
+    help=(
+        "Set whether `search` treats upper and lower case as the same letter, when "
+        "`--case-sensitive` / `--no-case-sensitive` isn't given.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own: `like`, `lexical`, `fuzzy` and `noise-fuzzy` "
+        "ignore case, `exact` always matches it, `full-text` and `proximity` never do.\n\n"
+        "ignore - upper and lower case are the same, for the engines that can honour it.\n\n"
+        "match - case must match, for the engines that can honour it (`like`, `lexical`, "
+        "`fuzzy`, `noise-fuzzy`; for the fuzzy ones a difference in case is one edit)."
+    ),
+)
+def normalize_case_set(
+    case: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.CASE_VALUES)}.",
+    ),
+) -> None:
+    """Set whether `search` treats upper and lower case as the same."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_case(storage, case)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search case set to ", "white"),
+                    (case.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Case",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_unicode_app.command("show")
+def normalize_unicode_show() -> None:
+    """Show whether `search` treats characters written differently as the same."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search unicode: ", "white"),
+                    (SearchSettings.get_unicode(storage), Theme.VALUE),
+                ),
+                "Unicode",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_unicode_app.command(
+    "set",
+    help=(
+        "Set whether `search` treats characters that are written differently as the same, when "
+        "`--normalize unicode=...` isn't given.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own: `basic` for `like` and `exact`, `full` for "
+        "`fuzzy` and `noise-fuzzy`.\n\n"
+        "off - the text as it is.\n\n"
+        "basic - composes characters (an `e` and a separate accent are `é`), keeping accents.\n\n"
+        "full - also folds accents (`cafe` finds `café`) and compatibility forms (`fine` finds "
+        "`ﬁne`, full-width `ＡＢＣ` is `ABC`).\n\n"
+        "Honoured by `like`, `fuzzy` and `noise-fuzzy`, and by `exact` only when asked for in "
+        'one search (`--normalize unicode=full`), so "as typed" never changes on its own. '
+        "`full-text` already folds accents and accepts no setting; `lexical` and `proximity` "
+        "take none."
+    ),
+)
+def normalize_unicode_set(
+    unicode: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.UNICODE_VALUES)}.",
+    ),
+) -> None:
+    """Set whether `search` treats characters written differently as the same."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_unicode(storage, unicode)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search unicode set to ", "white"),
+                    (unicode.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Unicode",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_leetspeak_app.command("show")
+def normalize_leetspeak_show() -> None:
+    """Show whether `search` reads look-alike characters as the letters they stand for."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak: ", "white"),
+                    (SearchSettings.get_leetspeak(storage), Theme.VALUE),
+                ),
+                "Leetspeak",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@normalize_leetspeak_app.command(
+    "set",
+    help=(
+        "Set whether `search` reads look-alike characters as the letters they stand for, when "
+        "`--leet-level` isn't given. `hello` then finds `h3ll0`, and `p@55w0rd` finds "
+        "`password`, in both directions. Each level includes the one before it.\n\n"
+        "Values:\n\n"
+        "auto (the default) - each engine's own: `noise-fuzzy` and the look-alike results of the "
+        "default combined search use `basic`; `like` doesn't read look-alikes.\n\n"
+        "off - no look-alikes, for every engine (`noise-fuzzy` then treats them as typos).\n\n"
+        "basic - 0 for o, 1 for i or l, 3 for e, 4 or @ for a, 5 or $ for s, 7 for t.\n\n"
+        "standard - also 8 for b, 9 or 6 for g, 2 for z, + for t, and ! or | for i or l.\n\n"
+        "extended - also ( [ { for c. Finds the most, with more chance of unrelated matches.\n\n"
+        "Honoured by `like` and `noise-fuzzy`."
+    ),
+)
+def normalize_leetspeak_set(
+    leetspeak: str = typer.Argument(
+        ...,
+        metavar="VALUE",
+        help=f"One of: {', '.join(SearchSettings.LEETSPEAK_VALUES)}.",
+    ),
+) -> None:
+    """Set whether `search` reads look-alike characters as the letters they stand for."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_leetspeak(storage, leetspeak)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search leetspeak set to ", "white"),
+                    (leetspeak.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Leetspeak",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@noise_fuzzy_noise_app.command("show")
+def noise_fuzzy_noise_show() -> None:
+    """Show how much noise `search --engine noise-fuzzy` skips inside a match."""
+    storage = open_storage()
+    try:
+        level = SearchSettings.get_noise_level(storage)
+        gap, total = SearchSettings.NOISE_LEVELS[level]
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search noise level: ", "white"),
+                    (level, Theme.VALUE),
+                    (f" ({gap} in a row, {total} in all)", "white"),
+                ),
+                "Noise Level",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@noise_fuzzy_noise_app.command(
+    "set",
+    help=(
+        "Set how much stray punctuation and whitespace `search --engine noise-fuzzy` skips "
+        "inside a match when `--noise` isn't given.\n\n"
+        "Noise is whitespace and punctuation between the characters you searched for, such as "
+        "the dots and spaces of `h..e llo`. Letters and digits are never noise (a stray letter "
+        "is a typo, and the fuzzy threshold decides how many of those are allowed), and the "
+        "symbols that can stand for a letter, such as @ or $, are read as that letter first.\n\n"
+        "Levels:\n\n"
+        "low (the default) - at most 1 noise character in a row and 2 in all: `he llo`, "
+        "`h.ello`, `h e llo`.\n\n"
+        "medium - at most 3 in a row and 6 in all: `h..e llo`, `h e l l o`, `h @ 3 l l 0`.\n\n"
+        "high - at most 6 in a row and 12 in all: `h @ e # l l o`. Finds the most, with more "
+        "chance of unrelated text coming together."
+    ),
+)
+def noise_fuzzy_noise_set(
+    noise: str = typer.Argument(
+        ...,
+        metavar="LEVEL",
+        help=f"One of: {', '.join(SearchSettings.NOISE_LEVELS)}.",
+    ),
+) -> None:
+    """Set how much noise `search --engine noise-fuzzy` skips inside a match."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_noise_level(storage, noise)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search noise level set to ", "white"),
+                    (noise.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Noise Level",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()

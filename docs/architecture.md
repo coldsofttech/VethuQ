@@ -216,13 +216,82 @@ A test enforces that no core module outside `db/` and `storage/` imports
     first term to last. `SearchSettings.PROXIMITY_PRESETS` names the distances
     (`tight` 3, `medium` 10, `loose` 30); `parse_proximity_distance` also takes
     1-100. Always case-insensitive; fewer than two terms is a `SearchQueryError`.
+  - Look-alike characters are not an engine but a *normalizer* (below): `like` reads them
+    as the letters they stand for when its leetspeak level is on, using the trigram index over
+    the recorded skeleton to find candidate pages and the folded text to find the match
+    (`LikeSearchEngine._search_lookalikes`). The combined search runs `like` once with look-alikes on
+    and records which normalizations each hit needed (`Normalizers.applied`, `SearchMatch.modifiers`).
+  - `noise-fuzzy` (`search/engines/noise_fuzzy.py`) — the query's characters hidden by
+    noise, look-alikes and typos at once, in the order the text is cleaned up: noise
+    (whitespace and punctuation that can't be a look-alike; `Leet.is_noise`) is skipped,
+    look-alikes are folded to a class letter (`Leet.classes(level)`, single characters only), and
+    the rest is matched within the fuzzy threshold by the same edit rules as `fuzzy`
+    (`FuzzySearchEngine.edit_distance`). The query goes through the same steps. A match is
+    widened to the word edges it touches, then checked against the noise setting
+    (`SearchSettings.NOISE_LEVELS`: most noise characters in a row, and in all) and scored by
+    its cleanliness (1.0 as typed, less for each edit, look-alike and noise character).
+    **The recorded skeleton:** `search/normalizers/leetspeak.py` reduces text to a skeleton (noise dropped,
+    look-alikes folded as coarsely as any level does, lower-cased; one character per kept
+    character). Pages store it as `noise_text`, written with the page (`Document.insert_*`,
+    `Ocr.Page.update_text`), with a trigram index `<pages>_noise` kept in sync by triggers
+    (`Document.noise_schema`, schema v29, backfilled by the migration and rebuilt by
+    `rebuild-search`). Because a level or noise setting only ever matches a subset of what the
+    skeleton matches, it is a sound pre-filter: `narrowing_expression` takes pages through the
+    trigram index when the query is long enough for that (as in `fuzzy`), and
+    `candidate_stretches` then searches the stored skeleton — occurrences when no edits are
+    allowed, otherwise the stretches where enough of the query's two-character pieces fall
+    together (a q-gram lemma, `n - 1 - 3k`) — so only those stretches of a page are read and
+    verified. Pages without a recorded skeleton are always included.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
 `Search.resolve_options` picks the engine, case sensitivity, (fuzzy only)
-threshold and (proximity only) distance from arguments and the `search_engine` /
+threshold, (proximity only) distance, (like and noise-fuzzy) leetspeak level and (noise-fuzzy only)
+noise level from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+/ `search_normalize_case` / `search_normalize_unicode` / `search_normalize_leetspeak` / `search_noise_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+
+### Normalizers
+
+`vethuq_core.search.normalizers` mirrors `search.engines`: what an engine does is the *shape* of a
+match (substring, whole word, ranked, edit distance, ...), what a normalizer does is decide what
+counts as *the same character*, for the query and the page text alike.
+
+- `base.py` — the `Normalizer` protocol (`name`, `levels`, `identity`, `fold(text, level)` returning
+  a `Folded` - the text plus, when positions moved, where each character came from - and
+  `char_table(level)`, a `str.translate` table when the fold is character for character) and
+  `Folded.original(start, end)`, which maps a span of folded text back to the original.
+- `common.py` — `Pipeline` (normalizers applied one after another, composing their position
+  maps) and `NormalizerHelpers`.
+- `registry.py` — `Normalizers.register / get / available / pipeline`; applied in `Normalizers.ORDER`:
+  `unicode`, `case`, `leetspeak`.
+- `case.py` (`match` | `ignore`), `unicode.py` (`off` | `basic` NFC | `full` NFKC and accents folded,
+  traced back piece by piece) and `leetspeak.py` (`off` | `basic` | `standard` | `extended`: single
+  characters folded into classes; also the skeleton and noise helpers the database and
+  `noise-fuzzy` use).
+
+The Unicode normalizer is applied by `like`, `exact`, `fuzzy` and `noise-fuzzy`: the query and the
+page text are folded (`Pipeline.fold`), the engine matches on the folded text, and
+`Folded.original` maps the spans back to the original so highlights and exports show what is on
+the page. Each engine has its own default (`SearchSettings.UNICODE_DEFAULTS`): `exact` and `like`
+`basic`, `fuzzy` and `noise-fuzzy` `full`; the stored setting (`auto` unless changed) or a
+per-search flag overrides it, except for `exact`, which is strict and takes a level only from the
+search itself.
+
+**The normalized text:** pages also store `norm_text` — `Normalizers.index_form(text)`, the text
+folded as coarsely as any normalization does (Unicode `full`, case ignored, look-alikes
+`extended`) — with a trigram index over it (`pdf_pages_norm`, `image_pages_norm`), recorded at
+write time and rebuilt by `rebuild-search`. Because the strictest level only ever matches a subset
+of what the coarsest does, it is a sound pre-filter for every level: `like`, `exact` and `fuzzy`
+narrow candidate pages through it (`SearchEngineHelpers.norm_match`, `narrowing_expression`),
+`noise-fuzzy` through the skeleton index, and the folded text still has the final say, so a
+setting never needs a reindex. Pages without recorded text are always candidates.
+
+The settings are `search_normalize_case`, `search_normalize_unicode` and `search_normalize_leetspeak` (`auto` = each engine's
+own default, or an explicit value for every engine that can honour it); the engine's own default
+and what it supports is in the engine (`like`: look-alikes off; `noise-fuzzy`: `basic`).
+`search/__init__.py` imports lazily so the database layer can import the normalizers (to record a
+page's skeleton) without pulling in the engines, which import the database layer.
 
 ### Combined search and ranking
 
@@ -230,18 +299,22 @@ settings, rejecting (with `SearchOptionError`) combinations an engine can't hono
 engine, groups their hits by page and ranks the pages, returning `PageResult`s
 (`search.search_indexed_pages`; `search_indexed_content(engine="all")` flattens them).
 Engine scores aren't comparable, so ranking is by **match quality**, not by blending
-numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `fuzzy`
-(`proximity` above `full-text` because every page it finds `full-text` finds too),
-pages are ordered by the strictest engine that found them, then by that engine's own
-signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, best
-similarity for `fuzzy`), then by how many engines agreed, then by path and page.
+numbers: `ENGINE_TIERS` orders `exact` > `like` > `lexical` > `proximity` > `full-text` > `fuzzy` > `noise-fuzzy`
+(`proximity` above `full-text` because every page it finds `full-text` finds too;
+`noise-fuzzy` last, as it is `fuzzy` with tolerance for noise). A normalization a hit needed
+(`Normalizers.MODIFIERS`: `accents`, `look-alike`) is a modifier of its engine's badge, not a tier:
+`Ranking.hit_rank` orders hits and pages by *matched as typed, then needing a modifier, then the
+approximate engines (`fuzzy`, `noise-fuzzy`)*, each by engine, then by that engine's own signal
+(hit count for `exact`/`like`, share matched as typed for modified hits, relevance for
+`proximity`/`full-text`, best similarity for `fuzzy`), then by how many engines agreed, then by path
+and page.
 Since the engines' matches nest, a page is one result and overlapping hits are
 merged (`_merge_overlapping`): the union span, labelled with the strictest engine,
 listing every engine in `matched_by`; a `proximity` passage thereby absorbs the word
 hits inside it. `ENGINE_BADGES` names the tiers for users (Exact, Contains, Near,
-Word, Similar) and is shared by the CLI and the UI. Each engine gets only the
+Word, Similar, Obscured, plus `ENGINE_MODIFIERS`, shown as `Contains · look-alike`) and is shared by the CLI and the UI. Each engine gets only the
 options it accepts, and `proximity` is skipped for one-term queries.
-`SearchMatch.start`/`end`/`engine`/`matched_by` carry what the merge needs.
+`SearchMatch.start`/`end`/`engine`/`matched_by`/`modifiers` carry what the merge needs.
 
 Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected

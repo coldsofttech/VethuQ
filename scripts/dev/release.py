@@ -60,6 +60,27 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=REPO_ROOT, check=True, **kwargs)  # noqa: S603
 
 
+class InstallerSizes:
+    """Per-component install sizes, passed to Inno Setup for the Select Components page."""
+
+    @staticmethod
+    def _kb(*paths: Path) -> int:
+        total = 0
+        for path in paths:
+            files = [path] if path.is_file() else [f for f in path.rglob("*") if f.is_file()]
+            total += sum(f.stat().st_size for f in files)
+        return (total + 1023) // 1024
+
+    @staticmethod
+    def defines(app_dir: Path) -> list[str]:
+        """`/D` switches for iscc: the desktop app, the CLI, and the core runtime (worker + lib)."""
+        return [
+            f"/DAppSizeKB={InstallerSizes._kb(app_dir / 'VethuQ-UI.exe')}",
+            f"/DCliSizeKB={InstallerSizes._kb(app_dir / 'vethuq.exe')}",
+            f"/DCoreSizeKB={InstallerSizes._kb(app_dir / 'vethuq-worker.exe', app_dir / 'lib')}",
+        ]
+
+
 class ExtrasFiles:
     """The files generated from the file type and search engine manifests."""
 
@@ -170,6 +191,7 @@ def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool 
             "packages/*/pyproject.toml",
             "packages/*/src/**/*",
             "packages/vethuq-ui/installer/vethuq.spec",
+            "packages/vethuq-ui/installer/vethuq.ico",
         ]
     )
     if (
@@ -202,7 +224,7 @@ def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool 
         raise ReleaseBuildError(f"expected Inno Setup script at {installer_script}")
 
     print("== wrapping with Inno Setup ==")
-    iscc_cmd = [iscc]
+    iscc_cmd = [iscc, *InstallerSizes.defines(app_dir)]
     if dev:
         iscc_cmd.append("/DNoCompression")
     else:

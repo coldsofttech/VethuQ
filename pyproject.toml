@@ -18,6 +18,7 @@ vethuq-search-exact = { workspace = true }
 vethuq-search-full-text = { workspace = true }
 vethuq-search-fuzzy = { workspace = true }
 vethuq-search-lexical = { workspace = true }
+vethuq-search-noise-fuzzy = { workspace = true }
 vethuq-search-proximity = { workspace = true }
 # Remaining workspace packages (vethuq-entitlements, vethuq-intelligence,
 # vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai) are added
@@ -40,6 +41,7 @@ dev = [
     "vethuq-search-full-text",
     "vethuq-search-fuzzy",
     "vethuq-search-lexical",
+    "vethuq-search-noise-fuzzy",
     "vethuq-search-proximity",
 ]
 

@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from vethuq_core.db.migration import Migration
+from vethuq_core.db.queries.documents import Document
 from vethuq_core.errors import CorruptDatabaseError, SchemaVersionError
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
@@ -24,7 +25,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 30
+    SCHEMA_VERSION = 31
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -79,6 +80,8 @@ CREATE TABLE IF NOT EXISTS pdf_pages (
     page_number INTEGER NOT NULL,
     ocr_text TEXT NOT NULL,
     char_count INTEGER NOT NULL DEFAULT 0,
+    noise_text TEXT NOT NULL DEFAULT '',
+    norm_text TEXT NOT NULL DEFAULT '',
     confidence REAL NOT NULL,
     source TEXT NOT NULL DEFAULT 'ocr' CHECK (source IN ('native', 'ocr', 'mixed')),
     ocr_engine TEXT,
@@ -94,6 +97,8 @@ CREATE TABLE IF NOT EXISTS image_pages (
     document_id INTEGER NOT NULL REFERENCES document_index(id),
     ocr_text TEXT NOT NULL,
     char_count INTEGER NOT NULL DEFAULT 0,
+    noise_text TEXT NOT NULL DEFAULT '',
+    norm_text TEXT NOT NULL DEFAULT '',
     confidence REAL NOT NULL,
     ocr_engine TEXT,
     language TEXT,
@@ -266,7 +271,7 @@ CREATE TRIGGER IF NOT EXISTS image_pages_words_au AFTER UPDATE ON image_pages BE
         VALUES ('delete', old.id, old.ocr_text);
     INSERT INTO image_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
-"""
+""" + Document.derived_schema()
 
     @staticmethod
     def _migrate_legacy_db(root: Path, db_dir: Path) -> None:
@@ -420,9 +425,9 @@ END;
             )
             Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
-            if row["version"] < 28:
-                # Restores the word-index triggers `Migration.schema` dropped while it
-                # backfilled the (then still empty) word index - idempotent.
+            if row["version"] < 31:
+                # Restores the index triggers `Migration.schema` dropped while it
+                # backfilled the (then still empty) indexes - idempotent.
                 conn.executescript(Db._SCHEMA)
             conn.execute("UPDATE schema_version SET version = ?", (Db.SCHEMA_VERSION,))
         # Created after the table (and any migration adding these columns to it)

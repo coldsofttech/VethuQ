@@ -119,7 +119,8 @@ vethuq index reindex file ./docs/invoice.pdf --source 3
 
 ### `rebuild-search [--force]`
 
-Rebuild the full-text search tables from the page text already stored in the
+Rebuild the full-text search tables (a trigram and a word index per kind of page, plus the
+trigram index over each page's noise-free skeleton and one over its normalized text) from the page text already stored in the
 database; files are not re-read or re-OCR'd. Use it if search results look
 incomplete or out of date. Asks for confirmation unless `--force` is given,
 shows progress while it runs, then a panel with one row per table (rebuilt or
@@ -213,7 +214,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -223,11 +224,12 @@ runs just that engine:
 
 | Engine | Matches | `Museum` in "Visit the Museum" |
 |---|---|---|
-| `like` | `content` anywhere, even inside a word; ignores case unless `--case-sensitive` | `museum`, `Museum`, `mus`, `seu` ✓ — `Museums`, `euma` ✗ |
+| `like` | `content` anywhere, even inside a word; ignores case unless `--case-sensitive`; with `--leet-level`, look-alikes (`3` for `e`) count as the letters | `museum`, `Museum`, `mus`, `seu` ✓ — `Museums`, `euma` ✗ |
 | `exact` | `content` as typed: same case, as a whole word (always case-sensitive) | `Museum` ✓ — `museum`, `Museums`, `mus` ✗ |
 | `full-text` | pages containing `content`'s words: any case, English word forms (`museums`), accents folded; best matches first | `museum`, `MUSEUM`, `Museums`, `mus*` ✓ — `mus`, `seu` ✗ |
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
+| `noise-fuzzy` | `content`'s characters hidden by stray punctuation or whitespace, look-alike symbols and typos *at once*; cleanest first | `hello` finds `hello`, `helo`, `hallo`, `h3ll0`, `he llo`, `h.ello`; with `--noise medium` also `h..e llo` and `h @ 3 l l 0` ✓ — `hxexlxlxo` ✗ |
 
 ### `--engine all` (the default): every engine, ranked together
 
@@ -243,11 +245,20 @@ signal:
 | 3 | `proximity` | **Near** | relevance |
 | 4 | `full-text` | **Word** | relevance |
 | 5 | `fuzzy` | **Similar 83%** | best word similarity |
+| 6 | `noise-fuzzy` | **Obscured** | cleanliness: fewest edits, look-alikes and noise characters |
 
 `proximity` ranks above `full-text` because every page it finds `full-text`
 finds too (both need all the words), so the other way round "the words are close
-together" could never raise a page. Ties go to the page more engines agree on,
-then to file path and page.
+together" could never raise a page. `noise-fuzzy` ranks last: it is `fuzzy` with
+tolerance for stray characters, so every page `fuzzy` finds it finds too (**Obscured**).
+
+A normalization is a **modifier** of an engine's label, not a tier of its own: a `like` hit
+written `h3ll0` is **Contains · look-alike**, one that needed accents read as plain letters
+(`unicode=full`) is **Contains · accents**. A hit that needed a modifier ranks after every page
+matched as typed (whatever engine) and before the approximate engines (**Similar**,
+**Obscured**), then by engine as usual; among look-alike pages, the less disguised comes first.
+The `h` legend in the pager lists them.
+Ties go to the page more engines agree on, then to file path and page.
 
 Because the engines' matches nest — an exact match is also a substring, a word
 and a similar word — a good match is usually found by three or four of them, so
@@ -273,7 +284,7 @@ The label after `[ocr]` is the page's tier; a hit found less strictly than the
 page's best carries its own label; a page shows its best three hits (best engine
 first, then by position) and counts the rest. A `proximity` passage swallows the
 word hits inside it. Each engine applies the options it can: `--case-sensitive`
-reaches `like` and `fuzzy` (`exact` always matches case, `full-text` and
+reaches `like`, `fuzzy`, `leetspeak` and `noise-fuzzy` (`exact` always matches case, `full-text` and
 `proximity` never do), `--threshold`/`--fuzziness` only `fuzzy`, `--distance`
 only `proximity`, each defaulting to its setting — and `all` never rejects an
 option. `proximity` is skipped for a query of fewer than two terms. Exports list
@@ -316,20 +327,106 @@ would be an exact phrase, which `full-text` already does with quotes. Prefix
 queries are stemmed like any other term, so a prefix that isn't itself a word
 stem (`pay*` — stemmed to `pai*`) may miss words it looks like it covers.
 
+**Normalizations** decide what counts as *the same character*, for `content` and the page
+alike, whichever engine decides the shape of the match: `--normalize NAME=VALUE` (repeat the
+flag, or separate with commas) with `unicode=off|basic|full`, `case=ignore|match` (the same as
+`--no-case-sensitive` / `--case-sensitive`) and `leetspeak=off|basic|standard|extended` (the
+same as `--leet-level`); each one is also a setting under `vethuq settings search normalize`
+(`auto` unless changed: every engine uses its own default). Giving the same one twice is an
+error.
+
+**Unicode** (`unicode=`) treats characters that are written differently as the same: `basic`
+composes them (an `e` followed by a separate accent is `é`, which is how some PDFs write it)
+and keeps accents; `full` also folds accents and compatibility forms, so `cafe` finds `café`
+and `naive` finds `naïve`, `fine` finds the ligature `ﬁne`, full-width `ＡＢＣ` is `ABC` and
+`x2` finds `x²`. It applies to `like`, `exact`, `fuzzy` and `noise-fuzzy`. Each engine has its own default:
+`exact` and `like` `basic` (so a decomposed `é` is found either way, but `cafe` still isn't
+`café`), `fuzzy` and `noise-fuzzy` `full` (an accent is no longer an edit). `exact` is strict: a
+stored setting doesn't reach it, only `--normalize unicode=...` in that search. `full-text`
+already folds accents (and accepts no setting), `lexical` and `proximity` take none; they reject
+it. Highlights and exports show the original text. The searches still use the text indexes (the
+database records each page's normalized text), so a level never needs a reindex; run `index
+rebuild-search` once after upgrading from a version that predates it.
+
+**Look-alike characters (leetspeak)** are a normalization, not an engine: what counts as
+the same character, applied to `content` and to the page alike, whichever engine decides
+the shape of the match. With them on, `hello` finds `h3ll0` and `h3ll0` finds `hello`;
+`password` finds `p@55w0rd`. Two characters match when they can stand for the same
+letter, so an ambiguous one such as `1` (`i` or `l`) matches either, and for `like` it
+is still a substring match. It needs a `content` of at least 3 characters with a letter
+among them (digits and symbols alone, like `2024`, are searched as they are). The
+substitutions are built in — nothing to manage — at three levels, each including the
+one before it: `basic` (`0` `1` `3` `4` `5` `7` `@` `$`), `standard` (adds `2` `6` `8` `9`
+`+` `!` `|`) and `extended` (adds `(` `[` `{` for `c`); `off` reads none. Which engines
+honour it, and their defaults:
+
+| Engine | Look-alikes by default | Set with |
+|---|---|---|
+| `like` | off | `--leet-level`, or `vethuq settings search normalize leetspeak` |
+| `noise-fuzzy` | `basic` | the same (`off` turns them off: a `3` is then a typo) |
+| the default `all` search | `basic`, for its **look-alike** results | the same |
+| `lexical`, `exact`, `full-text`, `fuzzy`, `proximity` | not supported | — (`--leet-level` is an error) |
+
+The setting is `auto` unless you change it: each engine uses its own default above, and
+`off`, `basic`, `standard` or `extended` applies to every engine that can honour it.
+`--leet-level off|basic|standard|extended` overrides it for one search; the results header
+and exports record it. With look-alikes on, `like`'s `SearchMatch.score` is the share of
+`content` matched as typed (a plain `password` before a `p@55w0rd`), and with
+`--case-sensitive` a look-alike stands for the lower-case letter, so only that case
+matches it.
+
+`noise-fuzzy` finds `content`'s characters when they are hidden by stray characters,
+look-alikes and typos together — the text is cleaned up in that order, and `content`
+goes through the same steps, so it may itself be written with noise or look-alikes:
+
+1. **Noise is ignored.** Whitespace and punctuation between the characters are
+   skipped, as far as `--noise` allows. Letters and digits are never noise (a stray
+   letter is a typo, below). `@ $ ! | + ( [ {` can be look-alikes, so they are read
+   as letters first (an `@` that was really noise then costs one edit).
+2. **Look-alikes are folded** to the letters they stand for — the single characters
+   of `--leet-level` (default `vethuq settings search normalize leetspeak`, or `basic`);
+   multi-character spellings like `|\|` are not folded.
+3. **Typos are tolerated** like `fuzzy`: the rest must be within `--threshold` /
+   `--fuzziness` of `content` (default `vethuq settings search fuzzy threshold`), at
+   most 2 edits, and a `content` under 4 characters, or one still holding a digit
+   after folding, must match exactly. Edits are insertions, deletions, substitutions
+   and swaps of two neighbours; a case difference is one edit with
+   `--case-sensitive`.
+
+The words of `content` are matched as one run of characters, so `my password` finds
+`m y p@55w0rd` (given enough noise). A match starts and ends at word edges, like
+`fuzzy`'s — `hello` finds `ahello` as a close word, not `shellout` — but its
+characters may be spread over several words (`he llo`). There is no minimum length.
+
+`--noise low|medium|high` (default `low`, or `vethuq settings search noise-fuzzy
+noise`) sets how much noise a match may skip: `low` at most 1 character in a row and
+2 in all (`he llo`, `h.ello`, `h e llo`), `medium` 3 and 6 (`h..e llo`, `h e l l o`,
+`h @ 3 l l 0`), `high` 6 and 12 (`h @ e # l l o`). Results are ordered by how clean
+the match is (`SearchMatch.score` is 1.0 for the text as typed and falls with each
+edit, look-alike and noise character); `--distance` is an error with it, and
+`--noise` is an error with any other engine (the combined search applies it to its
+`noise-fuzzy` run).
+
+Pages come from the database's own index of each page's *skeleton* — its text without
+noise and with look-alikes folded, recorded when the page is written and searched
+through a trigram index (see `index rebuild-search`) — and from there only the stretches
+of a page where `content` can lie are read, so it doesn't scan every page. A very short
+`content` can't be narrowed that way and is searched through the whole skeleton.
+
 `--case-sensitive` / `--no-case-sensitive` overrides
-`vethuq settings search case-sensitive`, and only `like` and `fuzzy` act on it
+`vethuq settings search case-sensitive`, and only `like`, `lexical`, `fuzzy` and `noise-fuzzy` act on it
 (for `fuzzy` a difference in case counts as one edit):
 `exact` is always case-sensitive while `full-text` and `proximity` never are,
 so asking for the opposite explicitly (`--engine exact --no-case-sensitive`,
 `--engine full-text --case-sensitive`) is an error, while a stored
 preference the engine can't honour is simply not applied. The header of
 the results shows which engine (with its case-sensitivity, threshold or
-distance) produced them, and an empty `exact`, `full-text`, `fuzzy` or
-`proximity` search suggests a looser search.
+distance) produced them, and an empty `exact`, `full-text`, `fuzzy`,
+`proximity` or `noise-fuzzy` search suggests a looser search.
 Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, press `h` (with the
-default `all` engine) for what Exact, Contains, Near, Word and Similar
-mean, and press `q` to close it. Each file with a match prints its path once, followed by a
+default `all` engine) for what Exact, Contains, Relevant, Near, Word
+and Similar mean, and press `q` to close it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every match in
 that file (PDFs only show `Page:` — an image is a single page). A
 duplicate file (identical content to another already-indexed file) is
@@ -430,9 +527,31 @@ vethuq search "payment termination" --engine proximity --distance loose   # with
 vethuq search "late fee" --engine proximity --distance 5                  # within 5 words
 ```
 
-To make an engine, case-sensitivity, fuzzy threshold or proximity distance the default for every
-search, see `vethuq settings search engine`, `case-sensitive`, `fuzzy threshold` and
-`proximity distance`
+**`noise-fuzzy`** finds text hidden by noise, look-alikes and typos together:
+
+```bash
+vethuq search hello --engine noise-fuzzy                    # "he llo", "h3ll0", "helo", "hallo"
+vethuq search hello --engine noise-fuzzy --noise medium     # also "h..e llo", "h @ 3 l l 0"
+vethuq search hello --engine noise-fuzzy --noise high       # also "h @ e # l l o"
+vethuq search password --engine noise-fuzzy --fuzziness strict --leet-level standard
+vethuq settings search noise-fuzzy noise set medium         # the default from now on
+```
+
+**Look-alikes** with `like` (they are on by default for `noise-fuzzy` and the combined search):
+
+```bash
+vethuq search cafe --engine like --normalize unicode=full    # finds "café" (and "cafe\u0301", "cafe")
+vethuq search abc --normalize unicode=full,leetspeak=basic   # full-width ＡＢＣ, "4bc", ...
+vethuq search hello --engine like --leet-level basic         # finds "hello", "h3ll0", "He11o"
+vethuq search p@55w0rd --engine like --leet-level basic      # finds "password" and "p@55w0rd"
+vethuq search hello --engine like --leet-level basic --case-sensitive   # "hello", "h3ll0" - not "H3LL0"
+vethuq search game --engine like --leet-level standard       # "9ame" too (a 9 is a g from standard)
+vethuq settings search normalize leetspeak set standard      # the default for every engine from now on
+```
+
+To make an engine, case, look-alikes, fuzzy threshold or proximity distance the
+default for every search, see `vethuq settings search engine`, `case-sensitive`,
+`normalize leetspeak`, `fuzzy threshold` and `proximity distance`
 below. In PowerShell, put a quoted phrase inside single quotes, as in the
 `'"english institute"'` example.
 
@@ -598,7 +717,7 @@ vethuq settings search export-format show
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one
 of `all` (the default — every engine, ranked together), `like`, `exact`,
-`full-text`, `fuzzy` or `proximity`.
+`full-text`, `fuzzy`, `proximity` or `noise-fuzzy`.
 
 ```bash
 vethuq settings search engine set full-text
@@ -608,7 +727,7 @@ vethuq settings search engine show
 ### `search case-sensitive enable|disable|show`
 
 Configure whether `vethuq search` matches case by default. Disabled by
-default. Only the `like` and `fuzzy` engines act on it; `--case-sensitive` /
+default. Only the `like`, `lexical`, `fuzzy` and `noise-fuzzy` engines act on it (it is the same setting as `normalize case` being `match`); `--case-sensitive` /
 `--no-case-sensitive` overrides it for one search.
 
 ```bash
@@ -640,6 +759,60 @@ first and last term, when `--distance` isn't given: `tight` (3 words),
 vethuq settings search proximity distance set loose
 vethuq settings search proximity distance set 15
 vethuq settings search proximity distance show
+```
+
+### `search normalize case set <value>|show`
+
+Configure whether `vethuq search` treats upper and lower case as the same letter, when
+`--case-sensitive` / `--no-case-sensitive` isn't given: `auto` (the default — each engine's
+own: `like`, `lexical`, `fuzzy` and `noise-fuzzy` ignore case, `exact` always matches it,
+`full-text` and `proximity` never do), `ignore` or `match` (for the engines that can honour
+it). `case-sensitive enable|disable` above is the same setting as `match` / `ignore`.
+
+```bash
+vethuq settings search normalize case set match
+vethuq settings search normalize case show
+```
+
+### `search normalize unicode set <value>|show`
+
+Configure whether `vethuq search` treats characters that are written differently as the same,
+when `--normalize unicode=...` isn't given: `auto` (the default — each engine's own: `basic` for
+`like` and `exact`, `full` for `fuzzy` and `noise-fuzzy`), `off`, `basic` (compose characters, keep
+accents) or `full` (also fold accents and compatibility forms: `cafe` finds `café`). Honoured by
+`like`, `fuzzy` and `noise-fuzzy`; `exact` only when asked for in a search.
+
+```bash
+vethuq settings search normalize unicode set full
+vethuq settings search normalize unicode show
+```
+
+### `search normalize leetspeak set <value>|show`
+
+Configure whether `vethuq search` reads look-alike characters (`3` for `e`, `@` for `a`) as
+the letters they stand for, when `--leet-level` isn't given: `auto` (the default — each
+engine's own: `basic` for `noise-fuzzy` and the look-alike results of the combined search,
+none for `like`), `off`, `basic` (`0` `1` `3` `4` `5` `7` `@` `$`), `standard` (also `2` `6`
+`8` `9` `+` `!` `|`) or `extended` (also `(` `[` `{`). Each level includes the one before it.
+The substitution table is built in and isn't user-editable. Honoured by `like` and
+`noise-fuzzy`.
+
+```bash
+vethuq settings search normalize leetspeak set standard
+vethuq settings search normalize leetspeak show
+```
+
+### `search noise-fuzzy noise set <level>|show`
+
+Configure how much stray punctuation and whitespace `vethuq search --engine noise-fuzzy`
+(and the Obscured results of the default combined search) skips inside a match, when
+`--noise` isn't given: `low` (the default — at most 1 noise character in a row and 2 in
+all), `medium` (3 and 6) or `high` (6 and 12). Letters and digits are never noise. The
+engine also uses the fuzzy threshold and the leetspeak normalization settings.
+
+```bash
+vethuq settings search noise-fuzzy noise set medium
+vethuq settings search noise-fuzzy noise show
 ```
 
 ### `search snippet set <chars>|show`
@@ -781,7 +954,7 @@ vethuq file-types list --all
 
 ## `search-engines`
 
-Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
+Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
 
 ### `list [--all]`
 

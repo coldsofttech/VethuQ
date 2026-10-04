@@ -35,6 +35,19 @@ class Migration:
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_trigram_{suffix}")
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_words_{suffix}")
                 conn.execute(f"DROP TABLE IF EXISTS {table}_fts")
+        if from_version < 31:
+            # `Db._SCHEMA` just created the indexes over derived text (`noise_text`,
+            # `norm_text`) and their triggers, but the columns they read are only added (and
+            # backfilled) by the v31 step below, so the triggers must not fire before
+            # then. The UPDATE triggers of the older indexes go too: the backfill would
+            # otherwise re-index every page's text for nothing. `Db` restores all of them
+            # afterwards.
+            for table in ("pdf_pages", "image_pages"):
+                for kind in ("noise", "norm"):
+                    for suffix in ("ai", "ad", "au"):
+                        conn.execute(f"DROP TRIGGER IF EXISTS {table}_{kind}_{suffix}")
+                for kind in ("trigram", "words"):
+                    conn.execute(f"DROP TRIGGER IF EXISTS {table}_{kind}_au")
         if from_version < 3:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(pdf_pages)")}
             if "source" not in columns:
@@ -560,7 +573,25 @@ class Migration:
             # 'rebuild' re-reads every row from the content table; unlike a plain
             # INSERT ... SELECT it is idempotent. This also covers databases that predate
             # the trigram indexes (v25).
-            for index in Document.SEARCH_INDEXES:
+            for index in Document.TEXT_SEARCH_INDEXES:
+                Document.rebuild_search_index(conn, index)
+
+        if from_version < 31:
+            # Each page's text also has a noise-free, look-alike-folded skeleton (`noise_text`,
+            # for the `noise-fuzzy` search) and a copy folded as coarsely as any search level
+            # does (`norm_text`, so the engines that normalize can find candidate pages through
+            # SQLite), each with its own trigram index. Pages written before this version get
+            # both now. Both columns are added only if missing, so databases that already have
+            # either (an earlier build stamped v29/v30 differently) are brought up to date too.
+            for table in Document.PAGE_TABLES:
+                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                for column in ("noise_text", "norm_text"):
+                    if column not in columns:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                        )
+                Document.refresh_derived_text(conn, table)
+            for index in Document.DERIVED_SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)
 
         if from_version < 29:

@@ -1,10 +1,12 @@
 """Keep everything derived from the manifests in step: the `type-<id>` and `search-<id>` extras
-in the published pyprojects, and the catalogs and Inno Setup includes the Windows installer reads.
+(plus `ocr-<id>` and `lang-<id>`) in the published pyprojects, and the catalogs and Inno Setup
+includes the Windows installer reads.
 
     python scripts/dev/sync_extras.py          # regenerate
     python scripts/dev/sync_extras.py --check  # exit 1 on drift (CI)
 
-Manifests: `filetypes/<id>/type.json` and `search/engines/manifests/<id>.json`.
+Manifests: `filetypes/<id>/type.json` and `search/engines/manifests/<id>.json`,
+`ocr/engines/manifests/<id>.json` and `ocr/languages/manifests/<id>.json`.
 """
 
 from __future__ import annotations
@@ -41,6 +43,22 @@ class Kind:
 
 
 KINDS = [
+    Kind(
+        "OcrEngine",
+        "ocr/engines/manifests/*.json",
+        INSTALLER / "ocr_engines.json",
+        INSTALLER / "ocr_engines.iss",
+        "ocr_engines",
+        ("id", "label", "extra", "default"),
+    ),
+    Kind(
+        "Language",
+        "ocr/languages/manifests/*.json",
+        INSTALLER / "languages.json",
+        INSTALLER / "languages.iss",
+        "languages",
+        ("id", "label", "extra", "default"),
+    ),
     Kind(
         "FileType",
         "filetypes/*/type.json",

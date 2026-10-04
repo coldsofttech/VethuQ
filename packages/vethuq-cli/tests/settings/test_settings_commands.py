@@ -430,6 +430,141 @@ class TestSearchEngineSettings:
         assert "medium" in shown.stdout
 
 
+class TestNormalizeSettings:
+    def test_show_defaults_to_auto(self, use_temp_db):
+        use_temp_db()
+
+        case = runner.invoke(app, ["settings", "search", "normalize", "case", "show"])
+        leetspeak = runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "show"])
+
+        assert case.exit_code == 0 and "auto" in case.stdout
+        assert leetspeak.exit_code == 0 and "auto" in leetspeak.stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+
+        for name, values in (
+            ("case", ("match", "ignore", "Auto")),
+            ("leetspeak", ("off", "standard", "extended", "Basic", "auto")),
+        ):
+            for value in values:
+                set_result = runner.invoke(
+                    app, ["settings", "search", "normalize", name, "set", value]
+                )
+                shown = runner.invoke(app, ["settings", "search", "normalize", name, "show"])
+                assert set_result.exit_code == 0
+                assert f"set to {value.lower()}" in set_result.stdout
+                assert value.lower() in shown.stdout
+
+    def test_set_rejects_unknown_values(self, use_temp_db):
+        use_temp_db()
+
+        case = runner.invoke(app, ["settings", "search", "normalize", "case", "set", "sometimes"])
+        leetspeak = runner.invoke(
+            app, ["settings", "search", "normalize", "leetspeak", "set", "insane"]
+        )
+
+        assert case.exit_code == 1 and "ignore, match" in case.output
+        assert leetspeak.exit_code == 1 and "off, basic, standard, extended" in leetspeak.output
+        shown = runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "show"])
+        assert "auto" in shown.stdout
+
+    def test_the_case_sensitive_commands_are_the_same_setting(self, use_temp_db):
+        use_temp_db()
+
+        runner.invoke(app, ["settings", "search", "case-sensitive", "enable"])
+        assert (
+            "match"
+            in runner.invoke(app, ["settings", "search", "normalize", "case", "show"]).stdout
+        )
+
+        runner.invoke(app, ["settings", "search", "normalize", "case", "set", "ignore"])
+        assert (
+            "disabled"
+            in runner.invoke(app, ["settings", "search", "case-sensitive", "show"]).stdout
+        )
+
+        runner.invoke(app, ["settings", "search", "normalize", "case", "set", "match"])
+        assert (
+            "enabled" in runner.invoke(app, ["settings", "search", "case-sensitive", "show"]).stdout
+        )
+
+    def test_unicode_show_set_and_validation(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "normalize", "unicode", "show"]
+
+        assert "auto" in runner.invoke(app, show).stdout
+        for value in ("full", "basic", "Off", "auto"):
+            result = runner.invoke(
+                app, ["settings", "search", "normalize", "unicode", "set", value]
+            )
+            assert result.exit_code == 0
+            assert f"set to {value.lower()}" in result.stdout
+            assert value.lower() in runner.invoke(app, show).stdout
+        bad = runner.invoke(app, ["settings", "search", "normalize", "unicode", "set", "nfd"])
+        assert bad.exit_code == 1 and "off, basic, full" in bad.output
+
+    def test_the_old_leetspeak_level_command_is_gone(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "leetspeak", "level", "show"])
+
+        assert result.exit_code != 0
+
+    def test_leetspeak_is_not_an_engine(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "engine", "set", "leetspeak"])
+
+        assert result.exit_code == 1
+
+
+class TestNoiseLevel:
+    def test_show_defaults_to_low(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "show"])
+
+        assert result.exit_code == 0
+        assert "low" in result.stdout and "1 in a row, 2 in all" in result.stdout
+
+    def test_set_then_show(self, use_temp_db):
+        use_temp_db()
+        show = ["settings", "search", "noise-fuzzy", "noise", "show"]
+
+        for level, limits in (
+            ("medium", "3 in a row, 6"),
+            ("high", "6 in a row, 12"),
+            ("Low", "1"),
+        ):
+            result = runner.invoke(
+                app, ["settings", "search", "noise-fuzzy", "noise", "set", level]
+            )
+            assert result.exit_code == 0
+            assert f"set to {level.lower()}" in result.stdout
+            shown = runner.invoke(app, show).stdout
+            assert level.lower() in shown and limits in shown
+
+    def test_set_rejects_an_unknown_level(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "set", "loud"])
+        shown = runner.invoke(app, ["settings", "search", "noise-fuzzy", "noise", "show"])
+
+        assert result.exit_code == 1
+        assert "low, medium, high" in result.output
+        assert "low" in shown.stdout
+
+    def test_engine_can_be_the_default(self, use_temp_db):
+        use_temp_db()
+
+        set_result = runner.invoke(app, ["settings", "search", "engine", "set", "noise-fuzzy"])
+        shown = runner.invoke(app, ["settings", "search", "engine", "show"])
+
+        assert set_result.exit_code == 0
+        assert "noise-fuzzy" in shown.stdout
+
+
 class TestBackupSettings:
     def test_defaults(self, use_temp_db):
         use_temp_db()

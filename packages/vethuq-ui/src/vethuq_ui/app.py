@@ -11,6 +11,7 @@ from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
 from vethuq_ui.dialogs import show_error
+from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
 from vethuq_ui.logging_setup import UiLogging
 from vethuq_ui.ribbon import Ribbon, RibbonActions
@@ -34,6 +35,7 @@ class MainWindow(tk.Tk):
         _logger.info("VethuQ UI started")
 
         self.title("VethuQ")
+        Brand.apply_window_icon(self)
         self.geometry("720x480")
         try:
             self.state("zoomed")
