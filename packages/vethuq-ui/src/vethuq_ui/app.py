@@ -10,8 +10,11 @@ import sv_ttk
 from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
-from vethuq_ui.windows.about import AboutWindow
-from vethuq_ui.windows.location import LocationWindow
+from vethuq_ui.windows.settings.about import AboutWindow
+from vethuq_ui.windows.settings.location import LocationWindow
+from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
+from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
+from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
@@ -60,7 +63,24 @@ class MainWindow(tk.Tk):
                 stop=lambda: self.index_controls.stop(),
                 delete_source=lambda: self.sources.delete_selected(),
                 show_about=lambda: AboutWindow.show(self),
-                show_status=lambda text: self.status_bar.show_message(text),
+                show_gpu=lambda: GpuWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_ocr_icons,
+                ),
+                show_ocr_retry=lambda: OcrRetryWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_ocr_icons,
+                ),
+                show_ocr_engine=lambda: OcrEngineWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_ocr_icons,
+                ),
                 show_app_location=lambda: LocationWindow.show(
                     self, LocationWindow.App, self.status_bar.show_message
                 ),

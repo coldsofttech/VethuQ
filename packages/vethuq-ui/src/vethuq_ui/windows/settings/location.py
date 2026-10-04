@@ -8,13 +8,14 @@ from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from vethuq_core.branding import Palette
 from vethuq_core.db.backup import Backup, BackupError
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.paths import Paths
 from vethuq_core.storage import default_db_path
 
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
+from vethuq_ui.buttons.primary import PrimaryButton
+from vethuq_ui.widgets import Widgets
 from vethuq_ui.windows.placement import Placement
 
 
@@ -132,28 +133,6 @@ class LocationWindow:
     _open: dict[str, tk.Toplevel] = {}
 
     @staticmethod
-    def _danger_button(parent: tk.Misc, text: str) -> tk.Button:
-        """A red button for a destructive action. sv_ttk's themed buttons can't be recoloured,
-        so this is a plain Tk button painted from the palette's `danger` token."""
-        danger = Palette.get("danger")
-        return tk.Button(
-            parent,
-            text=text,
-            width=9,
-            font=("Segoe UI", 9),
-            relief=tk.FLAT,
-            borderwidth=0,
-            padx=8,
-            pady=5,
-            cursor="hand2",
-            background=danger,
-            foreground=Palette.get("on-primary"),
-            activebackground=danger,
-            activeforeground=Palette.get("on-primary"),
-            disabledforeground=Palette.get("text-muted"),
-        )
-
-    @staticmethod
     def show(
         parent: tk.Tk | tk.Toplevel,
         target: type[LocationWindow.Target],
@@ -185,25 +164,16 @@ class LocationWindow:
         buttons = ttk.Frame(body)
         buttons.pack(fill=tk.X, pady=(16, 0))
         ttk.Button(buttons, text="Close", width=9, command=window.destroy).pack(side=tk.RIGHT)
-        change_button = ttk.Button(buttons, text="Browse...", width=9)
+        change_button = PrimaryButton.build(buttons, "Browse...")
         change_button.pack(side=tk.RIGHT, padx=(0, 6))
-        reset_button = LocationWindow._danger_button(buttons, "Reset")
+        reset_button = Widgets.danger_button(buttons, "Reset")
         if target.can_reset:
             reset_button.pack(side=tk.RIGHT, padx=(0, 6))
 
         def refresh() -> None:
             path_var.set(str(target.current()))
             note_var.set(target.source_note())
-            if target.is_default():
-                reset_button.configure(
-                    state=tk.DISABLED,
-                    background=Palette.get("surface-alt"),
-                    cursor="arrow",
-                )
-            else:
-                reset_button.configure(
-                    state=tk.NORMAL, background=Palette.get("danger"), cursor="hand2"
-                )
+            Widgets.set_danger_enabled(reset_button, not target.is_default())
 
         def finished(message: str) -> None:
             refresh()
@@ -251,6 +221,6 @@ class LocationWindow:
         change_button.configure(command=change)
         reset_button.configure(command=reset)
         refresh()
-        Placement.center_on(window, parent)
+        Placement.center_on_main(window)
         window.bind("<Escape>", lambda _event: window.destroy())
         window.focus_set()

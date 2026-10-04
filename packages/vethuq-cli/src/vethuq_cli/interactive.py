@@ -61,6 +61,7 @@ from vethuq_cli.settings import (
     case_sensitive_disable,
     case_sensitive_enable,
     case_sensitive_show,
+    engine_reset,
     engine_set,
     engine_show,
     export_format_set,
@@ -69,6 +70,7 @@ from vethuq_cli.settings import (
     fuzzy_threshold_show,
     gpu_disable,
     gpu_enable,
+    gpu_reset,
     gpu_status,
     integrity_check_interval_set,
     integrity_check_interval_show,
@@ -92,6 +94,7 @@ from vethuq_cli.settings import (
     proximity_distance_show,
     removed_retention_set,
     removed_retention_show,
+    retry_reset,
     retry_set,
     retry_show,
     search_engine_set,
@@ -440,7 +443,7 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > GPU",
-                [("1", "Enable"), ("2", "Disable"), ("3", "Status"), ("0", "Back")],
+                [("1", "Enable"), ("2", "Disable"), ("3", "Status"), ("4", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -450,6 +453,8 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(gpu_disable)
             elif choice == "3":
                 InteractiveMenu._run_safely(gpu_status)
+            elif choice == "4":
+                InteractiveMenu._run_safely(gpu_reset)
 
     @staticmethod
     def _settings_snippet_menu() -> None:
@@ -672,7 +677,8 @@ class InteractiveMenu:
     def _settings_retry_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Ocr > Retry", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Ocr > Retry",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -683,6 +689,8 @@ class InteractiveMenu:
                     "Times to retry a file's OCR after a transient failure", console=console
                 )
                 InteractiveMenu._run_safely(retry_set, attempts=attempts)
+            elif choice == "3":
+                InteractiveMenu._run_safely(retry_reset)
 
     @staticmethod
     def _settings_thread_workers_menu() -> None:
@@ -819,7 +827,8 @@ class InteractiveMenu:
     def _settings_engine_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Ocr > Engine", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Ocr > Engine",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -832,6 +841,8 @@ class InteractiveMenu:
                     choices=list(OcrSettings.ENGINE_MODES),
                 )
                 InteractiveMenu._run_safely(engine_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._run_safely(engine_reset)
 
     @staticmethod
     def _settings_stability_check_menu() -> None:

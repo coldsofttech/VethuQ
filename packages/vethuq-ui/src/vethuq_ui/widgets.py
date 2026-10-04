@@ -6,10 +6,24 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any
 
+from vethuq_ui.buttons.danger import DangerButtonStyle
 from vethuq_ui.icons import get_icon
 
 
 class Widgets:
+    @staticmethod
+    def danger_button(parent: tk.Misc, text: str) -> ttk.Button:
+        """A red button for a destructive action, shaped like sv_ttk's own buttons (see
+        `DangerButtonStyle`) and coloured from the palette's `danger` token."""
+        return ttk.Button(
+            parent, text=text, width=9, style=DangerButtonStyle.ensure(parent)
+        )
+
+    @staticmethod
+    def set_danger_enabled(button: ttk.Button, enabled: bool) -> None:
+        """Red and clickable when enabled, light grey when not."""
+        button.state(["!disabled"] if enabled else ["disabled"])
+
     @staticmethod
     def icon_button_kwargs(
         name: str, glyph: str, caption: str, *, compound: str = tk.TOP, size: int | None = None

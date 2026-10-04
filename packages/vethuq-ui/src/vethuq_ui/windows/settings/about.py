@@ -94,6 +94,6 @@ class AboutWindow:
         ttk.Button(buttons, text="Close", width=9, command=window.destroy).pack(side=tk.RIGHT)
         copy_button = ttk.Button(buttons, text="Copy", width=9, command=copy)
         copy_button.pack(side=tk.RIGHT, padx=(0, 6))
-        Placement.center_on(window, parent)
+        Placement.center_on_main(window)
         window.bind("<Escape>", lambda _event: window.destroy())
         window.focus_set()

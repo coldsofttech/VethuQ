@@ -12,11 +12,21 @@ import tkinter as tk
 from functools import partial
 from tkinter import ttk
 
+from vethuq_ui.buttons.primary import PrimaryButton
+from vethuq_ui.widgets import Widgets
+from vethuq_ui.windows.placement import Placement
+
 
 def _show(
-    parent: tk.Tk | tk.Toplevel, title: str, message: str, buttons: list[tuple[str, bool]]
+    parent: tk.Tk | tk.Toplevel,
+    title: str,
+    message: str,
+    buttons: list[tuple[str, bool]],
+    primary: str | None = None,
+    danger: str | None = None,
 ) -> bool:
-    """`buttons` is [(label, return_value), ...]; the first is the default."""
+    """`buttons` is [(label, return_value), ...]; the first is the default. The buttons labelled
+    `primary` and `danger` are drawn in those colours."""
     dialog = tk.Toplevel(parent)
     dialog.title(title)
     dialog.resizable(False, False)
@@ -36,22 +46,26 @@ def _show(
     button_row = ttk.Frame(body)
     button_row.pack(fill=tk.X, pady=(16, 0))
     for label, value in reversed(buttons):
-        ttk.Button(button_row, text=label, command=partial(close, value)).pack(
-            side=tk.RIGHT, padx=(6, 0)
-        )
+        if label == primary:
+            button = PrimaryButton.build(button_row, label, partial(close, value), width=0)
+        elif label == danger:
+            button = Widgets.danger_button(button_row, label)
+            button.configure(command=partial(close, value), width=0)
+        else:
+            button = ttk.Button(button_row, text=label, command=partial(close, value))
+        button.pack(side=tk.RIGHT, padx=(6, 0))
 
     dialog.protocol("WM_DELETE_WINDOW", partial(close, buttons[-1][1]))
-    dialog.update_idletasks()
-    x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_width()) // 2
-    y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_height()) // 2
-    dialog.geometry(f"+{x}+{y}")
+    Placement.center_on_main(dialog)
 
     dialog.wait_window()
     return result["value"]
 
 
 def ask_yes_no(parent: tk.Tk | tk.Toplevel, title: str, message: str) -> bool:
-    return _show(parent, title, message, [("Yes", True), ("No", False)])
+    return _show(
+        parent, title, message, [("Yes", True), ("No", False)], primary="Yes", danger="No"
+    )
 
 
 def show_error(parent: tk.Tk | tk.Toplevel, title: str, message: str) -> None:

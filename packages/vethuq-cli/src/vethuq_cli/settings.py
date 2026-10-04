@@ -188,6 +188,19 @@ def gpu_disable() -> None:
         storage.close()
 
 
+@gpu_app.command("reset")
+def gpu_reset() -> None:
+    """Reset GPU use for OCR to the default (disabled)."""
+    storage = open_storage()
+    try:
+        GpuSettings.reset(storage)
+        console.print(
+            SettingsPanel.build("GPU reset to the default (disabled).", "GPU", Theme.OK)
+        )
+    finally:
+        storage.close()
+
+
 @gpu_app.command("status")
 def gpu_status() -> None:
     """Show whether GPU use is currently enabled."""
@@ -685,6 +698,27 @@ def retry_set(
         storage.close()
 
 
+@retry_app.command("reset")
+def retry_reset() -> None:
+    """Reset how many times a file's OCR is retried to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_retry_attempts(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR retry attempts reset to the default (", "white"),
+                    (str(OcrSettings.DEFAULT_RETRY_ATTEMPTS), Theme.VALUE),
+                    (").", "white"),
+                ),
+                "OCR Retry",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
 @stability_check_app.command("show")
 def stability_check_show() -> None:
     """Show how long a file must stay unchanged before it's indexed."""
@@ -1148,6 +1182,27 @@ def engine_set(
                     ("OCR engine set to ", "white"),
                     (value, Theme.VALUE),
                     (".", "white"),
+                ),
+                "OCR Engine",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@engine_app.command("reset")
+def engine_reset() -> None:
+    """Reset how thoroughly OCR looks for rotated text to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_engine(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR engine reset to the default (", "white"),
+                    (OcrSettings.DEFAULT_ENGINE, Theme.VALUE),
+                    (").", "white"),
                 ),
                 "OCR Engine",
                 Theme.OK,

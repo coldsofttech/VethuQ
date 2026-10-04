@@ -8,6 +8,7 @@ from vethuq_core.storage import Storage
 
 class GpuSettings:
     KEY = "gpu_enabled"
+    DEFAULT_ENABLED = False
 
     @staticmethod
     def is_enabled(storage: Storage) -> bool:
@@ -17,3 +18,8 @@ class GpuSettings:
     @staticmethod
     def set_enabled(storage: Storage, enabled: bool) -> None:
         Settings.set(storage, GpuSettings.KEY, "true" if enabled else "false")
+
+    @staticmethod
+    def reset(storage: Storage) -> None:
+        """Back to the default: GPU use disabled."""
+        GpuSettings.set_enabled(storage, GpuSettings.DEFAULT_ENABLED)

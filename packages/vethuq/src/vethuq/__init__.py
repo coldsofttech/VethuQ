@@ -442,6 +442,14 @@ class GPUSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset GPU use for OCR to the default (disabled)."""
+        storage = _open_storage()
+        try:
+            _GpuSettings.reset(storage)
+        finally:
+            storage.close()
+
 
 class SnippetSettings:
     """How much context `search` shows around a match.
@@ -813,6 +821,14 @@ class OcrRetrySettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset how many times to retry a file's OCR to the default (3)."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_retry_attempts(storage)
+        finally:
+            storage.close()
+
 
 class ThreadWorkersSettings:
     """How many worker threads background indexing uses. Not instantiated directly — use
@@ -932,6 +948,14 @@ class OcrEngineSettings:
         storage = _open_storage()
         try:
             _OcrSettings.set_engine(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset how thoroughly OCR looks for rotated text to the default ('quick')."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_engine(storage)
         finally:
             storage.close()
 
