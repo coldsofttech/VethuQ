@@ -732,7 +732,7 @@ class TestSearchLookalikes:
 
         assert result.exit_code == 0
         lines = _content_lines(result.stdout)
-        assert "Page: 1 of 1 [ocr] [Lookalike]  also: Obscured" in lines
+        assert "Page: 1 of 1 [ocr] [Contains · look-alike]  also: Obscured" in lines
         assert "say h3ll0 to all" in lines
 
     def test_the_combined_search_uses_the_flag_and_the_setting(self, use_temp_db):
@@ -744,9 +744,9 @@ class TestSearchLookalikes:
         runner.invoke(app, ["settings", "search", "normalize", "leetspeak", "set", "off"])
         off = runner.invoke(app, ["search", "hello"])
 
-        assert "[Lookalike]" not in basic.stdout  # a 9 is a g only from standard on
-        assert "[Lookalike]" in standard.stdout
-        assert "[Lookalike]" not in off.stdout
+        assert "[Contains · look-alike]" not in basic.stdout  # a 9 is a g only from standard on
+        assert "[Contains · look-alike]" in standard.stdout
+        assert "[Contains · look-alike]" not in off.stdout
 
     def test_leet_level_flag_is_validated(self, use_temp_db):
         use_temp_db()

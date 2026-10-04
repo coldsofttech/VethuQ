@@ -433,8 +433,8 @@ def test_search_like_reads_look_alikes_when_asked(indexed_client: vethuq.Vethuq)
     assert vethuq.SEARCH_LEETSPEAK_VALUES == ("auto", "off", "basic", "standard", "extended")
     assert vethuq.SEARCH_CASE_VALUES == ("auto", "ignore", "match")
     assert "leetspeak" not in vethuq.SEARCH_ENGINES
-    assert "leetspeak" in vethuq.ENGINE_TIERS
-    assert vethuq.ENGINE_BADGES["leetspeak"] == "Lookalike"
+    assert "leetspeak" not in vethuq.ENGINE_TIERS
+    assert set(vethuq.ENGINE_MODIFIERS) == {"accents", "look-alike"}
 
 
 def test_search_leetspeak_can_be_chosen_per_search_or_stored(indexed_client: vethuq.Vethuq):

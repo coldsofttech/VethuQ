@@ -196,3 +196,21 @@ class TestLeetspeakNormalizer:
         folded = self.leet.fold("|\\|ice", "extended").text
 
         assert len(folded) == len("|\\|ice") and "n" not in folded
+
+
+class TestApplied:
+    @pytest.mark.parametrize(
+        ("query", "matched", "expected"),
+        [
+            ("hello", "hello", ()),
+            ("hello", "HELLO", ()),
+            ("café", "café", ()),  # the same letter, written another way
+            ("hello", "h3ll0", ("look-alike",)),
+            ("cafe", "café", ("accents",)),
+            ("cafe", "ＣＡＦＥ", ("accents",)),
+            ("resume", "r3sumé", ("accents", "look-alike")),
+            ("hello", "world", ()),
+        ],
+    )
+    def test_what_a_match_needed_to_count(self, query, matched, expected):
+        assert Normalizers.applied(query, matched) == expected

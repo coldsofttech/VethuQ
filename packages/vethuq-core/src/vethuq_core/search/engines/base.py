@@ -34,6 +34,8 @@ class SearchMatch:
     end: int | None = None  # ...and ends
     engine: str | None = None  # the engine that found it, or the strictest one that did
     matched_by: tuple[str, ...] = ()  # every engine that found it, strictest first (`all` only)
+    # The normalizations it needed to match as typed (`accents`, `look-alike`); `all` only
+    modifiers: tuple[str, ...] = ()
 
 
 class SearchQueryError(ValueError):

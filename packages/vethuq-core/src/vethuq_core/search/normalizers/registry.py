@@ -44,6 +44,35 @@ class Normalizers:
             text = Normalizers.get(name).index_form(text)
         return text
 
+    # The normalizations that can make a match differ from what was typed, and what to call them.
+    MODIFIERS = ("accents", "look-alike")
+
+    @staticmethod
+    def applied(query: str, matched: str) -> tuple[str, ...]:
+        """The normalizations `matched` needed to count as `query`, from `MODIFIERS` (empty when
+        it is the text as typed: case and the way an accent is encoded don't count)."""
+        import unicodedata
+
+        def settled(text: str) -> str:
+            return unicodedata.normalize("NFC", text).casefold()
+
+        def accents(text: str) -> str:
+            return Normalizers.get("unicode").fold(text, "full").text.casefold()
+
+        def lookalikes(text: str) -> str:
+            return Normalizers.get("leetspeak").fold(text, "extended").text
+
+        typed, found = settled(query), settled(matched)
+        if typed == found:
+            return ()
+        if lookalikes(typed) == lookalikes(found):
+            return ("look-alike",)
+        if accents(typed) == accents(found):
+            return ("accents",)
+        if lookalikes(accents(typed)) == lookalikes(accents(found)):
+            return ("accents", "look-alike")
+        return ()
+
     @staticmethod
     def pipeline(levels: Mapping[str, str]) -> Pipeline:
         """The normalizers named in `levels`, at those levels, in application order.

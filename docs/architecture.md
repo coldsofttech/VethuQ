@@ -219,8 +219,8 @@ A test enforces that no core module outside `db/` and `storage/` imports
   - Look-alike characters are not an engine but a *normalizer* (below): `like` reads them
     as the letters they stand for when its leetspeak level is on, using the trigram index over
     the recorded skeleton to find candidate pages and the folded text to find the match
-    (`LikeSearchEngine._search_lookalikes`). The combined search's "Lookalike" tier is that
-    `like` run, keeping the hits that needed a look-alike (`Ranking._run`).
+    (`LikeSearchEngine._search_lookalikes`). The combined search runs `like` once with look-alikes on
+    and records which normalizations each hit needed (`Normalizers.applied`, `SearchMatch.modifiers`).
   - `noise-fuzzy` (`search/engines/noise_fuzzy.py`) — the query's characters hidden by
     noise, look-alikes and typos at once, in the order the text is cleaned up: noise
     (whitespace and punctuation that can't be a look-alike; `Leet.is_noise`) is skipped,
@@ -299,21 +299,22 @@ page's skeleton) without pulling in the engines, which import the database layer
 engine, groups their hits by page and ranks the pages, returning `PageResult`s
 (`search.search_indexed_pages`; `search_indexed_content(engine="all")` flattens them).
 Engine scores aren't comparable, so ranking is by **match quality**, not by blending
-numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > Lookalike (`like` with look-alikes) > `fuzzy` > `noise-fuzzy`
+numbers: `ENGINE_TIERS` orders `exact` > `like` > `lexical` > `proximity` > `full-text` > `fuzzy` > `noise-fuzzy`
 (`proximity` above `full-text` because every page it finds `full-text` finds too;
-Lookalike below `full-text` as it takes no other word forms or orders, but above
-`fuzzy` as it only swaps known look-alike characters rather than guessing at edits;
-`noise-fuzzy` last, as it is look-alikes and `fuzzy` combined with tolerance for noise),
-pages are ordered by the strictest engine that found them, then by that engine's own
-signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, share
-matched as typed for Lookalike, best similarity for `fuzzy`), then by how many engines agreed, then by path and page.
+`noise-fuzzy` last, as it is `fuzzy` with tolerance for noise). A normalization a hit needed
+(`Normalizers.MODIFIERS`: `accents`, `look-alike`) is a modifier of its engine's badge, not a tier:
+`Ranking.hit_rank` orders hits and pages by *matched as typed, then needing a modifier, then the
+approximate engines (`fuzzy`, `noise-fuzzy`)*, each by engine, then by that engine's own signal
+(hit count for `exact`/`like`, share matched as typed for modified hits, relevance for
+`proximity`/`full-text`, best similarity for `fuzzy`), then by how many engines agreed, then by path
+and page.
 Since the engines' matches nest, a page is one result and overlapping hits are
 merged (`_merge_overlapping`): the union span, labelled with the strictest engine,
 listing every engine in `matched_by`; a `proximity` passage thereby absorbs the word
 hits inside it. `ENGINE_BADGES` names the tiers for users (Exact, Contains, Near,
-Word, Lookalike, Similar, Obscured) and is shared by the CLI and the UI. Each engine gets only the
+Word, Similar, Obscured, plus `ENGINE_MODIFIERS`, shown as `Contains · look-alike`) and is shared by the CLI and the UI. Each engine gets only the
 options it accepts, and `proximity` is skipped for one-term queries.
-`SearchMatch.start`/`end`/`engine`/`matched_by` carry what the merge needs.
+`SearchMatch.start`/`end`/`engine`/`matched_by`/`modifiers` carry what the merge needs.
 
 Adding an engine means writing a `SearchEngine` and calling
 `SearchEngines.register(name, factory)`; engines coexist, so it can be selected

@@ -60,8 +60,11 @@ class ResultRenderer:
         table.add_column(style="bright_black")
         for engine in Ranking.TIERS:
             table.add_row(f"[{Ranking.BADGES[engine]}]", Ranking.MEANINGS[engine])
+        for modifier, meaning in Ranking.MODIFIERS.items():
+            table.add_row(f"· {modifier}", meaning)
         footer = Text(
-            "Ranked strictest first; a page's label is its strictest match and `also:` "
+            "Ranked strictest first, a hit that needed a modifier after those matched as typed; "
+            "a page's label is its strictest match and `also:` "
             "lists the other ways it was found.",
             style="bright_black",
             no_wrap=False,

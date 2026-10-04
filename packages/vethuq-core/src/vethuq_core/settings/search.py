@@ -47,7 +47,7 @@ class SearchSettings:
     LEETSPEAK_OFF = "off"
     LEETSPEAK_VALUES = (NORMALIZE_AUTO, LEETSPEAK_OFF, *LEETSPEAK_LEVELS)
     # What `auto` is for the engines that look through look-alikes unless told not to, and for
-    # the combined search (whose "Lookalike" results come from it).
+    # the combined search (whose look-alike results come from it).
     DEFAULT_LEETSPEAK = "basic"
     LEGACY_LEETSPEAK_KEY = "search_leetspeak_level"  # before it was a normalizer
     NORMALIZE_UNICODE_KEY = "search_normalize_unicode"

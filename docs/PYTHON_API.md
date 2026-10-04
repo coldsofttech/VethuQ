@@ -239,8 +239,10 @@ for match in client.search.run("invoice"):
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
 `"exact"` (Exact), `"like"` (Contains), `"proximity"` (Near), `"full-text"` (Word),
-`"leetspeak"` (Lookalike - `"like"` reading look-alikes), `"fuzzy"` (Similar), `"noise-fuzzy"` (Obscured), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
-label the CLI and the UI show) — and within a tier by that engine's own signal, so
+`"fuzzy"` (Similar), `"noise-fuzzy"` (Obscured), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
+label the CLI and the UI show). A hit that needed look-alikes or accent folding to match as typed
+carries it in `modifiers` (`ENGINE_MODIFIERS`), ranks after those matched as typed and is labelled
+`"Contains · look-alike"` — and within a tier by that engine's own signal, so
 a page is one result however many engines found it. `case_sensitive`, `threshold`
 and `distance` default to their settings and reach only the engines that can use
 them; `proximity` is skipped for a query of fewer than two terms.
@@ -649,10 +651,11 @@ A page found by the combined search, returned by `client.search.run_pages`:
 - `file_id`, `file_name`, `file_path`, `page_number`, `total_pages`, `duplicate_of_path`, `source`
 - `engine` — the strictest engine that found anything on the page (its tier)
 - `matched_by` — every engine that did, strictest first
-- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`), the share of the query matched as typed (`leetspeak`), its best word similarity (`fuzzy`) or its cleanliness (`noise-fuzzy`)
+- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`), its best word similarity (`fuzzy`) or its cleanliness (`noise-fuzzy`)
+- `modifiers` — the normalizations the page's best hit needed (`"look-alike"`, `"accents"`), if any
 - `hits` — its `SearchMatch`es, ordered by engine strictness then position; hits that overlap are merged into one
 
-`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Lookalike"`, `"Similar 83%"`, `"Obscured"`).
+`engine_badge(engine, score=None, modifiers=())` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Contains · look-alike"`, `"Similar 83%"`, `"Obscured"`).
 
 ## `ProcessingMetric`
 

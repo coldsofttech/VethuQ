@@ -116,6 +116,8 @@ class Export:
             entry["engine"] = match.engine
         if match.matched_by:
             entry["matched_by"] = list(match.matched_by)
+        if match.modifiers:
+            entry["modifiers"] = list(match.modifiers)
         if match.score is not None:
             entry["score"] = match.score
         return entry

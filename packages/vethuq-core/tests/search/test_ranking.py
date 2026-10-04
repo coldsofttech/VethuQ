@@ -19,7 +19,6 @@ class TestRanking:
             "lexical",
             "proximity",
             "full-text",
-            "leetspeak",
             "fuzzy",
             "noise-fuzzy",
         )
@@ -29,7 +28,6 @@ class TestRanking:
             "Relevant",
             "Near",
             "Word",
-            "Lookalike",
             "Similar",
             "Obscured",
         ]
@@ -73,13 +71,15 @@ class TestRanking:
         assert [(p.file_name, p.engine) for p in pages] == [
             ("a_exact.pdf", "exact"),
             ("d_word.pdf", "like"),
-            ("c_lookalike.pdf", "leetspeak"),
+            ("c_lookalike.pdf", "like"),
             ("e_similar.pdf", "fuzzy"),
         ]
-        lookalike = next(p for p in pages if p.engine == "leetspeak")
-        assert lookalike.matched_by == ("leetspeak", "noise-fuzzy")
+        lookalike = next(p for p in pages if p.file_name == "c_lookalike.pdf")
+        assert lookalike.matched_by == ("like", "noise-fuzzy")
+        assert lookalike.modifiers == ("look-alike",)
         (hit,) = lookalike.hits
-        assert (hit.matched, Ranking.hit_badge(hit)) == ("h3ll0", "Lookalike")
+        assert (hit.matched, Ranking.hit_badge(hit)) == ("h3ll0", "Contains · look-alike")
+        assert next(p for p in pages if p.file_name == "d_word.pdf").modifiers == ()
 
     def test_a_disguised_word_is_found_by_a_plain_query_and_the_other_way_round(
         self, conn: sqlite3.Connection, storage: Storage
@@ -90,8 +90,12 @@ class TestRanking:
         plain = TestRanking._pages(storage, "password")
         disguised = TestRanking._pages(storage, "p@55w0rd")
 
-        assert (plain["b.pdf"].engine, plain["a.pdf"].engine) == ("exact", "leetspeak")
-        assert (disguised["a.pdf"].engine, disguised["b.pdf"].engine) == ("exact", "leetspeak")
+        assert (plain["b.pdf"].engine, plain["a.pdf"].engine) == ("exact", "like")
+        assert (disguised["a.pdf"].engine, disguised["b.pdf"].engine) == ("exact", "like")
+        assert (plain["a.pdf"].modifiers, disguised["b.pdf"].modifiers) == (
+            ("look-alike",),
+            ("look-alike",),
+        )
 
     def test_lookalike_pages_order_by_how_much_was_disguised(
         self, conn: sqlite3.Connection, storage: Storage
@@ -102,19 +106,33 @@ class TestRanking:
         pages = Search.indexed_pages(storage, "password")
 
         assert [(p.file_name, p.engine) for p in pages] == [
-            ("z_less.pdf", "leetspeak"),
-            ("a_more.pdf", "leetspeak"),
+            ("z_less.pdf", "like"),
+            ("a_more.pdf", "like"),
         ]
         assert pages[0].score > pages[1].score
 
-    def test_a_query_too_short_for_leetspeak_is_skipped_without_failing(
+    def test_a_hit_that_needed_accent_folding_ranks_after_one_matched_as_typed(
+        self, conn: sqlite3.Connection, storage: Storage
+    ):
+        SearchData.seed_page(conn, "a visit to the ＣＡＦＥ", "/d/a_accent.pdf")
+        SearchData.seed_page(conn, "a visit to the Cafe", "/d/b_plain.pdf")
+
+        pages = Search.indexed_pages(storage, "Cafe", unicode="full")
+
+        assert [(p.file_name, p.engine, p.modifiers) for p in pages] == [
+            ("b_plain.pdf", "exact", ()),
+            ("a_accent.pdf", "like", ("accents",)),
+        ]
+        assert Ranking.hit_badge(pages[1].hits[0]) == "Contains · accents"
+
+    def test_a_query_too_short_for_look_alikes_has_no_modifiers(
         self, conn: sqlite3.Connection, storage: Storage
     ):
         SearchData.seed_page(conn, "go to the museum", "/d/a.pdf")
 
         (page,) = Search.indexed_pages(storage, "go")
 
-        assert "leetspeak" not in page.matched_by
+        assert page.modifiers == ()
 
     def test_text_hidden_by_noise_ranks_last_as_obscured(
         self, conn: sqlite3.Connection, storage: Storage
@@ -128,7 +146,7 @@ class TestRanking:
 
         assert [(p.file_name, p.engine) for p in pages] == [
             ("a_exact.pdf", "exact"),
-            ("b_lookalike.pdf", "leetspeak"),
+            ("b_lookalike.pdf", "like"),
             ("c_similar.pdf", "fuzzy"),
             ("d_obscured.pdf", "noise-fuzzy"),
         ]

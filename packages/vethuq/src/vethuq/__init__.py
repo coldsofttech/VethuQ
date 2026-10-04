@@ -82,6 +82,7 @@ DB_PATH = _default_db_path()
 ENGINE_BADGES = _Ranking.BADGES
 ENGINE_MEANINGS = _Ranking.MEANINGS
 ENGINE_TIERS = _Ranking.TIERS
+ENGINE_MODIFIERS = _Ranking.MODIFIERS
 OCR_ENGINE_MODES = _OcrSettings.ENGINE_MODES
 SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
@@ -108,6 +109,7 @@ __all__ = [
     "BACKUP_VALUES",
     "ENGINE_BADGES",
     "ENGINE_MEANINGS",
+    "ENGINE_MODIFIERS",
     "ENGINE_TIERS",
     "INTEGRITY_CHECK_VALUES",
     "LOG_COMPONENTS",
@@ -1275,12 +1277,15 @@ class Search:
         """Search with every engine at once and return the pages found, best first.
 
         Each page is one `PageResult` - however many engines found it - ranked by the
-        strictest engine that did: Exact, Contains, Relevant, Near, Word, Lookalike, Similar,
+        strictest engine that did: Exact, Contains, Relevant, Near, Word, Similar,
         then Obscured (see `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge`
         for the labels the CLI and the UI show), and within a tier by that engine's own signal.
         `PageResult.engine` is the page's strictest engine and `matched_by` all of
         them; its `hits` are `SearchMatch`es best first, each with its own `engine`
-        and `matched_by` (hits found by several engines are merged into one).
+        and `matched_by` (hits found by several engines are merged into one). A hit that needed
+        a normalization to match as typed carries it in `modifiers` (`"look-alike"`, `"accents"`;
+        see `ENGINE_MODIFIERS`), ranks below those matched as typed, and `hit_badge` shows it
+        (`Contains · look-alike`); so does `PageResult.modifiers`.
 
         `case_sensitive`, `threshold`, `distance`, `leet_level` and `noise` default to their
         settings and reach the engines that can use them (`like`/`lexical`/

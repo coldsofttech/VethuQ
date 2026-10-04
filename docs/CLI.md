@@ -239,21 +239,20 @@ signal:
 | 2 | `like` | **Contains** | number of matches on the page |
 | 3 | `proximity` | **Near** | relevance |
 | 4 | `full-text` | **Word** | relevance |
-| 5 | `like` with look-alikes | **Lookalike** | share of `content` matched as typed |
-| 6 | `fuzzy` | **Similar 83%** | best word similarity |
-| 7 | `noise-fuzzy` | **Obscured** | cleanliness: fewest edits, look-alikes and noise characters |
+| 5 | `fuzzy` | **Similar 83%** | best word similarity |
+| 6 | `noise-fuzzy` | **Obscured** | cleanliness: fewest edits, look-alikes and noise characters |
 
 `proximity` ranks above `full-text` because every page it finds `full-text`
 finds too (both need all the words), so the other way round "the words are close
-together" could never raise a page. **Lookalike** ranks between `full-text` and
-`fuzzy`: it is `like` reading look-alike characters (`3` for `e`) as the letters
-they stand for (the leetspeak normalization, below) — more certain than `fuzzy`'s
-guess that a word with a few edits is the one meant, but it doesn't accept other
-word forms or word orders as `full-text` does. Only hits that needed a look-alike
-count: text as typed is `like`'s, a stricter tier, so a **Lookalike** page is one
-where the word only appears disguised. `noise-fuzzy` ranks last: it is look-alikes
-and `fuzzy` combined with tolerance for stray characters, so every page they find
-it finds too, and only it finds text hidden by all three at once (**Obscured**).
+together" could never raise a page. `noise-fuzzy` ranks last: it is `fuzzy` with
+tolerance for stray characters, so every page `fuzzy` finds it finds too (**Obscured**).
+
+A normalization is a **modifier** of an engine's label, not a tier of its own: a `like` hit
+written `h3ll0` is **Contains · look-alike**, one that needed accents read as plain letters
+(`unicode=full`) is **Contains · accents**. A hit that needed a modifier ranks after every page
+matched as typed (whatever engine) and before the approximate engines (**Similar**,
+**Obscured**), then by engine as usual; among look-alike pages, the less disguised comes first.
+The `h` legend in the pager lists them.
 Ties go to the page more engines agree on, then to file path and page.
 
 Because the engines' matches nest — an exact match is also a substring, a word
@@ -360,7 +359,7 @@ honour it, and their defaults:
 |---|---|---|
 | `like` | off | `--leet-level`, or `vethuq settings search normalize leetspeak` |
 | `noise-fuzzy` | `basic` | the same (`off` turns them off: a `3` is then a typo) |
-| the default `all` search | `basic`, for its **Lookalike** results | the same |
+| the default `all` search | `basic`, for its **look-alike** results | the same |
 | `lexical`, `exact`, `full-text`, `fuzzy`, `proximity` | not supported | — (`--leet-level` is an error) |
 
 The setting is `auto` unless you change it: each engine uses its own default above, and
@@ -421,7 +420,7 @@ distance) produced them, and an empty `exact`, `full-text`, `fuzzy`,
 `proximity` or `noise-fuzzy` search suggests a looser search.
 Results open in a pager, starting at the top: scroll (e.g. the
 down arrow, space, or page down) to reveal more, press `h` (with the
-default `all` engine) for what Exact, Contains, Relevant, Near, Word, Lookalike
+default `all` engine) for what Exact, Contains, Relevant, Near, Word
 and Similar mean, and press `q` to close it. Each file with a match prints its path once, followed by a
 `Page: X of Y` and boxed, highlighted snippet for every match in
 that file (PDFs only show `Page:` — an image is a single page). A
@@ -787,7 +786,7 @@ vethuq settings search normalize unicode show
 
 Configure whether `vethuq search` reads look-alike characters (`3` for `e`, `@` for `a`) as
 the letters they stand for, when `--leet-level` isn't given: `auto` (the default — each
-engine's own: `basic` for `noise-fuzzy` and the Lookalike results of the combined search,
+engine's own: `basic` for `noise-fuzzy` and the look-alike results of the combined search,
 none for `like`), `off`, `basic` (`0` `1` `3` `4` `5` `7` `@` `$`), `standard` (also `2` `6`
 `8` `9` `+` `!` `|`) or `extended` (also `(` `[` `{`). Each level includes the one before it.
 The substitution table is built in and isn't user-editable. Honoured by `like` and
