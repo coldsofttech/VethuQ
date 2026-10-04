@@ -3,7 +3,7 @@ VethuQ — open-source document intelligence and evidence infrastructure for sea
 
 ## Compatibility
 
-The `vethuq` CLI and Python library work on both Windows and Linux. The desktop app is Windows-only.
+The `vethuq` CLI and Python library work on both Windows and Linux. The desktop app is Windows-only and supports 64-bit Windows 10 and Windows 11.
 
 ## Install
 
