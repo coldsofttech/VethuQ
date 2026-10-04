@@ -21,6 +21,10 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> vethuq.Vethuq:
     monkeypatch.setattr(
         "vethuq._core.paths.Paths.default_data_root", staticmethod(lambda: data_dir)
     )
+    # The installer's saved file/engine selection lives here too; keep the machine's out of tests.
+    monkeypatch.setattr(
+        "vethuq._core.paths.Paths.platform_data_root", staticmethod(lambda: data_dir)
+    )
     monkeypatch.setattr(
         "vethuq._core.paths.Paths.location_file",
         staticmethod(lambda: data_dir / "config" / "location.json"),
