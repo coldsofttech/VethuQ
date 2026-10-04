@@ -28,8 +28,8 @@ class Ribbon(ttk.Notebook):
         self.pause_resume_button = self.home_tab.pause_resume_button
         self.stop_button = self.home_tab.stop_button
 
-    def refresh_ocr_icons(self) -> None:
-        """Re-read the GPU, retry and engine settings and update their buttons' icons."""
+    def refresh_setting_icons(self) -> None:
+        """Re-read the settings that pick a button's icon and update the buttons."""
         self.settings_tab.refresh_icons()
 
     def set_delete_visible(self, visible: bool) -> None:

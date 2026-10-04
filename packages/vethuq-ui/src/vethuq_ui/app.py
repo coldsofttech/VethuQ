@@ -11,6 +11,10 @@ from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
 from vethuq_ui.windows.settings.about import AboutWindow
+from vethuq_ui.windows.settings.index.retention import RemovedRetentionWindow
+from vethuq_ui.windows.settings.index.stability import StabilityCheckWindow
+from vethuq_ui.windows.settings.index.stale_lock import StaleLockWindow
+from vethuq_ui.windows.settings.index.workers import ThreadWorkersWindow
 from vethuq_ui.windows.settings.location import LocationWindow
 from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
 from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
@@ -67,19 +71,40 @@ class MainWindow(tk.Tk):
                     self,
                     self.storage,
                     self.status_bar.show_message,
-                    self.ribbon.refresh_ocr_icons,
+                    self.ribbon.refresh_setting_icons,
                 ),
                 show_ocr_retry=lambda: OcrRetryWindow.show(
                     self,
                     self.storage,
                     self.status_bar.show_message,
-                    self.ribbon.refresh_ocr_icons,
+                    self.ribbon.refresh_setting_icons,
                 ),
                 show_ocr_engine=lambda: OcrEngineWindow.show(
                     self,
                     self.storage,
                     self.status_bar.show_message,
-                    self.ribbon.refresh_ocr_icons,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_removed_retention=lambda: RemovedRetentionWindow.show(
+                    self, self.storage, self.status_bar.show_message
+                ),
+                show_stability_check=lambda: StabilityCheckWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_thread_workers=lambda: ThreadWorkersWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_stale_lock=lambda: StaleLockWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
                 ),
                 show_app_location=lambda: LocationWindow.show(
                     self, LocationWindow.App, self.status_bar.show_message

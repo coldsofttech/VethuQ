@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `vethuq settings gpu reset`, `settings ocr retry reset` and `settings ocr engine reset` put those settings back to their defaults. In the desktop app, GPU, OCR retry and OCR engine each have a settings window with a Reset button.
+- `vethuq settings gpu reset`, `settings ocr retry reset`, `settings ocr engine reset` and `settings index removed-retention|stability-check|thread-workers|stale-lock reset` put those settings back to their defaults. In the desktop app, GPU, OCR retry, OCR engine and the four index settings each have a settings window with a Reset button.
 - The desktop app can now change where VethuQ keeps its data and where database backups are kept (Settings > Location). Changing the data location needs a restart.
 - The desktop app has a Settings > About window showing the app and CLI versions, Python, platform, database schema, file types, search engines, OCR engines and languages, with a Copy button. `vethuq --version` now also lists OCR engines and languages.
 - File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq file-types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.

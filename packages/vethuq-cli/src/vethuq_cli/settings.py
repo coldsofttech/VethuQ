@@ -719,6 +719,90 @@ def retry_reset() -> None:
         storage.close()
 
 
+@removed_retention_app.command("reset")
+def removed_retention_reset() -> None:
+    """Reset how long a removed source is kept to the default."""
+    storage = open_storage()
+    try:
+        SourceSettings.reset_removed_retention_minutes(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Removed source retention reset to the default (", "white"),
+                    (str(SourceSettings.DEFAULT_REMOVED_RETENTION_MINUTES), Theme.VALUE),
+                    (" minutes).", "white"),
+                ),
+                "Removed Retention",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@stability_check_app.command("reset")
+def stability_check_reset() -> None:
+    """Reset how long a file must stay unchanged before it's indexed to the default."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_stability_check_seconds(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Stability check reset to the default (", "white"),
+                    (f"{OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS:g}", Theme.VALUE),
+                    (" seconds).", "white"),
+                ),
+                "Stability Check",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@thread_workers_app.command("reset")
+def thread_workers_reset() -> None:
+    """Reset how many worker threads background indexing uses to the default."""
+    storage = open_storage()
+    try:
+        IndexSettings.reset_thread_workers(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Thread workers reset to the default (", "white"),
+                    (IndexSettings.DEFAULT_THREAD_WORKERS, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "Thread Workers",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@stale_lock_app.command("reset")
+def stale_lock_reset() -> None:
+    """Reset stale lock handling to the default."""
+    storage = open_storage()
+    try:
+        IndexSettings.reset_stale_lock(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Stale lock handling reset to the default (", "white"),
+                    (IndexSettings.DEFAULT_STALE_LOCK, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "Stale Lock",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
 @stability_check_app.command("show")
 def stability_check_show() -> None:
     """Show how long a file must stay unchanged before it's indexed."""

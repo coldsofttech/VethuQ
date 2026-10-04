@@ -797,6 +797,14 @@ class RemovedRetentionSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset how long a removed source is kept to the default (7 days)."""
+        storage = _open_storage()
+        try:
+            _SourceSettings.reset_removed_retention_minutes(storage)
+        finally:
+            storage.close()
+
 
 class OcrRetrySettings:
     """How many times to retry a file's OCR after a transient failure. Not instantiated
@@ -862,6 +870,14 @@ class ThreadWorkersSettings:
         finally:
             storage.close()
 
+    def reset(self) -> None:
+        """Reset the worker thread count to the default ('0', disabled)."""
+        storage = _open_storage()
+        try:
+            _IndexSettings.reset_thread_workers(storage)
+        finally:
+            storage.close()
+
 
 class StabilityCheckSettings:
     """How long a file must stay unchanged before it's indexed. Not instantiated
@@ -884,6 +900,14 @@ class StabilityCheckSettings:
         storage = _open_storage()
         try:
             _OcrSettings.set_stability_check_seconds(storage, seconds)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the stability check to the default (1 second)."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_stability_check_seconds(storage)
         finally:
             storage.close()
 
@@ -915,6 +939,14 @@ class StaleLockSettings:
         storage = _open_storage()
         try:
             _IndexSettings.set_stale_lock(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset stale lock handling to the default ('auto')."""
+        storage = _open_storage()
+        try:
+            _IndexSettings.reset_stale_lock(storage)
         finally:
             storage.close()
 

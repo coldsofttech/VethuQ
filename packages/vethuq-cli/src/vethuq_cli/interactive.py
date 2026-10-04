@@ -92,6 +92,7 @@ from vethuq_cli.settings import (
     normalize_unicode_show,
     proximity_distance_set,
     proximity_distance_show,
+    removed_retention_reset,
     removed_retention_set,
     removed_retention_show,
     retry_reset,
@@ -101,10 +102,13 @@ from vethuq_cli.settings import (
     search_engine_show,
     snippet_set,
     snippet_show,
+    stability_check_reset,
     stability_check_set,
     stability_check_show,
+    stale_lock_reset,
     stale_lock_set,
     stale_lock_show,
+    thread_workers_reset,
     thread_workers_set,
     thread_workers_show,
 )
@@ -661,7 +665,8 @@ class InteractiveMenu:
     def _settings_removed_retention_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Index > Removed Retention", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Index > Removed Retention",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -672,6 +677,8 @@ class InteractiveMenu:
                     "Minutes to keep a removed source before it's purged", console=console
                 )
                 InteractiveMenu._run_safely(removed_retention_set, minutes=minutes)
+            elif choice == "3":
+                InteractiveMenu._run_safely(removed_retention_reset)
 
     @staticmethod
     def _settings_retry_menu() -> None:
@@ -696,7 +703,8 @@ class InteractiveMenu:
     def _settings_thread_workers_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Index > Thread Workers", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Index > Thread Workers",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -713,12 +721,15 @@ class InteractiveMenu:
                     choices=choices,
                 )
                 InteractiveMenu._run_safely(thread_workers_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._run_safely(thread_workers_reset)
 
     @staticmethod
     def _settings_stale_lock_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Index > Stale Lock", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Index > Stale Lock",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -731,6 +742,8 @@ class InteractiveMenu:
                     choices=list(IndexSettings.STALE_LOCK_VALUES),
                 )
                 InteractiveMenu._run_safely(stale_lock_set, value=value)
+            elif choice == "3":
+                InteractiveMenu._run_safely(stale_lock_reset)
 
     @staticmethod
     def _settings_integrity_check_interval_menu() -> None:
@@ -848,7 +861,8 @@ class InteractiveMenu:
     def _settings_stability_check_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Index > Stability Check", [("1", "Show"), ("2", "Set"), ("0", "Back")]
+                "Settings > Index > Stability Check",
+                [("1", "Show"), ("2", "Set"), ("3", "Reset"), ("0", "Back")],
             )
             if choice == "0":
                 return
@@ -860,6 +874,8 @@ class InteractiveMenu:
                     console=console,
                 )
                 InteractiveMenu._run_safely(stability_check_set, seconds=seconds)
+            elif choice == "3":
+                InteractiveMenu._run_safely(stability_check_reset)
 
     @staticmethod
     def _settings_index_menu() -> None:

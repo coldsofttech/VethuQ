@@ -46,6 +46,13 @@ class OcrSettings:
         Settings.set(storage, OcrSettings.STABILITY_CHECK_SECONDS_KEY, str(seconds))
 
     @staticmethod
+    def reset_stability_check_seconds(storage: Storage) -> None:
+        """Back to the default stability check."""
+        OcrSettings.set_stability_check_seconds(
+            storage, OcrSettings.DEFAULT_STABILITY_CHECK_SECONDS
+        )
+
+    @staticmethod
     def get_engine(storage: Storage) -> str:
         """How thoroughly OCR looks for rotated text. 'quick' by default.
 
