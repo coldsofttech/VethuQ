@@ -102,7 +102,7 @@ class TestPhaseMigration:
         finally:
             migrated.close()
 
-    def test_migration_v20_makes_existing_processing_metrics_phase_1(self, tmp_path):
+    def test_migration_v20_adds_phase_to_processing_metrics(self, tmp_path):
         db_path = tmp_path / "v19.db"
         setup = Db.connect(db_path)
         setup.execute("DROP TABLE processing_metrics")
@@ -122,7 +122,12 @@ class TestPhaseMigration:
 
         migrated = Db.connect(db_path)
         try:
-            row = migrated.execute("SELECT * FROM processing_metrics").fetchone()
-            assert (row["phase"], row["document_count"], row["avg_duration_seconds"]) == (1, 4, 2.5)
+            # Since v30 the averages are rebuilt per extension from the stored documents (see
+            # `test_stats_per_extension_migration.py`), so a table with none starts empty.
+            columns = {
+                row["name"] for row in migrated.execute("PRAGMA table_info(processing_metrics)")
+            }
+            assert {"phase", "extension"} <= columns
+            assert migrated.execute("SELECT * FROM processing_metrics").fetchone() is None
         finally:
             migrated.close()

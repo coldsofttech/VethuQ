@@ -76,7 +76,9 @@ return value as `run`.
 ### `reindex(target, *, force=False, wait=False)`
 
 Re-index every file under a source, not just failed ones, updating existing
-documents in place. Same errors and return value as `run`.
+documents in place; previous content stays searchable until each file has been
+reprocessed. Starts immediately (confirmation is a CLI step). Same errors and
+return value as `run`.
 
 ### `reindex_file(file, *, source=None, force=False, wait=False)`
 
@@ -484,13 +486,16 @@ in the CLI.
 
 ### `confidence()`
 
-Return per-(file type, process type) running averages (`ConfidenceMetric`):
-page count and average confidence.
+Return per-(extension, process type) running averages (`ConfidenceMetric`):
+page count and average confidence. Each file extension (`pdf`, `png`, `jpg`, and
+any future type) has its own rows; `jpeg` files count as `jpg`. `file_type`
+(`pdf` or `image`) is still on each metric.
 
 ### `processing()`
 
-Return per-(phase, file type, size) running averages (`ProcessingMetric`):
-document count, average duration, peak memory, and CPU use. `phase` is 1 (quick),
+Return per-(phase, extension, size) running averages (`ProcessingMetric`):
+document count, average duration, peak memory, and CPU use. PNG and JPG are
+reported separately, not blended as `image`. `phase` is 1 (quick),
 2 (moderate) or 3 (deep) — each phase keeps its own averages.
 
 ### `reset()`

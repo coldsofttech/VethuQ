@@ -365,24 +365,21 @@ class TestMigration:
             assert "avg_confidence" not in columns
             assert "pages_native" not in columns
 
-            pdf_metrics = conn.execute(
-                "SELECT document_count, avg_duration_seconds, avg_peak_memory_mb, avg_cpu_percent "
-                "FROM processing_metrics WHERE file_type = 'pdf' AND size_bucket = 'medium'"
-            ).fetchone()
-            assert pdf_metrics["document_count"] == 1
-            assert pdf_metrics["avg_duration_seconds"] == 5.0
+            # Timings can't be recovered for documents that were never indexed, so the
+            # rebuilt table starts empty (see `test_stats_per_extension_migration.py`).
+            assert conn.execute("SELECT * FROM processing_metrics").fetchone() is None
 
             confidence_rows = {
-                (row["file_type"], row["process_type"]): (row["page_count"], row["avg_confidence"])
+                (row["extension"], row["process_type"]): (row["page_count"], row["avg_confidence"])
                 for row in conn.execute(
-                    "SELECT file_type, process_type, page_count, avg_confidence "
+                    "SELECT extension, process_type, page_count, avg_confidence "
                     "FROM confidence_metrics"
                 )
             }
             assert confidence_rows[("pdf", "native")] == (1, 1.0)
             assert confidence_rows[("pdf", "ocr")] == (1, 0.6)
             assert confidence_rows[("pdf", "mixed")] == (1, 0.8)
-            assert confidence_rows[("image", "ocr")] == (1, 0.7)
+            assert confidence_rows[("png", "ocr")] == (1, 0.7)
 
             version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
             assert version == Db.SCHEMA_VERSION
@@ -917,6 +914,31 @@ class TestMigration:
         try:
             assert conn.execute("SELECT char_count FROM pdf_pages").fetchone()["char_count"] == 5
             assert conn.execute("SELECT char_count FROM image_pages").fetchone()["char_count"] == 8
+            version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
+            assert version == Db.SCHEMA_VERSION
+        finally:
+            conn.close()
+
+    def test_connect_adds_reindex_pending_to_a_v28_database(self, tmp_path):
+        db_path = tmp_path / "vethuq.db"
+        conn = Db.connect(db_path)
+        conn.execute(
+            "INSERT INTO sources (path, source_type, added_at) VALUES ('/d', 'folder', 'x')"
+        )
+        conn.execute("INSERT INTO documents (created_at) VALUES ('x')")
+        conn.execute(
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (1, 1, '/d/a.png', 'image', 'indexed')"
+        )
+        conn.execute("ALTER TABLE document_index DROP COLUMN reindex_pending")
+        conn.execute("UPDATE schema_version SET version = 28")
+        conn.commit()
+        conn.close()
+
+        conn = Db.connect(db_path)
+        try:
+            row = conn.execute("SELECT status, reindex_pending FROM document_index").fetchone()
+            assert (row["status"], row["reindex_pending"]) == ("indexed", 0)
             version = conn.execute("SELECT version FROM schema_version").fetchone()["version"]
             assert version == Db.SCHEMA_VERSION
         finally:
