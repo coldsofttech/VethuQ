@@ -9,6 +9,7 @@ import psutil
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.extensions import Extensions
 from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
@@ -92,7 +93,7 @@ class Scheduler:
 
         Projects live system usage (`psutil`, not just this run's own workers -
         other processes share the same headroom) forward by `item`'s historical
-        footprint for its file_type + size bucket (`processing_metrics`). Missing
+        footprint for its file extension + size bucket (`processing_metrics`). Missing
         file size or no history yet for that bucket both just skip the check -
         this only holds a file back when there's real evidence it would hurt,
         never on the strength of a guess. Caller already holds `db_lock`.
@@ -103,7 +104,7 @@ class Scheduler:
             return False
 
         row = storage.get_processing_metrics_budget_row(
-            1, item.file_type, Metrics.size_bucket(file_size_bytes)
+            1, Extensions.of(item.path), Metrics.size_bucket(file_size_bytes)
         )
         if row is None:
             return False

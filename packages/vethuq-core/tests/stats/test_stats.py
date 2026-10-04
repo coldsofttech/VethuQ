@@ -11,14 +11,15 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT INTO processing_metrics "
-        "(file_type, size_bucket, document_count, avg_duration_seconds, avg_peak_memory_mb, "
-        "avg_cpu_percent, updated_at) VALUES ('pdf', 'medium', 2, 5.0, 100.0, 10.0, ?)",
+        "(file_type, extension, size_bucket, document_count, avg_duration_seconds, "
+        "avg_peak_memory_mb, avg_cpu_percent, updated_at) "
+        "VALUES ('pdf', 'pdf', 'medium', 2, 5.0, 100.0, 10.0, ?)",
         (now,),
     )
     conn.execute(
         "INSERT INTO confidence_metrics "
-        "(file_type, process_type, page_count, avg_confidence, updated_at) "
-        "VALUES ('pdf', 'native', 3, 1.0, ?)",
+        "(file_type, extension, process_type, page_count, avg_confidence, updated_at) "
+        "VALUES ('pdf', 'pdf', 'native', 3, 1.0, ?)",
         (now,),
     )
     conn.commit()
@@ -27,7 +28,7 @@ def _seed_metrics(conn: sqlite3.Connection) -> None:
 class TestProcessing:
     def test_avg_machine_cpu_percent_divides_by_core_count(self, monkeypatch):
         monkeypatch.setattr(os, "cpu_count", lambda: 4)
-        metric = ProcessingMetric("pdf", "medium", 2, 5.0, 100.0, 200.0, "now")
+        metric = ProcessingMetric("pdf", "pdf", "medium", 2, 5.0, 100.0, 200.0, "now")
 
         assert metric.avg_machine_cpu_percent == pytest.approx(50.0)
 
@@ -38,6 +39,7 @@ class TestProcessing:
 
         assert len(metrics) == 1
         assert metrics[0].file_type == "pdf"
+        assert metrics[0].extension == "pdf"
         assert metrics[0].document_count == 2
         assert metrics[0].avg_duration_seconds == pytest.approx(5.0)
 
@@ -50,6 +52,7 @@ class TestConfidence:
 
         assert len(metrics) == 1
         assert metrics[0].file_type == "pdf"
+        assert metrics[0].extension == "pdf"
         assert metrics[0].process_type == "native"
         assert metrics[0].page_count == 3
         assert metrics[0].avg_confidence == pytest.approx(1.0)

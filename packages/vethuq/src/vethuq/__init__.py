@@ -985,7 +985,9 @@ class Stats:
     """
 
     def processing(self) -> list[ProcessingMetric]:
-        """Return per-(phase, file_type, size_bucket) running averages of OCR processing."""
+        """Return per-(phase, extension, size_bucket) running averages of OCR processing.
+
+        Each file extension (pdf, png, jpg, ...) is reported separately."""
         storage = _open_storage()
         try:
             return _Processing.get_metrics(storage)
@@ -993,7 +995,9 @@ class Stats:
             storage.close()
 
     def confidence(self) -> list[ConfidenceMetric]:
-        """Return per-(file_type, process_type) running averages of OCR confidence."""
+        """Return per-(extension, process_type) running averages of OCR confidence.
+
+        Each file extension (pdf, png, jpg, ...) is reported separately."""
         storage = _open_storage()
         try:
             return _Confidence.get_metrics(storage)

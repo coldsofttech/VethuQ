@@ -13,6 +13,14 @@ PATH so `vethuq` works from any terminal — no Python or other setup needed.
 On the "Select Components" step you can instead choose Desktop only or CLI
 only; the shared runtime that both rely on installs either way.
 
+The installer also asks whether to install **for all users** or **for the
+current user only**. All users needs administrator rights (Windows asks for
+confirmation) and installs to `C:\Program Files\VethuQ`; current user needs
+no administrator rights and installs to `%LOCALAPPDATA%\Programs\VethuQ`.
+The CLI, the PATH option and uninstalling work the same either way (the PATH
+entry is added to, and removed from, the system or your own user PATH to
+match).
+
 ## Adding sources
 
 Use the toolbar's **Add Folder**/**Add File** buttons to register files or

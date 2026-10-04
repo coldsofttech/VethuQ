@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
+from vethuq_core.extensions import Extensions
 from vethuq_core.logs import Logs
 from vethuq_core.readers import Readers
 from vethuq_core.storage import Storage
@@ -47,6 +48,7 @@ class Metrics:
             storage,
             phase=1,
             file_type=file_type,
+            extension=Extensions.of(doc["file_path"]),
             file_size_bytes=doc["file_size_bytes"] or 0,
             duration=duration,
             peak_memory_mb=doc["peak_memory_mb"] or 0.0,
@@ -59,6 +61,7 @@ class Metrics:
         *,
         phase: int,
         file_type: str,
+        extension: str,
         file_size_bytes: int,
         duration: float,
         peak_memory_mb: float,
@@ -67,14 +70,15 @@ class Metrics:
         """Fold one document's measurements for `phase` into that phase's running averages.
 
         Each phase keeps its own averages - a deep pass takes many times longer
-        than a quick one, so blending them would make every ETA wrong.
+        than a quick one, so blending them would make every ETA wrong - and each
+        file extension its own, so a PNG and a JPG (both `image`) are never blended.
         """
         size_bucket = Metrics.size_bucket(file_size_bytes)
         now = datetime.now(UTC).isoformat()
-        existing = storage.get_processing_metrics_row(phase, file_type, size_bucket)
+        existing = storage.get_processing_metrics_row(phase, extension, size_bucket)
         if existing is None:
             storage.insert_processing_metrics(
-                phase, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, now
+                phase, file_type, extension, size_bucket, duration, peak_memory_mb, cpu_percent, now
             )
             return
         new_count = existing["document_count"] + 1
@@ -91,7 +95,7 @@ class Metrics:
         )
         storage.update_processing_metrics(
             phase,
-            file_type,
+            extension,
             size_bucket,
             new_count,
             avg_duration,
@@ -103,7 +107,7 @@ class Metrics:
     @staticmethod
     def update_confidence(storage: Storage, document_id: int, file_type: str) -> None:
         """Fold one freshly-indexed document's pages into `confidence_metrics`'s running
-        averages, grouped independently by (file_type, process_type).
+        averages, grouped independently by (file extension, process_type).
 
         Native pages run near-100% confidence while OCR/mixed pages don't, so
         blending them into a single average would dilute the OCR/mixed signal -
@@ -114,13 +118,17 @@ class Metrics:
         )
         if not by_process_type:
             return
+        extension = Extensions.of(
+            storage.get_document_index_metrics_stats(document_id)["file_path"]
+        )
 
         now = datetime.now(UTC).isoformat()
         for process_type, confidences in by_process_type.items():
-            existing = storage.get_confidence_metrics_row(file_type, process_type)
+            existing = storage.get_confidence_metrics_row(extension, process_type)
             if existing is None:
                 storage.insert_confidence_metrics(
                     file_type,
+                    extension,
                     process_type,
                     len(confidences),
                     sum(confidences) / len(confidences),
@@ -133,5 +141,5 @@ class Metrics:
                 existing["avg_confidence"] * existing["page_count"] + sum(confidences)
             ) / new_count
             storage.update_confidence_metrics(
-                file_type, process_type, new_count, avg_confidence, now
+                extension, process_type, new_count, avg_confidence, now
             )

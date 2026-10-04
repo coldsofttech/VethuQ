@@ -732,7 +732,7 @@ class TestQuick:
         mock_get_engine.assert_not_called()
 
     @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_records_password_protected_pdf_distinctly(
+    def test_run_ocr_records_password_protected_pdf_as_unsupported(
         self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         import pymupdf
@@ -752,7 +752,8 @@ class TestQuick:
         Quick.run(storage, source)
 
         row = conn.execute("SELECT * FROM document_index").fetchone()
-        assert row["status"] == "error"
+        assert row["status"] == "unsupported"
+        assert row["file_type"] == "pdf"
         assert "password-protected" in row["error_message"]
 
     @patch("vethuq_core.ocr.engines.Engines.get")

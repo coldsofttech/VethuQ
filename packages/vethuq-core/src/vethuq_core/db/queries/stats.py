@@ -8,23 +8,23 @@ import sqlite3
 class Stats:
     @staticmethod
     def get_processing_metrics_row(
-        conn: sqlite3.Connection, phase: int, file_type: str, size_bucket: str
+        conn: sqlite3.Connection, phase: int, extension: str, size_bucket: str
     ) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT document_count, avg_duration_seconds, "
             "avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
-            "WHERE phase = ? AND file_type = ? AND size_bucket = ?",
-            (phase, file_type, size_bucket),
+            "WHERE phase = ? AND extension = ? AND size_bucket = ?",
+            (phase, extension, size_bucket),
         ).fetchone()
 
     @staticmethod
     def get_processing_metrics_budget_row(
-        conn: sqlite3.Connection, phase: int, file_type: str, size_bucket: str
+        conn: sqlite3.Connection, phase: int, extension: str, size_bucket: str
     ) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT avg_peak_memory_mb, avg_cpu_percent FROM processing_metrics "
-            "WHERE phase = ? AND file_type = ? AND size_bucket = ?",
-            (phase, file_type, size_bucket),
+            "WHERE phase = ? AND extension = ? AND size_bucket = ?",
+            (phase, extension, size_bucket),
         ).fetchone()
 
     @staticmethod
@@ -32,6 +32,7 @@ class Stats:
         conn: sqlite3.Connection,
         phase: int,
         file_type: str,
+        extension: str,
         size_bucket: str,
         duration: float,
         peak_memory_mb: float,
@@ -40,17 +41,26 @@ class Stats:
     ) -> None:
         conn.execute(
             "INSERT INTO processing_metrics "
-            "(phase, file_type, size_bucket, document_count, avg_duration_seconds, "
+            "(phase, file_type, extension, size_bucket, document_count, avg_duration_seconds, "
             "avg_peak_memory_mb, avg_cpu_percent, updated_at) "
-            "VALUES (?, ?, ?, 1, ?, ?, ?, ?)",
-            (phase, file_type, size_bucket, duration, peak_memory_mb, cpu_percent, updated_at),
+            "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)",
+            (
+                phase,
+                file_type,
+                extension,
+                size_bucket,
+                duration,
+                peak_memory_mb,
+                cpu_percent,
+                updated_at,
+            ),
         )
 
     @staticmethod
     def update_processing_metrics(
         conn: sqlite3.Connection,
         phase: int,
-        file_type: str,
+        extension: str,
         size_bucket: str,
         document_count: int,
         avg_duration_seconds: float,
@@ -61,7 +71,7 @@ class Stats:
         conn.execute(
             "UPDATE processing_metrics SET document_count = ?, avg_duration_seconds = ?, "
             "avg_peak_memory_mb = ?, avg_cpu_percent = ?, updated_at = ? "
-            "WHERE phase = ? AND file_type = ? AND size_bucket = ?",
+            "WHERE phase = ? AND extension = ? AND size_bucket = ?",
             (
                 document_count,
                 avg_duration_seconds,
@@ -69,25 +79,26 @@ class Stats:
                 avg_cpu_percent,
                 updated_at,
                 phase,
-                file_type,
+                extension,
                 size_bucket,
             ),
         )
 
     @staticmethod
     def get_confidence_metrics_row(
-        conn: sqlite3.Connection, file_type: str, process_type: str
+        conn: sqlite3.Connection, extension: str, process_type: str
     ) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT page_count, avg_confidence FROM confidence_metrics "
-            "WHERE file_type = ? AND process_type = ?",
-            (file_type, process_type),
+            "WHERE extension = ? AND process_type = ?",
+            (extension, process_type),
         ).fetchone()
 
     @staticmethod
     def insert_confidence_metrics(
         conn: sqlite3.Connection,
         file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,
@@ -95,15 +106,15 @@ class Stats:
     ) -> None:
         conn.execute(
             "INSERT INTO confidence_metrics "
-            "(file_type, process_type, page_count, avg_confidence, updated_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (file_type, process_type, page_count, avg_confidence, updated_at),
+            "(file_type, extension, process_type, page_count, avg_confidence, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (file_type, extension, process_type, page_count, avg_confidence, updated_at),
         )
 
     @staticmethod
     def update_confidence_metrics(
         conn: sqlite3.Connection,
-        file_type: str,
+        extension: str,
         process_type: str,
         page_count: int,
         avg_confidence: float,
@@ -111,23 +122,23 @@ class Stats:
     ) -> None:
         conn.execute(
             "UPDATE confidence_metrics SET page_count = ?, avg_confidence = ?, updated_at = ? "
-            "WHERE file_type = ? AND process_type = ?",
-            (page_count, avg_confidence, updated_at, file_type, process_type),
+            "WHERE extension = ? AND process_type = ?",
+            (page_count, avg_confidence, updated_at, extension, process_type),
         )
 
     @staticmethod
     def list_processing_metrics(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         return conn.execute(
-            "SELECT phase, file_type, size_bucket, document_count, avg_duration_seconds, "
-            "avg_peak_memory_mb, avg_cpu_percent, updated_at FROM processing_metrics "
-            "ORDER BY phase, file_type, size_bucket"
+            "SELECT phase, file_type, extension, size_bucket, document_count, "
+            "avg_duration_seconds, avg_peak_memory_mb, avg_cpu_percent, updated_at "
+            "FROM processing_metrics ORDER BY phase, extension, size_bucket"
         ).fetchall()
 
     @staticmethod
     def list_confidence_metrics(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         return conn.execute(
-            "SELECT file_type, process_type, page_count, avg_confidence, updated_at "
-            "FROM confidence_metrics ORDER BY file_type, process_type"
+            "SELECT file_type, extension, process_type, page_count, avg_confidence, updated_at "
+            "FROM confidence_metrics ORDER BY extension, process_type"
         ).fetchall()
 
     @staticmethod
