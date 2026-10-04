@@ -15,26 +15,32 @@ time.
 |---|---|
 | License | The licence declared in the package's own metadata (`License` / `License-Expression`) |
 | Required by | The package that declares it as a dependency (VethuQ, or a third-party package) |
+| Used by VethuQ | Which VethuQ package (`vethuq-core`, `vethuq-core/tests`, `vethuq-cli`, `scripts`, ...) imports it directly; A package named with "through" brings it in only as a dependency of another package; "None" means no VethuQ package uses it at all. Checked by searching every `import`/`from` in `packages/` and `scripts/`, leaving out the generated `vethuq/_core` copy of core |
 | Removable? | Whether the frozen build could leave it out without breaking VethuQ |
+
+Rows marked 🟨 (amber) can be removed from the frozen build; markdown tables cannot colour a row, so the marker and the bold "Yes" stand in for the highlight.
 
 ## Entries
 
-| Package | Version | License | Size (dist-info) | Required by | Purpose | Removable? |
-|---|---|---|---|---|---|---|
-| `aistudio-sdk` | 0.3.9 | Apache-2.0 | 28 KB | `paddlex` (`Requires-Dist: aistudio-sdk>=0.3.5`), pulled in by `paddleocr` | Downloads models from Baidu AI Studio, one of the model hosters PaddleX can use | Not as-is, see below |
-| `annotated-types` | 0.8.0 | MIT | 30 KB | `pydantic` 2.13.5, which `paddlex` requires | Reusable type constraints (`Gt`, `Len`, ...) that pydantic uses for field validation | No, pydantic imports it at load |
-| `anyio` | 4.15.1 | MIT | 28 KB (1.4 MB code) | `httpx`, `httpcore` (and the `httpx2`/`httpcore2` packages), which `paddlepaddle` 3.3.1 and `huggingface_hub` 2.0.0 need | Async I/O layer under the HTTP client stack | No, `httpx`/`httpcore` import it |
-| `ast_serialize` | 0.11.2 | MIT | 158 KB dist-info, 2.5 MB package | `mypy` 2.3.1 (dev dependency) | Native bindings that serialize mypy's parse trees | Yes, see below |
-| `bce-python-sdk` | 0.9.79 | Apache-2.0 | 28 KB dist-info, 2.9 MB package (`baidubce`) | `aistudio-sdk`; also `paddlex`'s optional `serving` extra | Baidu Cloud (BOS storage and API) client, used by the AI Studio SDK | Only together with `aistudio-sdk`, see below |
-| `python-bidi` | 0.6.11 | LGPL-3.0-or-later | 88 KB dist-info, 0.4 MB package (`bidi`) | `paddlex` (its `ocr`, `ocr-core` and `base` extras) | Right-to-left text reordering for Arabic OCR results | Yes for English OCR, see below |
-| `certifi` | 2026.7.22 | MPL-2.0 | 19 KB dist-info, 0.25 MB package (loose in `lib/`) | `httpx`, `httpcore`, `requests` | CA certificate bundle for HTTPS | No, HTTPS downloads need it |
-| `cffi` | 2.1.1 | MIT-0 | 20 KB dist-info, 0.6 MB package (`_cffi_backend` is a loose `.pyd` in `lib/`) | `cryptography`, which `modelscope_hub` requires | C foreign-function interface used by `cryptography` | With `cryptography`/`modelscope_hub` only |
-| `chardet` | 7.6.0 | 0BSD | 31 KB dist-info, 2.4 MB package (loose in `lib/`) | `paddlex`, `requests` | Guesses a text file's encoding | No, `paddlex` imports it |
-| `charset_normalizer` | 3.5.1 | MIT | 64 KB dist-info, 0.7 MB package (loose in `lib/`) | `requests` | Encoding detection for HTTP responses | No, `requests` imports it |
-| `click` | 8.5.0 | BSD-3-Clause | 18 KB dist-info, 0.9 MB package | `aistudio-sdk`, `huggingface_hub` 2.0.0 | Command-line framework behind those packages' own CLIs | Probably, see below |
-| `colorama` | 0.4.6 | BSD-3-Clause | 34 KB dist-info, 0.1 MB package | `typer` (on Windows, VethuQ's CLI framework), `tqdm`, `colorlog` | Makes ANSI colour codes work in Windows consoles | No, the CLI depends on it through `typer` |
-| `colorlog` | 6.12.0 | MIT | 27 KB dist-info, 60 KB package | `paddlex` | Coloured log output | No, `paddlex` imports it |
-| `crc32c` | 2.9.post0 | LGPL-2.1-or-later | 57 KB dist-info, 0.16 MB package (loose in `lib/`) | `bce-python-sdk` | CRC32C checksums for Baidu Cloud uploads | Yes, see below |
+| Package | Version | License | Size (dist-info) | Required by | Used by VethuQ | Purpose | Removable? |
+|---|---|---|---|---|---|---|---|
+| `aistudio-sdk` | 0.3.9 | Apache-2.0 | 28 KB dist-info, 0.5 MB package (`aistudio_sdk`, inside the executables' archive, not loose in `lib/`) | `paddlex` (`Requires-Dist: aistudio-sdk>=0.3.5`), pulled in by `paddleocr` | `vethuq-core`, `vethuq` (through `paddleocr`) | Downloads models from Baidu AI Studio, one of the model hosters PaddleX can use | Not as-is, see below |
+| `annotated-types` | 0.8.0 | MIT | 30 KB dist-info, 44 KB package (`annotated_types`, inside the executables' archive) | `pydantic` 2.13.5, which `paddlex` requires | `vethuq-core`, `vethuq` (through `paddleocr`) | Reusable type constraints (`Gt`, `Len`, ...) that pydantic uses for field validation | No, pydantic imports it at load |
+| `anyio` | 4.15.1 | MIT | 28 KB dist-info, 1.4 MB package (inside the executables' archive) | `httpx`, `httpcore` (and the `httpx2`/`httpcore2` packages), which `paddlepaddle` 3.3.1 and `huggingface_hub` 2.0.0 need | `vethuq-core`, `vethuq` (through `paddleocr`) | Async I/O layer under the HTTP client stack | No, `httpx`/`httpcore` import it |
+| 🟨 `ast_serialize` | 0.11.2 | MIT | 158 KB dist-info, 2.5 MB package | `mypy` 2.3.1 (dev dependency) | Repo `dev` group only (`mypy`) | Native bindings that serialize mypy's parse trees | **Yes, see below** |
+| `bce-python-sdk` | 0.9.79 | Apache-2.0 | 28 KB dist-info, 2.9 MB package (`baidubce`) | `aistudio-sdk`; also `paddlex`'s optional `serving` extra | `vethuq-core`, `vethuq` (through `paddleocr`) | Baidu Cloud (BOS storage and API) client, used by the AI Studio SDK | Only together with `aistudio-sdk`, see below |
+| 🟨 `python-bidi` | 0.6.11 | LGPL-3.0-or-later | 88 KB dist-info, 0.4 MB package (`bidi`) | `paddlex` (its `ocr`, `ocr-core` and `base` extras) | `vethuq-core`, `vethuq` (through `paddleocr`) | Right-to-left text reordering for Arabic OCR results | **Yes for English OCR, see below** |
+| `certifi` | 2026.7.22 | MPL-2.0 | 19 KB dist-info, 0.25 MB package (loose in `lib/`) | `httpx`, `httpcore`, `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | CA certificate bundle for HTTPS | No, HTTPS downloads need it |
+| `cffi` | 2.1.1 | MIT-0 | 20 KB dist-info, 0.6 MB package (`_cffi_backend` is a loose `.pyd` in `lib/`) | `cryptography`, which `modelscope_hub` requires | `vethuq-core`, `vethuq` (through `paddleocr`) | C foreign-function interface used by `cryptography` | With `cryptography`/`modelscope_hub` only |
+| `chardet` | 7.6.0 | 0BSD | 31 KB dist-info, 2.4 MB package (loose in `lib/`) | `paddlex`, `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | Guesses a text file's encoding | No, `paddlex` imports it |
+| `charset_normalizer` | 3.5.1 | MIT | 64 KB dist-info, 0.7 MB package (loose in `lib/`) | `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | Encoding detection for HTTP responses | No, `requests` imports it |
+| `click` | 8.5.0 | BSD-3-Clause | 18 KB dist-info, 0.9 MB package | `aistudio-sdk`, `huggingface_hub` 2.0.0 | `vethuq-core`, `vethuq` (through `paddleocr`) | Command-line framework behind those packages' own CLIs | Probably, see below |
+| `colorama` | 0.4.6 | BSD-3-Clause | 34 KB dist-info, 0.1 MB package | `typer` (on Windows, VethuQ's CLI framework), `tqdm`, `colorlog` | `vethuq-cli` | Makes ANSI colour codes work in Windows consoles | No, the CLI depends on it through `typer` |
+| `colorlog` | 6.12.0 | MIT | 27 KB dist-info, 60 KB package | `paddlex` | `vethuq-core`, `vethuq` (through `paddleocr`) | Coloured log output | No, `paddlex` imports it |
+| 🟨 `crc32c` | 2.9.post0 | LGPL-2.1-or-later | 57 KB dist-info, 0.16 MB package (loose in `lib/`) | `bce-python-sdk` | `vethuq-core`, `vethuq` (through `paddleocr`) | CRC32C checksums for Baidu Cloud uploads | **Yes, see below** |
+| `pycryptodome` (`Crypto`) | 3.23.0 | BSD, Public Domain | 51 KB dist-info, 1.7 MB package (loose in `lib/`) | `bce-python-sdk` | `vethuq-core`, `vethuq` (through `paddleocr`) | AES and RSA for Baidu Cloud requests | Only together with `bce-python-sdk` / `aistudio-sdk`, see below |
+| `cryptography` | 50.0.1 | Apache-2.0 OR BSD-3-Clause | 95 KB dist-info, 9.7 MB package (loose in `lib/`) | `modelscope_hub` | `vethuq-core`, `vethuq` (through `paddleocr`) | TLS and certificate primitives for ModelScope downloads | Only together with `modelscope_hub`, see below |
+| `opencv-contrib-python` (`cv2`) | 4.10.0.84 | Apache-2.0 | 199 KB dist-info, 113.5 MB package (loose in `lib/`) | `paddlex`, which pins this exact version | `vethuq-core`, `vethuq-core/tests` | Image decoding and rotation around OCR | No, VethuQ's own code imports it, see below |
 
 ### aistudio-sdk
 
@@ -134,6 +140,22 @@ time.
   loose files in `lib/` (its own folder with a compiled extension).
 - **Removable.** Yes, with no loss of function, if `bce-python-sdk` stays (see above). It could
   be excluded in `vethuq.spec` to drop an LGPL component. Untested.
+
+### pycryptodome, cryptography and opencv-contrib-python
+
+- **`pycryptodome` (`Crypto`).** `baidubce/utils.py` imports `Crypto.Cipher.AES`, and
+  `baidubce/services/cloudflow` imports RSA, for Baidu Cloud requests. VethuQ never calls them;
+  removable only with `bce-python-sdk` and `aistudio-sdk`.
+- **`cryptography`.** Required by `modelscope_hub` (the ModelScope model hoster, not VethuQ's
+  default). It is already in the installer's licence summary (dual Apache-2.0 / BSD-3-Clause).
+  Removable only with `modelscope_hub`; untested.
+- **`opencv-contrib-python` (`cv2`).** The one of these VethuQ really uses:
+  `vethuq_core/filetypes/pdf/reader.py` decodes page images with `cv2.imdecode`, and
+  `vethuq_core/ocr/deepening.py` rotates images with `cv2.rotate` and `getRotationMatrix2D`.
+  It is also the largest single item in `lib/` (about 113 MB of the 607 MB). `paddlex` pins this
+  exact version, which is why `vethuq-core/pyproject.toml` declares no OpenCV of its own (a
+  second OpenCV package would corrupt the first). Licence note: it bundles FFmpeg libraries
+  under the LGPL, already mentioned in `installer/LICENSE.md`.
 
 ## To add
 
