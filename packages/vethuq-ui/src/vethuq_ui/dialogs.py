@@ -63,9 +63,7 @@ def _show(
 
 
 def ask_yes_no(parent: tk.Tk | tk.Toplevel, title: str, message: str) -> bool:
-    return _show(
-        parent, title, message, [("Yes", True), ("No", False)], primary="Yes", danger="No"
-    )
+    return _show(parent, title, message, [("Yes", True), ("No", False)], primary="Yes", danger="No")
 
 
 def show_error(parent: tk.Tk | tk.Toplevel, title: str, message: str) -> None:

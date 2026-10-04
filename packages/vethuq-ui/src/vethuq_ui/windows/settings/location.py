@@ -13,8 +13,8 @@ from vethuq_core.index.runner import IndexRunner
 from vethuq_core.paths import Paths
 from vethuq_core.storage import default_db_path
 
-from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.buttons.primary import PrimaryButton
+from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.widgets import Widgets
 from vethuq_ui.windows.placement import Placement
 

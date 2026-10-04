@@ -10,8 +10,8 @@ from tkinter import ttk
 from vethuq_core.settings import OcrSettings
 from vethuq_core.storage import Storage
 
-from vethuq_ui.dialogs import show_error
 from vethuq_ui.buttons.primary import PrimaryButton
+from vethuq_ui.dialogs import show_error
 from vethuq_ui.windows.placement import Placement
 from vethuq_ui.windows.settings.reset import ResetAction
 
@@ -50,8 +50,7 @@ class OcrRetryWindow:
         ).pack(anchor=tk.W)
         ttk.Label(
             body,
-            text="0 turns retrying off. The default is "
-            f"{OcrSettings.DEFAULT_RETRY_ATTEMPTS}.",
+            text=f"0 turns retrying off. The default is {OcrSettings.DEFAULT_RETRY_ATTEMPTS}.",
             foreground="grey",
         ).pack(anchor=tk.W, pady=(2, 0))
 

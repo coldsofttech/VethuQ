@@ -10,8 +10,8 @@ from tkinter import ttk
 from vethuq_core.settings import OcrSettings
 from vethuq_core.storage import Storage
 
-from vethuq_ui.dialogs import show_error
 from vethuq_ui.buttons.primary import PrimaryButton
+from vethuq_ui.dialogs import show_error
 from vethuq_ui.windows.placement import Placement
 from vethuq_ui.windows.settings.reset import ResetAction
 
@@ -59,8 +59,7 @@ class OcrEngineWindow:
         ttk.Label(
             body,
             text=(
-                "Files already indexed are brought up to the new level "
-                "the next time indexing runs."
+                "Files already indexed are brought up to the new level the next time indexing runs."
             ),
             foreground="grey",
             wraplength=380,

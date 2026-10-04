@@ -36,9 +36,9 @@ class SettingsWindow:
     def heading(body: ttk.Frame, title: str, note: str | None = None) -> None:
         ttk.Label(body, text=title, font=("Segoe UI", 9, "bold")).pack(anchor=tk.W)
         if note:
-            ttk.Label(
-                body, text=note, foreground="grey", wraplength=380, justify=tk.LEFT
-            ).pack(anchor=tk.W, pady=(2, 8))
+            ttk.Label(body, text=note, foreground="grey", wraplength=380, justify=tk.LEFT).pack(
+                anchor=tk.W, pady=(2, 8)
+            )
 
     @staticmethod
     def buttons(window: tk.Toplevel, body: ttk.Frame, apply: Callable[[], None]) -> ttk.Frame:
