@@ -6,7 +6,7 @@ import sqlite3
 from datetime import UTC, datetime
 
 from vethuq_core.db.queries.documents import Document
-from vethuq_core.extensions import Extensions
+from vethuq_core.paths.extensions import Extensions
 
 
 class Migration:

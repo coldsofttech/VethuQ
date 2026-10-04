@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from importlib import metadata
 
 from vethuq_core.filetypes import FileTypes
+from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.storage import schema_version
 
 
@@ -19,6 +20,7 @@ class VersionDetails:
     platform: str
     db_schema: int
     file_types: tuple[str, ...] = ()
+    search_engines: tuple[str, ...] = ()
 
 
 class VersionInfo:
@@ -42,6 +44,7 @@ class VersionInfo:
             platform=platform.platform(),
             db_schema=schema_version(),
             file_types=tuple(t.extra for t in FileTypes.installed()),
+            search_engines=tuple(e.extra for e in SearchEngineCatalog.installed()),
         )
 
     @staticmethod
@@ -53,4 +56,5 @@ class VersionInfo:
             ("Platform", d.platform),
             ("Database schema", str(d.db_schema)),
             ("File types", ", ".join(d.file_types) or "none"),
+            ("Search engines", ", ".join(d.search_engines) or "none"),
         ]

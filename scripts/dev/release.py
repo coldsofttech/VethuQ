@@ -8,8 +8,8 @@ fails on every PR, not on release day.
     uv run python scripts/dev/release.py --package
     uv run python scripts/dev/release.py --desktop   # Windows only
 
-Both first regenerate the files derived from the file types' `type.json` manifests
-(scripts/dev/filetypes.py), so a stale `type-*` extra or installer page can't ship.
+Both first regenerate the files derived from the file type and search engine manifests
+(scripts/dev/sync_extras.py), so a stale extra or installer page can't ship.
 
 `--package` (default if neither flag is given):
   1. Runs packages/vethuq/scripts/merge_sources.py.
@@ -34,7 +34,7 @@ The installer is compressed with LZMA2 ultra64 (a few parallel blocks), except u
 PyInstaller when their inputs are unchanged since the last build, and builds the installer
 without compression (quick, but as large as the app). `--clean` forces a full
 PyInstaller rebuild (it also drops PyInstaller's analysis cache, which is otherwise kept
-between builds).
+between builds); it is optional with `--dev` and always applied without it.
 """
 
 from __future__ import annotations
@@ -60,14 +60,14 @@ def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=REPO_ROOT, check=True, **kwargs)  # noqa: S603
 
 
-class FileTypeFiles:
-    """The files generated from the file types' `type.json` manifests."""
+class ExtrasFiles:
+    """The files generated from the file type and search engine manifests."""
 
     @staticmethod
     def regenerate() -> None:
         """Bring the extras and installer catalog in step with the manifests."""
-        print("== regenerating file type files ==")
-        _run([sys.executable, "scripts/dev/filetypes.py"])
+        print("== regenerating extras and installer catalogs ==")
+        _run([sys.executable, "scripts/dev/sync_extras.py"])
 
 
 class DesktopCache:
@@ -109,7 +109,7 @@ class DesktopCache:
 
 
 def build_package() -> None:
-    FileTypeFiles.regenerate()
+    ExtrasFiles.regenerate()
     print("== merging vethuq-core + vethuq-cli into packages/vethuq ==")
     _run([sys.executable, "packages/vethuq/scripts/merge_sources.py"])
 
@@ -129,13 +129,16 @@ def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool 
     if platform.system() != "Windows":
         print("desktop build is Windows-only - skipping on this platform.")
         return
+    # Only `--dev` may reuse earlier work; a normal build always starts from a clean PyInstaller
+    # cache so a stale analysis can never leave a module out of the exe.
+    clean = clean or not dev
 
     # `uv sync` alone only installs the workspace root's own deps, not
     # member packages like vethuq-ui/vethuq-cli - without this, PyInstaller's
     # `--collect-all sv_ttk` below silently collects nothing (sv_ttk isn't
     # installed anywhere) and produces an exe that fails at runtime with
     # ModuleNotFoundError.
-    FileTypeFiles.regenerate()
+    ExtrasFiles.regenerate()
 
     sync_key = DesktopCache.fingerprint(["uv.lock", "pyproject.toml", "packages/*/pyproject.toml"])
     if dev and not clean and DesktopCache.is_current("sync", sync_key):
@@ -157,7 +160,7 @@ def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool 
         raise ReleaseBuildError(f"expected PyInstaller spec at {spec_path}")
 
     # PyInstaller's work folder holds its analysis cache, so it is kept between builds to make
-    # the next one faster; `--clean` (or a non-`--dev` CI run on a fresh checkout) starts over.
+    # the next one faster under `--dev`; `--clean`, or any build without `--dev`, starts over.
     work_dir = build_dir / "_pyinstaller_work"
     app_dir = dist_dir / "VethuQ"
     exe_names = ("VethuQ-UI.exe", "vethuq.exe", "vethuq-worker.exe")
@@ -229,7 +232,10 @@ def main() -> None:
     parser.add_argument(
         "--clean",
         action="store_true",
-        help="force a full PyInstaller rebuild, dropping its cache (--desktop only)",
+        help=(
+            "force a full PyInstaller rebuild, dropping its cache "
+            "(--desktop only; always on without --dev)"
+        ),
     )
     parser.add_argument(
         "--version",

@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 import pytest
 from conftest import PaddleStub
-from vethuq_core.extensions import Extensions
 from vethuq_core.ocr import Quick
+from vethuq_core.paths.extensions import Extensions
 from vethuq_core.readers.storage import PageResult
 from vethuq_core.sources import Sources
 from vethuq_core.stats import Confidence, Processing

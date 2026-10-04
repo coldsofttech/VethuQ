@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.extensions import Extensions
 from vethuq_core.logs import Logs
+from vethuq_core.paths.extensions import Extensions
 from vethuq_core.readers import Readers
 from vethuq_core.storage import Storage
 

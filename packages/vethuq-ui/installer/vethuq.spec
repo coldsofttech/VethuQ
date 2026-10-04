@@ -64,6 +64,13 @@ FILETYPE_DATAS = [
 ]
 FILETYPE_HIDDEN = collect_submodules("vethuq_core.filetypes")
 
+# Search engines are listed from the manifests beside the package (SearchEngineCatalog.all()),
+# so those must ship as files too.
+SEARCH_ENGINE_DATAS = [
+    (str(manifest), "vethuq_core/search/engines/manifests")
+    for manifest in sorted((CORE_SRC / "search" / "engines" / "manifests").glob("*.json"))
+]
+
 
 def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
     return Analysis(
@@ -82,7 +89,12 @@ def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
 
 ui_a = _analysis(
     UI_SRC / "app.py",
-    datas=[(str(UI_SRC / "assets"), "vethuq_ui/assets"), *sv_ttk_datas, *FILETYPE_DATAS],
+    datas=[
+        (str(UI_SRC / "assets"), "vethuq_ui/assets"),
+        *sv_ttk_datas,
+        *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
+    ],
     binaries=sv_ttk_binaries,
     hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN],
     excludes=OCR_MODULES,
@@ -96,6 +108,7 @@ cli_a = _analysis(
         (str(CORE_SRC / "branding" / "palette.json"), "vethuq_core/branding"),
         *rich_datas,
         *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
     ],
     binaries=rich_binaries,
     hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN],
@@ -103,7 +116,13 @@ cli_a = _analysis(
 )
 worker_a = _analysis(
     CORE_SRC / "index" / "runner.py",
-    datas=[*FILETYPE_DATAS, *paddlex_datas, *paddleocr_datas, *paddle_metadata],
+    datas=[
+        *FILETYPE_DATAS,
+        *SEARCH_ENGINE_DATAS,
+        *paddlex_datas,
+        *paddleocr_datas,
+        *paddle_metadata,
+    ],
     binaries=[*paddle_binaries, *paddlex_binaries, *paddleocr_binaries],
     hiddenimports=[*FILETYPE_HIDDEN, *paddlex_hidden, *paddleocr_hidden],
 )

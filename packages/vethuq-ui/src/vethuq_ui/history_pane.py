@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import tkinter as tk
-from datetime import datetime
 from tkinter import ttk
 
+from vethuq_core.formatting import Formatting
 from vethuq_core.index import IndexRunner
 from vethuq_core.storage import Storage
 
@@ -56,7 +56,7 @@ class HistoryPane(ttk.Frame):
                 "",
                 tk.END,
                 values=(
-                    self.format_timestamp(run.started_at),
+                    Formatting.short_timestamp(run.started_at),
                     run.mode.capitalize(),
                     run.target if run.target is not None else "All sources",
                     run.status.capitalize(),
@@ -73,11 +73,3 @@ class HistoryPane(ttk.Frame):
     def hide(self) -> None:
         if str(self) in self._paned.panes():
             self._paned.forget(self)
-
-    @staticmethod
-    def format_timestamp(value: str) -> str:
-        try:
-            dt = datetime.fromisoformat(value)
-        except ValueError:
-            return value
-        return f"{dt.day} {dt.strftime('%b %Y %H:%M')}"

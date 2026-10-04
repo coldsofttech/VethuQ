@@ -14,7 +14,7 @@ problem (10-15). See [docs/troubleshooting.md](troubleshooting.md).
 
 ## `--version`
 
-Show the VethuQ version, Python version, platform, database schema version and the installed file type packages (`type-pdf`, ...) in a panel, then exit. The installed file types are also saved in the database. Handy to include when asking for support.
+Show the VethuQ version, Python version, platform, database schema version and the installed file type and search engine packages (`type-pdf`, `search-like`, ...) in a panel, then exit. The installed file types and search engines are also saved in the database. Handy to include when asking for support.
 
 ```
 vethuq --version
@@ -777,4 +777,17 @@ List the installed file types with their extensions and package name. `--all` al
 ```bash
 vethuq file-types list
 vethuq file-types list --all
+```
+
+## `search-engines`
+
+Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
+
+### `list [--all]`
+
+List the installed search engines with their package name. `--all` also lists the ones that are not installed, with the `pip install` command for each.
+
+```bash
+vethuq search-engines list
+vethuq search-engines list --all
 ```

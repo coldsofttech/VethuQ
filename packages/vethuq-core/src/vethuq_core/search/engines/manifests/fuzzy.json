@@ -1,0 +1,8 @@
+{
+  "id": "fuzzy",
+  "label": "Fuzzy",
+  "extra": "search-fuzzy",
+  "requires": [],
+  "modules": [],
+  "default": false
+}

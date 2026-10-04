@@ -47,7 +47,7 @@ class ResultRenderer:
         table = Table.grid(padding=(0, 2))
         table.add_column(style=f"bold {Theme.PRIMARY}", no_wrap=True)
         table.add_column(style="bright_black")
-        for engine in Ranking.TIERS:
+        for engine in Ranking.active_tiers():
             table.add_row(f"[{Ranking.BADGES[engine]}]", Ranking.MEANINGS[engine])
         footer = Text(
             "Ranked strictest first; a page's label is its strictest match and `also:` "

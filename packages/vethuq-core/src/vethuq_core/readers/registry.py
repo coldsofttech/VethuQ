@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from vethuq_core.filetypes import FileType, FileTypes
-from vethuq_core.fspath import FsPath
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers.reader import DocumentReader
 
 

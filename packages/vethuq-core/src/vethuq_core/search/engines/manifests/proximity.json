@@ -1,0 +1,8 @@
+{
+  "id": "proximity",
+  "label": "Proximity",
+  "extra": "search-proximity",
+  "requires": [],
+  "modules": [],
+  "default": false
+}

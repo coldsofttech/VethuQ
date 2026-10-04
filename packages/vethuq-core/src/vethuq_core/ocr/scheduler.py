@@ -9,11 +9,11 @@ import psutil
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.extensions import Extensions
-from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.pending import PendingFile
+from vethuq_core.paths.extensions import Extensions
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import Readers
 from vethuq_core.settings import IndexSettings
 from vethuq_core.storage import Storage

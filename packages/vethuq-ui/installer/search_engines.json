@@ -1,0 +1,40 @@
+{
+  "search_engines": [
+    {
+      "id": "like",
+      "label": "Contains (like)",
+      "extra": "search-like",
+      "default": true
+    },
+    {
+      "id": "exact",
+      "label": "Exact",
+      "extra": "search-exact",
+      "default": false
+    },
+    {
+      "id": "full-text",
+      "label": "Full-text (BM25)",
+      "extra": "search-full-text",
+      "default": false
+    },
+    {
+      "id": "fuzzy",
+      "label": "Fuzzy",
+      "extra": "search-fuzzy",
+      "default": false
+    },
+    {
+      "id": "lexical",
+      "label": "Word match (lexical)",
+      "extra": "search-lexical",
+      "default": false
+    },
+    {
+      "id": "proximity",
+      "label": "Proximity",
+      "extra": "search-proximity",
+      "default": false
+    }
+  ]
+}

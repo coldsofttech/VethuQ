@@ -12,6 +12,7 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn
 from rich.progress import TextColumn as ProgressTextColumn
 from rich.table import Table
 from rich.text import Text
+from vethuq_core.formatting import Formatting
 from vethuq_core.index import (
     Eta,
     IndexRunner,
@@ -78,11 +79,6 @@ class StatePanel:
         "stopped": Theme.PRIMARY,
         "paused": Theme.WARNING,
     }
-
-    @staticmethod
-    def format_duration(seconds: float) -> str:
-        minutes, secs = divmod(int(seconds), 60)
-        return f"{minutes}m {secs}s" if minutes else f"{secs}s"
 
     @staticmethod
     def progress_bar(processed: int, total: int) -> Progress:
@@ -167,7 +163,7 @@ class StatePanel:
         if state.error:
             table.add_row("Error", Text(state.error, style=Theme.ERROR))
         if IndexRunner.is_stalled(state):
-            stalled = StatePanel.format_duration(state.heartbeat_age_seconds)
+            stalled = Formatting.duration(state.heartbeat_age_seconds)
             table.add_row(
                 "Warning",
                 Text(
@@ -179,10 +175,10 @@ class StatePanel:
         if state.status == "running":
             by_phase = Eta.phase_seconds(storage, state)
             if by_phase:
-                eta = Text(f"~{StatePanel.format_duration(sum(by_phase.values()))}")
+                eta = Text(f"~{Formatting.duration(sum(by_phase.values()))}")
                 if len(by_phase) > 1:
                     breakdown = " · ".join(
-                        f"{Deepening.PHASE_NAMES[phase]} ~{StatePanel.format_duration(seconds)}"
+                        f"{Deepening.PHASE_NAMES[phase]} ~{Formatting.duration(seconds)}"
                         for phase, seconds in sorted(by_phase.items())
                     )
                     eta.append(f"\n{breakdown}", style="bright_black")

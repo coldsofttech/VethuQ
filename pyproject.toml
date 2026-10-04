@@ -14,6 +14,11 @@ vethuq-cli = { workspace = true }
 vethuq-ui = { workspace = true }
 vethuq-type-png = { workspace = true }
 vethuq-type-jpg = { workspace = true }
+vethuq-search-exact = { workspace = true }
+vethuq-search-full-text = { workspace = true }
+vethuq-search-fuzzy = { workspace = true }
+vethuq-search-lexical = { workspace = true }
+vethuq-search-proximity = { workspace = true }
 # Remaining workspace packages (vethuq-entitlements, vethuq-intelligence,
 # vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai) are added
 # here as they are built — see docs/architecture.md for the planned package map.
@@ -27,9 +32,15 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "types-psutil>=5.9",
-    # Marker packages: enable PNG/JPEG in the dev environment like the type-* extras do.
+    # Marker packages: enable PNG/JPEG and the non-default search engines in the dev
+    # environment like the type-* and search-* extras do.
     "vethuq-type-png",
     "vethuq-type-jpg",
+    "vethuq-search-exact",
+    "vethuq-search-full-text",
+    "vethuq-search-fuzzy",
+    "vethuq-search-lexical",
+    "vethuq-search-proximity",
 ]
 
 # For scripts/dev/generate_icons.py only - opt-in via

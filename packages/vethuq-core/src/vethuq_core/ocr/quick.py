@@ -16,7 +16,6 @@ import psutil
 if TYPE_CHECKING:
     pass
 
-from vethuq_core.fspath import FsPath
 from vethuq_core.logs import Logs
 from vethuq_core.ocr.content_gate import ContentGate
 from vethuq_core.ocr.document import Document
@@ -24,6 +23,7 @@ from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.pending import Pending, PendingFile
 from vethuq_core.ocr.scheduler import Scheduler
+from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import (
     DocumentReader,
     FileRemovedError,

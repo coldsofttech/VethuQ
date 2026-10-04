@@ -27,12 +27,12 @@ repos:
         pass_filenames: false
         types: [python]
 
-      - id: filetypes
-        name: regenerate file type files
-        entry: uv run python scripts/dev/filetypes.py
+      - id: sync-extras
+        name: regenerate extras and installer catalogs
+        entry: uv run python scripts/dev/sync_extras.py
         language: system
         pass_filenames: false
-        files: '(filetypes/.*/type\.json|scripts/dev/filetypes\.py)$'
+        files: '(filetypes/.*/type\.json|search/engines/manifests/.*\.json|scripts/dev/sync_extras\.py)$'
 
       - id: pytest
         name: pytest

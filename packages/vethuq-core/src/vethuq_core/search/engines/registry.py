@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from vethuq_core.search.engines.base import SearchEngine
+from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.storage import Storage
 
 # Builds an engine bound to a connection.
@@ -25,6 +26,10 @@ class SearchEngines:
     def get(storage: Storage, name: str | None = None) -> SearchEngine:
         """Build the engine registered as `name` (default `SearchEngines.DEFAULT`) on `storage`."""
         key = name or SearchEngines.DEFAULT
+        info = SearchEngineCatalog.get(key)
+        reason = SearchEngineCatalog.unavailable_reason(info) if info is not None else None
+        if reason is not None:
+            raise ValueError(reason)
         try:
             factory = SearchEngines._factories[key]
         except KeyError:
@@ -71,8 +76,8 @@ class SearchEngines:
 
     @staticmethod
     def available() -> list[str]:
-        """Names of the registered engines, sorted."""
-        return sorted(SearchEngines._factories)
+        """Names of the registered engines that are installed and enabled, sorted."""
+        return sorted(n for n in SearchEngines._factories if SearchEngineCatalog.is_name_enabled(n))
 
 
 SearchEngines.register("like", SearchEngines._like_factory)

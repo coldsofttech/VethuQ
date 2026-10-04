@@ -1,0 +1,8 @@
+{
+  "id": "full-text",
+  "label": "Full-text (BM25)",
+  "extra": "search-full-text",
+  "requires": [],
+  "modules": [],
+  "default": false
+}

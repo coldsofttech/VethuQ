@@ -110,6 +110,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 [Code]
 { Generated from the file types' type.json files: FileTypeCount, FileTypeId/Label/Default. }
 #include "filetypes.iss"
+{ ...and the search engines' manifests: SearchEngineCount, SearchEngineId/Label/Default. }
+#include "search_engines.iss"
 
 const
   SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
@@ -193,6 +195,30 @@ end;
 
 var
   TypesPage: TInputOptionWizardPage;
+  EnginesPage: TInputOptionWizardPage;
+
+function EnginesFile: string;
+begin
+  Result := ExpandConstant('{localappdata}\VethuQ\search_engines.json');
+end;
+
+function EnginesParam: string;
+begin
+  Result := ExpandConstant('{param:ENGINES|}');
+end;
+
+function EngineWasSelected(const Id: string): Boolean;
+var
+  Previous: AnsiString;
+begin
+  { /ENGINES=exact,fuzzy wins; else the previous install's choice; else the defaults. }
+  if EnginesParam <> '' then
+    Result := Pos(',' + Id + ',', ',' + Lowercase(EnginesParam) + ',') > 0
+  else if LoadStringFromFile(EnginesFile, Previous) then
+    Result := Pos('"' + Id + '"', Previous) > 0
+  else
+    Result := False;
+end;
 
 function TypesFile: string;
 begin
@@ -216,6 +242,91 @@ begin
     Result := Pos('"' + Id + '"', Previous) > 0
   else
     Result := False;
+end;
+
+procedure SetAllEngines(Value: Boolean);
+var
+  I: Integer;
+begin
+  for I := 0 to SearchEngineCount - 1 do
+    EnginesPage.Values[I] := Value or SearchEngineDefault(I);
+end;
+
+procedure SelectAllEnginesClick(Sender: TObject);
+begin
+  SetAllEngines(True);
+end;
+
+procedure UnselectAllEnginesClick(Sender: TObject);
+begin
+  SetAllEngines(False);
+end;
+
+procedure InitEnginesPage;
+var
+  I: Integer;
+  Chosen: Boolean;
+  SelectAllButton, UnselectAllButton: TNewButton;
+begin
+  EnginesPage := CreateInputOptionPage(
+    TypesPage.ID, 'Search engines',
+    'Which search engines should VethuQ offer?',
+    'Engines that are not selected are not available for searching. ' +
+    'Run this installer again to add more later.',
+    False, False
+  );
+  for I := 0 to SearchEngineCount - 1 do
+  begin
+    EnginesPage.Add(SearchEngineLabel(I));
+    Chosen := EngineWasSelected(SearchEngineId(I));
+    if (EnginesParam = '') and (not FileExists(EnginesFile)) then
+      Chosen := SearchEngineDefault(I);
+    { The default engine is always installed, like the default file type: ticked and locked. }
+    if SearchEngineDefault(I) then
+    begin
+      Chosen := True;
+      EnginesPage.CheckListBox.ItemEnabled[I] := False;
+    end;
+    EnginesPage.Values[I] := Chosen;
+  end;
+
+  { Select all / Unselect all sit under the list. }
+  EnginesPage.CheckListBox.Height := EnginesPage.SurfaceHeight - ScaleY(32);
+
+  SelectAllButton := TNewButton.Create(EnginesPage);
+  SelectAllButton.Parent := EnginesPage.Surface;
+  SelectAllButton.Left := 0;
+  SelectAllButton.Top := EnginesPage.SurfaceHeight - ScaleY(23);
+  SelectAllButton.Width := ScaleX(90);
+  SelectAllButton.Height := ScaleY(23);
+  SelectAllButton.Caption := 'Select all';
+  SelectAllButton.OnClick := @SelectAllEnginesClick;
+
+  UnselectAllButton := TNewButton.Create(EnginesPage);
+  UnselectAllButton.Parent := EnginesPage.Surface;
+  UnselectAllButton.Left := SelectAllButton.Left + SelectAllButton.Width + ScaleX(8);
+  UnselectAllButton.Top := SelectAllButton.Top;
+  UnselectAllButton.Width := ScaleX(90);
+  UnselectAllButton.Height := ScaleY(23);
+  UnselectAllButton.Caption := 'Unselect all';
+  UnselectAllButton.OnClick := @UnselectAllEnginesClick;
+end;
+
+procedure SaveEngineSelection;
+var
+  I: Integer;
+  Json: string;
+begin
+  Json := '';
+  for I := 0 to SearchEngineCount - 1 do
+    if EnginesPage.Values[I] or SearchEngineDefault(I) then
+    begin
+      if Json <> '' then
+        Json := Json + ', ';
+      Json := Json + '"' + SearchEngineId(I) + '"';
+    end;
+  ForceDirectories(ExtractFilePath(EnginesFile));
+  SaveStringToFile(EnginesFile, '{ "enabled": [' + Json + '] }', False);
 end;
 
 const
@@ -273,7 +384,7 @@ begin
       (ListHas(Previous, 'core') = WizardIsComponentSelected('core'));
 end;
 
-{ Change on the same version with the same components: only the file types selection (and the
+{ Change on the same version with the same components: only the file types and search engines selection (and the
   tasks) differ, so no program files need copying - they are all bundled already. A silent
   run or a newer Setup never takes this path, so upgrades always install the files. }
 function TypesOnly: Boolean;
@@ -396,14 +507,16 @@ begin
   UnselectAllButton.Height := ScaleY(23);
   UnselectAllButton.Caption := 'Unselect all';
   UnselectAllButton.OnClick := @UnselectAllTypesClick;
+
+  InitEnginesPage;
 end;
 
-{ Adds the chosen file types to the Ready to Install summary, after the tasks. }
+{ Adds the chosen file types and search engines to the Ready to Install summary, after the tasks. }
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   I: Integer;
-  Types: string;
+  Types, Engines: string;
 begin
   Types := '';
   for I := 0 to FileTypeCount - 1 do
@@ -411,6 +524,11 @@ begin
       Types := Types + Space + Space + FileTypeLabel(I) + NewLine;
   if Types = '' then
     Types := Space + Space + 'None' + NewLine;
+
+  Engines := '';
+  for I := 0 to SearchEngineCount - 1 do
+    if EnginesPage.Values[I] or SearchEngineDefault(I) then
+      Engines := Engines + Space + Space + SearchEngineLabel(I) + NewLine;
 
   Result := '';
   if TypesOnly then
@@ -420,7 +538,8 @@ begin
   if MemoComponentsInfo <> '' then Result := Result + MemoComponentsInfo + NewLine + NewLine;
   if MemoGroupInfo <> '' then Result := Result + MemoGroupInfo + NewLine + NewLine;
   if MemoTasksInfo <> '' then Result := Result + MemoTasksInfo + NewLine + NewLine;
-  Result := Result + 'File types:' + NewLine + Types;
+  Result := Result + 'File types:' + NewLine + Types + NewLine;
+  Result := Result + 'Search engines:' + NewLine + Engines;
 end;
 
 procedure SaveTypeSelection;
@@ -453,7 +572,7 @@ begin
       Result := True
     else if MaintPage.SelectedValueIndex = MaintRepair then
       Result := (PageID = wpSelectComponents) or (PageID = TypesPage.ID) or
-        (PageID = wpSelectTasks);
+        (PageID = EnginesPage.ID) or (PageID = wpSelectTasks);
   end;
 end;
 
@@ -498,6 +617,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     SaveTypeSelection;
+    SaveEngineSelection;
     if WizardIsTaskSelected('addtopath') then
       EnvAddPath(ExpandConstant('{app}'));
   end
