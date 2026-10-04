@@ -1,0 +1,11 @@
+{
+  "id": "te",
+  "label": "Telugu",
+  "native_label": "తెలుగు",
+  "extra": "lang-te",
+  "requires": [],
+  "modules": ["vethuq_lang_te"],
+  "script": "telugu",
+  "paddle_lang": "te",
+  "default": false
+}

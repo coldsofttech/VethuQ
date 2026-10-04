@@ -5,6 +5,12 @@
       "label": "English",
       "extra": "lang-en",
       "default": true
+    },
+    {
+      "id": "te",
+      "label": "Telugu",
+      "extra": "lang-te",
+      "default": false
     }
   ]
 }

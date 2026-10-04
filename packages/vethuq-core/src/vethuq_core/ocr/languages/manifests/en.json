@@ -4,5 +4,7 @@
   "extra": "lang-en",
   "requires": [],
   "modules": [],
+  "script": "latin",
+  "paddle_lang": "en",
   "default": true
 }

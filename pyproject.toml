@@ -14,6 +14,7 @@ vethuq-cli = { workspace = true }
 vethuq-ui = { workspace = true }
 vethuq-type-png = { workspace = true }
 vethuq-type-jpg = { workspace = true }
+vethuq-lang-te = { workspace = true }
 vethuq-search-exact = { workspace = true }
 vethuq-search-full-text = { workspace = true }
 vethuq-search-fuzzy = { workspace = true }
@@ -33,10 +34,11 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "types-psutil>=5.9",
-    # Marker packages: enable PNG/JPEG and the non-default search engines in the dev
-    # environment like the type-* and search-* extras do.
+    # Marker packages: enable PNG/JPEG, the non-default search engines and the extra OCR
+    # languages in the dev environment like the type-*, search-* and lang-* extras do.
     "vethuq-type-png",
     "vethuq-type-jpg",
+    "vethuq-lang-te",
     "vethuq-search-exact",
     "vethuq-search-full-text",
     "vethuq-search-fuzzy",
