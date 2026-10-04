@@ -12,11 +12,13 @@ from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.errors import StartupError
 from vethuq_core.logs import Logs
-from vethuq_core.storage import default_db_path
+from vethuq_core.settings.filetypes import FileTypeSettings
+from vethuq_core.storage import default_db_path, open_storage
 from vethuq_core.version import VersionInfo
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.db import app as db_app
+from vethuq_cli.filetypes import app as types_app
 from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.logs import LogsCommand
@@ -34,12 +36,27 @@ app.add_typer(index_app, name="index")
 app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")
+app.add_typer(types_app, name="file-types")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
 
+def _record_installed_file_types() -> None:
+    """Keep the database's record of installed `type-*` packages current. Showing the version
+    must work even when the database can't be opened, so failures are only logged."""
+    try:
+        storage = open_storage()
+        try:
+            FileTypeSettings.record_installed(storage)
+        finally:
+            storage.close()
+    except Exception:  # noqa: BLE001 - never block --version on the database
+        _logger.warning("Could not record installed file types", exc_info=True)
+
+
 def _show_version(value: bool) -> None:
     if value:
+        _record_installed_file_types()
         table = Table.grid(padding=(0, 2))
         for label, text in VersionInfo.rows():
             table.add_row(Text(label, style="bold"), Text(text, style="white"))

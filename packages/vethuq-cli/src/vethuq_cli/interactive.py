@@ -32,6 +32,7 @@ from vethuq_cli.db import integrity_check as db_integrity_check
 from vethuq_cli.db import repair as db_repair
 from vethuq_cli.db import reset as db_reset
 from vethuq_cli.db import restore as db_restore
+from vethuq_cli.filetypes import list_types as file_types_list
 from vethuq_cli.index.commands import history as index_history
 from vethuq_cli.index.commands import pause as index_pause
 from vethuq_cli.index.commands import rebuild_search as index_rebuild_search
@@ -781,6 +782,17 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(stats_reset, force=False)
 
     @staticmethod
+    def _file_types_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "File types",
+                [("1", "List installed"), ("2", "List all"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            InteractiveMenu._run_safely(file_types_list, all_types=choice == "2")
+
+    @staticmethod
     def _settings_db_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -994,10 +1006,11 @@ class InteractiveMenu:
                         ("5", "Stats"),
                         ("6", "Db"),
                         ("7", "Logs"),
-                        ("8", "Exit"),
+                        ("8", "File types"),
+                        ("9", "Exit"),
                     ],
                 )
-                if choice == "8":
+                if choice == "9":
                     break
                 if choice == "1":
                     InteractiveMenu._search_action()
@@ -1013,6 +1026,8 @@ class InteractiveMenu:
                     InteractiveMenu._db_menu()
                 elif choice == "7":
                     InteractiveMenu._logs_menu()
+                elif choice == "8":
+                    InteractiveMenu._file_types_menu()
         except _Quit:
             pass
         console.print()

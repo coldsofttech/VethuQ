@@ -50,6 +50,21 @@ if not result.ok:
 
 `restore`, `reset` and `repair` raise `IndexRunnerError` while an index run is active.
 
+## `client.file_types`
+
+Which file types this install can read — mirrors `vethuq file-types list`. It doesn't open the database.
+
+### `list(include_missing=False) -> list[FileTypeInfo]`
+
+The installed file types. `include_missing=True` also lists the types that are not installed, with the `pip install` command for each in `install_hint`.
+
+```python
+for t in client.file_types.list(include_missing=True):
+    print(t.label, t.extensions, "installed" if t.installed else t.install_hint)
+```
+
+To add or remove a type, install or reinstall the package (`pip install vethuq[type-png]`) or re-run the Windows installer; a type that is installed but not enabled is not scanned or indexed.
+
 ## `client.index`
 
 Indexing runs in the background, the same way as `vethuq index run`. See
@@ -529,6 +544,10 @@ One indexed file's result under a source, returned by `index.status(target)`:
 - `started_at`, `completed_at`, `duration` (seconds; `None` while pending)
 - `duplicate_of_path` (set if this file's content matched an already-indexed
   file)
+
+## `FileTypeInfo`
+
+One file type: `id`, `label`, `extensions` (tuple), `package` (the extra, e.g. `type-png`), `installed`, `enabled` and `install_hint` (`None` once installed).
 
 ## `IndexRun`
 

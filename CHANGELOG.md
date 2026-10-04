@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- File types are now selectable: `pip install vethuq[type-pdf]` (also `type-png`, `type-jpg`) installs only the types you pick; PDF is always included. `vethuq file-types list` shows the installed types and `--all` adds the missing ones with the command to install each. Enabling or disabling a type means installing or reinstalling it, or re-running the Windows installer, which now has a file types page (silent installs accept `/TYPES=pdf,png`). Files of a type that is not installed or enabled are not indexed and show how to add it.
+- `vethuq --version` lists the installed `type-*` packages and records them in the database.
+- `client.file_types.list()` and a "File types" entry in the interactive menu show the installed file types, like `vethuq file-types list`.
+- Running the Windows installer again on an installed VethuQ now offers Change, Repair or Uninstall (also from Apps & Features); changing only the file types no longer reinstalls the app. The file types page has Select all / Unselect all, and the installer shows its own license with the licenses of the bundled software.
 - The Windows installer now lets you choose to install for all users (administrator rights, Program Files) or for the current user only (no administrator rights, your profile). The CLI, PATH option and uninstall work for both.
 - The index run panel now shows how many files were skipped as unsupported, separately from failed ones. Password-protected PDFs now count as unsupported instead of failed.
 - The app now rescans your sources every few seconds while it is open, picking up new files and sources automatically.
@@ -115,6 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Without the Windows installer, only PDF is enabled by default; `pip install vethuq[type-png]` or `[type-jpg]` enables the others.
+- A file that was unsupported and later becomes supported (for example after adding a file type) is now found by search after re-indexing.
+- The installed desktop app now runs OCR and indexing: the OCR engine, its models' dependencies and the file type list are now included.
 - Index status no longer fails intermittently on Windows when the progress file is being refreshed at the same moment.
 - Indexing with several workers now treats identical files the same way every time: the first one (by name) is the original and the rest are duplicates, as in a single-worker run.
 - `vethuq index status` no longer shows a run as "running" after its worker has died: it now reports it as failed with the reason, and flags a worker that has stopped responding.

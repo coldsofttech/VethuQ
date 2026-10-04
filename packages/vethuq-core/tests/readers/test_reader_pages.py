@@ -7,15 +7,15 @@ from unittest.mock import patch
 
 import pymupdf
 import pytest
+from vethuq_core.filetypes.jpg.reader import JpgReader
+from vethuq_core.filetypes.pdf.reader import PdfReader
+from vethuq_core.filetypes.png.reader import PngReader
 from vethuq_core.ocr import Quick
 from vethuq_core.readers import (
     DocumentReader,
     ImagePageStorage,
     ImageReader,
-    JpgReader,
     PdfPageStorage,
-    PdfReader,
-    PngReader,
     Readers,
     ReadPage,
 )
@@ -133,7 +133,7 @@ class TestReaderIsolation:
         code = (
             "import sys\n"
             "from pathlib import Path\n"
-            "from vethuq_core.readers import PdfReader\n"
+            "from vethuq_core.filetypes.pdf.reader import PdfReader\n"
             f"list(PdfReader().read(Path({str(pdf)!r})))\n"
             "loaded = [m for m in sys.modules if m.startswith(('vethuq_core.ocr', 'paddle'))]\n"
             "assert not loaded, loaded\n"
@@ -157,7 +157,7 @@ class TestNewReader:
     def test_plugs_into_the_pipeline_without_ocr_changes(
         self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(Readers, "_BY_SUFFIX", dict(Readers._BY_SUFFIX))
+        monkeypatch.setattr(Readers, "_BY_SUFFIX", dict(Readers._readers()))
         Readers.register(".txt", _TextReader())
         path = tmp_path / "note.txt"
         path.write_text("A native line of text that needs no OCR at all.")

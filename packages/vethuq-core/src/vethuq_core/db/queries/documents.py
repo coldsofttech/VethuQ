@@ -182,7 +182,7 @@ class Document:
                  file_size_bytes, sha256, mtime, created_at, modified_at)
             VALUES (?, ?, ?, ?, 'processing', ?, ?, ?, ?, ?, ?)
             ON CONFLICT(file_path) DO UPDATE SET
-                document_id = excluded.document_id,
+                document_id = excluded.document_id, file_type = excluded.file_type,
                 status = 'processing', error_message = NULL, indexed_at = NULL,
                 started_at = excluded.started_at, completed_at = NULL,
                 file_size_bytes = excluded.file_size_bytes, sha256 = excluded.sha256,

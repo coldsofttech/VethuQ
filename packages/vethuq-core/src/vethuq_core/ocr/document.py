@@ -298,7 +298,7 @@ class Document:
                         Document.mark_unsupported(
                             storage,
                             claim[0],
-                            f"Unsupported file format: {file_path.suffix or file_path.name}",
+                            Readers.unsupported_reason(file_path),
                         )
             except FileNotFoundError:
                 continue

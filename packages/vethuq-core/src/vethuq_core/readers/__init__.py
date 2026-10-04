@@ -12,9 +12,6 @@ from vethuq_core.readers.errors import (
 from vethuq_core.readers.reader import (
     DocumentReader,
     ImageReader,
-    JpgReader,
-    PdfReader,
-    PngReader,
     ReadPage,
     Region,
 )
@@ -32,13 +29,10 @@ __all__ = [
     "OutsideSourceError",
     "ImagePageStorage",
     "ImageReader",
-    "JpgReader",
     "PageResult",
     "PageStorage",
     "PasswordProtectedError",
     "PdfPageStorage",
-    "PdfReader",
-    "PngReader",
     "ReadPage",
     "DocumentReader",
     "Readers",
