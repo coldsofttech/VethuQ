@@ -49,6 +49,7 @@ def _resolve_options(
     threshold: str | None,
     fuzziness: str | None,
     distance: str | None,
+    leet_level: str | None = None,
 ) -> SearchOptions:
     """`Search.resolve_options`, with an unusable combination reported as a usage error.
 
@@ -67,7 +68,9 @@ def _resolve_options(
             )
         threshold = str(preset)
     try:
-        return Search.resolve_options(storage, engine, case_sensitive, threshold, distance)
+        return Search.resolve_options(
+            storage, engine, case_sensitive, threshold, distance, leet_level
+        )
     except SearchOptionError as exc:
         if exc.option == "engine":
             hint = "--engine"
@@ -75,6 +78,8 @@ def _resolve_options(
             hint = "--fuzziness" if fuzziness is not None else "--threshold"
         elif exc.option == "distance":
             hint = "--distance"
+        elif exc.option == "level":
+            hint = "--leet-level"
         else:
             hint = "--case-sensitive" if case_sensitive else "--no-case-sensitive"
         raise typer.BadParameter(str(exc), param_hint=hint) from exc
@@ -112,7 +117,8 @@ class SearchHelp:
         "and `h3ll0` finds `hello` (as does `password` for `p@55w0rd`). Every character of "
         "CONTENT must match, as whole words; at least 3 characters, one a letter. Which "
         "substitutions are recognized is set by `vethuq settings search leetspeak level` "
-        "(basic, standard or extended). Honours --case-sensitive; spelled as typed first.\n\n"
+        "(basic, standard or extended), or per search by --leet-level. Honours "
+        "--case-sensitive; spelled as typed first.\n\n"
         "Results open in a pager at the top: scroll (e.g. the down arrow) to reveal more, "
         "`e` to export what's been found and close the pager, `h` (with the default `all` "
         "engine) to see what Exact, Contains, Relevant, Near, Word, Lookalike and Similar "
@@ -176,6 +182,14 @@ def search(
             "settings search proximity distance`."
         ),
     ),
+    leet_level: str | None = typer.Option(
+        None,
+        "--leet-level",
+        help=(
+            "Leetspeak only: which look-alike characters to recognize - 'basic', 'standard' or "
+            "'extended'. Default: `vethuq settings search leetspeak level`."
+        ),
+    ),
     export: str | None = typer.Option(
         None,
         "--export",
@@ -193,7 +207,9 @@ def search(
     """Search indexed content for CONTENT and print matching pages."""
     storage = open_storage()
     try:
-        options = _resolve_options(storage, engine, case_sensitive, threshold, fuzziness, distance)
+        options = _resolve_options(
+            storage, engine, case_sensitive, threshold, fuzziness, distance, leet_level
+        )
         pages: list[PageResult] | None = None
         try:
             if options.engine == SearchSettings.ENGINE_ALL:
@@ -203,6 +219,7 @@ def search(
                     case_sensitive=options.case_sensitive,
                     threshold=options.threshold,
                     distance=options.distance,
+                    level=options.level,
                 )
                 matches = Ranking.flatten(pages)
             else:
@@ -213,6 +230,7 @@ def search(
                     case_sensitive=options.case_sensitive,
                     threshold=options.threshold,
                     distance=options.distance,
+                    level=options.level,
                 )
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
@@ -239,6 +257,7 @@ def search(
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
             )
             console.print(
                 ResultRenderer.message_panel(
@@ -273,6 +292,7 @@ def search(
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
             )
             console.print(
                 ResultRenderer.message_panel(

@@ -234,9 +234,9 @@ A test enforces that no core module outside `db/` and `storage/` imports
   `primary` raises `SearchEngineUnavailable`.
 
 `Search.resolve_options` picks the engine, case sensitivity, (fuzzy only)
-threshold and (proximity only) distance from arguments and the `search_engine` /
+threshold, (proximity only) distance and (leetspeak only) level from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-(and, read by the `leetspeak` engine itself, `search_leetspeak_level`) settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+/ `search_leetspeak_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 ### Combined search and ranking
 

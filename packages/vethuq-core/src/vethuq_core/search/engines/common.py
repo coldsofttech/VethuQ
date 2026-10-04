@@ -31,6 +31,12 @@ class SearchEngineHelpers:
             raise ValueError(f"The {engine} engine has no word distance; only proximity does.")
 
     @staticmethod
+    def require_no_level(engine: str, level: str | None) -> None:
+        """Reject a leetspeak `level` for an engine that isn't leetspeak."""
+        if level is not None:
+            raise ValueError(f"The {engine} engine has no leetspeak level; only leetspeak does.")
+
+    @staticmethod
     def pdf_page_counts(storage: Storage) -> dict[int, int]:
         """Total page count of every PDF with OCR pages, keyed by its carrier document id."""
         return {

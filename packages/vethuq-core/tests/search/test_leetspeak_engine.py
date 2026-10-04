@@ -255,6 +255,55 @@ class TestNarrowing:
             assert found == expected
 
 
+class TestLeetspeakLevelOverride:
+    @staticmethod
+    def _found(storage, query, **kwargs):
+        return [
+            m.matched for m in Search.indexed_content(storage, query, engine="leetspeak", **kwargs)
+        ]
+
+    def test_a_level_given_for_one_search_beats_the_setting(self, conn, storage):
+        SearchData.seed_page(conn, r"a |\|ice day and 9ame")
+
+        assert self._found(storage, "nice") == []
+        assert self._found(storage, "nice", level="extended") == [r"|\|ice"]
+        assert self._found(storage, "game", level="standard") == ["9ame"]
+        assert self._found(storage, "game") == []  # the setting is untouched
+        assert SearchSettings.get_leetspeak_level(storage) == "basic"
+
+    def test_a_lower_level_than_the_setting_applies_too(self, conn, storage):
+        SearchData.seed_page(conn, "a 9ame day")
+        SearchSettings.set_leetspeak_level(storage, "extended")
+
+        assert self._found(storage, "game") == ["9ame"]
+        assert self._found(storage, "game", level="basic") == []
+
+    def test_an_unknown_level_is_rejected(self, storage):
+        with pytest.raises(InvalidSettingValueError):
+            Search.indexed_content(storage, "hello", engine="leetspeak", level="insane")
+
+    @pytest.mark.parametrize("engine", ["like", "lexical", "exact", "full-text", "fuzzy"])
+    def test_other_engines_reject_a_level(self, storage, engine):
+        with pytest.raises(ValueError, match="leetspeak level"):
+            Search.indexed_content(storage, "museum", engine=engine, level="basic")
+
+    def test_the_combined_search_passes_it_to_leetspeak(self, conn, storage):
+        SearchData.seed_page(conn, "a 9ame day")
+
+        basic = Search.indexed_pages(storage, "game")
+        standard = Search.indexed_pages(storage, "game", level="standard")
+
+        assert basic == []
+        assert [(p.engine, p.hits[0].matched) for p in standard] == [("leetspeak", "9ame")]
+
+    def test_files_accepts_a_level(self, conn, storage):
+        SearchData.seed_page(conn, "a 9ame day")
+
+        files = Search.files(storage, "game", engine="leetspeak", level="standard")
+
+        assert [f.file_name for f in files] == ["museum.pdf"]
+
+
 class TestLeetspeakOptions:
     def test_resolves_like_the_other_case_aware_engines(self, storage):
         options = Search.resolve_options(storage, "leetspeak", None)
@@ -269,6 +318,30 @@ class TestLeetspeakOptions:
         SearchSettings.set_case_sensitive(storage, True)
 
         assert Search.resolve_options(storage, "leetspeak", None).case_sensitive is True
+
+    def test_resolves_the_level_from_the_argument_or_the_setting(self, storage):
+        assert Search.resolve_options(storage, "leetspeak", None).level == "basic"
+        assert Search.resolve_options(storage, "leetspeak", None, level="Extended").level == (
+            "extended"
+        )
+        SearchSettings.set_leetspeak_level(storage, "standard")
+        assert Search.resolve_options(storage, "leetspeak", None).level == "standard"
+        assert Search.resolve_options(storage, None, None).level == "standard"  # all
+        assert Search.resolve_options(storage, None, None, level="basic").level == "basic"
+
+    def test_a_level_is_only_for_leetspeak_and_all(self, storage):
+        with pytest.raises(SearchOptionError) as only:
+            Search.resolve_options(storage, "like", None, level="basic")
+        with pytest.raises(SearchOptionError) as invalid:
+            Search.resolve_options(storage, "leetspeak", None, level="insane")
+
+        assert only.value.option == "level"
+        assert "Only the leetspeak engine" in str(only.value)
+        assert invalid.value.option == "level"
+
+    def test_other_engines_carry_no_level(self, storage):
+        assert Search.resolve_options(storage, "fuzzy", None).level is None
+        assert Search.resolve_options(storage, "like", None).level is None
 
     def test_rejects_fuzzy_and_proximity_options(self, storage):
         with pytest.raises(SearchOptionError) as threshold:

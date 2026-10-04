@@ -208,7 +208,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|leetspeak] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|leetspeak] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -335,6 +335,10 @@ manage — and which ones count is `vethuq settings search leetspeak level`:
 level includes the one before it. Results are ordered by how much of `content`
 matched as typed (a plain `password` page before a `p@55w0rd` one), then by
 file path and page; `--threshold` and `--distance` are errors with it.
+`--leet-level basic|standard|extended` picks the level for one search, the way
+`--fuzziness` picks a fuzzy threshold; it defaults to the setting, is an error
+with any engine but `leetspeak` (the combined search applies it to its
+leetspeak run), and the results header and exports record it.
 
 `--case-sensitive` / `--no-case-sensitive` overrides
 `vethuq settings search case-sensitive`, and only `like`, `fuzzy` and `leetspeak` act on it
@@ -456,7 +460,8 @@ vethuq search "late fee" --engine proximity --distance 5                  # with
 vethuq search hello --engine leetspeak                 # finds "hello", "h3ll0", "He11o"
 vethuq search p@55w0rd --engine leetspeak              # finds "password" and "p@55w0rd"
 vethuq search hello --engine leetspeak --case-sensitive   # only "hello", "h3ll0" - not "H3LL0"
-vethuq settings search leetspeak level set extended    # also |\| for n, \/\/ for w, ph for f ...
+vethuq search nice --engine leetspeak --leet-level extended  # one search at a higher level
+vethuq settings search leetspeak level set extended    # the default from now on: also |\| for n, \/\/ for w, ph for f ...
 ```
 
 To make an engine, case-sensitivity, fuzzy threshold, proximity distance or leetspeak level the

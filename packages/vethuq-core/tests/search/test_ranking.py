@@ -331,4 +331,4 @@ class TestRanking:
     def test_resolving_all_accepts_every_option(self, storage: Storage):
         options = Search.resolve_options(storage, "all", True, threshold="loose", distance="tight")
 
-        assert options == ("all", True, 0.65, 3)
+        assert options == ("all", True, 0.65, 3, "basic")

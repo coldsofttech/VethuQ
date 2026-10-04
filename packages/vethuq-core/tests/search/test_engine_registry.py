@@ -26,6 +26,7 @@ class TestSearchEngines:
                 case_sensitive=False,
                 threshold=None,
                 distance=None,
+                level=None,
             ):
                 raise SearchEngineUnavailable
 

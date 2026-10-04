@@ -220,6 +220,7 @@ class InteractiveMenu:
             default_case_sensitive = SearchSettings.is_case_sensitive(storage)
             default_threshold = SearchSettings.get_fuzzy_threshold_setting(storage)
             default_distance = SearchSettings.get_proximity_distance_setting(storage)
+            default_level = SearchSettings.get_leetspeak_level(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
@@ -250,6 +251,12 @@ class InteractiveMenu:
                 console=console,
                 default=default_distance,
             )
+        leet_level: str | None = None
+        if engine == "leetspeak":
+            levels = ", ".join(SearchSettings.LEETSPEAK_LEVELS)
+            leet_level = Prompt.ask(
+                f"Leet level ({levels})", console=console, default=default_level
+            )
         InteractiveMenu._run_safely(
             run_search,
             content=content,
@@ -258,6 +265,7 @@ class InteractiveMenu:
             threshold=threshold,
             fuzziness=None,
             distance=distance,
+            leet_level=leet_level,
             export=None,
             format_=None,
         )

@@ -370,15 +370,31 @@ class TestInteractiveSearchEngines:
         assert "Search leetspeak level set to extended." in result.stdout
         assert "Search leetspeak level: extended" in result.stdout
 
-    def test_leetspeak_asks_for_case_but_no_level(self, use_temp_db):
+    def test_leetspeak_asks_for_case_and_a_level(self, use_temp_db):
         _seed_page(use_temp_db(), "say h3ll0 to all")
 
-        # Search > text > engine (leetspeak) > case-sensitive? no, then exit.
-        result = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\n8\n")
+        # Search > text > engine (leetspeak) > case-sensitive? no > level extended, then exit.
+        result = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\nextended\n8\n")
 
         assert result.exit_code == 0
-        assert "Results: 1 match (engine: leetspeak)" in result.stdout
+        assert "Results: 1 match (engine: leetspeak, leet level extended)" in result.stdout
         assert "Case-sensitive?" in result.stdout
+
+    def test_leetspeak_level_defaults_to_the_stored_one_and_rejects_nonsense(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_page(db_path, "say h3ll0 to all")
+        storage = open_storage(db_path)
+        try:
+            SearchSettings.set_leetspeak_level(storage, "standard")
+        finally:
+            storage.close()
+
+        default = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\n\n8\n")
+        bad = runner.invoke(app, [], input="1\nhello\nleetspeak\nn\ninsane\n8\n")
+
+        assert "leet level standard" in default.stdout
+        assert "Results:" not in bad.output
+        assert "level must be one of" in bad.output
 
     _CONTRACT = "The payment is due within thirty days, subject to the termination clause."
 

@@ -418,6 +418,15 @@ def test_search_leetspeak_engine_finds_look_alike_spellings(indexed_client: veth
     assert vethuq.SEARCH_LEETSPEAK_LEVELS == ("basic", "standard", "extended")
 
 
+def test_search_leetspeak_level_can_be_chosen_per_search(indexed_client: vethuq.Vethuq):
+    assert indexed_client.search.run("1nv01c3", engine="leetspeak", leet_level="basic")
+    assert indexed_client.search.run("inv0!c3", engine="leetspeak") == []
+    matches = indexed_client.search.run("inv0!c3", engine="leetspeak", leet_level="standard")
+    assert [m.matched for m in matches] == ["Invoice", "INVOICE"]  # ! is i from standard on
+    assert indexed_client.search.run_pages("1nv01c3", leet_level="standard")
+    assert indexed_client.settings.search.leetspeak.level.get() == "basic"
+
+
 def test_search_leetspeak_honours_case_sensitive(indexed_client: vethuq.Vethuq):
     matches = indexed_client.search.run("INV01C3", engine="leetspeak", case_sensitive=True)
 
@@ -438,6 +447,8 @@ def test_search_uses_the_configured_engine(indexed_client: vethuq.Vethuq):
         {"engine": "exact", "case_sensitive": False},
         {"engine": "leetspeak", "threshold": 0.8},
         {"engine": "leetspeak", "distance": 3},
+        {"engine": "like", "leet_level": "basic"},
+        {"engine": "leetspeak", "leet_level": "insane"},
     ],
 )
 def test_search_rejects_unusable_engine_options(indexed_client: vethuq.Vethuq, kwargs):

@@ -151,21 +151,21 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None, leet_level=None)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
 `client.settings.search.export_format` if not given, and must be one of
 `SEARCH_EXPORT_FORMATS`. Pass the `engine`, `case_sensitive` and (for
-`fuzzy` or `proximity`) `threshold` or `distance` the search
-ran with to record them in the file.
+`fuzzy` or `proximity`) `threshold` or `distance`, or (for `leetspeak`) `leet_level`, the
+search ran with to record them in the file.
 
 ```python
 matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
@@ -201,7 +201,8 @@ are never rejected.
   either direction (`"hello"` finds `h3ll0`, `"p@55w0rd"` finds `password`); no typo
   tolerance, at least 3 characters with a letter among them. Which substitutions count is
   `client.settings.search.leetspeak.level`. Best first: `SearchMatch.score` is the
-  share of `content`'s characters matched as typed (1.0 = none substituted)
+  share of `content`'s characters matched as typed (1.0 = none substituted). `leet_level`
+  (one of `SEARCH_LEETSPEAK_LEVELS`) overrides that setting for one call
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
 only `"like"`, `"fuzzy"` and `"leetspeak"` act on it (`"exact"` is always case-sensitive,
@@ -216,8 +217,8 @@ terms in between count: a name from `SEARCH_PROXIMITY_PRESETS` (`"tight"` 3, `"m
 10, `"loose"` 30) or a number from 1 to `SEARCH_PROXIMITY_MAX_DISTANCE`, defaulting to
 `client.settings.search.proximity.distance`. Raises `SearchOptionError` (a
 `ValueError`; its `option` says which argument) for an unknown engine, an invalid
-`threshold` or `distance`, or an explicit `case_sensitive`, `threshold` or `distance`
-the engine can't honour, and `SearchQueryError` (also a `ValueError`) for a `"proximity"`
+`threshold`, `distance` or `leet_level`, or an explicit `case_sensitive`, `threshold`,
+`distance` or `leet_level` the engine can't honour, and `SearchQueryError` (also a `ValueError`) for a `"proximity"`
 query of fewer than two terms.
 
 ```python
@@ -225,7 +226,7 @@ for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
 ```
 
-### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None)`
+### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None)`
 
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
@@ -325,7 +326,9 @@ client.search.run("hello", engine="leetspeak")  # finds "hello", "h3ll0", "He11o
 client.search.run("p@55w0rd", engine="leetspeak")  # finds "password" and "p@55w0rd"
 client.search.run("hello", engine="leetspeak", case_sensitive=True)  # not "H3LL0"
 client.search.run("hi", engine="leetspeak")  # raises SearchQueryError: needs 3 characters
+client.search.run("nice", engine="leetspeak", leet_level="extended")  # finds "|\\|ice"
 client.search.run("hello", engine="leetspeak", threshold=0.8)  # raises SearchOptionError
+client.search.run("hello", engine="like", leet_level="basic")  # raises SearchOptionError
 ```
 
 ## `client.settings`

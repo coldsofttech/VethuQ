@@ -1071,6 +1071,7 @@ class Search:
         case_sensitive: bool | None = None,
         threshold: float | str | None = None,
         distance: int | str | None = None,
+        leet_level: str | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `content`.
 
@@ -1091,7 +1092,8 @@ class Search:
         anything with a digit must match exactly); `leetspeak` finds `content`'s words
         written with look-alike characters - `h3ll0` or `p@55w0rd` for `hello` or
         `password`, and the other way round - as whole words, spelled-as-typed first
-        (which substitutions count is `Vethuq().settings.search.leetspeak.level`; it needs
+        (`leet_level`, one of `SEARCH_LEETSPEAK_LEVELS`, picks which substitutions count and
+        defaults to `Vethuq().settings.search.leetspeak.level`; it needs
         at least 3 characters, one a letter). `case_sensitive`
         defaults to `Vethuq().settings.search.case_sensitive` and only `like`,
         `fuzzy` and `leetspeak` act on it - `exact` is always case-sensitive and
@@ -1109,13 +1111,15 @@ class Search:
         the hits in ranked page order, each labelled with the engine that found it
         (see `run_pages` for them grouped by page); the options above then reach
         the engines that can use them and are never rejected. Raises `SearchOptionError`
-        for an unknown engine, an invalid `threshold` or `distance`, or an explicit
-        `case_sensitive`, `threshold` or `distance` the engine can't honour, and
+        for an unknown engine, an invalid `threshold`, `distance` or `leet_level`, or an explicit
+        `case_sensitive`, `threshold`, `distance` or `leet_level` the engine can't honour, and
         `SearchQueryError` for a `proximity` query of fewer than two terms.
         """
         storage = _open_storage()
         try:
-            options = _Search.resolve_options(storage, engine, case_sensitive, threshold, distance)
+            options = _Search.resolve_options(
+                storage, engine, case_sensitive, threshold, distance, leet_level
+            )
             return _Search.indexed_content(
                 storage,
                 content,
@@ -1124,6 +1128,7 @@ class Search:
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
             )
         finally:
             storage.close()
@@ -1136,27 +1141,31 @@ class Search:
         case_sensitive: bool | None = None,
         threshold: float | str | None = None,
         distance: int | str | None = None,
+        leet_level: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine at once and return the pages found, best first.
 
         Each page is one `PageResult` - however many engines found it - ranked by the
-        strictest engine that did: Exact, Contains, Relevant, Near, Word, then Similar (see
-        `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge` for the
+        strictest engine that did: Exact, Contains, Relevant, Near, Word, Lookalike, then
+        Similar (see `ENGINE_TIERS` and `ENGINE_BADGES`, and `engine_badge`/`hit_badge` for the
         labels the CLI and the UI show), and within a tier by that engine's own signal.
         `PageResult.engine` is the page's strictest engine and `matched_by` all of
         them; its `hits` are `SearchMatch`es best first, each with its own `engine`
         and `matched_by` (hits found by several engines are merged into one).
 
-        `case_sensitive`, `threshold` and `distance` default to their settings and
-        reach the engines that can use them (`like`/`fuzzy`/`leetspeak`, `fuzzy`, `proximity`);
+        `case_sensitive`, `threshold`, `distance` and `leet_level` default to their settings
+        and reach the engines that can use them (`like`/`fuzzy`/`leetspeak`, `fuzzy`,
+        `proximity`, `leetspeak`);
         `proximity` is skipped for a query of fewer than two terms.
         `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
-        `SearchOptionError` for an invalid `threshold` or `distance`. This is what
+        `SearchOptionError` for an invalid `threshold`, `distance` or `leet_level`. This is what
         `run` does when `engine="all"` (the default), with the hits flattened.
         """
         storage = _open_storage()
         try:
-            options = _Search.resolve_options(storage, "all", case_sensitive, threshold, distance)
+            options = _Search.resolve_options(
+                storage, "all", case_sensitive, threshold, distance, leet_level
+            )
             return _Search.indexed_pages(
                 storage,
                 content,
@@ -1164,6 +1173,7 @@ class Search:
                 case_sensitive=options.case_sensitive,
                 threshold=options.threshold,
                 distance=options.distance,
+                level=options.level,
             )
         finally:
             storage.close()
@@ -1179,13 +1189,15 @@ class Search:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        leet_level: str | None = None,
     ) -> Path:
         """Write `matches` for `query` to `output` as JSON or HTML.
 
         `format_` defaults to `Vethuq().settings.search.export_format` if
         not given, and must be one of `SEARCH_EXPORT_FORMATS`. Pass the
         `engine`, `case_sensitive` and (for `fuzzy` or
-        `proximity`) `threshold` or `distance` the search ran with to record them
+        `proximity`) `threshold` or `distance`, or (for `leetspeak`) `leet_level` the search
+        ran with to record them
         in the file.
         """
         storage = _open_storage()
@@ -1203,6 +1215,7 @@ class Search:
             case_sensitive=case_sensitive,
             threshold=threshold,
             distance=distance,
+            level=leet_level,
         )
         return output_path
 

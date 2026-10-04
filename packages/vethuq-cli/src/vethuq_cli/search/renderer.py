@@ -27,6 +27,8 @@ class ResultRenderer:
             parts.append(f"threshold {options.threshold:.0%}")
         if options.engine == "proximity" and options.distance is not None:
             parts.append(f"within {options.distance} words")
+        if options.engine == "leetspeak" and options.level is not None:
+            parts.append(f"leet level {options.level}")
         return ", ".join(parts)
 
     @staticmethod

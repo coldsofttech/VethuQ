@@ -681,9 +681,9 @@ class TestSearchLeetspeak:
         disguised = runner.invoke(app, ["search", "p@55w0rd", "--engine", "leetspeak"])
 
         assert plain.exit_code == 0 and disguised.exit_code == 0
-        assert "Results: 2 matches (engine: leetspeak)" in plain.stdout
+        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in plain.stdout
         assert "p@55w0rd" in plain.stdout and "password" in plain.stdout
-        assert "Results: 2 matches (engine: leetspeak)" in disguised.stdout
+        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in disguised.stdout
 
     def test_honours_case_sensitive(self, use_temp_db):
         db_path = use_temp_db()
@@ -694,8 +694,8 @@ class TestSearchLeetspeak:
             app, ["search", "hello", "--engine", "leetspeak", "--case-sensitive"]
         )
 
-        assert "Results: 2 matches (engine: leetspeak)" in loose.stdout
-        assert "Results: 1 match (engine: leetspeak, case-sensitive)" in strict.stdout
+        assert "Results: 2 matches (engine: leetspeak, leet level basic)" in loose.stdout
+        assert "Results: 1 match (engine: leetspeak, case-sensitive" in strict.stdout
 
     def test_uses_the_stored_level(self, use_temp_db):
         db_path = use_temp_db()
@@ -707,7 +707,59 @@ class TestSearchLeetspeak:
 
         assert "No matches found." in basic.stdout
         assert "leetspeak level" in basic.stdout  # the hint towards a higher level
-        assert "Results: 1 match (engine: leetspeak)" in standard.stdout
+        assert "Results: 1 match (engine: leetspeak, leet level standard)" in standard.stdout
+
+    def test_leet_level_flag_beats_the_setting(self, use_temp_db):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
+
+        basic = runner.invoke(app, ["search", "game", "--engine", "leetspeak"])
+        standard = runner.invoke(
+            app, ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
+        )
+        combined = runner.invoke(app, ["search", "game", "--leet-level", "standard"])
+
+        assert "No matches found." in basic.stdout
+        assert "Results: 1 match (engine: leetspeak, leet level standard)" in standard.stdout
+        assert "[Lookalike]" in combined.stdout
+        # The setting is untouched.
+        shown = runner.invoke(app, ["settings", "search", "leetspeak", "level", "show"])
+        assert "basic" in shown.stdout
+
+    def test_leet_level_flag_is_validated(self, use_temp_db):
+        use_temp_db()
+
+        invalid = runner.invoke(
+            app, ["search", "hello", "--engine", "leetspeak", "--leet-level", "insane"]
+        )
+        wrong_engine = runner.invoke(
+            app, ["search", "hello", "--engine", "like", "--leet-level", "basic"]
+        )
+
+        assert invalid.exit_code != 0 and "level must be one of" in _flatten(invalid.output)
+        assert "--leet-level" in _flatten(invalid.output)
+        assert wrong_engine.exit_code != 0
+        assert "Only the leetspeak engine has a level" in _flatten(wrong_engine.output)
+
+    def test_export_records_the_leet_level(self, use_temp_db, tmp_path):
+        db_path = use_temp_db()
+        _seed_indexed_pdf(db_path, "/docs/a.pdf", "a 9ame day")
+        as_json = tmp_path / "out.json"
+        as_html = tmp_path / "out.html"
+
+        runner.invoke(
+            app,
+            ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
+            + ["--export", str(as_json)],
+        )
+        runner.invoke(
+            app,
+            ["search", "game", "--engine", "leetspeak", "--leet-level", "standard"]
+            + ["--export", str(as_html), "--format", "html"],
+        )
+
+        assert json.loads(as_json.read_text())["leet_level"] == "standard"
+        assert "leet level standard" in as_html.read_text()
 
     def test_all_engines_labels_a_disguised_page_lookalike(self, use_temp_db):
         db_path = use_temp_db()

@@ -110,17 +110,19 @@ class LeetspeakSearchEngine:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
     ) -> list[SearchMatch]:
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         SearchEngineHelpers.require_no_distance(self.name, distance)
         query = query.strip()
         if not query:
             return []
+        chosen = level if level is not None else self._level
         units = LeetspeakSearchEngine._units(
             query,
             SearchSettings.get_leetspeak_level(self._storage)
-            if self._level is None
-            else SearchSettings.parse_leetspeak_level(self._level),
+            if chosen is None
+            else SearchSettings.parse_leetspeak_level(chosen),
             case_sensitive,
         )
         spelled = [unit for unit in units if not unit.is_space]

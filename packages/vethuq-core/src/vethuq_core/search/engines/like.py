@@ -29,7 +29,9 @@ class LikeSearchEngine:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
     ) -> list[SearchMatch]:
+        SearchEngineHelpers.require_no_level(self.name, level)
         SearchEngineHelpers.require_no_threshold(self.name, threshold)
         SearchEngineHelpers.require_no_distance(self.name, distance)
         return SearchEngineHelpers.search_substring_pages(

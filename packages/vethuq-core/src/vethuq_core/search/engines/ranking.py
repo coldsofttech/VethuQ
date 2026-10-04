@@ -181,11 +181,14 @@ class Ranking:
         case_sensitive: bool,
         threshold: float | None,
         distance: int | None,
+        level: str | None,
     ) -> list[SearchMatch]:
         """Run one engine, giving it only the options it accepts."""
         search = SearchEngines.get(storage, engine).search
-        if engine in ("like", "lexical", "leetspeak"):
+        if engine in ("like", "lexical"):
             return search(query, context_chars=chars, case_sensitive=case_sensitive)
+        if engine == "leetspeak":
+            return search(query, context_chars=chars, case_sensitive=case_sensitive, level=level)
         if engine == "fuzzy":
             return search(
                 query, context_chars=chars, case_sensitive=case_sensitive, threshold=threshold
@@ -203,21 +206,24 @@ class Ranking:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first.
 
         Each engine applies the options it can: `case_sensitive` reaches `like`, `lexical`,
-        `leetspeak` and `fuzzy` (`exact` always matches case, `full-text` and `proximity` never do),
-        `threshold` only `fuzzy` and `distance` only `proximity`, each defaulting to the
-        user's setting. An engine that can't search the query (`proximity` needs two
-        terms, `lexical` three characters) is skipped rather than failing the search.
+        `leetspeak` and `fuzzy` (`exact` always matches case, `full-text` and `proximity`
+        never do),
+        `threshold` only `fuzzy`, `distance` only `proximity` and `level` only `leetspeak`,
+        each defaulting to the user's setting. An engine that can't search the query
+        (`proximity` needs two terms, `lexical` three characters) is skipped rather than
+        failing the search.
         """
         chars = SearchEngineHelpers.resolve_context_chars(storage, context_chars)
         runs: dict[str, list[SearchMatch]] = {}
         for engine in Ranking.TIERS:
             try:
                 runs[engine] = Ranking._run(
-                    storage, engine, query, chars, case_sensitive, threshold, distance
+                    storage, engine, query, chars, case_sensitive, threshold, distance, level
                 )
             except SearchQueryError:
                 runs[engine] = []

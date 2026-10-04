@@ -67,6 +67,7 @@ class SearchEngine(Protocol):
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
     ) -> list[SearchMatch]:
         """Return one `SearchMatch` per occurrence of `query`.
 
@@ -80,6 +81,8 @@ class SearchEngine(Protocol):
         setting; an engine that isn't tolerant raises `ValueError` if given
         one. `distance` is the most words a `proximity` search allows between
         its first and last term, None meaning the user's setting; other engines
+        raise `ValueError` if given one. `level` is the leetspeak engine's substitution level
+        (`SearchSettings.LEETSPEAK_LEVELS`), None meaning the user's setting; other engines
         raise `ValueError` if given one. An empty `query` matches nothing, and a
         query an engine can't search raises `SearchQueryError`. May raise
         `SearchEngineUnavailable`.
@@ -106,6 +109,7 @@ class FallbackSearchEngine:
         case_sensitive: bool = False,
         threshold: float | None = None,
         distance: int | None = None,
+        level: str | None = None,
     ) -> list[SearchMatch]:
         try:
             return self._primary.search(
@@ -114,6 +118,7 @@ class FallbackSearchEngine:
                 case_sensitive=case_sensitive,
                 threshold=threshold,
                 distance=distance,
+                level=level,
             )
         except SearchEngineUnavailable:
             return self._fallback.search(
@@ -122,4 +127,5 @@ class FallbackSearchEngine:
                 case_sensitive=case_sensitive,
                 threshold=threshold,
                 distance=distance,
+                level=level,
             )
