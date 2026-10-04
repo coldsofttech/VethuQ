@@ -230,13 +230,35 @@ A test enforces that no core module outside `db/` and `storage/` imports
     every page is examined. `SearchMatch.score` is the share of the query's
     characters matched as typed. Whole words only, no typo tolerance, never
     narrower than three characters, one of them a letter.
+  - `noise-fuzzy` (`search/engines/noise_fuzzy.py`) — the query's characters hidden by
+    noise, look-alikes and typos at once, in the order the text is cleaned up: noise
+    (whitespace and punctuation that can't be a look-alike; `Leet.is_noise`) is skipped,
+    look-alikes are folded to a class letter (`Leet.classes(level)`, single characters only), and
+    the rest is matched within the fuzzy threshold by the same edit rules as `fuzzy`
+    (`FuzzySearchEngine.edit_distance`). The query goes through the same steps. A match is
+    widened to the word edges it touches, then checked against the noise setting
+    (`SearchSettings.NOISE_LEVELS`: most noise characters in a row, and in all) and scored by
+    its cleanliness (1.0 as typed, less for each edit, look-alike and noise character).
+    **The recorded skeleton:** `vethuq_core/leet.py` reduces text to a skeleton (noise dropped,
+    look-alikes folded as coarsely as any level does, lower-cased; one character per kept
+    character). Pages store it as `noise_text`, written with the page (`Document.insert_*`,
+    `Ocr.Page.update_text`), with a trigram index `<pages>_noise` kept in sync by triggers
+    (`Document.noise_schema`, schema v29, backfilled by the migration and rebuilt by
+    `rebuild-search`). Because a level or noise setting only ever matches a subset of what the
+    skeleton matches, it is a sound pre-filter: `narrowing_expression` takes pages through the
+    trigram index when the query is long enough for that (as in `fuzzy`), and
+    `candidate_stretches` then searches the stored skeleton — occurrences when no edits are
+    allowed, otherwise the stretches where enough of the query's two-character pieces fall
+    together (a q-gram lemma, `n - 1 - 3k`) — so only those stretches of a page are read and
+    verified. Pages without a recorded skeleton are always included.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
 `Search.resolve_options` picks the engine, case sensitivity, (fuzzy only)
-threshold, (proximity only) distance and (leetspeak only) level from arguments and the `search_engine` /
+threshold, (proximity only) distance, (leetspeak and noise-fuzzy) level and (noise-fuzzy only)
+noise level from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-/ `search_leetspeak_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+/ `search_leetspeak_level` / `search_noise_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 ### Combined search and ranking
 
@@ -244,10 +266,11 @@ threshold, (proximity only) distance and (leetspeak only) level from arguments a
 engine, groups their hits by page and ranks the pages, returning `PageResult`s
 (`search.search_indexed_pages`; `search_indexed_content(engine="all")` flattens them).
 Engine scores aren't comparable, so ranking is by **match quality**, not by blending
-numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `leetspeak` > `fuzzy`
+numbers: `ENGINE_TIERS` orders `exact` > `like` > `proximity` > `full-text` > `leetspeak` > `fuzzy` > `noise-fuzzy`
 (`proximity` above `full-text` because every page it finds `full-text` finds too;
 `leetspeak` below `full-text` as it takes no other word forms or orders, but above
-`fuzzy` as it only swaps known look-alike characters rather than guessing at edits),
+`fuzzy` as it only swaps known look-alike characters rather than guessing at edits;
+`noise-fuzzy` last, as it is `leetspeak` and `fuzzy` combined with tolerance for noise),
 pages are ordered by the strictest engine that found them, then by that engine's own
 signal (hit count for `exact`/`like`, relevance for `proximity`/`full-text`, share
 matched as typed for `leetspeak`, best similarity for `fuzzy`), then by how many engines agreed, then by path and page.
@@ -255,7 +278,7 @@ Since the engines' matches nest, a page is one result and overlapping hits are
 merged (`_merge_overlapping`): the union span, labelled with the strictest engine,
 listing every engine in `matched_by`; a `proximity` passage thereby absorbs the word
 hits inside it. `ENGINE_BADGES` names the tiers for users (Exact, Contains, Near,
-Word, Lookalike, Similar) and is shared by the CLI and the UI. Each engine gets only the
+Word, Lookalike, Similar, Obscured) and is shared by the CLI and the UI. Each engine gets only the
 options it accepts, and `proximity` is skipped for one-term queries.
 `SearchMatch.start`/`end`/`engine`/`matched_by` carry what the merge needs.
 

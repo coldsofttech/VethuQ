@@ -114,7 +114,8 @@ vethuq index reindex file ./docs/invoice.pdf --source 3
 
 ### `rebuild-search [--force]`
 
-Rebuild the full-text search tables from the page text already stored in the
+Rebuild the full-text search tables (a trigram and a word index per kind of page, plus the
+trigram index over each page's noise-free skeleton) from the page text already stored in the
 database; files are not re-read or re-OCR'd. Use it if search results look
 incomplete or out of date. Asks for confirmation unless `--force` is given,
 shows progress while it runs, then a panel with one row per table (rebuilt or
@@ -208,7 +209,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|leetspeak] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|leetspeak|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -224,6 +225,7 @@ runs just that engine:
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
 | `leetspeak` | `content` written with look-alike characters, whole words, and the other way round; spelled-as-typed first | `hello` finds `hello`, `h3ll0`, `He11o` ✓ — `h4ll0`, `hallo`, `hello1` ✗; `p@55w0rd` finds `password` |
+| `noise-fuzzy` | `content`'s characters hidden by stray punctuation or whitespace, look-alike symbols and typos *at once*; cleanest first | `hello` finds `hello`, `helo`, `hallo`, `h3ll0`, `he llo`, `h.ello`; with `--noise medium` also `h..e llo` and `h @ 3 l l 0` ✓ — `hxexlxlxo` ✗ |
 
 ### `--engine all` (the default): every engine, ranked together
 
@@ -240,6 +242,7 @@ signal:
 | 4 | `full-text` | **Word** | relevance |
 | 5 | `leetspeak` | **Lookalike** | share of `content` matched as typed |
 | 6 | `fuzzy` | **Similar 83%** | best word similarity |
+| 7 | `noise-fuzzy` | **Obscured** | cleanliness: fewest edits, look-alikes and noise characters |
 
 `proximity` ranks above `full-text` because every page it finds `full-text`
 finds too (both need all the words), so the other way round "the words are close
@@ -249,7 +252,9 @@ words typed — more certain than `fuzzy`'s guess that a word with a few edits i
 the one meant — but, unlike `full-text`, it doesn't accept other word forms or
 word orders. A page that really contains the word is always found by a stricter
 engine first, so a **Lookalike** page is one where the word only appears
-disguised. Ties go to the page more engines agree on,
+disguised. `noise-fuzzy` ranks last: it is `leetspeak` and `fuzzy` combined with
+tolerance for stray characters, so every page they find it finds too, and only it
+finds text hidden by all three at once (**Obscured**). Ties go to the page more engines agree on,
 then to file path and page.
 
 Because the engines' matches nest — an exact match is also a substring, a word
@@ -276,7 +281,7 @@ The label after `[ocr]` is the page's tier; a hit found less strictly than the
 page's best carries its own label; a page shows its best three hits (best engine
 first, then by position) and counts the rest. A `proximity` passage swallows the
 word hits inside it. Each engine applies the options it can: `--case-sensitive`
-reaches `like`, `fuzzy` and `leetspeak` (`exact` always matches case, `full-text` and
+reaches `like`, `fuzzy`, `leetspeak` and `noise-fuzzy` (`exact` always matches case, `full-text` and
 `proximity` never do), `--threshold`/`--fuzziness` only `fuzzy`, `--distance`
 only `proximity`, each defaulting to its setting — and `all` never rejects an
 option. `proximity` is skipped for a query of fewer than two terms. Exports list
@@ -340,8 +345,46 @@ file path and page; `--threshold` and `--distance` are errors with it.
 with any engine but `leetspeak` (the combined search applies it to its
 leetspeak run), and the results header and exports record it.
 
+`noise-fuzzy` finds `content`'s characters when they are hidden by stray characters,
+look-alikes and typos together — the text is cleaned up in that order, and `content`
+goes through the same steps, so it may itself be written with noise or look-alikes:
+
+1. **Noise is ignored.** Whitespace and punctuation between the characters are
+   skipped, as far as `--noise` allows. Letters and digits are never noise (a stray
+   letter is a typo, below). `@ $ ! | + ( [ {` can be look-alikes, so they are read
+   as letters first (an `@` that was really noise then costs one edit).
+2. **Look-alikes are folded** to the letters they stand for — the single characters
+   of `--leet-level` (default `vethuq settings search leetspeak level`); the
+   multi-character spellings like `|\|` are only for `leetspeak`.
+3. **Typos are tolerated** like `fuzzy`: the rest must be within `--threshold` /
+   `--fuzziness` of `content` (default `vethuq settings search fuzzy threshold`), at
+   most 2 edits, and a `content` under 4 characters, or one still holding a digit
+   after folding, must match exactly. Edits are insertions, deletions, substitutions
+   and swaps of two neighbours; a case difference is one edit with
+   `--case-sensitive`.
+
+The words of `content` are matched as one run of characters, so `my password` finds
+`m y p@55w0rd` (given enough noise). A match starts and ends at word edges, like
+`fuzzy`'s — `hello` finds `ahello` as a close word, not `shellout` — but its
+characters may be spread over several words (`he llo`). There is no minimum length.
+
+`--noise low|medium|high` (default `low`, or `vethuq settings search noise-fuzzy
+noise`) sets how much noise a match may skip: `low` at most 1 character in a row and
+2 in all (`he llo`, `h.ello`, `h e llo`), `medium` 3 and 6 (`h..e llo`, `h e l l o`,
+`h @ 3 l l 0`), `high` 6 and 12 (`h @ e # l l o`). Results are ordered by how clean
+the match is (`SearchMatch.score` is 1.0 for the text as typed and falls with each
+edit, look-alike and noise character); `--distance` is an error with it, and
+`--noise` is an error with any other engine (the combined search applies it to its
+`noise-fuzzy` run).
+
+Pages come from the database's own index of each page's *skeleton* — its text without
+noise and with look-alikes folded, recorded when the page is written and searched
+through a trigram index (see `index rebuild-search`) — and from there only the stretches
+of a page where `content` can lie are read, so it doesn't scan every page. A very short
+`content` can't be narrowed that way and is searched through the whole skeleton.
+
 `--case-sensitive` / `--no-case-sensitive` overrides
-`vethuq settings search case-sensitive`, and only `like`, `fuzzy` and `leetspeak` act on it
+`vethuq settings search case-sensitive`, and only `like`, `fuzzy`, `leetspeak` and `noise-fuzzy` act on it
 (for `fuzzy` a difference in case counts as one edit):
 `exact` is always case-sensitive while `full-text` and `proximity` never are,
 so asking for the opposite explicitly (`--engine exact --no-case-sensitive`,
@@ -452,6 +495,16 @@ vethuq search Museum --engine fuzzy --threshold 70%   # a percentage instead of 
 vethuq search "payment termination" --engine proximity                    # within 10 words (the default)
 vethuq search "payment termination" --engine proximity --distance loose   # within 30 words
 vethuq search "late fee" --engine proximity --distance 5                  # within 5 words
+```
+
+**`noise-fuzzy`** finds text hidden by noise, look-alikes and typos together:
+
+```bash
+vethuq search hello --engine noise-fuzzy                    # "he llo", "h3ll0", "helo", "hallo"
+vethuq search hello --engine noise-fuzzy --noise medium     # also "h..e llo", "h @ 3 l l 0"
+vethuq search hello --engine noise-fuzzy --noise high       # also "h @ e # l l o"
+vethuq search password --engine noise-fuzzy --fuzziness strict --leet-level standard
+vethuq settings search noise-fuzzy noise set medium         # the default from now on
 ```
 
 **`leetspeak`** finds words written with look-alike characters, both ways:
@@ -632,7 +685,7 @@ vethuq settings search export-format show
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one
 of `all` (the default — every engine, ranked together), `like`, `exact`,
-`full-text`, `fuzzy`, `proximity` or `leetspeak`.
+`full-text`, `fuzzy`, `proximity`, `leetspeak` or `noise-fuzzy`.
 
 ```bash
 vethuq settings search engine set full-text
@@ -642,7 +695,7 @@ vethuq settings search engine show
 ### `search case-sensitive enable|disable|show`
 
 Configure whether `vethuq search` matches case by default. Disabled by
-default. Only the `like`, `fuzzy` and `leetspeak` engines act on it; `--case-sensitive` /
+default. Only the `like`, `fuzzy`, `leetspeak` and `noise-fuzzy` engines act on it; `--case-sensitive` /
 `--no-case-sensitive` overrides it for one search.
 
 ```bash
@@ -688,6 +741,19 @@ isn't user-editable.
 ```bash
 vethuq settings search leetspeak level set standard
 vethuq settings search leetspeak level show
+```
+
+### `search noise-fuzzy noise set <level>|show`
+
+Configure how much stray punctuation and whitespace `vethuq search --engine noise-fuzzy`
+(and the Obscured results of the default combined search) skips inside a match, when
+`--noise` isn't given: `low` (the default — at most 1 noise character in a row and 2 in
+all), `medium` (3 and 6) or `high` (6 and 12). Letters and digits are never noise. The
+engine also uses the fuzzy threshold and the leetspeak level settings.
+
+```bash
+vethuq settings search noise-fuzzy noise set medium
+vethuq settings search noise-fuzzy noise show
 ```
 
 ### `search snippet set <chars>|show`

@@ -151,7 +151,7 @@ for entry in client.logs.tail("index", 40, level="warning"):
 
 Search previously OCR-indexed content — mirrors `vethuq search` in the CLI.
 
-### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None, leet_level=None)`
+### `export(matches, query, output, format_=None, *, engine=None, case_sensitive=False, threshold=None, distance=None, leet_level=None, noise=None)`
 
 Write `matches` for `query` to `output` (a path) as JSON or HTML, and
 return the resolved `Path`. `format_` defaults to
@@ -165,12 +165,12 @@ matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
 order, occurrences within a page in text order) — or best match first for
-the `full-text`, `fuzzy`, `proximity` and `leetspeak` engines. Only successfully indexed documents are
+the `full-text`, `fuzzy`, `proximity`, `leetspeak` and `noise-fuzzy` engines. Only successfully indexed documents are
 considered. `context_chars` defaults to `client.settings.search.snippet`
 if not given.
 
@@ -203,11 +203,19 @@ are never rejected.
   `client.settings.search.leetspeak.level`. Best first: `SearchMatch.score` is the
   share of `content`'s characters matched as typed (1.0 = none substituted). `leet_level`
   (one of `SEARCH_LEETSPEAK_LEVELS`) overrides that setting for one call
+- `"noise-fuzzy"` — `content`'s characters hidden by stray punctuation or whitespace (letters
+  are never noise), look-alike symbols and typos at once: `"hello"` finds `h..e llo`,
+  `h @ 3 l l 0`, `h3ll0` and `helo`. It uses `threshold` (as `"fuzzy"`) and `leet_level`
+  (single-character look-alikes) too, plus `noise` — one of `SEARCH_NOISE_LEVELS`
+  (`"low"` at most 1 noise character in a row and 2 in all, `"medium"` 3 and 6, `"high"` 6
+  and 12), defaulting to `client.settings.search.noise_fuzzy.noise`. Cleanest first:
+  `SearchMatch.score` is 1.0 for text as typed and falls with each edit, look-alike and
+  noise character. No minimum query length
 
 `case_sensitive` defaults to `client.settings.search.case_sensitive`, and
-only `"like"`, `"fuzzy"` and `"leetspeak"` act on it (`"exact"` is always case-sensitive,
+only `"like"`, `"fuzzy"`, `"leetspeak"` and `"noise-fuzzy"` act on it (`"exact"` is always case-sensitive,
 `"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
-counts as one edit). `threshold` (`"fuzzy"` only) is the minimum similarity between
+counts as one edit). `threshold` (`"fuzzy"` and `"noise-fuzzy"` only) is the minimum similarity between
 `content`'s words and the words found — `1 − edits ÷ length of the longer
 word`, at most 2 edits: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%,
 `"balanced"` 80%, `"loose"` 65%), a percentage (`"80%"`) or a number above 0 and up
@@ -226,12 +234,12 @@ for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
 ```
 
-### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None)`
+### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None)`
 
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
 `"exact"` (Exact), `"like"` (Contains), `"proximity"` (Near), `"full-text"` (Word),
-`"leetspeak"` (Lookalike), `"fuzzy"` (Similar), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
+`"leetspeak"` (Lookalike), `"fuzzy"` (Similar), `"noise-fuzzy"` (Obscured), in that order (`ENGINE_TIERS`; `ENGINE_BADGES` maps each to the
 label the CLI and the UI show) — and within a tier by that engine's own signal, so
 a page is one result however many engines found it. `case_sensitive`, `threshold`
 and `distance` default to their settings and reach only the engines that can use
@@ -329,6 +337,16 @@ client.search.run("hi", engine="leetspeak")  # raises SearchQueryError: needs 3 
 client.search.run("nice", engine="leetspeak", leet_level="extended")  # finds "|\\|ice"
 client.search.run("hello", engine="leetspeak", threshold=0.8)  # raises SearchOptionError
 client.search.run("hello", engine="like", leet_level="basic")  # raises SearchOptionError
+```
+
+**`"noise-fuzzy"`** finds text hidden by noise, look-alikes and typos together:
+
+```python
+client.search.run("hello", engine="noise-fuzzy")  # "he llo", "h3ll0", "helo", "hallo"
+client.search.run("hello", engine="noise-fuzzy", noise="medium")  # also "h..e llo"
+client.search.run("hello", engine="noise-fuzzy", noise="high")  # also "h @ e # l l o"
+client.search.run("password", engine="noise-fuzzy", threshold="strict", leet_level="standard")
+client.search.run("hello", engine="like", noise="low")  # raises SearchOptionError
 ```
 
 ## `client.settings`
@@ -437,6 +455,13 @@ Invalid values raise `InvalidSettingValueError`.
   `+` `!` `|`) or `"extended"` (adds multi-character forms such as `|\|` for `n`); each
   level includes the one before it. The substitution table is built in. Raises
   `InvalidSettingValueError` otherwise
+
+### `client.settings.search.noise_fuzzy.noise`
+
+- `get()` — the stored default noise level for the `noise-fuzzy` engine, a name from
+  `SEARCH_NOISE_LEVELS` (`"low"` by default)
+- `set(level)` — `"low"` (at most 1 noise character in a row, 2 in all), `"medium"` (3 and 6)
+  or `"high"` (6 and 12); raises `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.export_format`
 
@@ -594,10 +619,10 @@ A page found by the combined search, returned by `client.search.run_pages`:
 - `file_id`, `file_name`, `file_path`, `page_number`, `total_pages`, `duplicate_of_path`, `source`
 - `engine` — the strictest engine that found anything on the page (its tier)
 - `matched_by` — every engine that did, strictest first
-- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`), the share of the query matched as typed (`leetspeak`) or its best word similarity (`fuzzy`)
+- `score` — what the page was ordered by within its tier: the number of hits (`exact`, `like`), its relevance (`proximity`, `full-text`), the share of the query matched as typed (`leetspeak`), its best word similarity (`fuzzy`) or its cleanliness (`noise-fuzzy`)
 - `hits` — its `SearchMatch`es, ordered by engine strictness then position; hits that overlap are merged into one
 
-`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Lookalike"`, `"Similar 83%"`).
+`engine_badge(engine, score=None)` and `hit_badge(match)` give the user-facing labels (`"Exact"`, `"Contains"`, `"Near"`, `"Word"`, `"Lookalike"`, `"Similar 83%"`, `"Obscured"`).
 
 ## `ProcessingMetric`
 
