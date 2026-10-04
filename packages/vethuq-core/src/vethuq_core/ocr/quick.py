@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Callable, Collection
@@ -51,7 +52,10 @@ class Quick:
 
     @staticmethod
     def run_with_retries(
-        storage: Storage, reader: DocumentReader, file_path: Path
+        storage: Storage,
+        reader: DocumentReader,
+        file_path: Path,
+        db_lock: threading.Lock | None = None,
     ) -> tuple[list[PageResult] | None, int, Exception | None]:
         """Retry OCR itself (no DB writes) up to the configured attempt count.
 
@@ -63,7 +67,10 @@ class Quick:
         or a bare `FileNotFoundError`) fails immediately without further attempts,
         since retrying can't change the outcome.
         """
-        max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
+        # The settings read shares the connection with other workers' writes, so
+        # it goes through `db_lock` like every other sqlite access in a batch.
+        with db_lock or contextlib.nullcontext():
+            max_attempts = 1 + OcrSettings.get_retry_attempts(storage)
         attempt = 0
         last_exc: Exception | None = None
         pages: list[PageResult] | None = None
@@ -408,7 +415,9 @@ class Quick:
 
         reader = Readers.for_path(file_path)
         if FsPath.is_within(file_path, source.path):
-            pages, attempts_used, last_exc = Quick.run_with_retries(storage, reader, file_path)
+            pages, attempts_used, last_exc = Quick.run_with_retries(
+                storage, reader, file_path, db_lock=db_lock
+            )
         else:
             _logger.warning("File resolves outside its source, skipped: %s", file_path)
             pages, attempts_used = None, 1
