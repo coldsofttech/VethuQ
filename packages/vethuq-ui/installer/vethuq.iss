@@ -90,16 +90,31 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #ifndef CoreSizeKB
   #define CoreSizeKB 0
 #endif
-#define SizeLabel(KB) KB > 0 ? " (" + Str((KB + 512) / 1024) + " MB)" : ""
-#define SizeBytes(KB) Str(KB * 1024)
+#define SizeBytes(KB) Str(Int(KB) * 1024)
+; The label is built with #if rather than a ?: expression, which the 6.7 preprocessor rejects.
+#if Int(AppSizeKB) > 0
+  #define AppSizeLabel " (" + Str((Int(AppSizeKB) + 512) / 1024) + " MB)"
+#else
+  #define AppSizeLabel ""
+#endif
+#if Int(CliSizeKB) > 0
+  #define CliSizeLabel " (" + Str((Int(CliSizeKB) + 512) / 1024) + " MB)"
+#else
+  #define CliSizeLabel ""
+#endif
+#if Int(CoreSizeKB) > 0
+  #define CoreSizeLabel " (" + Str((Int(CoreSizeKB) + 512) / 1024) + " MB)"
+#else
+  #define CoreSizeLabel ""
+#endif
 
 [Components]
-Name: "app"; Description: "Desktop application{#SizeLabel(AppSizeKB)}"; Types: full desktop; ExtraDiskSpaceRequired: {#SizeBytes(AppSizeKB)}
-Name: "cli"; Description: "Command-line interface (vethuq){#SizeLabel(CliSizeKB)}"; Types: full cli; ExtraDiskSpaceRequired: {#SizeBytes(CliSizeKB)}
+Name: "app"; Description: "Desktop application{#AppSizeLabel}"; Types: full desktop; ExtraDiskSpaceRequired: {#SizeBytes(AppSizeKB)}
+Name: "cli"; Description: "Command-line interface (vethuq){#CliSizeLabel}"; Types: full cli; ExtraDiskSpaceRequired: {#SizeBytes(CliSizeKB)}
 ; The background index worker - both the desktop app and the CLI's "index
 ; run" spawn it, so it (and the library folder it needs) is required either
 ; way. Shown, not hidden, so it's clear why it can't be unchecked.
-Name: "core"; Description: "Core runtime (required){#SizeLabel(CoreSizeKB)}"; Types: full desktop cli; Flags: fixed; ExtraDiskSpaceRequired: {#SizeBytes(CoreSizeKB)}
+Name: "core"; Description: "Core runtime (required){#CoreSizeLabel}"; Types: full desktop cli; Flags: fixed; ExtraDiskSpaceRequired: {#SizeBytes(CoreSizeKB)}
 
 [Types]
 Name: "full"; Description: "Desktop application and CLI (recommended)"
