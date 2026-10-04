@@ -363,6 +363,43 @@ from the matching pages. They need an SQLite new enough for the tokenizer's `cat
 (probed once, `Document.complex_words_supported`); without it they are not created, a warning is
 logged, and rebuilding them is a no-op.
 
+### OCR languages: choosing, detecting, queueing
+
+`vethuq_core.ocr.plan.LanguagePlan` resolves which languages a file may be read in, most
+specific first: a per-run override (`--lang`, passed to the detached worker as its fourth
+argument), the source's `languages`, then the `ocr_languages` setting (`auto` by default: every
+enabled language, which is English alone on an install with no other). `LanguageSelection`
+(`vethuq_core.languages.selection`) parses and validates the choice and returns `Candidates` -
+the default language first, then the rest in catalog order. A language that is unknown, not
+installed or not enabled fails with `LanguageUnavailableError` (and the index runner refuses the
+run up front, `IndexRunner._check_languages`, so a detached worker never fails every file).
+
+One candidate is read directly. With several, the first reads the file through the ordinary
+quick pass (`Quick.process_file_once`; `Engines.get(storage, language)` builds an engine per
+language and caches it per thread, and the default language is built and called exactly as
+before), then `LanguagePlan.after_first_pass` decides what that read means using
+`vethuq_core.ocr.detection.LanguageDetector`:
+
+- a file with no scanned page (native text layer) shows its language by script - no OCR to queue;
+- a read that is empty (too few characters to judge) or confident (recognizer confidence at
+  least `MIN_CONFIDENCE`, and at least `MIN_SCRIPT_SHARE` of its characters in the language's
+  script) settles the language and marks the other candidates `skipped`;
+- otherwise the read is *unsure*: lines the language read below `MIN_LINE_CONFIDENCE` (or in
+  another script) are dropped before the pages are stored, and the other candidates are queued
+  as `pending` rows in `document_languages`, in order.
+
+`PageResult` carries the engine's per-line scores in memory (`lines`, never stored) so the
+dropping needs no extra storage. `vethuq_core.ocr.passes.LanguagePasses` then runs the queue
+(see [ocr-phases.md](ocr-phases.md#languages)); the thresholds in `LanguageDetector` are
+provisional and class constants so they can be tuned in one place.
+
+English-only behaviour is guarded rather than assumed: every code path that names a language is
+skipped when only the default language is involved, the default language's engine factory is
+called with the arguments it always had, and the golden tests in
+`tests/search/test_english_golden.py` pin the normalizers and tokenizer. With `lang-te` installed
+the same files take one extra step (judging the English read) and nothing else unless English
+doubts it.
+
 ### OCR models
 
 `vethuq_core.ocr.models.OcrModels` finds, downloads and removes the OCR models without importing

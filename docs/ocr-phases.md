@@ -19,6 +19,29 @@ Modes are cumulative. The setting is `index_engine` (`vethuq settings ocr
 engine`, `client.settings.ocr.engine`) and is re-read each round, so changing
 it mid-run takes effect without a restart.
 
+## Languages
+
+Every page is first read in a file's first candidate language (English, unless the choice
+does not include it) - phase 1 above. When the install has other OCR languages and the
+choice leaves more than one candidate, that read is judged (see "OCR languages" in
+[CLI.md](CLI.md#ocr-languages)); if the first language did not read the file confidently,
+the others wait in `document_languages` as `pending` passes. They run as part of the same
+loop, **after every file has had its quick pass and before any rotated-text work**:
+language coverage matters more than extra angles, and a Telugu scan that English could not
+read is not searchable in Telugu until its pass has run.
+
+A language pass reads each scanned page again, upright, in the pass's language and adds the
+lines that language read believably (confident enough and in the language's script) to the
+stored text, using the same line merge as the angle passes. Each page records which
+languages contributed (`ocr_langs`) and the one most of its text is in (`language`). The
+deeper phases then read a page in the languages it was read in, keeping only lines in
+those languages' scripts, so rotated reads do not add text a wrong-language read made up;
+a page read in English alone is read exactly as before.
+
+Passes are saved as soon as they are read, so pausing, stopping or a crash loses nothing:
+a pass left mid-way is put back in the queue when the interrupted run is recovered, and a
+pass that fails is recorded with its reason (and not retried by the rest of that run).
+
 ## Scheduling
 
 `run_ocr_phased` (used by the background worker) loops:
@@ -26,10 +49,13 @@ it mid-run takes effect without a restart.
 1. **Quick first.** Run `run_ocr_batch` for every file that is new, changed or
    failed-and-retried. Repeat while it finds files, so files that arrive during
    a batch are picked up before anything deeper.
-2. **Then deeper work** (`run_deepening_batch`): pages still short of the target
+2. **Then queued language passes** (`LanguagePasses.run_batch`): the other candidate
+   languages of files whose first language doubted its read, in queue order (every file
+   gets its second language before any gets its third). See "Languages" above.
+3. **Then deeper work** (`run_deepening_batch`): pages still short of the target
    phase, ordered by *next phase* so every page gets its moderate pass before any
    page gets a deep one.
-3. **Yielding.** Between angle passes (never mid-pass) the batch checks for a stop
+4. **Yielding.** Between language passes and between angle passes (never mid-pass) the batch checks for a stop
    request, and every `_QUICK_WORK_CHECK_SECONDS` for new files needing their
    quick pass. If there are any it returns; the loop handles them and resumes.
 

@@ -7,7 +7,7 @@ API. `vethuq._core` / `vethuq._cli` are vendored copies of the internal
 `packages/vethuq/scripts/merge_sources.py` — not committed, not a public API.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from vethuq._core.errors import (
     CorruptDatabaseError,
     DataFolderNotWritableError,
     InvalidConfigError,
+    LanguageUnavailableError,
     OcrModelMissingError,
     SchemaVersionError,
     StartupError,
@@ -39,10 +40,14 @@ from vethuq._core.index import (
 from vethuq._core.index import IndexRunner as _IndexRunner
 from vethuq._core.index import Reindex as _Reindex
 from vethuq._core.index import SearchIndexRebuild as _SearchIndexRebuild
+from vethuq._core.languages import Languages as _Languages
+from vethuq._core.languages import UnknownLanguageError
 from vethuq._core.logs import LogNotFoundError
 from vethuq._core.logs import Logs as _Logs
 from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
+from vethuq._core.ocr.models import CleanResult, ClearResult, DownloadResult, ModelStatus
+from vethuq._core.ocr.models import OcrModels as _OcrModels
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import PageResult, SearchMatch, SearchOptionError, SearchQueryError
 from vethuq._core.search import Search as _Search
@@ -107,6 +112,12 @@ engine_badge = _Ranking.engine_badge
 hit_badge = _Ranking.hit_badge
 
 __all__ = [
+    "CleanResult",
+    "ClearResult",
+    "DownloadResult",
+    "LanguageUnavailableError",
+    "ModelStatus",
+    "UnknownLanguageError",
     "VersionDetails",
     "FileTypeInfo",
     "BACKUP_VALUES",
@@ -215,16 +226,37 @@ class Sources:
     Not instantiated directly — use `Vethuq().sources`.
     """
 
-    def add(self, path: str | Path) -> Source:
+    def add(self, path: str | Path, *, languages: str | Sequence[str] | None = None) -> Source:
         """Register a file or folder as a source. Folders are indexed recursively.
 
+        `languages` names the OCR languages its files are read in (`"te"`, `"en,te"`,
+        `["en", "te"]` or `"auto"`; several are detected between). Left out, the
+        `settings.ocr.languages` setting applies.
+
         Re-adding a path that was previously removed reactivates it instead
-        of failing. Raises `SourcePathError` if `path` doesn't exist, and
-        `SourceAlreadyExistsError` if it's already an active source.
+        of failing. Raises `SourcePathError` if `path` doesn't exist,
+        `SourceAlreadyExistsError` if it's already an active source, and
+        `UnknownLanguageError` for a language that doesn't exist.
         """
         storage = _open_storage()
         try:
-            return _Sources.add(storage, path)
+            return _Sources.add(storage, path, languages=languages)
+        finally:
+            storage.close()
+
+    def set_languages(
+        self, path_or_id: str | Path | int, languages: str | Sequence[str] | None
+    ) -> Source:
+        """Choose the OCR languages a source's files are read in; None goes back to the setting.
+
+        Applies to files indexed from now on; files already indexed keep what they have until
+        they are re-indexed (`index.reindex(..., languages=...)`). Raises
+        `SourceNotFoundError` if no active source matches and `UnknownLanguageError` for a
+        language that doesn't exist.
+        """
+        storage = _open_storage()
+        try:
+            return _Sources.set_languages(storage, _Sources.coerce(path_or_id), languages)
         finally:
             storage.close()
 
@@ -279,9 +311,17 @@ class Index:
     """
 
     def run(
-        self, target: str | int | None = None, *, force: bool = False, wait: bool = False
+        self,
+        target: str | int | None = None,
+        *,
+        force: bool = False,
+        wait: bool = False,
+        languages: str | Sequence[str] | None = None,
     ) -> int | IndexState | None:
         """Start OCR indexing on registered sources in the background.
+
+        `languages` reads the files in those languages this run (`"te"`, `"en,te"`, `"auto"`),
+        instead of each source's own languages or the `settings.ocr.languages` setting.
 
         A source that's already fully indexed is still checked for files
         added or modified since the last run; unchanged files are left
@@ -292,31 +332,50 @@ class Index:
         Raises `AlreadyRunningError` if a run is already in progress, and
         `StaleLockError` if a previous run left a stale lock (`force=True`
         clears it). Raises `SourceNotFoundError` if `target` doesn't match a
-        registered source.
+        registered source, `LanguageUnavailableError` for a language that isn't installed
+        or enabled, and `OcrModelMissingError` if the files would be read in a language
+        whose models aren't downloaded (`ocr.models.download`).
         """
         pid = _IndexRunner.start_run(
-            str(target) if target is not None else None, force=force, restart=False
+            str(target) if target is not None else None,
+            force=force,
+            restart=False,
+            languages=_language_value(languages),
         )
         return _IndexRunner.wait(pid) if wait else pid
 
     def restart(
-        self, target: str | int | None = None, *, force: bool = False, wait: bool = False
+        self,
+        target: str | int | None = None,
+        *,
+        force: bool = False,
+        wait: bool = False,
+        languages: str | Sequence[str] | None = None,
     ) -> int | IndexState | None:
         """Retry only previously-failed files, in the background. See `run`."""
         pid = _IndexRunner.start_run(
-            str(target) if target is not None else None, force=force, restart=True
+            str(target) if target is not None else None,
+            force=force,
+            restart=True,
+            languages=_language_value(languages),
         )
         return _IndexRunner.wait(pid) if wait else pid
 
     def reindex(
-        self, target: str | int, *, force: bool = False, wait: bool = False
+        self,
+        target: str | int,
+        *,
+        force: bool = False,
+        wait: bool = False,
+        languages: str | Sequence[str] | None = None,
     ) -> int | IndexState | None:
         """Re-index every file under a source (id or path), not just failed ones.
 
         Files are OCR'd again and their existing documents updated in place, so
-        nothing is duplicated. Same errors and return value as `run`.
+        nothing is duplicated. `languages` reads them in those languages this time; to make
+        it lasting use `sources.set_languages`. Same errors and return value as `run`.
         """
-        pid = _Reindex.start_source(target, force=force)
+        pid = _Reindex.start_source(target, force=force, languages=_language_value(languages))
         return _IndexRunner.wait(pid) if wait else pid
 
     def reindex_file(
@@ -326,14 +385,20 @@ class Index:
         source: str | int | None = None,
         force: bool = False,
         wait: bool = False,
+        languages: str | Sequence[str] | None = None,
     ) -> int | IndexState | None:
         """Re-index one file, given its document id or path.
+
+        `languages` reads it in those languages this time - the way to redo a file whose
+        language was detected wrongly.
 
         Raises `FileNotTrackedError` if the file isn't tracked, and
         `AmbiguousFileError` if it sits under more than one source and `source`
         (id or path) isn't given. Otherwise like `run`.
         """
-        pid = _Reindex.start_file(file, source=source, force=force)
+        pid = _Reindex.start_file(
+            file, source=source, force=force, languages=_language_value(languages)
+        )
         return _IndexRunner.wait(pid) if wait else pid
 
     def rebuild_search(
@@ -1038,6 +1103,47 @@ class OcrEngineSettings:
             storage.close()
 
 
+class OcrLanguagesSettings:
+    """Which languages OCR reads files in by default. Not instantiated directly — use
+    `Vethuq().settings.ocr.languages`."""
+
+    def get(self) -> str:
+        """The default OCR languages: `"auto"` (the default: every installed language, which is
+        English alone unless another is installed), or the ids chosen (`"te"`, `"en,te"`).
+
+        A source (`sources.set_languages`) or a run (`index.run(languages=...)`) can choose
+        differently. One language is used directly; several are detected between, English
+        first.
+        """
+        storage = _open_storage()
+        try:
+            return _OcrSettings.get_languages(storage)
+        finally:
+            storage.close()
+
+    def set(self, value: str | Sequence[str]) -> str:
+        """Set the default OCR languages; returns the stored value (`"en,te"`).
+
+        Raises `InvalidSettingValueError` for nothing or a language that doesn't exist. Files
+        already indexed keep what they have until they are re-indexed.
+        """
+        storage = _open_storage()
+        try:
+            return _OcrSettings.set_languages(
+                storage, value if isinstance(value, str) else list(value)
+            )
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the default OCR languages to `"auto"`."""
+        storage = _open_storage()
+        try:
+            _OcrSettings.reset_languages(storage)
+        finally:
+            storage.close()
+
+
 class IntegrityCheckSettings:
     """Whether `PRAGMA integrity_check` runs automatically when the database is opened.
     Not instantiated directly — use `Vethuq().settings.db.integrity_check`."""
@@ -1270,6 +1376,7 @@ class OcrSettings:
     def __init__(self) -> None:
         self.retry = OcrRetrySettings()
         self.engine = OcrEngineSettings()
+        self.languages = OcrLanguagesSettings()
 
 
 class IndexSettings:
@@ -1636,6 +1743,73 @@ class FileTypes:
         return _FileTypes.infos(include_missing=include_missing)
 
 
+def _language_value(languages: str | Sequence[str] | None) -> str | None:
+    """A language choice as the comma-separated string the runner takes, or None."""
+    if languages is None or isinstance(languages, str):
+        return languages
+    return ",".join(languages)
+
+
+class OcrModelsApi:
+    """The OCR models each language needs on disk, like `vethuq ocr models`. Not instantiated
+    directly — use `Vethuq().ocr.models`."""
+
+    @staticmethod
+    def _ids(languages: str | Sequence[str] | None) -> list[str]:
+        value = _language_value(languages)
+        if value is None or value.strip().lower() == "auto":
+            return _Languages.enabled_ids()
+        return [part.strip() for part in value.split(",") if part.strip()]
+
+    def status(self, languages: str | Sequence[str] | None = None) -> list[ModelStatus]:
+        """The models `languages` need (default: every enabled language) and which are
+        downloaded; models every language shares come first."""
+        return _OcrModels.status(self._ids(languages))
+
+    def download(
+        self,
+        languages: str | Sequence[str] | None = None,
+        *,
+        force: bool = False,
+        on_progress: Callable[[str, str], None] | None = None,
+    ) -> DownloadResult:
+        """Download the models `languages` need that are missing (all of them with `force`).
+
+        `on_progress(model, state)` is called with `"downloading"`, `"ready"` or `"failed"`.
+        Needs the internet; a model that fails is in `DownloadResult.failed` and the rest still
+        download.
+        """
+        return _OcrModels.download(self._ids(languages), force=force, on_progress=on_progress)
+
+    def clear(self, languages: str | Sequence[str], *, include_shared: bool = False) -> ClearResult:
+        """Delete the downloaded models of `languages`; the models every language shares stay
+        unless `include_shared`."""
+        return _OcrModels.clear(self._ids(languages), include_shared=include_shared)
+
+    def reset(self, languages: str | Sequence[str]) -> DownloadResult:
+        """Delete `languages`' own models and download them again."""
+        ids = self._ids(languages)
+        _OcrModels.clear(ids)
+        return _OcrModels.download(ids)
+
+    def clean(self) -> CleanResult:
+        """Remove models no enabled language uses and leftover empty download folders. Other
+        programs' models in the same cache are never touched."""
+        return _OcrModels.clean(_Languages.enabled_ids())
+
+
+class Ocr:
+    """OCR information. Not instantiated directly — use `Vethuq().ocr`."""
+
+    def __init__(self) -> None:
+        self.models = OcrModelsApi()
+
+    def languages(self) -> list[str]:
+        """The ids of the OCR languages that can be used now (installed and enabled), English
+        first."""
+        return _Languages.enabled_ids()
+
+
 class Vethuq:
     """Client for VethuQ's local database — the same one the CLI and desktop app use.
 
@@ -1647,6 +1821,7 @@ class Vethuq:
     client.stats.processing()
     client.search.run("invoice")
     client.file_types.list()
+    client.ocr.models.download("te")
     client.version.python
     ```
     """
@@ -1654,6 +1829,7 @@ class Vethuq:
     def __init__(self) -> None:
         self.sources = Sources()
         self.index = Index()
+        self.ocr = Ocr()
         self.settings = Settings()
         self.stats = Stats()
         self.search = Search()

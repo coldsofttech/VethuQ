@@ -487,8 +487,12 @@ class IndexRunner:
         return IndexRunner._is_pid_running(pid), pid
 
     @staticmethod
-    def _worker_command(db_path: Path, target: str | None, restart: bool) -> list[str]:
+    def _worker_command(
+        db_path: Path, target: str | None, restart: bool, languages: str | None = None
+    ) -> list[str]:
         args = [str(db_path), target or "", "restart" if restart else "run"]
+        if languages:
+            args.append(languages)
         if getattr(sys, "frozen", False):
             worker = Path(sys.executable).with_name(IndexRunner._WORKER_EXE_NAME)
             if not worker.exists():
@@ -504,12 +508,18 @@ class IndexRunner:
         restart: bool = False,
         db_path: Path | None = None,
         on_recovery: Callable[[list[str]], None] | None = None,
+        languages: str | None = None,
     ) -> int:
         """Launch OCR indexing as a detached background process. Returns its pid.
 
         When `restart` is True, only files that previously failed are retried
         (see `Quick.run`'s `only_failed`); otherwise new and previously-failed
         files are processed as usual.
+
+        `languages` (`"te"`, `"en,te"`, `"auto"`) overrides, for this run, the languages the
+        files are read in (otherwise each source's own, then the `ocr_languages` setting). A
+        language that is not installed, or whose models are needed for every file and are not
+        downloaded, stops the run here with how to fix it rather than failing every file.
 
         When a previous run left a stale lock, whatever was recovered is written to the index
         log and, if `on_recovery` is given, passed to it as a list of messages. It isn't called
@@ -558,6 +568,7 @@ class IndexRunner:
             if target is not None:
                 # raises SourceNotFoundError if invalid
                 Sources.get(storage, Sources.coerce(target))
+            IndexRunner._check_languages(storage, target, languages)
         finally:
             storage.close()
 
@@ -573,7 +584,7 @@ class IndexRunner:
         # The worker logs to `index.log` itself (see `main`), including a crash's
         # traceback, so its stdout/stderr aren't needed.
         process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
-            IndexRunner._worker_command(db_path, target, restart),
+            IndexRunner._worker_command(db_path, target, restart, languages),
             # Stops a onefile-frozen parent's bundle env from leaking into
             # the (also onefile) worker exe, which must unpack its own.
             env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
@@ -588,6 +599,50 @@ class IndexRunner:
         )
         IndexRunner._atomic_write(lock_path, str(process.pid))
         return process.pid
+
+    @staticmethod
+    def _check_languages(storage: Storage, target: str | None, languages: str | None) -> None:
+        """Refuse a run whose languages can't be used, before the detached worker starts.
+
+        Raises `LanguageUnavailableError` for a language that is unknown, not installed or not
+        enabled, and `OcrModelMissingError` when a file would have to be read in a language other
+        than English whose models are not downloaded. Where several languages are candidates the
+        others are only needed for files the first one doubts, so missing models there are only
+        logged: such a file's pass fails on its own, with the reason, and the rest carry on.
+        """
+        from vethuq_core.errors import LanguageUnavailableError, OcrModelMissingError
+        from vethuq_core.languages import UnknownLanguageError
+        from vethuq_core.ocr.catalog import OcrCatalog
+        from vethuq_core.ocr.models import OcrModels
+        from vethuq_core.ocr.plan import LanguagePlan
+
+        # With no source yet an override is still checked, on its own.
+        sources: list[Source | None] = [*IndexRunner.resolve_targets(storage, target)] or [None]
+        for source in sources:
+            try:
+                candidates = LanguagePlan.candidates(storage, source, languages)
+            except UnknownLanguageError as exc:
+                raise LanguageUnavailableError(str(exc)) from exc
+            for language_id in candidates.ids:
+                language = OcrCatalog.language(language_id)
+                if language is None or language.default:
+                    continue  # English downloads its models when first needed, as it always did
+                missing = OcrModels.missing(language_id)
+                if not missing:
+                    continue
+                if not candidates.needs_detection:
+                    raise OcrModelMissingError(
+                        f"The {language.label} OCR models are not downloaded "
+                        f"({len(missing)} missing).",
+                        f"Run: vethuq ocr models download --lang {language_id}",
+                    )
+                IndexRunner._logger.warning(
+                    "The %s OCR models are not downloaded (%d missing); files that need that "
+                    "language will fail their %s pass until they are",
+                    language.label,
+                    len(missing),
+                    language.label,
+                )
 
     @staticmethod
     def _reclaim_stuck_processing(db_path: Path) -> int:
@@ -637,6 +692,17 @@ class IndexRunner:
             actions.append(
                 f"Re-queued {requeued} file{'s' if requeued != 1 else ''} left mid-processing, "
                 "to be retried."
+            )
+        storage = open_storage(db_path)
+        try:
+            passes = storage.reset_processing_language_passes()
+            storage.commit()
+        finally:
+            storage.close()
+        if passes:
+            actions.append(
+                f"Re-queued {passes} language pass{'es' if passes != 1 else ''} left "
+                "mid-processing, to be retried."
             )
         IndexRunner._verify_integrity_after_recovery(
             db_path, "the previous run did not exit cleanly"
@@ -829,7 +895,13 @@ class IndexRunner:
         return [Sources.get(storage, Sources.coerce(target))]
 
     @staticmethod
-    def _run_worker(db_path: Path, target: str | None, *, restart: bool = False) -> None:
+    def _run_worker(
+        db_path: Path,
+        target: str | None,
+        *,
+        restart: bool = False,
+        languages: str | None = None,
+    ) -> None:
         # check_same_thread=False: `Quick.run_batch` below may hand this connection
         # to worker threads when `workers` > 1 - every use of it is already
         # serialized through `db_lock` there.
@@ -992,6 +1064,7 @@ class IndexRunner:
                 on_files_queued=on_files_queued,
                 on_unit_start=on_unit_start,
                 on_unit_done=on_unit_done,
+                languages=languages,
             )
 
             heartbeat.stop()
@@ -1041,11 +1114,12 @@ class IndexRunner:
         db_path = Path(sys.argv[1])
         target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"
+        languages = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
         Logs.setup("index", db_path)
         IndexRunner._logger.info("Index worker pid=%d started", os.getpid())
         crash_trace = IndexRunner._enable_crash_trace(db_path)
         try:
-            IndexRunner._run_worker(db_path, target, restart=mode == "restart")
+            IndexRunner._run_worker(db_path, target, restart=mode == "restart", languages=languages)
         finally:
             IndexRunner._disable_crash_trace(db_path, crash_trace)
             IndexRunner._logger.info("Index worker pid=%d exiting", os.getpid())

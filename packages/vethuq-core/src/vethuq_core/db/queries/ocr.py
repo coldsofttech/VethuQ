@@ -12,6 +12,7 @@ class Ocr:
     _FIND_UNITS_SQL = {
         "pdf_pages": """
         SELECT p.id, p.ocr_phase, p.ocr_angles, p.page_number, p.source AS page_source,
+               p.language, p.ocr_langs,
                d.id AS document_id, d.document_id AS logical_document_id, d.file_path
         FROM pdf_pages p JOIN document_index d ON d.id = p.document_id
         WHERE d.status = 'indexed' AND d.reindex_pending = 0
@@ -19,6 +20,7 @@ class Ocr:
     """,
         "image_pages": """
         SELECT p.id, p.ocr_phase, p.ocr_angles, 1 AS page_number, 'ocr' AS page_source,
+               p.language, p.ocr_langs,
                d.id AS document_id, d.document_id AS logical_document_id, d.file_path
         FROM image_pages p JOIN document_index d ON d.id = p.document_id
         WHERE d.status = 'indexed' AND d.reindex_pending = 0

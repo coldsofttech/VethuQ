@@ -32,6 +32,17 @@ from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
 
+LANG_HELP = (
+    "Read files in this language this time ('te', 'en,te', or 'auto' for every installed "
+    "language), instead of each source's own languages or the 'ocr_languages' setting. Several "
+    "languages are detected between. Repeat or comma-separate."
+)
+
+
+def _languages(lang: list[str] | None) -> str | None:
+    """The `--lang` values as one comma-separated string, or None when not given."""
+    return ",".join(lang) if lang else None
+
 
 def _report_recovery(actions: list[str]) -> None:
     """Tell the user what was recovered from a previous run that didn't exit cleanly."""
@@ -41,7 +52,14 @@ def _report_recovery(actions: list[str]) -> None:
     console.print(IndexPanel.message(text, Theme.NOTICE))
 
 
-def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: bool) -> None:
+def _start_and_report(
+    target: str | None,
+    *,
+    force: bool,
+    wait: bool,
+    restart: bool,
+    languages: str | None = None,
+) -> None:
     if target is None:
         storage = open_storage()
         try:
@@ -63,7 +81,11 @@ def _start_and_report(target: str | None, *, force: bool, wait: bool, restart: b
 
     try:
         pid = IndexRunner.start_run(
-            target, force=force, restart=restart, on_recovery=_report_recovery
+            target,
+            force=force,
+            restart=restart,
+            on_recovery=_report_recovery,
+            languages=languages,
         )
     except (
         AlreadyRunningError,
@@ -107,6 +129,7 @@ def run(
     force: bool = typer.Option(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
+    lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
 ) -> None:
     """Start OCR indexing in the background and return immediately.
 
@@ -116,7 +139,7 @@ def run(
     (re)processed; unchanged files are left untouched. Use 'vethuq index
     status' to check progress.
     """
-    _start_and_report(target, force=force, wait=wait, restart=False)
+    _start_and_report(target, force=force, wait=wait, restart=False, languages=_languages(lang))
 
 
 @app.command("restart")
@@ -130,6 +153,7 @@ def restart(
     force: bool = typer.Option(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
+    lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
 ) -> None:
     """Retry only previously-failed files, in the background.
 
@@ -137,7 +161,7 @@ def restart(
     whose last OCR attempt failed are (re)processed. Use 'vethuq index run'
     instead to also pick up new files.
     """
-    _start_and_report(target, force=force, wait=wait, restart=True)
+    _start_and_report(target, force=force, wait=wait, restart=True, languages=_languages(lang))
 
 
 class _ImplicitSourceGroup(TyperGroup):
@@ -216,17 +240,24 @@ def reindex_source(
             "that didn't exit cleanly."
         ),
     ),
+    lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
 ) -> None:
     """Re-index every file under a source, not just failed ones.
 
     Asks for confirmation first. Files are OCR'd again and their existing
     documents updated in place, so nothing is duplicated; a file's previous
     content stays searchable until it has been reprocessed. Use 'vethuq index
-    reindex file' for a single file.
+    reindex file' for a single file. With --lang the files are read in that language this
+    time; to make it lasting, set it on the source ('vethuq source set-languages').
     """
     if not force:
         _confirm_reindex_source(target)
-    _start_reindex(lambda: Reindex.start_source(target, force=force), "reindex", wait=wait)
+    languages = _languages(lang)
+    _start_reindex(
+        lambda: Reindex.start_source(target, force=force, languages=languages),
+        "reindex",
+        wait=wait,
+    )
 
 
 @reindex_app.command("file")
@@ -243,10 +274,18 @@ def reindex_file(
     force: bool = typer.Option(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
+    lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
 ) -> None:
-    """Re-index a single file, updating its existing document in place."""
+    """Re-index a single file, updating its existing document in place.
+
+    With --lang the file is read in that language this time - the way to redo a file whose
+    language was detected wrongly.
+    """
+    languages = _languages(lang)
     _start_reindex(
-        lambda: Reindex.start_file(file, source=source, force=force), "reindex", wait=wait
+        lambda: Reindex.start_file(file, source=source, force=force, languages=languages),
+        "reindex",
+        wait=wait,
     )
 
 

@@ -369,7 +369,7 @@ class InteractiveMenu:
                 )
             elif choice == "3":
                 path = Prompt.ask("File or folder to register", console=console)
-                InteractiveMenu._run_safely(source_add, path=path)
+                InteractiveMenu._run_safely(source_add, path=path, lang=None)
             elif choice == "4":
                 path_or_id = Prompt.ask("Source id or path to remove", console=console)
                 InteractiveMenu._run_safely(source_remove, path_or_id=path_or_id, force=False)
@@ -401,7 +401,7 @@ class InteractiveMenu:
                 ).strip()
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_run, target=target or None, wait=wait, force=False
+                    index_run, target=target or None, wait=wait, force=False, lang=None
                 )
             elif choice == "2":
                 target = Prompt.ask(
@@ -411,7 +411,7 @@ class InteractiveMenu:
                 ).strip()
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_restart, target=target or None, wait=wait, force=False
+                    index_restart, target=target or None, wait=wait, force=False, lang=None
                 )
             elif choice == "3":
                 target = Prompt.ask(
@@ -437,7 +437,7 @@ class InteractiveMenu:
                     continue
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_reindex_source, target=target, wait=wait, force=False
+                    index_reindex_source, target=target, wait=wait, force=False, lang=None
                 )
             elif choice == "9":
                 file = Prompt.ask("File id or path to re-index", console=console).strip()
@@ -450,7 +450,12 @@ class InteractiveMenu:
                 ).strip()
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_reindex_file, file=file, source=source or None, wait=wait, force=False
+                    index_reindex_file,
+                    file=file,
+                    source=source or None,
+                    wait=wait,
+                    force=False,
+                    lang=None,
                 )
             elif choice == "10":
                 InteractiveMenu._run_safely(index_rebuild_search, force=False)

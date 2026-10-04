@@ -86,19 +86,19 @@ vethuq index pause
 vethuq index resume
 ```
 
-### `restart [source] [--wait] [--force]`
+### `restart [source] [--wait] [--force] [--lang LANG]`
 
 Retry only files that previously failed OCR, as a background process.
 Unlike `run`, new files and already-indexed files are left untouched —
 only files whose last attempt errored are (re)processed. Takes the same
-`source`/`--wait`/`--force` options as `run`.
+`source`/`--wait`/`--force`/`--lang` options as `run`.
 
 ```bash
 vethuq index restart
 vethuq index restart ./path/to/folder-or-file
 ```
 
-### `reindex <source> [--wait] [--force]` / `reindex file <id-or-path> [--source <id-or-path>] [--wait] [--force]`
+### `reindex <source> [--wait] [--force] [--lang LANG]` / `reindex file <id-or-path> [--source <id-or-path>] [--wait] [--force] [--lang LANG]`
 
 Re-index everything under a source, or one file, regardless of whether it
 already succeeded. `reindex <source>` asks for confirmation first (showing how
@@ -112,9 +112,16 @@ run (`vethuq index status`). Refused while another index run is active. `file`
 is reserved: address a source literally named `file` by its id. If a file sits
 under more than one source, `reindex file` fails and asks for `--source`.
 
+`--lang` reads the files in the given language(s) this time (see [OCR
+languages](#ocr-languages)) - the way to redo files whose language was detected
+wrongly. It applies to this run only; to make a choice lasting, set it on the
+source with `vethuq source set-languages`.
+
 ```bash
 vethuq index reindex 3
 vethuq index reindex file ./docs/invoice.pdf --source 3
+vethuq index reindex 3 --lang te
+vethuq index reindex file ./docs/invoice.pdf --lang te
 ```
 
 ### `rebuild-search [--force]`
@@ -133,7 +140,7 @@ vethuq index rebuild-search
 vethuq index rebuild-search --force
 ```
 
-### `run [source] [--wait] [--force]`
+### `run [source] [--wait] [--force] [--lang LANG]`
 
 Start OCR indexing as a background process and return immediately. A
 freshly added/reactivated (`pending`) source is (re)processed in full; an
@@ -145,8 +152,9 @@ renamed or moved within the source is recognized by its unchanged content
 and simply relabeled, without re-running OCR on it; a file that's gone
 missing from the source is flagged and automatically cleaned up after a
 retention period (like a removed source — see `vethuq settings` below).
-Extracts text (English; PDF, PNG, and JPEG files supported) and stores it
-locally. PDF pages with a real text layer are read directly from it; OCR
+Extracts text (PDF, PNG, and JPEG files supported; English, plus any other
+OCR language that is installed - see [OCR languages](#ocr-languages) below)
+and stores it locally. PDF pages with a real text layer are read directly from it; OCR
 only runs on scanned pages/regions.
 
 Pass a source id or path to index only that source; omit it to index
@@ -156,12 +164,51 @@ a lock left behind by a previous run that didn't exit cleanly (e.g. after
 a crash) — without it, `run` refuses to start a second run on top of one
 that might still be alive.
 
+`--lang` reads the files in the given language(s) for this run, instead of
+each source's own languages or the `ocr_languages` setting: `--lang te`,
+`--lang en,te` (repeat or comma-separate), or `--lang auto`. A language that
+is not installed or enabled stops the run before it starts, with the command
+to install it. When a file would have to be read in a language other than
+English and that language's models are not downloaded, the run stops and tells
+you to run `vethuq ocr models download --lang <id>`.
+
 ```bash
 vethuq index run
 vethuq index run ./path/to/folder-or-file
 vethuq index run 3 --wait
 vethuq index run --force
+vethuq index run 3 --lang te
 ```
+
+#### OCR languages
+
+Which language a file is read in is chosen, most specific first, by `--lang`,
+by the source (`vethuq source add --lang`, `vethuq source set-languages`), and
+by the `ocr_languages` setting (`vethuq settings ocr languages`), which
+defaults to `auto`: every installed language - English alone unless another is
+installed.
+
+- **One language** is used directly, with no detection.
+- **Several** (`en,te`, or `auto` with more than one installed) are told apart
+  by how well they read the file. The file is read in English first (the
+  default language, then the rest in order). If English reads it confidently -
+  high recognizer confidence, and what it read is in the Latin script - that is
+  the language and the others are skipped. If not, the lines English could not
+  read believably are dropped, the file is searchable right away with what
+  remains, and the other candidates are queued: once every file has had its
+  first pass, each queued language reads the scanned pages again and adds the
+  lines it reads believably, so a page in two languages ends up with both.
+  The queued passes run before any rotated-text (`moderate`/`deep`) work. A
+  file with a real text layer needs no OCR: its language is shown by its
+  script.
+- A pass that fails is recorded with its reason and not retried within the
+  run; the file stays searchable with what it has. `vethuq index reindex <source>
+  --lang te` (or `reindex file <file> --lang te`) redoes files in a language
+  you choose, the way to correct a wrong detection.
+
+English is read exactly as it was before other languages existed: with only
+English installed nothing is detected or queued, and a file English reads
+confidently never loads another language's models.
 
 ### `status [source] [--json]`
 
@@ -693,6 +740,23 @@ vethuq settings ocr engine set moderate
 vethuq settings ocr engine show
 ```
 
+### `ocr languages set <languages...>|show|reset`
+
+Configure which languages OCR reads files in by default: `auto` (the default -
+every installed language, which is English alone unless another is installed),
+one language (`te`: every file is read in it only), or several (`en,te`: which of
+them a file is in is detected, English first). A source (`vethuq source
+set-languages`) or a run (`--lang`) can choose differently. Files already
+indexed keep what they have until they are re-indexed. `show` also lists the
+installed and enabled languages. See [OCR languages](#ocr-languages).
+
+```bash
+vethuq settings ocr languages show
+vethuq settings ocr languages set te
+vethuq settings ocr languages set en,te
+vethuq settings ocr languages reset
+```
+
 ### `ocr retry set <attempts>|show`
 
 Configure how many times a file's OCR is retried after a transient failure
@@ -817,14 +881,33 @@ vethuq settings search snippet show
 
 ## `source`
 
-### `add <path>`
+### `add <path> [--lang LANG]`
 
 Register a file or folder as a source. Folders are indexed recursively.
 Prints a hint to run `vethuq index run` once added — adding a source
 does not index it automatically.
 
+`--lang` names the OCR languages the source's files are read in (`te`, `en,te`,
+or `auto`; repeat or comma-separate). Left out, the `ocr_languages` setting
+applies. One language is used directly; several are detected between (see
+[OCR languages](#ocr-languages)).
+
 ```bash
 vethuq source add ./path/to/folder-or-file
+vethuq source add ./telugu-documents --lang te
+```
+
+### `set-languages <id-or-path> <langs...>` / `set-languages <id-or-path> --reset`
+
+Choose the OCR languages an existing source's files are read in, or go back to
+the `ocr_languages` setting with `--reset`. It applies to files indexed from now
+on; files already indexed keep what they have until they are re-indexed
+(`vethuq index reindex <source> --lang ...`).
+
+```bash
+vethuq source set-languages 3 te
+vethuq source set-languages ./docs en te
+vethuq source set-languages 3 --reset
 ```
 
 ### `list`

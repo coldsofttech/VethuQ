@@ -50,6 +50,32 @@ if not result.ok:
 
 `restore`, `reset` and `repair` raise `IndexRunnerError` while an index run is active.
 
+## `client.ocr`
+
+### `languages() -> list[str]`
+
+The ids of the OCR languages that can be used now (installed and enabled),
+English first.
+
+### `models`
+
+The OCR models each language needs on disk, like `vethuq ocr models`. OCR
+downloads a missing model when it first needs it; these let you do it ahead of
+time and manage what is stored. `languages` is an id, a comma-separated string
+or a list; left out, every enabled language.
+
+- `status(languages=None) -> list[ModelStatus]` — each model, whether it is downloaded and its size; models every language shares come first
+- `download(languages=None, *, force=False, on_progress=None) -> DownloadResult` — download the missing models; `on_progress(model, state)` gets `"downloading"`, `"ready"` or `"failed"`; a model that fails is in `failed` and the rest still download
+- `clear(languages, *, include_shared=False) -> ClearResult` — delete a language's recognizer; the models every language shares stay unless `include_shared`
+- `reset(languages) -> DownloadResult` — delete a language's models and download them again
+- `clean() -> CleanResult` — remove models no enabled language uses; other programs' models in the same cache are never touched
+
+```python
+client.ocr.models.download("te")
+for model in client.ocr.models.status("te"):
+    print(model.name, model.present, model.size_bytes)
+```
+
 ## `client.file_types`
 
 Which file types this install can read — mirrors `vethuq file-types list`. It doesn't open the database.
@@ -83,22 +109,24 @@ included alongside runs targeted at just `target`. Raises
 Pause or resume the currently running background index. Raises
 `IndexRunnerError` if no run is currently active.
 
-### `restart(target=None, *, force=False, wait=False)`
+### `restart(target=None, *, force=False, wait=False, languages=None)`
 
 Retry only previously-failed files, in the background. Same arguments and
 return value as `run`.
 
-### `reindex(target, *, force=False, wait=False)`
+### `reindex(target, *, force=False, wait=False, languages=None)`
 
 Re-index every file under a source, not just failed ones, updating existing
 documents in place; previous content stays searchable until each file has been
-reprocessed. Starts immediately (confirmation is a CLI step). Same errors and
-return value as `run`.
+reprocessed. Starts immediately (confirmation is a CLI step). `languages` reads
+the files in those languages this time (see `run`); to make a choice lasting use
+`client.sources.set_languages`. Same errors and return value as `run`.
 
-### `reindex_file(file, *, source=None, force=False, wait=False)`
+### `reindex_file(file, *, source=None, force=False, wait=False, languages=None)`
 
-Re-index one file by document id or path. Raises `FileNotTrackedError` if it
-isn't tracked and `AmbiguousFileError` if it sits under several sources and
+Re-index one file by document id or path, optionally in `languages` - the way to
+redo a file whose language was detected wrongly. Raises `FileNotTrackedError` if
+it isn't tracked and `AmbiguousFileError` if it sits under several sources and
 `source` isn't given.
 
 ### `rebuild_search(*, on_progress=None)`
@@ -109,21 +137,31 @@ table. Returns a `SearchIndexRebuildResult`; a table that fails is listed in
 `failed` and the others still rebuild. Raises `AlreadyRunningError` while an
 index run is active. Unlike the CLI, it doesn't ask for confirmation.
 
-### `run(target=None, *, force=False, wait=False)`
+### `run(target=None, *, force=False, wait=False, languages=None)`
 
 Start OCR indexing on registered sources. `target` is a source id or path;
 omit it to index every pending source. Returns the background process id,
 or, with `wait=True`, blocks until the run finishes and returns its final
 `IndexState` instead.
 
+`languages` reads the files in those languages for this run (`"te"`, `"en,te"`,
+`["en", "te"]` or `"auto"`), instead of each source's own languages or the
+`settings.ocr.languages` setting. One language is used directly; several are
+detected between, English first (see "OCR languages" in
+[docs/CLI.md](CLI.md#ocr-languages)).
+
 Raises `AlreadyRunningError` if a run is already in progress, and
 `StaleLockError` if a previous run left a stale lock (`force=True` clears
 it). Raises `SourceNotFoundError` if `target` doesn't match a registered
-source.
+source, `LanguageUnavailableError` if a language isn't installed or enabled
+(or doesn't exist), and `OcrModelMissingError` if files would be read in a
+language other than English whose models aren't downloaded
+(`client.ocr.models.download`).
 
 ```python
 pid = client.index.run()
 state = client.index.run(wait=True)
+client.index.run(3, languages="te")
 ```
 
 ### `status(target=None)`
@@ -443,6 +481,12 @@ Invalid values raise `InvalidSettingValueError`.
   `"deep"`); raises `InvalidSettingValueError` otherwise. Files are always indexed
   quick first; moderate (90/180/270°) and deep (every 15°) then run in the background.
 
+### `client.settings.ocr.languages`
+
+- `get()` — the default OCR languages: `"auto"` (every installed language - English alone unless another is installed) by default, or the ids chosen (`"te"`, `"en,te"`)
+- `set(value)` — a language id, a comma-separated string or a list; returns the stored value (`"en,te"`). Raises `InvalidSettingValueError` for nothing or an unknown language
+- `reset()` — back to `"auto"`
+
 ### `client.settings.ocr.retry`
 
 - `get()` — times a file's OCR is retried after a transient failure (3 by default)
@@ -524,15 +568,26 @@ client.settings.index.thread_workers.set(ThreadWorkersSettings.AUTO)
 
 ## `client.sources`
 
-### `add(path)`
+### `add(path, *, languages=None)`
 
 Register a file or folder as a source. Folders are indexed recursively.
-Raises `SourcePathError` if `path` doesn't exist, `SourceAlreadyExistsError`
-if it's already registered.
+`languages` names the OCR languages its files are read in (`"te"`, `"en,te"`,
+`["en", "te"]`, `"auto"`; the stored value is on `Source.languages`, `None` when
+the `settings.ocr.languages` setting applies). Raises `SourcePathError` if
+`path` doesn't exist, `SourceAlreadyExistsError` if it's already registered, and
+`UnknownLanguageError` for a language that doesn't exist.
 
 ```python
 source = client.sources.add("./path/to/folder-or-file")
+telugu = client.sources.add("./telugu-documents", languages="te")
 ```
+
+### `set_languages(path_or_id, languages)`
+
+Choose the OCR languages an existing source's files are read in (`None` goes back
+to the setting). Applies to files indexed from now on; files already indexed
+keep what they have until re-indexed (`client.index.reindex(..., languages=...)`).
+Raises `SourceNotFoundError` and `UnknownLanguageError`.
 
 ### `list(include_inactive=False)`
 

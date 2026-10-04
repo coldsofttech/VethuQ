@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.text import Text
 from vethuq_core.db.backup import Backup, BackupError
 from vethuq_core.index.runner import IndexRunner
+from vethuq_core.languages import Languages
 from vethuq_core.paths import Paths
 from vethuq_core.settings import (
     DbSettings,
@@ -91,6 +92,9 @@ backup_retention_app = typer.Typer(
 engine_app = typer.Typer(
     help="Configure how thoroughly OCR looks for rotated text: quick, moderate or deep."
 )
+languages_app = typer.Typer(
+    help="Configure which languages OCR reads files in: auto, or one or more languages."
+)
 logs_app = typer.Typer(help="Configure logging.")
 log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
 log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
@@ -121,6 +125,7 @@ index_app.add_typer(stale_lock_app, name="stale-lock")
 app.add_typer(ocr_app, name="ocr")
 ocr_app.add_typer(retry_app, name="retry")
 ocr_app.add_typer(engine_app, name="engine")
+ocr_app.add_typer(languages_app, name="languages")
 app.add_typer(db_app, name="db")
 db_app.add_typer(integrity_check_app, name="integrity-check")
 integrity_check_app.add_typer(integrity_check_interval_app, name="interval")
@@ -1408,6 +1413,92 @@ def engine_reset() -> None:
                     (").", "white"),
                 ),
                 "OCR Engine",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@languages_app.command("show")
+def languages_show() -> None:
+    """Show which languages OCR reads files in by default."""
+    storage = open_storage()
+    try:
+        value = OcrSettings.get_languages(storage)
+        enabled = ", ".join(Languages.enabled_ids())
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR languages: ", "white"),
+                    (value, Theme.VALUE),
+                    (f"\nInstalled and enabled: {enabled}", "white"),
+                ),
+                "OCR Languages",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@languages_app.command(
+    "set",
+    help=(
+        "Set which languages OCR reads files in by default.\n\n"
+        "A source ('vethuq source set-languages') or a run ('vethuq index run --lang') can "
+        "choose differently. Files already indexed keep what they have until they are "
+        "re-indexed.\n\n"
+        "Values:\n\n"
+        "auto (the default) - every installed language: English alone unless another is "
+        "installed, in which case which language a file is in is detected.\n\n"
+        "a language, such as te - every file is read in that language only.\n\n"
+        "several, such as en,te - which of them a file is in is detected. English is tried "
+        "first; if it does not read the file confidently the others read it too."
+    ),
+)
+def languages_set(
+    value: list[str] = typer.Argument(  # noqa: B008
+        ..., metavar="VALUE...", help="auto, or one or more languages (e.g. te, or en,te)."
+    ),
+) -> None:
+    """Set which languages OCR reads files in by default."""
+    storage = open_storage()
+    try:
+        try:
+            stored = OcrSettings.set_languages(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR languages set to ", "white"),
+                    (stored, Theme.VALUE),
+                    (".", "white"),
+                ),
+                "OCR Languages",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@languages_app.command("reset")
+def languages_reset() -> None:
+    """Reset which languages OCR reads files in to the default (auto)."""
+    storage = open_storage()
+    try:
+        OcrSettings.reset_languages(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("OCR languages reset to the default (", "white"),
+                    (OcrSettings.DEFAULT_LANGUAGES, Theme.VALUE),
+                    (").", "white"),
+                ),
+                "OCR Languages",
                 Theme.OK,
             )
         )

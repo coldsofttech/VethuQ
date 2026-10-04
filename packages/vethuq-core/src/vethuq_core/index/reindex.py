@@ -34,8 +34,13 @@ class Reindex:
         force: bool = False,
         db_path: Path | None = None,
         on_recovery: Callable[[list[str]], None] | None = None,
+        languages: str | None = None,
     ) -> int:
-        """Re-index every file under a source (id or path). Returns the worker's pid."""
+        """Re-index every file under a source (id or path). Returns the worker's pid.
+
+        `languages` reads the files in those languages this time (see `IndexRunner.start_run`);
+        to make the choice lasting, set it on the source (`Sources.set_languages`).
+        """
         db_path = db_path or default_db_path()
         Reindex._refuse_if_running(db_path)
         storage = open_storage(db_path)
@@ -46,7 +51,11 @@ class Reindex:
         finally:
             storage.close()
         return IndexRunner.start_run(
-            str(source.id), force=force, db_path=db_path, on_recovery=on_recovery
+            str(source.id),
+            force=force,
+            db_path=db_path,
+            on_recovery=on_recovery,
+            languages=languages,
         )
 
     @staticmethod
@@ -57,8 +66,11 @@ class Reindex:
         force: bool = False,
         db_path: Path | None = None,
         on_recovery: Callable[[list[str]], None] | None = None,
+        languages: str | None = None,
     ) -> int:
         """Re-index one file, by document id or path. Returns the worker's pid.
+
+        `languages` reads the file in those languages this time (see `IndexRunner.start_run`).
 
         When a path sits under more than one registered source, `source` (id or
         path) must say which one - otherwise `AmbiguousFileError` is raised.
@@ -73,7 +85,11 @@ class Reindex:
         finally:
             storage.close()
         return IndexRunner.start_run(
-            str(row_source.id), force=force, db_path=db_path, on_recovery=on_recovery
+            str(row_source.id),
+            force=force,
+            db_path=db_path,
+            on_recovery=on_recovery,
+            languages=languages,
         )
 
     @staticmethod

@@ -13,6 +13,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.formatting import Formatting
+from vethuq_core.languages import UnknownLanguageError
 from vethuq_core.ocr import Deepening
 from vethuq_core.search import Export
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
@@ -66,25 +67,37 @@ class SourcePanel:
         )
 
 
+LANG_HELP = (
+    "Language the source's files are read in: 'te', 'en,te' (detected between), or 'auto' for "
+    "every installed language. Left out, the 'ocr_languages' setting applies. Repeat or "
+    "comma-separate."
+)
+
+
 @app.command("add")
 def add(
     path: str = typer.Argument(
         ..., help="File or folder to register. Folders are indexed recursively."
     ),
+    lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
 ) -> None:
     """Register a file or folder as a VethuQ source."""
     storage = open_storage()
     try:
-        source = Sources.add(storage, path)
-    except (SourcePathError, SourceAlreadyExistsError) as exc:
+        source = Sources.add(storage, path, languages=lang)
+    except (SourcePathError, SourceAlreadyExistsError, UnknownLanguageError) as exc:
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
     else:
+        language_note: tuple[str, str] = (
+            (f"\nLanguages: {source.languages}", "white") if source.languages else ("", "white")
+        )
         console.print(
             SourcePanel.build(
                 Text.assemble(
                     (f"Added {source.source_type}: ", Theme.OK),
                     (source.path, "white"),
+                    language_note,
                     ("\n\nRun '", "white"),
                     ("vethuq index run", Theme.COMMAND),
                     ("' to process pending sources.", "white"),
@@ -94,6 +107,48 @@ def add(
         )
     finally:
         storage.close()
+
+
+@app.command("set-languages")
+def set_languages(
+    target: str = typer.Argument(..., help="Source id or path."),
+    lang: list[str] | None = typer.Argument(  # noqa: B008
+        None, help="Languages to read the source's files in: 'te', 'en,te' or 'auto'."
+    ),
+    reset: bool = typer.Option(
+        False, "--reset", help="Go back to the 'ocr_languages' setting for this source."
+    ),
+) -> None:
+    """Choose the OCR languages a source's files are read in.
+
+    Applies to files indexed from now on; files already indexed keep what they have until
+    they are re-indexed ('vethuq index reindex <source> --lang ...').
+    """
+    if reset == bool(lang):
+        error_console.print(
+            "Give the languages to use (e.g. 'te' or 'en,te'), or --reset.", style=Theme.ERROR
+        )
+        raise typer.Exit(code=1)
+    storage = open_storage()
+    try:
+        source = Sources.set_languages(storage, Sources.coerce(target), None if reset else lang)
+    except (SourceNotFoundError, UnknownLanguageError) as exc:
+        error_console.print(str(exc), style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    finally:
+        storage.close()
+    console.print(
+        SourcePanel.build(
+            Text.assemble(
+                ("Languages for ", "white"),
+                (source.path, "white"),
+                (": ", "white"),
+                (source.languages or "the ocr_languages setting", Theme.VALUE),
+                (".", "white"),
+            ),
+            Theme.OK,
+        )
+    )
 
 
 class SourceFiles:

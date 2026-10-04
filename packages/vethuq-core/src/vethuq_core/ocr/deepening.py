@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     import numpy as np
 
 from vethuq_core.logs import Logs
+from vethuq_core.ocr.catalog import OcrCatalog
+from vethuq_core.ocr.detection import LanguageDetector
 from vethuq_core.ocr.engines import Engines
 from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.scheduler import Scheduler
@@ -42,6 +44,9 @@ class DeepenUnit:
     page_source: str  # 'ocr' | 'mixed'
     phase: int
     angles_done: frozenset[int]
+    # The languages the page was read in (ids), so a rotated read uses the same ones; empty for
+    # a page written before languages were recorded, which is English.
+    languages: tuple[str, ...] = ()
 
     @property
     def key(self) -> tuple[str, int]:
@@ -161,19 +166,60 @@ class Deepening:
         return array
 
     @staticmethod
+    def page_languages(language: str | None, ocr_langs: str | None) -> tuple[str, ...]:
+        """The language ids a stored page was read in: its `ocr_langs`, else its `language`."""
+        langs = [part for part in (ocr_langs or "").split(",") if part]
+        if not langs and language:
+            langs = [language]
+        return tuple(langs)
+
+    @staticmethod
+    def needs_language_handling(languages: tuple[str, ...]) -> bool:
+        """Whether a rotated read of a page must name its languages: it was read in a language
+        other than the default, or in more than one. A page read in English alone is read
+        exactly as it always was."""
+        default = OcrCatalog.default_language().id
+        return len(languages) > 1 or (len(languages) == 1 and languages[0] != default)
+
+    @staticmethod
     def read_at_angle(
-        storage: Storage, arrays: list[np.ndarray], angle: int
+        storage: Storage,
+        arrays: list[np.ndarray],
+        angle: int,
+        languages: tuple[str, ...] = (),
     ) -> tuple[list[str], list[float]]:
-        """OCR each of `arrays` rotated by `angle`; return its confident lines and their scores."""
-        engine = Engines.get(storage)
+        """OCR each of `arrays` rotated by `angle`; return its confident lines and their scores.
+
+        With `languages` (see `needs_language_handling`) each is read in turn, and a line is
+        kept only if it is also in that language's script: a language that does not match a
+        line makes up characters for it, and rotated reads make that more likely.
+        """
         texts: list[str] = []
         scores: list[float] = []
-        for array in arrays:
-            result = engine.recognize(Deepening.rotate_array(array, angle))
-            for text, score in result.lines:
-                if score >= Deepening.MIN_ROTATED_LINE_SCORE and text.strip():
-                    texts.append(text)
-                    scores.append(score)
+        if not Deepening.needs_language_handling(languages):
+            engine = Engines.get(storage)
+            for array in arrays:
+                result = engine.recognize(Deepening.rotate_array(array, angle))
+                for text, score in result.lines:
+                    if score >= Deepening.MIN_ROTATED_LINE_SCORE and text.strip():
+                        texts.append(text)
+                        scores.append(score)
+            return texts, scores
+        for language_id in languages:
+            info = OcrCatalog.language(language_id)
+            if info is None:
+                continue
+            engine = Engines.get(storage, language_id)
+            for array in arrays:
+                result = engine.recognize(Deepening.rotate_array(array, angle))
+                for text, score in result.lines:
+                    if (
+                        score >= Deepening.MIN_ROTATED_LINE_SCORE
+                        and text.strip()
+                        and LanguageDetector.keep_line(text, score, info)
+                    ):
+                        texts.append(text)
+                        scores.append(score)
         return texts, scores
 
     @staticmethod
@@ -208,6 +254,7 @@ class Deepening:
                     page_source=row["page_source"],
                     phase=row["ocr_phase"] + 1,
                     angles_done=frozenset(Deepening.parse_angles(row["ocr_angles"])),
+                    languages=Deepening.page_languages(row["language"], row["ocr_langs"]),
                 )
                 if unit.key not in skip:
                     units.append(unit)
@@ -351,7 +398,10 @@ class Deepening:
                     unit.phase,
                     angle,
                 )
-                texts, scores = Deepening.read_at_angle(storage, arrays, angle)
+                if Deepening.needs_language_handling(unit.languages):
+                    texts, scores = Deepening.read_at_angle(storage, arrays, angle, unit.languages)
+                else:
+                    texts, scores = Deepening.read_at_angle(storage, arrays, angle)
                 peak_rss = max(peak_rss, process.memory_info().rss)
                 with db_lock:
                     row = storage.get_ocr_page_text_row(unit.table, unit.page_id)
