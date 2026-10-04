@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import importlib.util
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from vethuq_core.readers.reader import DocumentReader
+
+
+@dataclass(frozen=True)
+class FileTypeInfo:
+    """What `client.file_types.list()` returns for one file type."""
+
+    id: str
+    label: str
+    extensions: tuple[str, ...]
+    package: str
+    installed: bool
+    enabled: bool
+    install_hint: str | None
 
 
 @dataclass(frozen=True)
@@ -61,8 +76,33 @@ class FileType:
     def install_hint(self) -> str:
         return f"pip install vethuq[{self.extra}]"
 
+    @property
+    def marker(self) -> str | None:
+        """The tiny distribution the `type-<id>` extra pulls in, so pip records the choice.
+
+        The default type has none: its requirements are base dependencies.
+        """
+        return None if self.default else f"vethuq-{self.extra}"
+
+    def marker_installed(self) -> bool:
+        """Whether `pip install vethuq[type-<id>]` was run (the marker distribution is present)."""
+        if self.marker is None:
+            return False
+        try:
+            importlib.metadata.version(self.marker)
+        except importlib.metadata.PackageNotFoundError:
+            return False
+        return True
+
     def is_installed(self) -> bool:
-        """Whether every module this type needs can be imported."""
+        """Whether every module this type needs can be imported.
+
+        The desktop build bundles every type (the installer's selection decides which are
+        enabled), but the UI and CLI exes can't import the libraries the worker carries, so
+        a frozen build counts all types as installed.
+        """
+        if getattr(sys, "frozen", False):
+            return True
         try:
             return all(importlib.util.find_spec(name) is not None for name in self.modules)
         except (ImportError, ValueError):

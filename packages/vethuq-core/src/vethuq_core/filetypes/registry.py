@@ -7,7 +7,7 @@ import logging
 from importlib import resources
 from pathlib import Path
 
-from vethuq_core.filetypes.filetype import FileType
+from vethuq_core.filetypes.filetype import FileType, FileTypeInfo
 from vethuq_core.paths import Paths
 
 _logger = logging.getLogger(__name__)
@@ -16,9 +16,10 @@ _logger = logging.getLogger(__name__)
 class FileTypes:
     """All file types, by status.
 
-    *Installed* means the type's dependencies import. *Enabled* means installed and, when the
-    installer recorded a selection (`SELECTION_FILENAME` in the data root), chosen in it. Only
-    enabled types are scanned and indexed.
+    *Installed* means the type's dependencies import. *Enabled* means installed and chosen:
+    in the selection the Windows installer recorded (`SELECTION_FILENAME` in the data root) or,
+    without one (a pip install), the default type plus the types whose `type-*` extra was
+    installed. Only enabled types are scanned and indexed.
     """
 
     MANIFEST_FILENAME = "type.json"
@@ -44,6 +45,23 @@ class FileTypes:
         return next((t for t in FileTypes.all() if t.id == type_id), None)
 
     @staticmethod
+    def infos(*, include_missing: bool = False) -> list[FileTypeInfo]:
+        """The file types as plain records: every one, or only those that are installed."""
+        return [
+            FileTypeInfo(
+                id=t.id,
+                label=t.label,
+                extensions=t.extensions,
+                package=t.extra,
+                installed=t.is_installed(),
+                enabled=FileTypes.is_enabled(t),
+                install_hint=None if t.is_installed() else t.install_hint,
+            )
+            for t in FileTypes.all()
+            if include_missing or t.is_installed()
+        ]
+
+    @staticmethod
     def installed() -> list[FileType]:
         return [t for t in FileTypes.all() if t.is_installed()]
 
@@ -56,8 +74,13 @@ class FileTypes:
         return Paths.default_data_root() / FileTypes.SELECTION_FILENAME
 
     @staticmethod
-    def selection() -> set[str] | None:
-        """The ids chosen at install time, or None when nothing was recorded (all enabled).
+    def default_selection() -> set[str]:
+        """The default types plus those whose `type-*` extra was installed with pip."""
+        return {t.id for t in FileTypes.all() if t.default or t.marker_installed()}
+
+    @staticmethod
+    def selection() -> set[str]:
+        """The ids chosen at install time, else the pip default (see `default_selection`).
 
         The installer cannot know a relocated data root, so it records the selection in the
         platform default folder; that is checked too.
@@ -72,7 +95,7 @@ class FileTypes:
                 continue
             except (OSError, ValueError, KeyError, TypeError):
                 _logger.warning("Ignoring unreadable file type selection %s", path)
-        return None
+        return FileTypes.default_selection()
 
     @staticmethod
     def save_selection(type_ids: list[str]) -> None:
@@ -87,8 +110,7 @@ class FileTypes:
     def is_enabled(file_type: FileType) -> bool:
         if not file_type.is_installed():
             return False
-        selection = FileTypes.selection()
-        return selection is None or file_type.id in selection
+        return file_type.id in FileTypes.selection()
 
     @staticmethod
     def enabled() -> list[FileType]:

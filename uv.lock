@@ -29,6 +29,8 @@ members = [
     "vethuq",
     "vethuq-cli",
     "vethuq-core",
+    "vethuq-type-jpg",
+    "vethuq-type-png",
     "vethuq-ui",
     "vethuq-workspace",
 ]
@@ -3017,8 +3019,14 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+type-jpg = [
+    { name = "vethuq-type-jpg" },
+]
 type-pdf = [
     { name = "pymupdf" },
+]
+type-png = [
+    { name = "vethuq-type-png" },
 ]
 
 [package.metadata]
@@ -3032,6 +3040,8 @@ requires-dist = [
     { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
     { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
+    { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
 provides-extras = ["type-jpg", "type-pdf", "type-png"]
 
@@ -3067,8 +3077,14 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+type-jpg = [
+    { name = "vethuq-type-jpg" },
+]
 type-pdf = [
     { name = "pymupdf" },
+]
+type-png = [
+    { name = "vethuq-type-png" },
 ]
 
 [package.metadata]
@@ -3080,8 +3096,20 @@ requires-dist = [
     { name = "psutil", specifier = ">=5.9" },
     { name = "pymupdf", specifier = ">=1.24" },
     { name = "pymupdf", marker = "extra == 'type-pdf'", specifier = ">=1.24" },
+    { name = "vethuq-type-jpg", marker = "extra == 'type-jpg'", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", marker = "extra == 'type-png'", editable = "packages/vethuq-type-png" },
 ]
 provides-extras = ["type-jpg", "type-pdf", "type-png"]
+
+[[package]]
+name = "vethuq-type-jpg"
+version = "0.1.0"
+source = { editable = "packages/vethuq-type-jpg" }
+
+[[package]]
+name = "vethuq-type-png"
+version = "0.1.0"
+source = { editable = "packages/vethuq-type-png" }
 
 [[package]]
 name = "vethuq-ui"
@@ -3119,6 +3147,8 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-psutil" },
+    { name = "vethuq-type-jpg" },
+    { name = "vethuq-type-png" },
 ]
 icons = [
     { name = "reportlab" },
@@ -3137,6 +3167,8 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.5" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "types-psutil", specifier = ">=5.9" },
+    { name = "vethuq-type-jpg", editable = "packages/vethuq-type-jpg" },
+    { name = "vethuq-type-png", editable = "packages/vethuq-type-png" },
 ]
 icons = [
     { name = "reportlab", specifier = "==3.6.13" },

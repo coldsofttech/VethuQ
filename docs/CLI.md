@@ -775,6 +775,6 @@ File types are installed as extras: `pip install vethuq[type-pdf]` (PDF is alway
 List the installed file types with their extensions and package name. `--all` also lists the types that are not installed, with the `pip install` command for each.
 
 ```bash
-vethuq types list
-vethuq types list --all
+vethuq file-types list
+vethuq file-types list --all
 ```

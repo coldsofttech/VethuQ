@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq_core.filetypes.filetype import FileType
+from vethuq_core.filetypes.filetype import FileType, FileTypeInfo
 from vethuq_core.filetypes.registry import FileTypes
 
-__all__ = ["FileType", "FileTypes"]
+__all__ = ["FileType", "FileTypeInfo", "FileTypes"]

@@ -12,6 +12,8 @@ vethuq = { workspace = true }
 vethuq-core = { workspace = true }
 vethuq-cli = { workspace = true }
 vethuq-ui = { workspace = true }
+vethuq-type-png = { workspace = true }
+vethuq-type-jpg = { workspace = true }
 # Remaining workspace packages (vethuq-entitlements, vethuq-intelligence,
 # vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai) are added
 # here as they are built — see docs/architecture.md for the planned package map.
@@ -25,6 +27,9 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "types-psutil>=5.9",
+    # Marker packages: enable PNG/JPEG in the dev environment like the type-* extras do.
+    "vethuq-type-png",
+    "vethuq-type-jpg",
 ]
 
 # For scripts/dev/generate_icons.py only - opt-in via

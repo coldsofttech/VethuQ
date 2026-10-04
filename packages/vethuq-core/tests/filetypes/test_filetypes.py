@@ -54,9 +54,27 @@ class TestInstalledAndEnabled:
         assert "pdf" in {t.id for t in FileTypes.missing()}
         assert "pip install vethuq[type-pdf]" in FileTypes.unavailable_reason(FileTypes.get("pdf"))
 
-    def test_everything_installed_is_enabled_without_a_selection(self, data_root):
-        assert FileTypes.selection() is None
-        assert {t.id for t in FileTypes.enabled()} == {t.id for t in FileTypes.installed()}
+    def test_frozen_build_counts_every_type_as_installed(self, monkeypatch):
+        import importlib.util
+        import sys
+
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+        assert FileTypes.installed() == []
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        assert {t.id for t in FileTypes.installed()} == {t.id for t in FileTypes.all()}
+
+    def test_without_a_selection_only_the_default_type_is_enabled(self, data_root, monkeypatch):
+        monkeypatch.setattr(FileType, "marker_installed", lambda self: False)
+        assert FileTypes.selection() == {"pdf"}
+        assert [t.id for t in FileTypes.enabled()] == ["pdf"]
+
+    def test_without_a_selection_installed_extras_are_enabled(self, data_root, monkeypatch):
+        monkeypatch.setattr(FileType, "marker_installed", lambda self: self.id == "png")
+        assert FileTypes.selection() == {"pdf", "png"}
+
+    def test_marker_is_the_extras_distribution(self):
+        assert FileTypes.get("pdf").marker is None
+        assert FileTypes.get("png").marker == "vethuq-type-png"
 
     def test_selection_limits_enabled_types(self, data_root):
         FileTypes.save_selection(["pdf"])
@@ -65,7 +83,7 @@ class TestInstalledAndEnabled:
 
     def test_unreadable_selection_is_ignored(self, data_root):
         (data_root / FileTypes.SELECTION_FILENAME).write_text("{oops", encoding="utf-8")
-        assert FileTypes.selection() is None
+        assert FileTypes.selection() == FileTypes.default_selection()
 
 
 class TestReaderRegistry:

@@ -37,7 +37,9 @@ def load_manifests() -> list[dict]:
 def extras_block(manifests: list[dict]) -> str:
     lines = ["", BEGIN, "[project.optional-dependencies]"]
     for m in manifests:
-        requires = ", ".join(json.dumps(r) for r in m["requires"])
+        # Non-default types also pull in a marker distribution so pip records the choice.
+        markers = [] if m["default"] else [f"vethuq-{m['extra']}"]
+        requires = ", ".join(json.dumps(r) for r in [*m["requires"], *markers])
         lines.append(f"{m['extra']} = [{requires}]")
     lines.append(END)
     return "\n".join(lines) + "\n"

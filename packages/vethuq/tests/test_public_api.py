@@ -586,3 +586,31 @@ class TestStartupErrors:
         assert all(issubclass(cls, vethuq.StartupError) for cls in classes)
         assert len({cls.exit_code for cls in classes}) == len(classes)
         assert all(name in vethuq.__all__ for name in names + ["StartupError"])
+
+
+# --- file types --------------------------------------------------------------------------------
+
+
+def test_file_types_lists_installed_types(client: vethuq.Vethuq):
+    listed = client.file_types.list()
+
+    assert "pdf" in {t.id for t in listed}
+    assert all(isinstance(t, vethuq.FileTypeInfo) and t.installed for t in listed)
+    assert all(t.install_hint is None for t in listed)
+
+
+def test_file_types_include_missing_lists_every_type(
+    client: vethuq.Vethuq, monkeypatch: pytest.MonkeyPatch
+):
+    from vethuq._core.filetypes import FileType
+
+    real = FileType.is_installed
+    monkeypatch.setattr(
+        FileType, "is_installed", lambda self: False if self.id == "png" else real(self)
+    )
+
+    assert "png" not in {t.id for t in client.file_types.list()}
+    everything = {t.id: t for t in client.file_types.list(include_missing=True)}
+    assert {"pdf", "png", "jpg"} <= set(everything)
+    assert everything["png"].installed is False
+    assert everything["png"].install_hint == "pip install vethuq[type-png]"

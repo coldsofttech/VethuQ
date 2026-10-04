@@ -16,9 +16,9 @@ dependencies = [
 
 # BEGIN generated from filetypes/*/type.json - run scripts/dev/filetypes.py
 [project.optional-dependencies]
-type-jpg = []
+type-jpg = ["vethuq-type-jpg"]
 type-pdf = ["pymupdf>=1.24"]
-type-png = []
+type-png = ["vethuq-type-png"]
 # END generated
 
 [project.scripts]

@@ -36,7 +36,7 @@ app.add_typer(index_app, name="index")
 app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")
-app.add_typer(types_app, name="types")
+app.add_typer(types_app, name="file-types")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
