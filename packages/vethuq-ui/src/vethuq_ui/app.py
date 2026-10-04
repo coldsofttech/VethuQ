@@ -10,6 +10,7 @@ import sv_ttk
 from vethuq_core.errors import StartupError
 from vethuq_core.storage import Storage, open_storage
 
+from vethuq_ui.windows.about import AboutWindow
 from vethuq_ui.dialogs import show_error
 from vethuq_ui.icons import Brand
 from vethuq_ui.index_controls import IndexControls
@@ -57,6 +58,8 @@ class MainWindow(tk.Tk):
                 toggle_pause_resume=lambda: self.index_controls.toggle_pause_resume(),
                 stop=lambda: self.index_controls.stop(),
                 delete_source=lambda: self.sources.delete_selected(),
+                show_about=lambda: AboutWindow.show(self),
+                show_status=lambda text: self.status_bar.show_message(text),
             ),
         )
         self.ribbon.pack(side=tk.TOP, fill=tk.X)

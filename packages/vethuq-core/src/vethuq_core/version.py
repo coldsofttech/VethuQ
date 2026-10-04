@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from importlib import metadata
 
 from vethuq_core.filetypes import FileTypes
+from vethuq_core.ocr.catalog import OcrCatalog
 from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.storage import schema_version
 
@@ -21,6 +22,8 @@ class VersionDetails:
     db_schema: int
     file_types: tuple[str, ...] = ()
     search_engines: tuple[str, ...] = ()
+    ocr_engines: tuple[str, ...] = ()
+    ocr_languages: tuple[str, ...] = ()
 
 
 class VersionInfo:
@@ -45,6 +48,8 @@ class VersionInfo:
             db_schema=schema_version(),
             file_types=tuple(t.extra for t in FileTypes.installed()),
             search_engines=tuple(e.extra for e in SearchEngineCatalog.installed()),
+            ocr_engines=tuple(e.label for e in OcrCatalog.installed_engines()),
+            ocr_languages=tuple(lang.label for lang in OcrCatalog.installed_languages()),
         )
 
     @staticmethod
@@ -57,4 +62,6 @@ class VersionInfo:
             ("Database schema", str(d.db_schema)),
             ("File types", ", ".join(d.file_types) or "none"),
             ("Search engines", ", ".join(d.search_engines) or "none"),
+            ("OCR engines", ", ".join(d.ocr_engines) or "none"),
+            ("Languages", ", ".join(d.ocr_languages) or "none"),
         ]
