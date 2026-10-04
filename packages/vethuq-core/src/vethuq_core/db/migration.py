@@ -35,10 +35,10 @@ class Migration:
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_trigram_{suffix}")
                     conn.execute(f"DROP TRIGGER IF EXISTS {table}_words_{suffix}")
                 conn.execute(f"DROP TABLE IF EXISTS {table}_fts")
-        if from_version < 30:
+        if from_version < 31:
             # `Db._SCHEMA` just created the indexes over derived text (`noise_text`,
             # `norm_text`) and their triggers, but the columns they read are only added (and
-            # backfilled) by the v29 and v30 steps below, so the triggers must not fire before
+            # backfilled) by the v31 step below, so the triggers must not fire before
             # then. The UPDATE triggers of the older indexes go too: the backfill would
             # otherwise re-index every page's text for nothing. `Db` restores all of them
             # afterwards.
@@ -576,32 +576,20 @@ class Migration:
             for index in Document.TEXT_SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)
 
-        if from_version < 29:
-            # Each page's text now also has a noise-free, look-alike-folded skeleton recorded
-            # next to it (`noise_text`), with its own trigram index, for the `noise-fuzzy`
-            # search. Pages written before this version get theirs now.
+        if from_version < 31:
+            # Each page's text also has a noise-free, look-alike-folded skeleton (`noise_text`,
+            # for the `noise-fuzzy` search) and a copy folded as coarsely as any search level
+            # does (`norm_text`, so the engines that normalize can find candidate pages through
+            # SQLite), each with its own trigram index. Pages written before this version get
+            # both now. Both columns are added only if missing, so databases that already have
+            # either (an earlier build stamped v29/v30 differently) are brought up to date too.
             for table in Document.PAGE_TABLES:
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
-                if "noise_text" not in columns:
-                    conn.execute(
-                        f"ALTER TABLE {table} ADD COLUMN noise_text TEXT NOT NULL DEFAULT ''"
-                    )
-                Document.refresh_derived_text(conn, table, ("noise",))
-            for index in Document.SEARCH_INDEXES:
-                if index.endswith("_noise"):
-                    Document.rebuild_search_index(conn, index)
-
-        if from_version < 30:
-            # Each page also records its text folded as coarsely as any search level does
-            # (`norm_text`, with its own trigram index) so the engines that normalize can find
-            # candidate pages through SQLite; and the skeleton (`noise_text`) now folds Unicode
-            # too, so it is brought up to date. Both are rebuilt here.
-            for table in Document.PAGE_TABLES:
-                columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
-                if "norm_text" not in columns:
-                    conn.execute(
-                        f"ALTER TABLE {table} ADD COLUMN norm_text TEXT NOT NULL DEFAULT ''"
-                    )
+                for column in ("noise_text", "norm_text"):
+                    if column not in columns:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                        )
                 Document.refresh_derived_text(conn, table)
             for index in Document.DERIVED_SEARCH_INDEXES:
                 Document.rebuild_search_index(conn, index)

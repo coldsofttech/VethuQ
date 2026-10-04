@@ -25,7 +25,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 30
+    SCHEMA_VERSION = 31
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -425,7 +425,7 @@ END;
             )
             Db._backup_before_migration(conn, db_path)
             Migration.schema(conn, from_version=row["version"])
-            if row["version"] < 30:
+            if row["version"] < 31:
                 # Restores the index triggers `Migration.schema` dropped while it
                 # backfilled the (then still empty) indexes - idempotent.
                 conn.executescript(Db._SCHEMA)
