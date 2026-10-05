@@ -2110,8 +2110,9 @@ class BackgroundServiceClient:
     """Install and control the background indexing service (Windows service, or a systemd user
     unit on Linux). Once installed, `Vethuq().index` queues its runs for the service.
 
-    Not instantiated directly - use `Vethuq().background_service`. Installing or changing the
-    service asks for administrator permission on Windows.
+    Not instantiated directly - use `Vethuq().background_service`. The service is never
+    installed automatically; installing or changing it asks for administrator permission on
+    Windows.
     """
 
     def status(self) -> ServiceStatus:
@@ -2122,9 +2123,39 @@ class BackgroundServiceClient:
         """The index runs waiting for the service, oldest first."""
         return _IndexJobs.queued()
 
-    def install(self, *, account: str | None = None) -> ServiceStatus:
-        """Install the service and start it. Raises `BackgroundServiceError` if it can't be."""
-        return _BackgroundService.perform("install", account=account)
+    def jobs(self, *, all: bool = False, limit: int = 20) -> list[IndexJob]:
+        """Pending jobs (waiting and running), oldest first; `all=True` also lists finished ones
+        (newest first)."""
+        if all:
+            return _IndexJobs.list(None, limit=limit)
+        return sorted(_IndexJobs.list(("queued", "running"), limit=limit), key=lambda j: j.id)
+
+    def job(self, job_id: int) -> IndexJob | None:
+        """One queued job by id, or None."""
+        return _IndexJobs.get(job_id)
+
+    def install(
+        self,
+        *,
+        account: str | None = None,
+        system: bool = False,
+        home: str | Path | None = None,
+        password: str | None = None,
+    ) -> ServiceStatus:
+        """Install the service and start it; raises `BackgroundServiceError` if it can't be.
+
+        On Windows it runs as `account` (default: the current user), whose password is asked
+        for in the administrator window, or taken from `password` when the process is already
+        elevated; `system=True` runs it as LocalSystem instead, with no password. `home` is the
+        data folder it works on (default: this user's own).
+        """
+        return _BackgroundService.perform(
+            "install",
+            account=account,
+            system=system,
+            home=Path(home) if home is not None else None,
+            password=password,
+        )
 
     def uninstall(self) -> ServiceStatus:
         """Stop and remove the service; indexing starts its own workers again."""

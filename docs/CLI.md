@@ -66,14 +66,16 @@ VethuQ takes a compressed backup automatically the first time it opens the datab
 
 Run indexing through a background service instead of a worker started by each command. Once the service is installed, every `index run`, `restart`, `reindex` and `reindex file` (and the desktop app, and `client.index` in Python) puts its work in a queue and the service runs it, one run at a time, with the same settings, sources and languages a one-off run would use. Without the service nothing changes: each command starts its own `vethuq-worker`.
 
-- **Windows**: a Windows service named `VethuQBackground`, started automatically with Windows (delayed start) and restarted after a crash. It runs `vethuq-worker.exe --service`.
+- **Windows**: a Windows service named `VethuQBackground`, started automatically with Windows (delayed start) and restarted after a crash. It runs `vethuq-worker.exe --service` as a Windows account you choose (by default yours).
 - **Linux**: a `systemd --user` unit, `vethuq-background.service`, which needs no root. `pause` and `resume` are handled by VethuQ itself, since systemd has no pause.
 
-The service works on one data folder and database: the one of the user who installed it (including a location set with `vethuq settings location` or `VETHUQ_HOME`). If you move the data location, run `vethuq background-service uninstall` and `install` again.
+The service is never installed for you - not by the Windows installer, not by `pip install` - because it needs administrator rights and a Windows account to run as. Without it, indexing runs in a worker VethuQ starts itself: the desktop app indexes only while it is open, and `vethuq index run` until it finishes.
 
-### `install [--account ACCOUNT]`
+The service works on one data folder and database, by default the one of the user who installed it (`%LOCALAPPDATA%\\VethuQ`, or a location set with `vethuq settings location` or `VETHUQ_HOME`); `install --home` chooses another. Index commands only use a service that works on the data folder they are using, so another user's service is left alone and they run their own worker. If you move the data location, run `vethuq background-service uninstall` and `install` again.
 
-Install the service and start it. On Windows this asks for administrator permission (a UAC prompt) because creating a service needs it. The service runs as LocalSystem; `--account DOMAIN\user` runs it as that account instead (you are asked for its password in the elevated window), which is what to use when sources are on mapped drives or network shares LocalSystem cannot reach. The Windows installer can also install it (see [DESKTOP.md](DESKTOP.md#install)).
+### `install [--account ACCOUNT | --system] [--home FOLDER]`
+
+Install the service, start it, and have it start with Windows. On Windows it first asks which account to run the service as (default: you; `--account DOMAIN\user` names one without asking), then asks for administrator permission (a UAC prompt) and, in the window that opens, that account's password. The account needs the "Log on as a service" right and access to the data folder and the sources; running as you means it sees your mapped drives and network shares as you do. `--system` runs it as LocalSystem instead, with no password, but LocalSystem cannot see your own folders or mapped drives. `--home` sets the data folder the service works on (default: yours). On Linux it installs a user unit and none of this applies.
 
 ### `uninstall`
 
@@ -89,7 +91,15 @@ Pause the service: the run in progress pauses (as with `index pause`) and queued
 
 ### `status [--json]`
 
-Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, the jobs waiting in its queue and the run in progress.
+Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, its data folder, the jobs waiting in its queue and the run in progress.
+
+### `queue list [--all] [--limit N] [--json]`
+
+List the pending jobs - waiting and running - oldest first. `--all` adds finished ones (completed, failed, cancelled), newest first; `--limit` caps how many (default 20).
+
+### `queue show <id> [--json]`
+
+Show one job: its kind, target and languages, when it was queued, started and finished, and the error if it failed. For a running job `vethuq index status` shows the progress.
 
 ### Running one command without the service
 

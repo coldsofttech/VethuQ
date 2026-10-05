@@ -84,6 +84,148 @@ class TestControlCommands:
         assert "isn't installed" in result.output
 
 
+class TestInstallCredentials:
+    @pytest.fixture
+    def seen(self, monkeypatch):
+        seen = {}
+        status = _service(monkeypatch, ServiceState.RUNNING)
+        monkeypatch.setattr(BackgroundService, "backend", staticmethod(lambda: "windows"))
+        monkeypatch.setattr(BackgroundService, "current_account", staticmethod(lambda: r"PC\me"))
+        monkeypatch.setattr(
+            BackgroundService,
+            "perform",
+            staticmethod(lambda a, **kwargs: seen.update(kwargs) or status),
+        )
+        return seen
+
+    def test_it_asks_which_account_with_the_current_user_as_the_default(self, monkeypatch, seen):
+        from vethuq_cli import background
+
+        asked = {}
+        monkeypatch.setattr(background, "_is_interactive", lambda: True)
+        monkeypatch.setattr(
+            background.Prompt,
+            "ask",
+            staticmethod(lambda *a, **k: asked.update(k) or r"PC\svc"),
+        )
+
+        runner.invoke(app, ["background-service", "install"])
+
+        assert asked["default"] == r"PC\me"
+        assert seen["account"] == r"PC\svc" and seen["system"] is False
+
+    def test_without_a_terminal_it_uses_the_current_user(self, seen):
+        runner.invoke(app, ["background-service", "install"])
+
+        assert seen["account"] == r"PC\me"
+
+    def test_an_account_given_is_not_asked_for_again(self, monkeypatch, seen):
+        from vethuq_cli import background
+
+        monkeypatch.setattr(background, "_is_interactive", lambda: True)
+        monkeypatch.setattr(
+            background.Prompt, "ask", staticmethod(lambda *a, **k: pytest.fail("asked"))
+        )
+
+        runner.invoke(app, ["background-service", "install", "--account", r"PC\svc"])
+
+        assert seen["account"] == r"PC\svc"
+
+    def test_system_asks_for_no_account(self, monkeypatch, seen):
+        from vethuq_cli import background
+
+        monkeypatch.setattr(background, "_is_interactive", lambda: True)
+        monkeypatch.setattr(
+            background.Prompt, "ask", staticmethod(lambda *a, **k: pytest.fail("asked"))
+        )
+
+        runner.invoke(app, ["background-service", "install", "--system"])
+
+        assert seen["system"] is True and seen["account"] is None
+
+    def test_the_data_folder_can_be_chosen(self, seen, tmp_path):
+        runner.invoke(app, ["background-service", "install", "--home", str(tmp_path)])
+
+        assert seen["home"] == tmp_path
+
+
+class TestQueue:
+    def _jobs(self):
+        first = IndexJobs.enqueue("1")
+        IndexJobs.claim_next()
+        second = IndexJobs.enqueue(None, restart=True, languages="en")
+        done = IndexJobs.enqueue("9")
+        IndexJobs.cancel_queued()
+        IndexJobs.finish(first.id, "failed", "boom")
+        return first, second, done
+
+    def test_list_shows_pending_jobs_only(self, use_temp_db):
+        use_temp_db()
+        IndexJobs.enqueue("1")
+        IndexJobs.claim_next()
+        IndexJobs.enqueue("2")
+        finished = IndexJobs.enqueue("3")
+        IndexJobs.claim_next()  # job 2 runs after 1 is done; simulate by finishing 1 and 2
+        IndexJobs.finish(1, "completed")
+        IndexJobs.finish(2, "completed")
+
+        result = runner.invoke(app, ["background-service", "queue", "list", "--json"])
+
+        assert [j["id"] for j in json.loads(result.output)] == [finished.id]
+
+    def test_list_all_includes_finished_jobs(self, use_temp_db):
+        use_temp_db()
+        first, second, done = self._jobs()
+
+        result = runner.invoke(app, ["background-service", "queue", "list", "--all", "--json"])
+
+        assert {j["id"] for j in json.loads(result.output)} == {first.id, second.id, done.id}
+
+    def test_an_empty_queue_says_so(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["background-service", "queue", "list"])
+
+        assert result.exit_code == 0
+        assert "The queue is empty" in result.output
+
+    def test_list_table(self, use_temp_db):
+        use_temp_db()
+        IndexJobs.enqueue(None, restart=True, languages="en")
+
+        result = runner.invoke(app, ["background-service", "queue", "list"])
+
+        assert "all sources" in result.output and "restart" in result.output
+        assert "queued" in result.output
+
+    def test_show_describes_one_job(self, use_temp_db):
+        use_temp_db()
+        first, _, _ = self._jobs()
+
+        result = runner.invoke(app, ["background-service", "queue", "show", str(first.id)])
+
+        assert result.exit_code == 0
+        assert "failed" in result.output and "boom" in result.output
+        assert "Target: 1" in result.output
+
+    def test_show_json(self, use_temp_db):
+        use_temp_db()
+        job = IndexJobs.enqueue("4", languages="te")
+
+        result = runner.invoke(app, ["background-service", "queue", "show", str(job.id), "--json"])
+
+        data = json.loads(result.output)
+        assert (data["target"], data["languages"], data["status"]) == ("4", "te", "queued")
+
+    def test_show_an_unknown_job_is_an_error(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["background-service", "queue", "show", "99"])
+
+        assert result.exit_code == 1
+        assert "No queued job has id 99" in result.output
+
+
 class TestStatus:
     def test_not_installed(self, monkeypatch):
         _service(monkeypatch, None)

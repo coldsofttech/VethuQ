@@ -23,7 +23,9 @@ match).
 
 ### Background service
 
-The installer's **Run indexing through a background service** option (all-users installs only, since creating a Windows service needs administrator rights; silent installs accept `/TASKS=backgroundservice`) installs `VethuQBackground`, a Windows service that runs `vethuq-worker.exe --service`. With it, indexing carries on when the app is closed and starts with Windows. A current-user install can add it later from the app (**Index > Service**) or with `vethuq background-service install`; both ask for administrator permission. Setup stops the service while it replaces files and starts it again; uninstalling removes it. See [CLI.md](CLI.md#background-service).
+The installer does not install the background service, whether you choose all users or current user: it needs administrator rights and a Windows account to run as, so it is set up on purpose afterwards. The installer says so on a page after the task list. Until you do, indexing runs in a worker the app starts, which only indexes **while the app is open**, or when you run `vethuq index run` yourself.
+
+To install it, use **Index > Service** in the app or `vethuq background-service install`. Both ask which Windows account runs it (default: you), then for administrator permission and that account's password in the window that opens. If the service is already installed, Setup stops it while it replaces files and starts it again; uninstalling VethuQ removes it. See [CLI.md](CLI.md#background-service).
 
 ## Adding sources
 

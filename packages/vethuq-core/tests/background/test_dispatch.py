@@ -32,10 +32,15 @@ def source_id(db_path, folder):
         storage.close()
 
 
-def _service(monkeypatch, state=None):
+def _service(monkeypatch, state=None, home=None):
     """Pretend the service is installed in `state`, or not installed when `state` is None."""
     status = ServiceStatus(
-        True, state is not None, state or ServiceState.NOT_INSTALLED, "windows", "VethuQBackground"
+        True,
+        state is not None,
+        state or ServiceState.NOT_INSTALLED,
+        "windows",
+        "VethuQBackground",
+        home=str(home) if home is not None else None,
     )
     monkeypatch.setattr(BackgroundService, "status", staticmethod(lambda: status))
 
@@ -118,3 +123,20 @@ def test_repeated_requests_share_one_queued_job(db_path, started, monkeypatch):
     second = Dispatch.submit(None, db_path=db_path)
 
     assert first.job_id == second.job_id
+
+
+def test_a_service_for_another_data_folder_is_not_used(db_path, started, tmp_path, monkeypatch):
+    _service(monkeypatch, ServiceState.RUNNING, home=tmp_path / "someone-else")
+
+    result = Dispatch.submit(None, db_path=db_path)
+
+    assert result.pid == 4321 and not result.queued
+    assert IndexJobs.queued(db_path) == []
+
+
+def test_a_service_for_this_data_folder_is_used(db_path, started, monkeypatch):
+    _service(monkeypatch, ServiceState.RUNNING, home=db_path.parent)
+
+    result = Dispatch.submit(None, db_path=db_path)
+
+    assert result.queued

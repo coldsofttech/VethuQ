@@ -1,17 +1,22 @@
 """Install and control the VethuQ background indexing service.
 
-Windows: a Windows service (`VethuQBackground`) that runs `vethuq-worker.exe --service`, managed
-through `sc.exe`. Creating or controlling a service needs administrator rights, so when the
-caller isn't elevated the action is re-run by `vethuq-worker.exe --service-control <action>`
-through a UAC prompt (see `_elevate`); only reading the status needs no rights.
+Windows: a Windows service (`VethuQBackground`) that runs `vethuq-worker.exe --service` as a
+Windows account chosen at install time (by default the user installing it, whose password is
+asked for), managed through `sc.exe`. It is never installed automatically: the installer leaves
+it to `vethuq background-service install` or the desktop app. Creating or controlling a service
+needs administrator rights, so when the caller isn't elevated the action is re-run by
+`vethuq-worker.exe --service-control <action>` through a UAC prompt (see `_elevate`); only
+reading the status needs no rights.
 
 Linux: a `systemd --user` unit (`vethuq-background.service`), which needs no root. `pause` and
 `resume` have no systemd equivalent, so on Linux they write a control file the service checks
 (`Paths.run_dir/service.control`); Windows uses the service manager's own pause and continue.
 
-The service serves one data folder (and so one database): the installing user's, recorded at
-install time as `--home`. Everything - sources, settings, languages, OCR - is read from that
-database by the same indexing code a one-off run uses.
+The service serves one data folder (and so one database): by default the installing user's own
+(`%LOCALAPPDATA%\\VethuQ`, or the location saved with `vethuq settings location set`), recorded
+at install time as `--home`; the account it runs as needs access to it. Everything - sources,
+settings, languages, OCR - is read from that database by the same indexing code a one-off run
+uses.
 """
 
 from __future__ import annotations
@@ -55,6 +60,7 @@ class ServiceStatus:
     name: str
     start_type: str | None = None
     account: str | None = None
+    home: str | None = None  # the data folder the service works on
 
     @property
     def running(self) -> bool:
@@ -83,6 +89,7 @@ class BackgroundService:
     _ERR_NOT_INSTALLED = 1060
     _ERR_NOT_ACTIVE = 1062
     _ERR_ALREADY_RUNNING = 1056
+    _ERR_LOGON_FAILED = 1069
     _STATE_BY_CODE = {
         1: ServiceState.STOPPED,
         2: ServiceState.STARTING,
@@ -122,11 +129,30 @@ class BackgroundService:
         return Paths.run_dir(db_path or default_db_path()) / BackgroundService.CONTROL_FILENAME
 
     @staticmethod
+    def current_account() -> str:
+        """The signed-in Windows account as `DOMAIN\\user`, the default to run the service as."""
+        user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        domain = os.environ.get("USERDOMAIN")
+        return f"{domain}\\{user}" if domain and user else user
+
+    @staticmethod
     def perform(
-        action: str, *, home: Path | None = None, account: str | None = None
+        action: str,
+        *,
+        home: Path | None = None,
+        account: str | None = None,
+        system: bool = False,
+        password: str | None = None,
     ) -> ServiceStatus:
         """Run `action` (one of `ACTIONS`), elevating on Windows when needed. Returns the status
-        afterwards. Raises `BackgroundServiceError` with a reason when it can't be done."""
+        afterwards. Raises `BackgroundServiceError` with a reason when it can't be done.
+
+        For `install` on Windows the service runs as `account` (default: the current user) with
+        its password, which is asked for in the elevated window - never on a command line - or
+        taken from `password` when the caller is already elevated; `system=True` runs it as
+        LocalSystem instead, which needs no password but can't reach mapped drives or the
+        user's own folders. `home` is the data folder it works on (default: this user's).
+        """
         if action not in BackgroundService.ACTIONS:
             raise BackgroundServiceError(f"Unknown action {action!r}.")
         backend = BackgroundService.backend()
@@ -140,10 +166,22 @@ class BackgroundService:
         current = BackgroundService.status()
         BackgroundService._check_applicable(action, current)
         home = home or Paths.resolve_data_root()
+        if action != "install" or system:
+            account = None
+        elif backend == "windows" and not account:
+            account = BackgroundService.current_account()
         if backend == "windows" and not BackgroundService._is_admin():
             BackgroundService._elevate(action, home, account)
         elif backend == "windows":
-            BackgroundService.apply_windows(action, home, account)
+            if account and password is None:
+                if not sys.stdin or not sys.stdin.isatty():
+                    raise BackgroundServiceError(
+                        f"The password for {account} is needed to run the service as that account."
+                    )
+                import getpass
+
+                password = getpass.getpass(f"Password for {account}: ")
+            BackgroundService.apply_windows(action, home, account, password)
         else:
             BackgroundService._apply_systemd(action, home)
         return BackgroundService.status()
@@ -197,9 +235,14 @@ class BackgroundService:
         )
         if check and result.returncode != 0:
             detail = (result.stdout or result.stderr or "").strip().splitlines()
-            raise BackgroundServiceError(
-                f"sc {args[0]} failed (exit {result.returncode}): {' '.join(detail[-2:])}"
-            )
+            message = f"sc {args[0]} failed (exit {result.returncode}): {' '.join(detail[-2:])}"
+            if result.returncode == BackgroundService._ERR_LOGON_FAILED:
+                message += (
+                    " The account's password is wrong, or the account lacks the 'Log on as a "
+                    "service' right (Local Security Policy > Local Policies > User Rights "
+                    "Assignment)."
+                )
+            raise BackgroundServiceError(message)
         return result
 
     @staticmethod
@@ -215,6 +258,7 @@ class BackgroundService:
         config = BackgroundService._sc("qc", name, check=False).stdout or ""
         start = re.search(r"START_TYPE\s*:\s*\d+\s+(.+)", config)
         account = re.search(r"SERVICE_START_NAME\s*:\s*(.+)", config)
+        binary = re.search(r"BINARY_PATH_NAME\s*:\s*(.+)", config)
         return ServiceStatus(
             True,
             True,
@@ -223,6 +267,22 @@ class BackgroundService:
             name,
             start.group(1).strip() if start else None,
             account.group(1).strip() if account else None,
+            BackgroundService._home_from_command(binary.group(1) if binary else ""),
+        )
+
+    @staticmethod
+    def _home_from_command(command: str) -> str | None:
+        """The `--home` folder in the service's command line."""
+        match = re.search(r'--home\s+(?:"([^"]+)"|(\S+))', command)
+        return (match.group(1) or match.group(2)) if match else None
+
+    @staticmethod
+    def same_folder(a: str | Path | None, b: str | Path | None) -> bool:
+        """Whether two folder paths name the same place (case-insensitively on Windows)."""
+        if a is None or b is None:
+            return False
+        return os.path.normcase(os.path.normpath(str(a))) == os.path.normcase(
+            os.path.normpath(str(b))
         )
 
     @staticmethod
@@ -392,8 +452,20 @@ class BackgroundService:
         if state == ServiceState.RUNNING and BackgroundService._paused_by_file():
             state = ServiceState.PAUSED
         enabled = BackgroundService._systemctl("is-enabled", unit, check=False).stdout.strip()
+        try:
+            text = BackgroundService._unit_path().read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        home = re.search(r"^Environment=VETHUQ_HOME=(.+)$", text, re.MULTILINE)
         return ServiceStatus(
-            True, True, state, "systemd", unit, "enabled" if enabled == "enabled" else "manual"
+            True,
+            True,
+            state,
+            "systemd",
+            unit,
+            "enabled" if enabled == "enabled" else "manual",
+            None,
+            home.group(1).strip() if home else None,
         )
 
     @staticmethod

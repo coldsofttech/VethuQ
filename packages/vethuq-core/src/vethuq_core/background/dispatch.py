@@ -15,6 +15,7 @@ from pathlib import Path
 from vethuq_core.background.jobs import IndexJobs
 from vethuq_core.background.service import BackgroundService, ServiceState, ServiceStatus
 from vethuq_core.index.runner import IndexRunner, IndexState
+from vethuq_core.paths import Paths
 from vethuq_core.storage import default_db_path, open_storage
 
 
@@ -42,10 +43,22 @@ class Dispatch:
     VIA_ONE_OFF = "one-off"
 
     @staticmethod
-    def service_status() -> ServiceStatus | None:
-        """The service's status when indexing goes through it (it is installed), else None."""
+    def service_status(db_path: Path | None = None) -> ServiceStatus | None:
+        """The service's status when indexing goes through it, else None.
+
+        That is when it is installed and works on the data folder `db_path` (default: this
+        session's) belongs to. A service installed for another data folder - another user's, say
+        - would run these jobs against the wrong database, so it is left out and indexing runs
+        its own worker as before.
+        """
         status = BackgroundService.status()
-        return status if status.installed else None
+        if not status.installed:
+            return None
+        if status.home is not None and not BackgroundService.same_folder(
+            status.home, Paths.data_root(db_path or default_db_path())
+        ):
+            return None
+        return status
 
     @staticmethod
     def submit(
@@ -58,7 +71,7 @@ class Dispatch:
         db_path: Path | None = None,
         on_recovery: Callable[[list[str]], None] | None = None,
     ) -> IndexSubmission:
-        service = Dispatch.service_status() if via != Dispatch.VIA_ONE_OFF else None
+        service = Dispatch.service_status(db_path) if via != Dispatch.VIA_ONE_OFF else None
         if via == Dispatch.VIA_SERVICE and service is None:
             from vethuq_core.index.runner import IndexRunnerError
 

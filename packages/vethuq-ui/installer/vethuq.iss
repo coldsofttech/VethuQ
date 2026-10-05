@@ -32,14 +32,14 @@
 ; {autodesktop}, the Start menu group, the uninstall entry and the PATH
 ; change (HKLM vs HKCU) all follow the chosen scope, so the CLI, PATH option
 ; and uninstall work for both.
-; Background service: an all-users (administrator) install can add the "background indexing
-; service" task (or /TASKS=backgroundservice for a silent install), which registers
-; vethuq-worker.exe --service as the Windows service VethuQBackground (delayed automatic start).
-; Once it is installed every index command queues its work for the service instead of starting
-; its own worker. Creating a service needs administrator rights, so a current-user install does
-; not offer the task - run "vethuq background-service install" (it asks for permission) or use
-; the app's Index > Service button instead. Setup stops the service while it replaces files and
-; starts it again afterwards; uninstalling removes it.
+; Background service: Setup does NOT install it, in either install scope. Creating a Windows
+; service needs administrator rights and a Windows account (with its password) to run as, which
+; is a deliberate choice rather than a default, so it is set up afterwards with
+; "vethuq background-service install" or the app's Index > Service button. A page after the task
+; list says so. Without the service, indexing runs in a worker started by the app (which only
+; indexes while the app is open) or by "vethuq index run". If the service is already installed,
+; Setup stops it while it replaces vethuq-worker.exe (which the service runs) and starts it
+; again afterwards, and uninstalling removes it.
 ; Built by scripts/dev/release.py --desktop and .github/workflows/release-desktop.yml.
 
 #define MyAppName "VethuQ"
@@ -164,8 +164,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Components: app
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Additional shortcuts:"; Flags: checkedonce; Components: cli
-; Needs administrator rights, so only an all-users install offers it. Off by default: it changes how indexing runs.
-Name: "backgroundservice"; Description: "Run indexing through a background service (indexes without VethuQ open; starts with Windows)"; GroupDescription: "Background indexing:"; Flags: unchecked; Components: core; Check: IsAdminInstallMode
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Components: app
@@ -718,6 +716,25 @@ begin
   SetAllTypes(False);
 end;
 
+var
+  ServicePage: TOutputMsgWizardPage;
+
+procedure InitServicePage;
+begin
+  ServicePage := CreateOutputMsgPage(wpSelectTasks, 'Background indexing',
+    'Setup does not install a background service',
+    'VethuQ can index in the background through a Windows service, but Setup never installs ' +
+    'it for you - not in an all-users install, and not in a current-user install.' + #13#10 +
+    #13#10 +
+    'Without the service, indexing runs in a worker that VethuQ starts itself: the desktop ' +
+    'app indexes only while it is open, and "vethuq index run" indexes until it finishes.' +
+    #13#10 + #13#10 +
+    'To set the service up afterwards, run "vethuq background-service install" or use ' +
+    'Index > Service in the desktop app. You choose the Windows account it runs as (by ' +
+    'default yours), and are asked for administrator permission and that account''s ' +
+    'password. "vethuq background-service status" shows whether it is installed.');
+end;
+
 procedure InitializeWizard;
 var
   I: Integer;
@@ -781,6 +798,7 @@ begin
   UnselectAllButton.OnClick := @UnselectAllTypesClick;
 
   InitEnginesPage;
+  InitServicePage;
 end;
 
 { Adds the chosen file types and search engines to the Ready to Install summary, after the tasks. }
@@ -853,7 +871,7 @@ begin
     else if MaintPage.SelectedValueIndex = MaintRepair then
       Result := (PageID = wpSelectComponents) or (PageID = OcrPage.ID) or
         (PageID = LanguagePage.ID) or (PageID = TypesPage.ID) or
-        (PageID = EnginesPage.ID) or (PageID = wpSelectTasks);
+        (PageID = EnginesPage.ID) or (PageID = wpSelectTasks) or (PageID = ServicePage.ID);
   end;
 end;
 
@@ -945,17 +963,6 @@ begin
     RunServiceControl('stop');
 end;
 
-procedure InstallBackgroundService;
-begin
-  if RunServiceControl('install') <> 0 then
-  begin
-    Log('Installing the background service failed.');
-    if not WizardSilent then
-      MsgBox('The background service could not be installed. Indexing will keep using its own ' +
-        'worker. You can try again with "vethuq background-service install".', mbError, MB_OK);
-  end;
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -971,9 +978,7 @@ begin
     SaveEngineSelection;
     if WizardIsTaskSelected('addtopath') then
       EnvAddPath(ExpandConstant('{app}'));
-    if WizardIsTaskSelected('backgroundservice') and not ServiceInstalled then
-      InstallBackgroundService
-    else if ServiceWasRunning then
+    if ServiceWasRunning then
       RunServiceControl('start');
   end
   else if CurStep = ssDone then

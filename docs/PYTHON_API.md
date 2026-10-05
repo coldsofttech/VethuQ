@@ -222,11 +222,13 @@ Raises `IndexRunnerError` if no run is currently active.
 
 ## `client.background_service`
 
-Install and control the background indexing service (a Windows service, or a `systemd --user` unit on Linux; see `vethuq background-service` in [CLI.md](CLI.md#background-service)). Installing or changing it asks for administrator permission on Windows.
+Install and control the background indexing service (a Windows service, or a `systemd --user` unit on Linux; see `vethuq background-service` in [CLI.md](CLI.md#background-service)). It is never installed automatically. Installing or changing it asks for administrator permission on Windows.
 
 - `status() -> ServiceStatus` - `installed`, `state` (`"running"`, `"paused"`, `"stopped"`, `"not installed"`, ...), `running`, `account`, `start_type`.
 - `queued() -> list[IndexJob]` - runs waiting for the service, oldest first.
-- `install(*, account=None)`, `uninstall()`, `start()`, `stop()`, `restart()`, `pause()`, `resume()` - each returns the new `ServiceStatus` and raises `BackgroundServiceError` with the reason when it cannot be done (for example installing twice, or controlling a service that is not installed).
+- `jobs(*, all=False, limit=20) -> list[IndexJob]` - pending jobs (waiting and running), oldest first; `all=True` also lists finished ones. `job(job_id) -> IndexJob | None` - one job, with its `status`, `error` and timestamps.
+- `install(*, account=None, system=False, home=None, password=None)` - on Windows runs the service as `account` (default: the current user), whose password is asked for in the administrator window (or taken from `password` when the process is already elevated); `system=True` runs it as LocalSystem; `home` is the data folder it works on (default: yours).
+- `uninstall()`, `start()`, `stop()`, `restart()`, `pause()`, `resume()` - each returns the new `ServiceStatus` and raises `BackgroundServiceError` with the reason when it cannot be done (for example installing twice, or controlling a service that is not installed).
 
 On Windows the `vethuq` package depends on `pywin32`, which the service needs.
 

@@ -140,6 +140,90 @@ class TestWindows:
         assert elevated == [("stop", tmp_path, None)]
 
 
+class TestInstallAccount:
+    @pytest.fixture(autouse=True)
+    def _windows(self, monkeypatch):
+        monkeypatch.setattr(BackgroundService, "backend", staticmethod(lambda: "windows"))
+        monkeypatch.setattr(
+            BackgroundService,
+            "status",
+            staticmethod(
+                lambda: service_module.ServiceStatus(
+                    True, False, ServiceState.NOT_INSTALLED, "windows", "x"
+                )
+            ),
+        )
+        monkeypatch.setenv("USERDOMAIN", "PC")
+        monkeypatch.setenv("USERNAME", "me")
+        self.elevated = []
+        monkeypatch.setattr(BackgroundService, "_is_admin", staticmethod(lambda: False))
+        monkeypatch.setattr(
+            BackgroundService,
+            "_elevate",
+            staticmethod(lambda action, home, account: self.elevated.append((home, account))),
+        )
+
+    def test_it_runs_as_the_current_user_by_default(self, tmp_path):
+        BackgroundService.perform("install", home=tmp_path)
+
+        assert self.elevated == [(tmp_path, r"PC\me")]
+
+    def test_another_account_can_be_named(self, tmp_path):
+        BackgroundService.perform("install", home=tmp_path, account=r"PC\svc")
+
+        assert self.elevated == [(tmp_path, r"PC\svc")]
+
+    def test_system_runs_it_as_localsystem_without_an_account(self, tmp_path):
+        BackgroundService.perform("install", home=tmp_path, system=True, account=r"PC\svc")
+
+        assert self.elevated == [(tmp_path, None)]
+
+    def test_the_home_defaults_to_this_users_data_folder(self, monkeypatch):
+        from vethuq_core.paths import Paths
+
+        BackgroundService.perform("install")
+
+        assert self.elevated[0][0] == Paths.resolve_data_root()
+
+    def test_an_elevated_caller_without_a_terminal_must_supply_the_password(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(BackgroundService, "_is_admin", staticmethod(lambda: True))
+        monkeypatch.setattr(service_module.sys, "stdin", None)
+
+        with pytest.raises(BackgroundServiceError, match="password"):
+            BackgroundService.perform("install", home=tmp_path)
+
+    def test_an_elevated_caller_passes_the_password_to_sc(self, monkeypatch, tmp_path):
+        seen = []
+        monkeypatch.setattr(BackgroundService, "_is_admin", staticmethod(lambda: True))
+        monkeypatch.setattr(
+            BackgroundService,
+            "apply_windows",
+            staticmethod(lambda *args: seen.append(args)),
+        )
+
+        BackgroundService.perform("install", home=tmp_path, password="pw")
+
+        assert seen == [("install", tmp_path, r"PC\me", "pw")]
+
+
+class TestStatusHome:
+    def test_the_home_is_read_from_the_service_command_line(self):
+        read = BackgroundService._home_from_command
+        assert read(r'"C:\App\vethuq-worker.exe" --service --home "C:\Users\me\VethuQ"') == (
+            r"C:\Users\me\VethuQ"
+        )
+        assert read(r"C:\App\w.exe --service --home D:\Data") == r"D:\Data"
+        assert read("w.exe --service") is None
+
+    def test_folders_compare_case_insensitively_on_windows(self, monkeypatch):
+        monkeypatch.setattr(service_module.os.path, "normcase", lambda p: p.lower(), raising=False)
+        assert BackgroundService.same_folder("/Data/VethuQ", "/data/vethuq/")
+        assert not BackgroundService.same_folder("/a", "/b")
+        assert not BackgroundService.same_folder(None, "/b")
+
+
 class TestApplicability:
     @pytest.fixture(autouse=True)
     def _backend(self, monkeypatch):

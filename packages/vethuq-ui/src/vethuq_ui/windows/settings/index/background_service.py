@@ -24,8 +24,11 @@ class BackgroundServiceWindow:
     TITLE = "Background Service"
     NOTE = (
         "Run indexing through a background service. Once installed, indexing from here and from "
-        "'vethuq index' is queued for the service instead of starting its own worker. Installing "
-        "or changing it asks for administrator permission on Windows."
+        "'vethuq index' is queued for the service instead of starting its own worker. It is never "
+        "installed for you: installing it asks which Windows account runs it, then for "
+        "administrator permission and that account's password (in the window that opens). "
+        "Without it, indexing runs only while this app is open or when you start it from the "
+        "command line."
     )
     REFRESH_MS = 2000
 
@@ -48,6 +51,23 @@ class BackgroundServiceWindow:
             anchor=tk.W, pady=(2, 10)
         )
 
+        account_var = tk.StringVar(value=BackgroundService.current_account())
+        system_var = tk.BooleanVar(value=False)
+        windows = BackgroundService.backend() == "windows"
+        if windows:
+            form = ttk.Frame(body)
+            form.pack(fill=tk.X, pady=(0, 10))
+            ttk.Label(form, text="Run as account").grid(row=0, column=0, sticky=tk.W)
+            account_entry = ttk.Entry(form, textvariable=account_var, width=30)
+            account_entry.grid(row=0, column=1, padx=(8, 0), sticky=tk.W)
+            system_check = ttk.Checkbutton(
+                form,
+                text="Run as LocalSystem instead (no password; can't reach your own folders "
+                "or mapped drives)",
+                variable=system_var,
+            )
+            system_check.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(4, 0))
+
         grid = ttk.Frame(body)
         grid.pack(fill=tk.X)
         buttons: dict[str, ttk.Button] = {}
@@ -63,6 +83,7 @@ class BackgroundServiceWindow:
             detail_var.set(
                 f"{queued} queued job{'s' if queued != 1 else ''}"
                 + (f" - runs as {current.account}" if current.account else "")
+                + (f" - data folder {current.home}" if current.home else "")
                 if installed
                 else ("Not installed." if current.supported else "Not supported on this system.")
             )
@@ -87,7 +108,14 @@ class BackgroundServiceWindow:
 
             def work() -> None:
                 try:
-                    result["status"] = BackgroundService.perform(action)
+                    if action == "install":
+                        result["status"] = BackgroundService.perform(
+                            action,
+                            account=account_var.get().strip() or None,
+                            system=system_var.get(),
+                        )
+                    else:
+                        result["status"] = BackgroundService.perform(action)
                 except BackgroundServiceError as exc:
                     result["error"] = str(exc)
                 if window.winfo_exists():
