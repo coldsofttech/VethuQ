@@ -15,13 +15,15 @@ class ConfidenceMetric:
     page_count: int
     avg_confidence: float
     updated_at: str
+    language: str = "en"  # the OCR language the averages are for
 
 
 class Confidence:
     @staticmethod
-    def get_metrics(storage: Storage) -> list[ConfidenceMetric]:
-        """Return `confidence_metrics`' per-(extension, process_type) running averages."""
-        return [ConfidenceMetric(**dict(row)) for row in storage.list_confidence_metrics()]
+    def get_metrics(storage: Storage, language: str | None = None) -> list[ConfidenceMetric]:
+        """Return `confidence_metrics`' per-(language, extension, process_type) running averages;
+        `language` limits them to one language."""
+        return [ConfidenceMetric(**dict(row)) for row in storage.list_confidence_metrics(language)]
 
     @staticmethod
     def clear(storage: Storage) -> None:

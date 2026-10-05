@@ -573,13 +573,37 @@ class Document:
     ) -> list[sqlite3.Row]:
         table = "pdf_pages" if file_type == "pdf" else "image_pages"
         return conn.execute(
-            f"SELECT confidence FROM {table} WHERE document_id = ?", (document_id,)
+            f"SELECT confidence, language FROM {table} WHERE document_id = ?", (document_id,)
+        ).fetchall()
+
+    @staticmethod
+    def get_page_languages(conn: sqlite3.Connection, file_ids: list[int]) -> list[sqlite3.Row]:
+        """The language(s) each stored page of the files `file_ids` (`document_index` ids) was
+        read in: `file_id`, `page_number` (NULL for an image), `language`, `ocr_langs`.
+
+        A duplicate has no pages of its own, so its pages are the ones of the file it
+        duplicates (the row sharing its logical document that carries them).
+        """
+        marks = ",".join("?" * len(file_ids))
+        return conn.execute(
+            "SELECT di.id AS file_id, p.page_number AS page_number, p.language AS language, "
+            "p.ocr_langs AS ocr_langs FROM document_index di "
+            "JOIN document_index c ON c.document_id = di.document_id "
+            "JOIN pdf_pages p ON p.document_id = c.id "
+            f"WHERE di.id IN ({marks}) "
+            "UNION ALL "
+            "SELECT di.id, NULL, p.language, p.ocr_langs FROM document_index di "
+            "JOIN document_index c ON c.document_id = di.document_id "
+            "JOIN image_pages p ON p.document_id = c.id "
+            f"WHERE di.id IN ({marks})",
+            [*file_ids, *file_ids],
         ).fetchall()
 
     @staticmethod
     def get_pdf_page_sources(conn: sqlite3.Connection, document_id: int) -> list[sqlite3.Row]:
         return conn.execute(
-            "SELECT confidence, source FROM pdf_pages WHERE document_id = ?", (document_id,)
+            "SELECT confidence, source, language FROM pdf_pages WHERE document_id = ?",
+            (document_id,),
         ).fetchall()
 
     @staticmethod

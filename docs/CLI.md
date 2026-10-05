@@ -261,7 +261,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE] [--lang LANG]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -277,6 +277,20 @@ runs just that engine:
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
 | `noise-fuzzy` | `content`'s characters hidden by stray punctuation or whitespace, look-alike symbols and typos *at once*; cleanest first | `hello` finds `hello`, `helo`, `hallo`, `h3ll0`, `he llo`, `h.ello`; with `--noise medium` also `h..e llo` and `h @ 3 l l 0` ✓ — `hxexlxlxo` ✗ |
+
+### `--lang`: only pages read in a language
+
+`--lang te` (or `en`, or `en,te`; repeat it or comma-separate) keeps only the results on pages that
+were read in that language, whatever the engine. A page read in both English and Telugu counts for
+both, and a page written before languages were recorded counts as English. It works with `--engine`,
+`--export` and every other option, and names any language VethuQ knows, installed or not (pages read
+while Telugu was installed stay searchable after it is removed). Without it every language is
+searched.
+
+```bash
+vethuq search "అమ్మ" --lang te
+vethuq search invoice --lang en --engine exact
+```
 
 ### `--engine all` (the default): every engine, ranked together
 
@@ -1036,7 +1050,7 @@ vethuq stats reset
 vethuq stats reset --force
 ```
 
-### `show`
+### `show [--lang LANG]`
 
 Show accumulated OCR statistics in two panels: Processing (per file
 type — documents indexed, average duration, average peak memory,
@@ -1045,8 +1059,16 @@ OCR, mixed — page count and average confidence). Both are running
 averages folded in after each successfully indexed document/page; the
 Processing figures also feed `vethuq index run`'s ETA estimate.
 
+Each OCR language keeps its own averages - Telugu is slower to read and scores lower than English,
+so a blend would hide both. Once more than one language has statistics a Language column appears;
+`--lang te` shows one language only. A page read in an extra language adds its confidence under that
+language, and a deeper-phase read counts under the language the page was read in. The ETA and the
+memory/CPU guard weight every language by how many documents each has. Statistics from before
+languages existed are English.
+
 ```bash
 vethuq stats show
+vethuq stats show --lang te
 ```
 
 ## `types`

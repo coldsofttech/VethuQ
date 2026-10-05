@@ -16,6 +16,7 @@ class TestSchema:
                 "avg_peak_memory_mb",
                 "avg_cpu_percent",
                 "updated_at",
+                "language",
             }
         finally:
             conn.close()
@@ -31,6 +32,7 @@ class TestSchema:
                 "page_count",
                 "avg_confidence",
                 "updated_at",
+                "language",
             }
         finally:
             conn.close()

@@ -25,7 +25,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 32
+    SCHEMA_VERSION = 33
 
     _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -159,7 +159,9 @@ CREATE TABLE IF NOT EXISTS processing_metrics (
     avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
     avg_cpu_percent REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (phase, file_type, extension, size_bucket)
+    -- The OCR language the time was spent reading; each language keeps its own averages.
+    language TEXT NOT NULL DEFAULT 'en',
+    PRIMARY KEY (phase, language, file_type, extension, size_bucket)
 );
 
 -- Phase 1 (quick) timings live on document_index; this holds the deeper
@@ -183,7 +185,8 @@ CREATE TABLE IF NOT EXISTS confidence_metrics (
     page_count INTEGER NOT NULL DEFAULT 0,
     avg_confidence REAL NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (file_type, extension, process_type)
+    language TEXT NOT NULL DEFAULT 'en',
+    PRIMARY KEY (file_type, extension, process_type, language)
 );
 
 -- Full-text index over ocr_text, one per pages table, so `vethuq_core.search`

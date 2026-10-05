@@ -68,6 +68,24 @@ class PageStorage(ABC):
         confidences = self.page_confidences(storage, document_id)
         return {PageStorage.DEFAULT_PROCESS_TYPE: confidences} if confidences else {}
 
+    DEFAULT_LANGUAGE = "en"
+
+    def confidences_by_process_and_language(
+        self, storage: Storage, document_id: int
+    ) -> dict[tuple[str, str], list[float]]:
+        """Like `confidences_by_process_type`, split by the language each page was read in.
+
+        `confidence_metrics` keeps each language's averages apart - a Telugu page scoring lower
+        than an English one is expected, not a regression. A page with no language recorded
+        (written before languages existed) is English.
+        """
+        return {
+            (process_type, PageStorage.DEFAULT_LANGUAGE): confidences
+            for process_type, confidences in self.confidences_by_process_type(
+                storage, document_id
+            ).items()
+        }
+
 
 class PdfPageStorage(PageStorage):
     """Multi-page documents: one `pdf_pages` row per page."""
@@ -104,6 +122,15 @@ class PdfPageStorage(PageStorage):
             grouped.setdefault(row["source"], []).append(row["confidence"])
         return grouped
 
+    def confidences_by_process_and_language(
+        self, storage: Storage, document_id: int
+    ) -> dict[tuple[str, str], list[float]]:
+        grouped: dict[tuple[str, str], list[float]] = {}
+        for row in storage.get_pdf_page_sources(document_id):
+            key = (row["source"], row["language"] or PageStorage.DEFAULT_LANGUAGE)
+            grouped.setdefault(key, []).append(row["confidence"])
+        return grouped
+
 
 class ImagePageStorage(PageStorage):
     """Single-image documents: one `image_pages` row per file."""
@@ -125,3 +152,15 @@ class ImagePageStorage(PageStorage):
 
     def page_confidences(self, storage: Storage, document_id: int) -> list[float]:
         return [row["confidence"] for row in storage.get_page_confidences("image", document_id)]
+
+    def confidences_by_process_and_language(
+        self, storage: Storage, document_id: int
+    ) -> dict[tuple[str, str], list[float]]:
+        grouped: dict[tuple[str, str], list[float]] = {}
+        for row in storage.get_page_confidences("image", document_id):
+            key = (
+                PageStorage.DEFAULT_PROCESS_TYPE,
+                row["language"] or PageStorage.DEFAULT_LANGUAGE,
+            )
+            grouped.setdefault(key, []).append(row["confidence"])
+        return grouped

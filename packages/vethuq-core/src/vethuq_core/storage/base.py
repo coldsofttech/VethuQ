@@ -156,6 +156,8 @@ class DocumentStore(Protocol):
 
     def get_pdf_page_sources(self, document_id: int) -> Sequence[Row]: ...
 
+    def get_page_languages(self, file_ids: Sequence[int]) -> Sequence[Row]: ...
+
     def get_document_index_pending_check(self, file_path: str) -> Row | None: ...
 
     def update_document_index_retry_stats(
@@ -255,7 +257,7 @@ class StatsStore(Protocol):
     """Storage operations for the processing and confidence metrics."""
 
     def get_processing_metrics_row(
-        self, phase: int, extension: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str, language: str = "en"
     ) -> Row | None: ...
 
     def get_processing_metrics_budget_row(
@@ -272,6 +274,7 @@ class StatsStore(Protocol):
         peak_memory_mb: float,
         cpu_percent: float,
         updated_at: str,
+        language: str = "en",
     ) -> None: ...
 
     def update_processing_metrics(
@@ -284,9 +287,12 @@ class StatsStore(Protocol):
         avg_peak_memory_mb: float,
         avg_cpu_percent: float,
         updated_at: str,
+        language: str = "en",
     ) -> None: ...
 
-    def get_confidence_metrics_row(self, extension: str, process_type: str) -> Row | None: ...
+    def get_confidence_metrics_row(
+        self, extension: str, process_type: str, language: str = "en"
+    ) -> Row | None: ...
 
     def insert_confidence_metrics(
         self,
@@ -296,6 +302,7 @@ class StatsStore(Protocol):
         page_count: int,
         avg_confidence: float,
         updated_at: str,
+        language: str = "en",
     ) -> None: ...
 
     def update_confidence_metrics(
@@ -305,11 +312,12 @@ class StatsStore(Protocol):
         page_count: int,
         avg_confidence: float,
         updated_at: str,
+        language: str = "en",
     ) -> None: ...
 
-    def list_processing_metrics(self) -> Sequence[Row]: ...
+    def list_processing_metrics(self, language: str | None = None) -> Sequence[Row]: ...
 
-    def list_confidence_metrics(self) -> Sequence[Row]: ...
+    def list_confidence_metrics(self, language: str | None = None) -> Sequence[Row]: ...
 
     def clear_processing_metrics(self) -> None: ...
 

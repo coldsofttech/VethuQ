@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 from rich.prompt import Confirm
+from vethuq_core.languages import Languages
 from vethuq_core.stats import Confidence, Processing, Stats
 from vethuq_core.storage import open_storage
 
@@ -15,12 +16,24 @@ app = typer.Typer(help="View and reset OCR processing/confidence statistics.")
 
 
 @app.command("show")
-def show() -> None:
-    """Show accumulated OCR processing and confidence statistics."""
+def show(
+    lang: str | None = typer.Option(
+        None,
+        "--lang",
+        help="Only this OCR language's statistics ('en', 'te'). Default: every language.",
+    ),
+) -> None:
+    """Show accumulated OCR processing and confidence statistics.
+
+    Each language keeps its own averages (Telugu pages are slower to read and score lower than
+    English ones), shown in a Language column once more than one language has statistics.
+    """
+    if lang is not None and Languages.get(lang.strip().lower()) is None:
+        raise typer.BadParameter(f"Unknown language '{lang}'.", param_hint="--lang")
     storage = open_storage()
     try:
-        processing = Processing.get_metrics(storage)
-        confidence = Confidence.get_metrics(storage)
+        processing = Processing.get_metrics(storage, lang.strip().lower() if lang else None)
+        confidence = Confidence.get_metrics(storage, lang.strip().lower() if lang else None)
     finally:
         storage.close()
     processing_panel = StatsRenderer.processing_panel(processing)

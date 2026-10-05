@@ -224,7 +224,7 @@ Text may be English, Telugu or both: JSON adds `languages` to each match (plus `
 and `languages` for the file), and HTML tags Telugu runs with `lang="te"`. See
 [Languages in exports](CLI.md#languages-in-exports).
 
-### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
+### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None, languages=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per
 occurrence, ordered by file path (pages of the same PDF stay in page
@@ -295,7 +295,11 @@ for match in client.search.run("invoice"):
     print(match.file_path, match.matched)
 ```
 
-### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
+`languages` (`"te"`, `"en,te"` or a list) keeps only the matches on pages that were read in one of those
+languages; a page read in both counts for both, an unrecorded one is English, and `None` or `"auto"` keeps
+everything. `run_pages` takes it too. An unknown language raises `SearchLanguageError`.
+
+### `run_pages(content, *, context_chars=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None, languages=None)`
 
 Search with every engine at once and return the pages found, best first, as
 `PageResult`s. Pages are ranked by the strictest engine that found them —
@@ -638,16 +642,18 @@ client.sources.purge(3)
 Accumulated OCR processing/confidence statistics — mirrors `vethuq stats ...`
 in the CLI.
 
-### `confidence()`
+### `confidence(language=None)`
 
-Return per-(extension, process type) running averages (`ConfidenceMetric`):
+Return per-(language, extension, process type) running averages (`ConfidenceMetric`; `language` is
+`"en"`, `"te"`, ... and limits the result to one language):
 page count and average confidence. Each file extension (`pdf`, `png`, `jpg`, and
 any future type) has its own rows; `jpeg` files count as `jpg`. `file_type`
 (`pdf` or `image`) is still on each metric.
 
-### `processing()`
+### `processing(language=None)`
 
-Return per-(phase, extension, size) running averages (`ProcessingMetric`):
+Return per-(language, phase, extension, size) running averages (`ProcessingMetric`, each with
+its `language`; `language` limits the result to one):
 document count, average duration, peak memory, and CPU use. PNG and JPG are
 reported separately, not blended as `image`. `phase` is 1 (quick),
 2 (moderate) or 3 (deep) — each phase keeps its own averages.

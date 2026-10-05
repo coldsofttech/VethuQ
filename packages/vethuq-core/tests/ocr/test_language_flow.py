@@ -140,6 +140,20 @@ class TestAutoDetection:
         assert confidence == pytest.approx(0.92)
         assert page["confidence"] == pytest.approx(0.92)
 
+    def test_the_queued_pass_records_its_confidence_under_its_own_language(
+        self, storage, conn, source, engines
+    ):
+        from vethuq_core.stats import Confidence
+
+        engines["en"].lines = JUNK
+        Quick.run(storage, source)
+
+        LanguagePasses.run_batch(storage, [Sources.get(storage, source.id)])
+
+        by_language = {m.language: m for m in Confidence.get_metrics(storage)}
+        assert by_language["te"].avg_confidence == pytest.approx(0.92)
+        assert by_language["te"].page_count == 1
+
     def test_a_page_in_both_languages_keeps_both(self, storage, conn, source, engines):
         engines["en"].lines = [("Invoice total", 0.95), *JUNK]
 

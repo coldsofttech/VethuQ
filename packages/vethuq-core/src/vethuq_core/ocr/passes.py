@@ -23,10 +23,13 @@ from vethuq_core.logs import Logs
 from vethuq_core.ocr.catalog import OcrCatalog, OcrComponentInfo
 from vethuq_core.ocr.deepening import Deepening
 from vethuq_core.ocr.detection import LanguageDetector
+from vethuq_core.ocr.metrics import Metrics
 from vethuq_core.ocr.page import PageOcr
 from vethuq_core.ocr.plan import LanguagePlan
 from vethuq_core.ocr.quick import Quick
+from vethuq_core.paths.extensions import Extensions
 from vethuq_core.readers import Readers
+from vethuq_core.readers.storage import PageStorage
 from vethuq_core.sources import Source
 from vethuq_core.storage import Row, Storage
 
@@ -165,6 +168,7 @@ class LanguagePasses:
             engine_language = Quick.engine_language(unit.language)
             reader = Readers.for_path(unit.file_path)
             all_scores: list[float] = []
+            page_scores: list[float] = []  # one per page the pass added text to
             _logger.info(
                 "Language pass: file=%s language=%s position=%d",
                 unit.file_path,
@@ -187,6 +191,8 @@ class LanguagePasses:
                         current["ocr_text"], current["confidence"], lines, info
                     )
                     all_scores.extend(added_scores)
+                    if added_scores:
+                        page_scores.append(sum(added_scores) / len(added_scores))
                     if added_scores:
                         storage.update_ocr_page_text(
                             unit.table,
@@ -224,6 +230,15 @@ class LanguagePasses:
 
         mean = sum(all_scores) / len(all_scores) if all_scores else None
         with lock:
+            # The pass's own confidence goes to its language's statistics (not the first read's).
+            Metrics.fold_confidence(
+                storage,
+                unit.file_type,
+                Extensions.of(unit.file_path),
+                PageStorage.DEFAULT_PROCESS_TYPE,
+                unit.language,
+                page_scores,
+            )
             storage.update_document_language(
                 unit.document_id,
                 unit.language,

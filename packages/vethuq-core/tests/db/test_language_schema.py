@@ -61,8 +61,8 @@ class TestFreshDatabase:
         assert "document_languages" in master
 
     def test_is_at_the_current_version(self, conn):
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 32
-        assert Db.SCHEMA_VERSION == 32
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == Db.SCHEMA_VERSION
+        assert Db.SCHEMA_VERSION >= 32
 
     def test_has_the_mark_aware_word_indexes_and_triggers(self, conn):
         master = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
@@ -258,7 +258,10 @@ class TestMigrationFromV31:
                     r["name"] for r in conn.execute(f"PRAGMA table_info({table})")
                 }
             assert conn.execute("SELECT COUNT(*) FROM document_languages").fetchone()[0] == 0
-            assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 32
+            assert (
+                conn.execute("SELECT version FROM schema_version").fetchone()[0]
+                == Db.SCHEMA_VERSION
+            )
         finally:
             conn.close()
 

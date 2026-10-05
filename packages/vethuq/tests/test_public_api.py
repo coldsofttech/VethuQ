@@ -824,3 +824,21 @@ def test_file_types_include_missing_lists_every_type(
     assert {"pdf", "png", "jpg"} <= set(everything)
     assert everything["png"].installed is False
     assert everything["png"].install_hint == "pip install vethuq[type-png]"
+
+
+def test_search_can_be_limited_to_the_language_a_page_was_read_in(indexed_client: vethuq.Vethuq):
+    # The seeded pages have no language recorded, which means English.
+    assert indexed_client.search.run("Invoice", engine="exact", languages="en")
+    assert indexed_client.search.run("Invoice", engine="exact", languages="te") == []
+    assert indexed_client.search.run_pages("invoice", languages="te") == []
+    assert indexed_client.search.run("Invoice", engine="exact", languages="auto")
+
+
+def test_search_rejects_an_unknown_language(indexed_client: vethuq.Vethuq):
+    with pytest.raises(vethuq.SearchLanguageError):
+        indexed_client.search.run("invoice", languages="xx")
+
+
+def test_statistics_can_be_limited_to_a_language(client: vethuq.Vethuq):
+    assert client.stats.processing(language="te") == []
+    assert client.stats.confidence(language="te") == []

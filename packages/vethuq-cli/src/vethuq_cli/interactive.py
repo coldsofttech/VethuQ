@@ -322,6 +322,7 @@ class InteractiveMenu:
             leet_level=leet_level,
             normalize=None,
             noise=noise,
+            lang=None,
             export=None,
             format_=None,
         )
@@ -964,7 +965,7 @@ class InteractiveMenu:
             if choice == "0":
                 return
             if choice == "1":
-                InteractiveMenu._run_safely(stats_show)
+                InteractiveMenu._run_safely(lambda: stats_show(lang=None))
             elif choice == "2":
                 InteractiveMenu._run_safely(stats_reset, force=False)
 

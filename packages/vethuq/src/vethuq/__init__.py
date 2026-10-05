@@ -52,6 +52,7 @@ from vethuq._core.search import Export as _Export
 from vethuq._core.search import (
     PageResult,
     SearchEngineUnavailable,
+    SearchLanguageError,
     SearchMatch,
     SearchOptionError,
     SearchQueryError,
@@ -202,6 +203,7 @@ __all__ = [
     "SearchOptionError",
     "SearchProximityDistanceSettings",
     "SearchProximitySettings",
+    "SearchLanguageError",
     "SearchQueryError",
     "SearchSettings",
     "Settings",
@@ -1414,23 +1416,27 @@ class Stats:
     Not instantiated directly — use `Vethuq().stats`.
     """
 
-    def processing(self) -> list[ProcessingMetric]:
-        """Return per-(phase, extension, size_bucket) running averages of OCR processing.
+    def processing(self, language: str | None = None) -> list[ProcessingMetric]:
+        """Return per-(language, phase, extension, size_bucket) running averages of OCR
+        processing.
 
-        Each file extension (pdf, png, jpg, ...) is reported separately."""
+        Each file extension (pdf, png, jpg, ...) and each OCR language (`ProcessingMetric.language`,
+        `"en"` or `"te"`) is reported separately; `language` limits them to one language."""
         storage = _open_storage()
         try:
-            return _Processing.get_metrics(storage)
+            return _Processing.get_metrics(storage, language)
         finally:
             storage.close()
 
-    def confidence(self) -> list[ConfidenceMetric]:
-        """Return per-(extension, process_type) running averages of OCR confidence.
+    def confidence(self, language: str | None = None) -> list[ConfidenceMetric]:
+        """Return per-(language, extension, process_type) running averages of OCR confidence.
 
-        Each file extension (pdf, png, jpg, ...) is reported separately."""
+        Each file extension (pdf, png, jpg, ...) and each OCR language (`ConfidenceMetric.language`)
+        is reported separately - Telugu pages are expected to score lower than English ones;
+        `language` limits them to one language."""
         storage = _open_storage()
         try:
-            return _Confidence.get_metrics(storage)
+            return _Confidence.get_metrics(storage, language)
         finally:
             storage.close()
 
@@ -1467,6 +1473,7 @@ class Search:
         leet_level: str | None = None,
         noise: str | None = None,
         unicode: str | None = None,
+        languages: str | Sequence[str] | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `content`.
 
@@ -1520,6 +1527,9 @@ class Search:
         `unicode`, or an explicit `case_sensitive`, `threshold`, `distance`, `leet_level`,
         `noise` or `unicode` the engine can't honour, and
         `SearchQueryError` for a `proximity` query of fewer than two terms.
+        `languages` (`"te"`, `"en,te"`, `["en", "te"]`) keeps only the matches on pages that were
+        read in one of those languages - a page read in two counts for both; `None` or `"auto"`
+        keeps everything. Raises `SearchLanguageError` for a language VethuQ does not know.
         """
         storage = _open_storage()
         try:
@@ -1537,6 +1547,7 @@ class Search:
                 level=options.level,
                 noise=options.noise,
                 unicode=options.unicode,
+                languages=languages,
             )
         finally:
             storage.close()
@@ -1552,6 +1563,7 @@ class Search:
         leet_level: str | None = None,
         noise: str | None = None,
         unicode: str | None = None,
+        languages: str | Sequence[str] | None = None,
     ) -> list[PageResult]:
         """Search with every engine at once and return the pages found, best first.
 
@@ -1574,7 +1586,7 @@ class Search:
         `context_chars` defaults to `Vethuq().settings.search.snippet`. Raises
         `SearchOptionError` for an invalid `threshold`, `distance`, `leet_level`, `noise` or
         `unicode`. This is what `run` does when `engine="all"` (the default), with the hits
-        flattened.
+        flattened. `languages` keeps only the pages read in one of those languages, as in `run`.
         """
         storage = _open_storage()
         try:
@@ -1591,6 +1603,7 @@ class Search:
                 level=options.level,
                 noise=options.noise,
                 unicode=options.unicode,
+                languages=languages,
             )
         finally:
             storage.close()

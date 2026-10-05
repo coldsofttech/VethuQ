@@ -382,6 +382,13 @@ stored or searched:
 | `document_languages` | One row per (file, language) OCR pass, in the order they run: `position`, `status` (`pending`/`processing`/`done`/`error`/`skipped`), `source` (`default`/`auto`/`manual`), `confidence`, timestamps. Keyed by the `document_index` row that carries the pages; removed with it. |
 | `pdf_pages_words_complex`, `image_pages_words_complex` | A second word index for scripts whose marks are part of the word. |
 
+Schema v33 keys the two statistics tables by language too (`processing_metrics` and `confidence_metrics`
+get a `language` column in their primary key; every earlier row becomes `en`). Confidence is
+filed under the language each page was read in, a language pass folds its own confidence under its
+language, deeper phases are filed under the language of the page, and a document's quick pass under
+the language most of its pages were read in. Memory/CPU budgeting and the ETA average across
+languages weighted by document count. Language passes' durations are not recorded yet.
+
 **The mark-aware word index.** SQLite's `unicode61` tokenizer treats combining marks as separators, so
 the plain word indexes split a Telugu word at every vowel sign (`అమ్మ` becomes `అమ` and `మ`). Rather
 than change that tokenizer - which would change how every English page is indexed - the

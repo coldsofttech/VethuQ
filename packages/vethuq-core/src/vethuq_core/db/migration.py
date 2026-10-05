@@ -626,6 +626,66 @@ class Migration:
                         f"ALTER TABLE {table} ADD COLUMN ocr_langs TEXT NOT NULL DEFAULT ''"
                     )
 
+        if from_version < 33:
+            Migration._track_metrics_per_language(conn)
+
+    @staticmethod
+    def _track_metrics_per_language(conn: sqlite3.Connection) -> None:
+        """Key `processing_metrics` and `confidence_metrics` by OCR language too.
+
+        Telugu reads slower and scores lower than English, so one blended average hides both.
+        Everything recorded so far was English (no other language existed), so every existing
+        row becomes an `en` row, unchanged. The primary key changes, so each table is rebuilt.
+        """
+        tables = {
+            "processing_metrics": (
+                "phase, language, file_type, extension, size_bucket",
+                "phase, file_type, extension, size_bucket, document_count, avg_duration_seconds, "
+                "avg_peak_memory_mb, avg_cpu_percent, updated_at",
+                """
+                CREATE TABLE processing_metrics_new (
+                    phase INTEGER NOT NULL DEFAULT 1,
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                    extension TEXT NOT NULL,
+                    size_bucket TEXT NOT NULL CHECK (size_bucket IN ('small', 'medium', 'large')),
+                    document_count INTEGER NOT NULL DEFAULT 0,
+                    avg_duration_seconds REAL NOT NULL DEFAULT 0,
+                    avg_peak_memory_mb REAL NOT NULL DEFAULT 0,
+                    avg_cpu_percent REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    language TEXT NOT NULL DEFAULT 'en',
+                    PRIMARY KEY (phase, language, file_type, extension, size_bucket)
+                )
+                """,
+            ),
+            "confidence_metrics": (
+                "file_type, extension, process_type, language",
+                "file_type, extension, process_type, page_count, avg_confidence, updated_at",
+                """
+                CREATE TABLE confidence_metrics_new (
+                    file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'image')),
+                    extension TEXT NOT NULL,
+                    process_type TEXT NOT NULL CHECK (process_type IN ('native', 'ocr', 'mixed')),
+                    page_count INTEGER NOT NULL DEFAULT 0,
+                    avg_confidence REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    language TEXT NOT NULL DEFAULT 'en',
+                    PRIMARY KEY (file_type, extension, process_type, language)
+                )
+                """,
+            ),
+        }
+        for table, (_key, columns, create) in tables.items():
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "language" in existing:
+                continue
+            conn.execute(create)
+            conn.execute(
+                f"INSERT INTO {table}_new ({columns}, language) SELECT {columns}, 'en' FROM {table}"
+            )
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
+
     @staticmethod
     def _track_metrics_per_extension(conn: sqlite3.Connection) -> None:
         """Rebuild `processing_metrics` and `confidence_metrics` keyed by file extension.

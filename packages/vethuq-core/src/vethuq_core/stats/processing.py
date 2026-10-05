@@ -19,6 +19,7 @@ class ProcessingMetric:
     avg_cpu_percent: float
     updated_at: str
     phase: int = 1  # 1 = quick, 2 = moderate, 3 = deep
+    language: str = "en"  # the OCR language the averages are for
 
     @property
     def avg_machine_cpu_percent(self) -> float:
@@ -34,9 +35,10 @@ class ProcessingMetric:
 
 class Processing:
     @staticmethod
-    def get_metrics(storage: Storage) -> list[ProcessingMetric]:
-        """Return `processing_metrics`' per-(phase, extension, size_bucket) running averages."""
-        return [ProcessingMetric(**dict(row)) for row in storage.list_processing_metrics()]
+    def get_metrics(storage: Storage, language: str | None = None) -> list[ProcessingMetric]:
+        """Return `processing_metrics`' per-(language, phase, extension, size_bucket) running
+        averages; `language` limits them to one language."""
+        return [ProcessingMetric(**dict(row)) for row in storage.list_processing_metrics(language)]
 
     @staticmethod
     def clear(storage: Storage) -> None:

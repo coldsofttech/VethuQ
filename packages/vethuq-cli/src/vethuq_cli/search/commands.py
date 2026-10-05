@@ -14,6 +14,7 @@ from vethuq_core.search import (
     PageResult,
     Search,
     SearchEngineUnavailable,
+    SearchLanguageError,
     SearchMatch,
     SearchOptionError,
     SearchOptions,
@@ -286,6 +287,15 @@ def search(
             "Default: `vethuq settings search noise-fuzzy noise`."
         ),
     ),
+    lang: list[str] | None = typer.Option(  # noqa: B008
+        None,
+        "--lang",
+        help=(
+            "Only results on pages that were read in this language ('te', 'en', or 'en,te'; "
+            "repeat or comma-separate). A page read in two languages counts for both. "
+            "Default: every language. Any known language works, installed or not."
+        ),
+    ),
     export: str | None = typer.Option(
         None,
         "--export",
@@ -318,6 +328,7 @@ def search(
             unicode,
         )
         pages: list[PageResult] | None = None
+        languages = ",".join(lang) if lang else None
         try:
             if options.engine == SearchSettings.ENGINE_ALL:
                 pages = Search.indexed_pages(
@@ -329,6 +340,7 @@ def search(
                     level=options.level,
                     noise=options.noise,
                     unicode=options.unicode,
+                    languages=languages,
                 )
                 matches = Ranking.flatten(pages)
             else:
@@ -342,7 +354,10 @@ def search(
                     level=options.level,
                     noise=options.noise,
                     unicode=options.unicode,
+                    languages=languages,
                 )
+        except SearchLanguageError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--lang") from exc
         except SearchQueryError as exc:
             raise typer.BadParameter(str(exc), param_hint="CONTENT") from exc
         except SearchEngineUnavailable as exc:

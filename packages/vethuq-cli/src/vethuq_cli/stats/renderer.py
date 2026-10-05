@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from vethuq_core.languages import Languages
 from vethuq_core.ocr import Deepening
 from vethuq_core.stats import ConfidenceMetric, ProcessingMetric
 
@@ -14,6 +15,11 @@ from vethuq_cli.theme import Theme
 
 
 class StatsRenderer:
+    @staticmethod
+    def _language_label(language: str) -> str:
+        info = Languages.get(language)
+        return info.label if info else language
+
     @staticmethod
     def processing_panel(metrics: list[ProcessingMetric]) -> Panel:
         if not metrics:
@@ -24,6 +30,11 @@ class StatsRenderer:
             body = Table(
                 box=box.SIMPLE, header_style=f"bold {Theme.PRIMARY}", border_style=Theme.PRIMARY
             )
+            # A language column only once a second language has statistics: English-only
+            # output stays exactly as it was.
+            show_language = len({m.language for m in metrics}) > 1
+            if show_language:
+                body.add_column("Language")
             body.add_column("Phase")
             body.add_column("Extension")
             body.add_column("Size")
@@ -32,7 +43,7 @@ class StatsRenderer:
             body.add_column("Avg peak memory", justify="right")
             body.add_column("Avg CPU", justify="right")
             for m in metrics:
-                body.add_row(
+                cells = [
                     Deepening.PHASE_NAMES.get(m.phase, str(m.phase)),
                     m.extension,
                     m.size_bucket,
@@ -40,7 +51,10 @@ class StatsRenderer:
                     f"{m.avg_duration_seconds:.1f}s",
                     f"{m.avg_peak_memory_mb:.0f} MB",
                     f"{m.avg_machine_cpu_percent:.0f}%",
-                )
+                ]
+                if show_language:
+                    cells.insert(0, StatsRenderer._language_label(m.language))
+                body.add_row(*cells)
         return Panel(
             body, title="Processing", title_align="left", border_style=Theme.PRIMARY, expand=True
         )
@@ -55,14 +69,18 @@ class StatsRenderer:
             body = Table(
                 box=box.SIMPLE, header_style=f"bold {Theme.ACCENT}", border_style=Theme.ACCENT
             )
+            show_language = len({m.language for m in metrics}) > 1
+            if show_language:
+                body.add_column("Language")
             body.add_column("Extension")
             body.add_column("Process type")
             body.add_column("Pages", justify="right")
             body.add_column("Avg confidence", justify="right")
             for m in metrics:
-                body.add_row(
-                    m.extension, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"
-                )
+                cells = [m.extension, m.process_type, str(m.page_count), f"{m.avg_confidence:.0%}"]
+                if show_language:
+                    cells.insert(0, StatsRenderer._language_label(m.language))
+                body.add_row(*cells)
         return Panel(
             body, title="Confidence", title_align="left", border_style=Theme.ACCENT, expand=True
         )

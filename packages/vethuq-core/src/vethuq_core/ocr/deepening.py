@@ -337,6 +337,9 @@ class Deepening:
             duration=row["duration_seconds"],
             peak_memory_mb=row["peak_memory_mb"] or 0.0,
             cpu_percent=row["cpu_percent"] or 0.0,
+            # A page read in several languages is filed under the last one: the extra read is
+            # what made it slower.
+            language=unit.languages[-1] if unit.languages else Metrics.DEFAULT_LANGUAGE,
         )
 
     @staticmethod

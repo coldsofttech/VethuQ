@@ -211,6 +211,9 @@ class _DocumentStoreMixin:
     def get_page_confidences(self, file_type: str, document_id: int) -> list[sqlite3.Row]:
         return Document.get_page_confidences(self._conn, file_type, document_id)
 
+    def get_page_languages(self, file_ids: Sequence[int]) -> list[sqlite3.Row]:
+        return Document.get_page_languages(self._conn, list(file_ids))
+
     def get_pdf_page_sources(self, document_id: int) -> list[sqlite3.Row]:
         return Document.get_pdf_page_sources(self._conn, document_id)
 
@@ -364,9 +367,9 @@ class _StatsStoreMixin:
     _conn: sqlite3.Connection
 
     def get_processing_metrics_row(
-        self, phase: int, extension: str, size_bucket: str
+        self, phase: int, extension: str, size_bucket: str, language: str = "en"
     ) -> sqlite3.Row | None:
-        return Stats.get_processing_metrics_row(self._conn, phase, extension, size_bucket)
+        return Stats.get_processing_metrics_row(self._conn, phase, extension, size_bucket, language)
 
     def get_processing_metrics_budget_row(
         self, phase: int, extension: str, size_bucket: str
@@ -383,6 +386,7 @@ class _StatsStoreMixin:
         peak_memory_mb: float,
         cpu_percent: float,
         updated_at: str,
+        language: str = "en",
     ) -> None:
         return Stats.insert_processing_metrics(
             self._conn,
@@ -394,6 +398,7 @@ class _StatsStoreMixin:
             peak_memory_mb,
             cpu_percent,
             updated_at,
+            language,
         )
 
     def update_processing_metrics(
@@ -406,6 +411,7 @@ class _StatsStoreMixin:
         avg_peak_memory_mb: float,
         avg_cpu_percent: float,
         updated_at: str,
+        language: str = "en",
     ) -> None:
         return Stats.update_processing_metrics(
             self._conn,
@@ -417,10 +423,13 @@ class _StatsStoreMixin:
             avg_peak_memory_mb,
             avg_cpu_percent,
             updated_at,
+            language,
         )
 
-    def get_confidence_metrics_row(self, extension: str, process_type: str) -> sqlite3.Row | None:
-        return Stats.get_confidence_metrics_row(self._conn, extension, process_type)
+    def get_confidence_metrics_row(
+        self, extension: str, process_type: str, language: str = "en"
+    ) -> sqlite3.Row | None:
+        return Stats.get_confidence_metrics_row(self._conn, extension, process_type, language)
 
     def insert_confidence_metrics(
         self,
@@ -430,6 +439,7 @@ class _StatsStoreMixin:
         page_count: int,
         avg_confidence: float,
         updated_at: str,
+        language: str = "en",
     ) -> None:
         return Stats.insert_confidence_metrics(
             self._conn,
@@ -439,6 +449,7 @@ class _StatsStoreMixin:
             page_count,
             avg_confidence,
             updated_at,
+            language,
         )
 
     def update_confidence_metrics(
@@ -448,6 +459,7 @@ class _StatsStoreMixin:
         page_count: int,
         avg_confidence: float,
         updated_at: str,
+        language: str = "en",
     ) -> None:
         return Stats.update_confidence_metrics(
             self._conn,
@@ -456,13 +468,14 @@ class _StatsStoreMixin:
             page_count,
             avg_confidence,
             updated_at,
+            language,
         )
 
-    def list_processing_metrics(self) -> list[sqlite3.Row]:
-        return Stats.list_processing_metrics(self._conn)
+    def list_processing_metrics(self, language: str | None = None) -> list[sqlite3.Row]:
+        return Stats.list_processing_metrics(self._conn, language)
 
-    def list_confidence_metrics(self) -> list[sqlite3.Row]:
-        return Stats.list_confidence_metrics(self._conn)
+    def list_confidence_metrics(self, language: str | None = None) -> list[sqlite3.Row]:
+        return Stats.list_confidence_metrics(self._conn, language)
 
     def clear_processing_metrics(self) -> None:
         return Stats.clear_processing_metrics(self._conn)

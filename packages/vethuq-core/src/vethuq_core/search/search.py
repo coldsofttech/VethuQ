@@ -6,12 +6,14 @@ lives behind the `SearchEngine` interface so implementations can be swapped or c
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import NamedTuple
 
 from vethuq_core.logs import Logs
 from vethuq_core.search.engines import PageResult, Ranking, SearchEngines, SearchMatch
 from vethuq_core.search.engines.catalog import SearchEngineCatalog
+from vethuq_core.search.languages import SearchLanguages
 from vethuq_core.settings import SearchSettings
 from vethuq_core.storage import Storage
 
@@ -279,6 +281,7 @@ class Search:
         level: str | None = None,
         noise: str | None = None,
         unicode: str | None = None,
+        languages: str | Iterable[str] | None = None,
     ) -> list[PageResult]:
         """Search with every engine and return the pages found, best first (see `ranking`).
 
@@ -289,10 +292,12 @@ class Search:
         `case_sensitive` reaches the engines that can honour it, `threshold` (0-1) is the
         fuzzy (and noise-fuzzy) engine's, `distance` the proximity engine's, `level` the
         leetspeak normalization of `like` and `noise-fuzzy` and `noise` the noise-fuzzy engine's,
-        each defaulting to the user's setting.
+        each defaulting to the user's setting. `languages` (`te`, `en,te`) keeps only the pages
+        that were read in one of those languages.
         """
+        wanted = SearchLanguages.parse(languages)
         try:
-            return Ranking.search_all(
+            pages = Ranking.search_all(
                 storage,
                 query,
                 context_chars=context_chars,
@@ -303,6 +308,7 @@ class Search:
                 noise=noise,
                 unicode=unicode,
             )
+            return SearchLanguages.filter_pages(storage, pages, wanted)
         except Exception as exc:
             _logger.error(
                 "Search failed: engine=all case_sensitive=%s threshold=%s distance=%s "
@@ -333,6 +339,7 @@ class Search:
         level: str | None = None,
         noise: str | None = None,
         unicode: str | None = None,
+        languages: str | Iterable[str] | None = None,
     ) -> list[SearchMatch]:
         """Search indexed OCR text for `query` using the named (default: `like`) engine.
 
@@ -355,7 +362,10 @@ class Search:
         look-alikes and typos; the engines that don't use `noise` raise `ValueError` if
         given one.
         `proximity` needs at least two terms (`SearchQueryError` otherwise).
+        `languages` (`te`, `en,te`) keeps only the matches on pages that were read in one of
+        those languages (a page read in two counts for both); `None` or `auto` keeps everything.
         """
+        wanted = SearchLanguages.parse(languages)
         if engine == SearchSettings.ENGINE_ALL:
             return Ranking.flatten(
                 Search.indexed_pages(
@@ -368,10 +378,11 @@ class Search:
                     level=level,
                     noise=noise,
                     unicode=unicode,
+                    languages=wanted,
                 )
             )
         try:
-            return SearchEngines.get(storage, engine).search(
+            matches = SearchEngines.get(storage, engine).search(
                 query,
                 context_chars=context_chars,
                 case_sensitive=case_sensitive,
@@ -381,6 +392,7 @@ class Search:
                 noise=noise,
                 unicode=unicode,
             )
+            return SearchLanguages.filter_matches(storage, matches, wanted)
         except Exception as exc:
             _logger.error(
                 "Search failed: engine=%s case_sensitive=%s threshold=%s distance=%s "
@@ -412,6 +424,7 @@ class Search:
         level: str | None = None,
         noise: str | None = None,
         unicode: str | None = None,
+        languages: str | Iterable[str] | None = None,
     ) -> list[FileMatch]:
         """Search like `indexed_content`, but return one `FileMatch` per matching file.
 
@@ -430,6 +443,7 @@ class Search:
             level=level,
             noise=noise,
             unicode=unicode,
+            languages=languages,
         ):
             files.setdefault(
                 match.file_id,
