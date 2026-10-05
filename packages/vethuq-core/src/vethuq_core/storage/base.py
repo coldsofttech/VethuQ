@@ -357,6 +357,30 @@ class IndexRunStore(Protocol):
     def fail_index_run(self, run_id: int, completed_at: str) -> None: ...
 
 
+class IndexJobStore(Protocol):
+    """Storage operations for the `index_jobs` queue the background service works through."""
+
+    def enqueue_index_job(
+        self, target: str | None, mode: str, languages: str | None, requested_at: str
+    ) -> int: ...
+
+    def list_index_jobs(self, statuses: tuple[str, ...] | None, limit: int) -> Sequence[Row]: ...
+
+    def claim_next_index_job(self, started_at: str) -> Row | None: ...
+
+    def finish_index_job(
+        self, job_id: int, status: str, finished_at: str, error: str | None
+    ) -> None: ...
+
+    def requeue_index_job(self, job_id: int) -> None: ...
+
+    def requeue_running_index_jobs(self) -> int: ...
+
+    def cancel_queued_index_jobs(self, finished_at: str) -> int: ...
+
+    def prune_index_jobs(self, keep: int) -> None: ...
+
+
 class OcrStore(Protocol):
     """Storage operations for the multi-phase OCR pipeline (pages and per-document phases)."""
 
@@ -480,6 +504,7 @@ class Storage(
     SettingsStore,
     StatsStore,
     IndexRunStore,
+    IndexJobStore,
     OcrStore,
     IntegrityStore,
     SemanticStore,

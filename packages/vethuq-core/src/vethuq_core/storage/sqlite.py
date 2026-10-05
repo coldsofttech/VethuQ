@@ -15,6 +15,7 @@ from vethuq_core.db import Db
 from vethuq_core.db.queries import (
     Document,
     Index,
+    IndexJobs,
     Integrity,
     Ocr,
     Semantic,
@@ -539,6 +540,38 @@ class _IndexRunStoreMixin:
         return Index.fail_run(self._conn, run_id, completed_at)
 
 
+class _IndexJobStoreMixin:
+    _conn: sqlite3.Connection
+
+    def enqueue_index_job(
+        self, target: str | None, mode: str, languages: str | None, requested_at: str
+    ) -> int:
+        return IndexJobs.enqueue(self._conn, target, mode, languages, requested_at)
+
+    def list_index_jobs(self, statuses: tuple[str, ...] | None, limit: int) -> list[sqlite3.Row]:
+        return IndexJobs.list_jobs(self._conn, statuses, limit)
+
+    def claim_next_index_job(self, started_at: str) -> sqlite3.Row | None:
+        return IndexJobs.claim_next(self._conn, started_at)
+
+    def finish_index_job(
+        self, job_id: int, status: str, finished_at: str, error: str | None
+    ) -> None:
+        return IndexJobs.finish(self._conn, job_id, status, finished_at, error)
+
+    def requeue_index_job(self, job_id: int) -> None:
+        return IndexJobs.requeue(self._conn, job_id)
+
+    def requeue_running_index_jobs(self) -> int:
+        return IndexJobs.requeue_running(self._conn)
+
+    def cancel_queued_index_jobs(self, finished_at: str) -> int:
+        return IndexJobs.cancel_queued(self._conn, finished_at)
+
+    def prune_index_jobs(self, keep: int) -> None:
+        return IndexJobs.prune_finished(self._conn, keep)
+
+
 class _OcrStoreMixin:
     _conn: sqlite3.Connection
 
@@ -709,6 +742,7 @@ class SqliteStorage(
     _SettingsStoreMixin,
     _StatsStoreMixin,
     _IndexRunStoreMixin,
+    _IndexJobStoreMixin,
     _OcrStoreMixin,
     _IntegrityStoreMixin,
     _SemanticStoreMixin,

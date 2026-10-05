@@ -32,6 +32,14 @@
 ; {autodesktop}, the Start menu group, the uninstall entry and the PATH
 ; change (HKLM vs HKCU) all follow the chosen scope, so the CLI, PATH option
 ; and uninstall work for both.
+; Background service: an all-users (administrator) install can add the "background indexing
+; service" task (or /TASKS=backgroundservice for a silent install), which registers
+; vethuq-worker.exe --service as the Windows service VethuQBackground (delayed automatic start).
+; Once it is installed every index command queues its work for the service instead of starting
+; its own worker. Creating a service needs administrator rights, so a current-user install does
+; not offer the task - run "vethuq background-service install" (it asks for permission) or use
+; the app's Index > Service button instead. Setup stops the service while it replaces files and
+; starts it again afterwards; uninstalling removes it.
 ; Built by scripts/dev/release.py --desktop and .github/workflows/release-desktop.yml.
 
 #define MyAppName "VethuQ"
@@ -156,6 +164,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Components: app
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Additional shortcuts:"; Flags: checkedonce; Components: cli
+; Needs administrator rights, so only an all-users install offers it. Off by default: it changes how indexing runs.
+Name: "backgroundservice"; Description: "Run indexing through a background service (indexes without VethuQ open; starts with Windows)"; GroupDescription: "Background indexing:"; Flags: unchecked; Components: core; Check: IsAdminInstallMode
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent; Components: app
@@ -877,6 +887,75 @@ begin
   RegWriteDWordValue(EnvRootKey, UninstallKey, 'NoModify', 0);
 end;
 
+const
+  ServiceName = 'VethuQBackground';
+
+var
+  ServiceWasRunning: Boolean;
+
+function WorkerExe: string;
+begin
+  Result := ExpandConstant('{app}\vethuq-worker.exe');
+end;
+
+{ Runs "vethuq-worker.exe --service-control <Action>" - elevated through UAC when Setup is not
+  already running as administrator. Returns the worker's exit code, or -1 if it did not run. }
+function RunServiceControl(const Action: string): Integer;
+var
+  ResultCode: Integer;
+  Params: string;
+begin
+  Result := -1;
+  if not FileExists(WorkerExe) then
+    Exit;
+  Params := '--service-control ' + Action + ' --quiet';
+  if IsAdminInstallMode then
+  begin
+    if Exec(WorkerExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      Result := ResultCode;
+  end
+  else if ShellExec('runas', WorkerExe, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Result := ResultCode;
+end;
+
+{ sc.exe exits 0 when the service exists. }
+function ServiceInstalled: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + ServiceName, '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function ServiceRunning: Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec(ExpandConstant('{cmd}'), '/C sc query ' + ServiceName + ' | find "RUNNING"', '',
+    SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+{ The service runs vethuq-worker.exe, which Setup is about to replace: stop it first, and
+  (CurStepChanged) start it again afterwards if it was running. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  ServiceWasRunning := ServiceInstalled and ServiceRunning;
+  if ServiceWasRunning then
+    RunServiceControl('stop');
+end;
+
+procedure InstallBackgroundService;
+begin
+  if RunServiceControl('install') <> 0 then
+  begin
+    Log('Installing the background service failed.');
+    if not WizardSilent then
+      MsgBox('The background service could not be installed. Indexing will keep using its own ' +
+        'worker. You can try again with "vethuq background-service install".', mbError, MB_OK);
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
@@ -892,6 +971,10 @@ begin
     SaveEngineSelection;
     if WizardIsTaskSelected('addtopath') then
       EnvAddPath(ExpandConstant('{app}'));
+    if WizardIsTaskSelected('backgroundservice') and not ServiceInstalled then
+      InstallBackgroundService
+    else if ServiceWasRunning then
+      RunServiceControl('start');
   end
   else if CurStep = ssDone then
     RegisterChange;
@@ -900,5 +983,10 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    { Before the files go: the service holds vethuq-worker.exe open. }
+    if ServiceInstalled then
+      RunServiceControl('uninstall');
     EnvRemovePath(ExpandConstant('{app}'));
+  end;
 end;

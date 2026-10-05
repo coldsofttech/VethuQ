@@ -565,10 +565,7 @@ class IndexRunner:
 
         storage = open_storage(db_path)
         try:
-            if target is not None:
-                # raises SourceNotFoundError if invalid
-                Sources.get(storage, Sources.coerce(target))
-            IndexRunner._check_languages(storage, target, languages)
+            IndexRunner.validate_request(storage, target, languages)
         finally:
             storage.close()
 
@@ -599,6 +596,14 @@ class IndexRunner:
         )
         IndexRunner._atomic_write(lock_path, str(process.pid))
         return process.pid
+
+    @staticmethod
+    def validate_request(storage: Storage, target: str | None, languages: str | None) -> None:
+        """Raise if `target` isn't a registered source or `languages` can't be used."""
+        if target is not None:
+            # raises SourceNotFoundError if invalid
+            Sources.get(storage, Sources.coerce(target))
+        IndexRunner._check_languages(storage, target, languages)
 
     @staticmethod
     def _check_languages(storage: Storage, target: str | None, languages: str | None) -> None:
@@ -1111,6 +1116,17 @@ class IndexRunner:
             from vethuq_core.ocr.models.fetch import ModelFetch
 
             sys.exit(ModelFetch.main(sys.argv[2:]))
+        if len(sys.argv) > 1 and sys.argv[1] == "--service":
+            # The background service: the Windows service manager (or systemd) runs this exe
+            # and it works through the index job queue until told to stop.
+            from vethuq_core.background.host import ServiceHost
+
+            sys.exit(ServiceHost.main(sys.argv[2:]))
+        if len(sys.argv) > 1 and sys.argv[1] == "--service-control":
+            # The elevated half of `vethuq background-service install|uninstall|...`.
+            from vethuq_core.background.host import ServiceHost
+
+            sys.exit(ServiceHost.control_main(sys.argv[2:]))
         db_path = Path(sys.argv[1])
         target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
         mode = sys.argv[3] if len(sys.argv) > 3 else "run"

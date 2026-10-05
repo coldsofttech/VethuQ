@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 from vethuq_cli.console import console
 from vethuq_cli.main import app
+from vethuq_core.background import IndexSubmission
 from vethuq_core.errors import LanguageUnavailableError, OcrModelMissingError
 from vethuq_core.index import IndexRunner, Reindex
 from vethuq_core.sources import Sources
@@ -68,7 +69,9 @@ class TestIndexRunLang:
     def test_reindex_a_source(self, use_temp_db):
         use_temp_db()
 
-        with patch.object(Reindex, "start_source", return_value=4321) as start:
+        with patch.object(
+            Reindex, "submit_source", return_value=IndexSubmission(4321, None, None)
+        ) as start:
             result = runner.invoke(app, ["index", "reindex", "1", "--force", "--lang", "te"])
 
         assert result.exit_code == 0
@@ -77,7 +80,9 @@ class TestIndexRunLang:
     def test_reindex_a_file(self, use_temp_db):
         use_temp_db()
 
-        with patch.object(Reindex, "start_file", return_value=4321) as start:
+        with patch.object(
+            Reindex, "submit_file", return_value=IndexSubmission(4321, None, None)
+        ) as start:
             result = runner.invoke(app, ["index", "reindex", "file", "x.png", "--lang", "te"])
 
         assert result.exit_code == 0
@@ -86,7 +91,9 @@ class TestIndexRunLang:
     def test_reindex_without_the_option_passes_none(self, use_temp_db):
         use_temp_db()
 
-        with patch.object(Reindex, "start_file", return_value=4321) as start:
+        with patch.object(
+            Reindex, "submit_file", return_value=IndexSubmission(4321, None, None)
+        ) as start:
             runner.invoke(app, ["index", "reindex", "file", "x.png"])
 
         assert start.call_args.kwargs["languages"] is None

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 import typer
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 from rich.text import Text
 from typer._click.core import Context
 from typer.core import TyperGroup
+from vethuq_core.background import Dispatch, IndexJobs, IndexSubmission
 from vethuq_core.index import (
     AlreadyRunningError,
     AmbiguousFileError,
@@ -39,6 +42,46 @@ LANG_HELP = (
 )
 
 
+ONE_OFF_HELP = (
+    "Run this once in its own worker process (vethuq-worker) instead of through the background "
+    "service, even when the service is installed."
+)
+
+
+def _is_interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _choose_route(one_off: bool) -> str:
+    """Where to send a request: the service when it's installed, a one-off when asked for.
+
+    When the service is installed but isn't taking jobs (stopped or paused) and there is a
+    terminal to ask, the user chooses between queueing the job and running it once; without a
+    terminal it is queued, which is what the service being installed means.
+    """
+    if one_off:
+        return Dispatch.VIA_ONE_OFF
+    service = Dispatch.service_status()
+    if service is None or service.running:
+        return Dispatch.VIA_AUTO
+    if not _is_interactive():
+        return Dispatch.VIA_SERVICE
+    console.print(
+        IndexPanel.message(
+            f"The background service is {Dispatch.describe_state(service)}, so a queued job "
+            "waits until it is running again.",
+            Theme.NOTICE,
+        )
+    )
+    choice = Prompt.ask(
+        "Queue the job for the service, or run it once now in vethuq-worker?",
+        console=console,
+        choices=["queue", "one-off"],
+        default="queue",
+    )
+    return Dispatch.VIA_ONE_OFF if choice == "one-off" else Dispatch.VIA_SERVICE
+
+
 def _languages(lang: list[str] | None) -> str | None:
     """The `--lang` values as one comma-separated string, or None when not given."""
     return ",".join(lang) if lang else None
@@ -59,6 +102,7 @@ def _start_and_report(
     wait: bool,
     restart: bool,
     languages: str | None = None,
+    one_off: bool = False,
 ) -> None:
     if target is None:
         storage = open_storage()
@@ -79,11 +123,13 @@ def _start_and_report(
             )
             return
 
+    via = _choose_route(one_off)
     try:
-        pid = IndexRunner.start_run(
+        submission = Dispatch.submit(
             target,
             force=force,
             restart=restart,
+            via=via,
             on_recovery=_report_recovery,
             languages=languages,
         )
@@ -92,11 +138,12 @@ def _start_and_report(
         StaleLockError,
         DatabaseIntegrityError,
         SourceNotFoundError,
+        IndexRunnerError,
     ) as exc:
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
 
-    _report_started(pid, "restart" if restart else "index run", wait=wait)
+    _report_submitted(submission, "restart" if restart else "index run", wait=wait)
 
 
 def _report_started(pid: int, verb: str, *, wait: bool) -> None:
@@ -118,6 +165,58 @@ def _report_started(pid: int, verb: str, *, wait: bool) -> None:
         raise typer.Exit(code=130)
 
 
+def _report_submitted(submission: IndexSubmission, verb: str, *, wait: bool) -> None:
+    """Report a started worker, or a job queued for the background service."""
+    if submission.pid is not None:
+        _report_started(submission.pid, verb, wait=wait)
+        return
+    assert submission.job_id is not None
+    text = Text.assemble(
+        (f"Queued {verb} for the background service (job {submission.job_id}).", Theme.OK)
+    )
+    if submission.service_idle and submission.service is not None:
+        text.append(
+            f"\n\nThe service is {Dispatch.describe_state(submission.service)}; the job waits "
+            "until it is running. Use '",
+            style="white",
+        )
+        text.append("vethuq background-service resume", style=Theme.COMMAND)
+        text.append("' or '", style="white")
+        text.append("vethuq background-service start", style=Theme.COMMAND)
+        text.append("'.", style="white")
+    if not wait:
+        text.append("\n\nCheck progress with '", style="white")
+        text.append("vethuq index status", style=Theme.COMMAND)
+        text.append("'.", style="white")
+        console.print(IndexPanel.message(text, Theme.OK))
+        return
+    console.print(IndexPanel.message(text, Theme.OK))
+    if _wait_for_job(submission.job_id):
+        raise typer.Exit(code=130)
+
+
+def _wait_for_job(job_id: int) -> bool:
+    """Block until the queued job is finished, showing the run once it starts. True if the
+    user interrupted (the job stays queued; it is the service's now)."""
+    try:
+        with console.status("Waiting for the background service...", spinner_style=Theme.PRIMARY):
+            while True:
+                job = IndexJobs.get(job_id)
+                if job is None or job.status not in ("queued", "running"):
+                    break
+                time.sleep(1.0)
+    except KeyboardInterrupt:
+        return True
+    state = IndexRunner.read_state()
+    if state is not None:
+        storage = open_storage()
+        try:
+            StatePanel.print_state(storage, state)
+        finally:
+            storage.close()
+    return False
+
+
 @app.command("run")
 def run(
     target: str | None = typer.Argument(
@@ -130,6 +229,7 @@ def run(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
 ) -> None:
     """Start OCR indexing in the background and return immediately.
 
@@ -139,7 +239,14 @@ def run(
     (re)processed; unchanged files are left untouched. Use 'vethuq index
     status' to check progress.
     """
-    _start_and_report(target, force=force, wait=wait, restart=False, languages=_languages(lang))
+    _start_and_report(
+        target,
+        force=force,
+        wait=wait,
+        restart=False,
+        languages=_languages(lang),
+        one_off=one_off,
+    )
 
 
 @app.command("restart")
@@ -154,6 +261,7 @@ def restart(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
 ) -> None:
     """Retry only previously-failed files, in the background.
 
@@ -161,7 +269,14 @@ def restart(
     whose last OCR attempt failed are (re)processed. Use 'vethuq index run'
     instead to also pick up new files.
     """
-    _start_and_report(target, force=force, wait=wait, restart=True, languages=_languages(lang))
+    _start_and_report(
+        target,
+        force=force,
+        wait=wait,
+        restart=True,
+        languages=_languages(lang),
+        one_off=one_off,
+    )
 
 
 class _ImplicitSourceGroup(TyperGroup):
@@ -184,9 +299,12 @@ reindex_app = typer.Typer(
 app.add_typer(reindex_app, name="reindex")
 
 
-def _start_reindex(starter: Callable[[], int], verb: str, *, wait: bool) -> None:
+def _start_reindex(
+    starter: Callable[[str], IndexSubmission], verb: str, *, wait: bool, one_off: bool
+) -> None:
+    via = _choose_route(one_off)
     try:
-        pid = starter()
+        submission = starter(via)
     except (
         AlreadyRunningError,
         AmbiguousFileError,
@@ -194,10 +312,11 @@ def _start_reindex(starter: Callable[[], int], verb: str, *, wait: bool) -> None
         StaleLockError,
         DatabaseIntegrityError,
         SourceNotFoundError,
+        IndexRunnerError,
     ) as exc:
         error_console.print(str(exc), style=Theme.ERROR)
         raise typer.Exit(code=1) from exc
-    _report_started(pid, verb, wait=wait)
+    _report_submitted(submission, verb, wait=wait)
 
 
 def _confirm_reindex_source(target: str) -> None:
@@ -241,6 +360,7 @@ def reindex_source(
         ),
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
 ) -> None:
     """Re-index every file under a source, not just failed ones.
 
@@ -254,9 +374,10 @@ def reindex_source(
         _confirm_reindex_source(target)
     languages = _languages(lang)
     _start_reindex(
-        lambda: Reindex.start_source(target, force=force, languages=languages),
+        lambda via: Reindex.submit_source(target, force=force, languages=languages, via=via),
         "reindex",
         wait=wait,
+        one_off=one_off,
     )
 
 
@@ -275,6 +396,7 @@ def reindex_file(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
 ) -> None:
     """Re-index a single file, updating its existing document in place.
 
@@ -283,9 +405,12 @@ def reindex_file(
     """
     languages = _languages(lang)
     _start_reindex(
-        lambda: Reindex.start_file(file, source=source, force=force, languages=languages),
+        lambda via: Reindex.submit_file(
+            file, source=source, force=force, languages=languages, via=via
+        ),
         "reindex",
         wait=wait,
+        one_off=one_off,
     )
 
 

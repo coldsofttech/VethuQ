@@ -525,6 +525,16 @@ Since worker threads share one sqlite connection (opened with
 through a single `threading.Lock` (`db_lock`); only the OCR inference
 itself runs unlocked, which is the actual point of the parallelism.
 
+### Background service
+
+`vethuq_core.background` lets indexing run through a long-lived service instead of a detached worker per command.
+
+- **One entry point.** Every `index *` entry point (CLI, desktop app, `vethuq` package) calls `Dispatch.submit`, which is `IndexRunner.start_run` when the service is not installed (or `--one-off` was given) and otherwise validates the request the same way (`IndexRunner.validate_request`: source, languages) and inserts a row in the `index_jobs` table (schema v35). An identical job already waiting is reused, so periodic callers (the desktop rescan) cannot pile jobs up; finished jobs are pruned to the latest 100.
+- **The service.** `vethuq-worker.exe --service` (Windows; `python -m vethuq_core.index.runner --service` under systemd) runs `ServiceHost`: claim the oldest queued job, start it with `IndexRunner.start_run` (the same call, so the run reads every setting from the database exactly as a one-off does and `index status|pause|resume|stop` keep working), wait for it, record the outcome, repeat. The run stays a separate worker process, so a native OCR crash does not take the service down. The worker executable is promoted, not duplicated: it is the service when started with `--service`, and the worker the service launches when started with the usual arguments.
+- **Pause, stop, restart.** The service manager's pause pauses the active run and holds the queue (on Linux a `service.control` file in `run/` does the same); stop asks the run to stop between files and puts its job back in the queue, and a service that died mid-run re-queues the job it left `running`. A run stopped from outside (`index stop`) ends its job as `cancelled`.
+- **Installing.** `BackgroundService` drives `sc.exe` (create/start/stop/pause/continue/delete) or `systemctl --user`. Creating a service needs administrator rights, so an unelevated Windows caller re-runs the action through `vethuq-worker.exe --service-control <action>` with a UAC prompt (`ShellExecuteEx` `runas`); the Inno Setup `backgroundservice` task runs the same command. The service is given `--home <data root>` so it uses the installing user's database whichever account it runs as. Reading the status needs no rights.
+- **Not in the service.** `rebuild-search` is a foreground database operation, not an index run, and is unchanged.
+
 ### Data layout
 
 All per-user data lives under `platformdirs.user_data_dir("VethuQ")`

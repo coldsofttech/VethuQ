@@ -21,6 +21,10 @@ The CLI, the PATH option and uninstalling work the same either way (the PATH
 entry is added to, and removed from, the system or your own user PATH to
 match).
 
+### Background service
+
+The installer's **Run indexing through a background service** option (all-users installs only, since creating a Windows service needs administrator rights; silent installs accept `/TASKS=backgroundservice`) installs `VethuQBackground`, a Windows service that runs `vethuq-worker.exe --service`. With it, indexing carries on when the app is closed and starts with Windows. A current-user install can add it later from the app (**Index > Service**) or with `vethuq background-service install`; both ask for administrator permission. Setup stops the service while it replaces files and starts it again; uninstalling removes it. See [CLI.md](CLI.md#background-service).
+
 ## Adding sources
 
 Use the toolbar's **Add Folder**/**Add File** buttons to register files or
@@ -30,6 +34,8 @@ CLI.
 
 Manage what's registered from **Settings > Sources**, which also lets you
 remove a source.
+
+**Index > Service** installs, uninstalls, starts, stops, restarts, pauses and resumes the background service, and shows its state and how many runs are queued. While the service is installed the app queues its indexing for it (rescanning at most once a minute) and closing the app does not stop the run.
 
 ## Watching indexing progress
 

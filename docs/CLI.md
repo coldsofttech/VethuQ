@@ -62,6 +62,41 @@ Delete the database and everything in it — registered sources, the search inde
 
 VethuQ takes a compressed backup automatically the first time it opens the database each day and keeps `auto-...` and `safety-...` backups for 7 days (always keeping the newest three). Backups live in a `backups` folder next to the database (or wherever `vethuq settings location backups set` points). A schema upgrade also saves a `safety-premigration-...` backup first. If an index run has to recover from a crash or a forced stop, VethuQ checks the database first and stops with instructions if it is damaged. Tune this under `vethuq settings db backup`.
 
+## `background-service`
+
+Run indexing through a background service instead of a worker started by each command. Once the service is installed, every `index run`, `restart`, `reindex` and `reindex file` (and the desktop app, and `client.index` in Python) puts its work in a queue and the service runs it, one run at a time, with the same settings, sources and languages a one-off run would use. Without the service nothing changes: each command starts its own `vethuq-worker`.
+
+- **Windows**: a Windows service named `VethuQBackground`, started automatically with Windows (delayed start) and restarted after a crash. It runs `vethuq-worker.exe --service`.
+- **Linux**: a `systemd --user` unit, `vethuq-background.service`, which needs no root. `pause` and `resume` are handled by VethuQ itself, since systemd has no pause.
+
+The service works on one data folder and database: the one of the user who installed it (including a location set with `vethuq settings location` or `VETHUQ_HOME`). If you move the data location, run `vethuq background-service uninstall` and `install` again.
+
+### `install [--account ACCOUNT]`
+
+Install the service and start it. On Windows this asks for administrator permission (a UAC prompt) because creating a service needs it. The service runs as LocalSystem; `--account DOMAIN\user` runs it as that account instead (you are asked for its password in the elevated window), which is what to use when sources are on mapped drives or network shares LocalSystem cannot reach. The Windows installer can also install it (see [DESKTOP.md](DESKTOP.md#install)).
+
+### `uninstall`
+
+Stop and remove the service. Index commands run their own worker again. Jobs still waiting stay in the queue and run if the service is installed again.
+
+### `start` / `stop` / `restart`
+
+Start, stop or restart the service. Stopping hands the run in progress back to the queue (it is asked to stop after the file it is on, and ended if that takes more than a few seconds) and it continues, picking up the files not yet done, the next time the service starts.
+
+### `pause` / `resume`
+
+Pause the service: the run in progress pauses (as with `index pause`) and queued jobs wait. `resume` carries on. These control the service; `vethuq index pause|resume|stop` still control the run itself, and a run stopped with `index stop` is not started again behind your back.
+
+### `status [--json]`
+
+Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, the jobs waiting in its queue and the run in progress.
+
+### Running one command without the service
+
+`index run`, `restart`, `reindex` and `reindex file` accept `--one-off`: start a worker of its own for this command only, even though the service is installed.
+
+When the service is installed but stopped or paused, a command asks whether to queue the job (it waits until the service runs again) or run it once now. Without a terminal (scripts, scheduled tasks) it queues and says so; use `--one-off` to avoid that.
+
 ## `index`
 
 ### `history [--limit N] [--json]`
@@ -86,7 +121,7 @@ vethuq index pause
 vethuq index resume
 ```
 
-### `restart [source] [--wait] [--force] [--lang LANG]`
+### `restart [source] [--wait] [--force] [--lang LANG] [--one-off]`
 
 Retry only files that previously failed OCR, as a background process.
 Unlike `run`, new files and already-indexed files are left untouched —
@@ -140,7 +175,7 @@ vethuq index rebuild-search
 vethuq index rebuild-search --force
 ```
 
-### `run [source] [--wait] [--force] [--lang LANG]`
+### `run [source] [--wait] [--force] [--lang LANG] [--one-off]`
 
 Start OCR indexing as a background process and return immediately. A
 freshly added/reactivated (`pending`) source is (re)processed in full; an

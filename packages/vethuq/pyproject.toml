@@ -12,6 +12,8 @@ dependencies = [
     "psutil>=5.9",
     "typer>=0.12",
     "rich>=13.7",
+    # `vethuq background-service install` on Windows runs the service through the service manager.
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 # BEGIN generated from the manifests - run scripts/dev/sync_extras.py

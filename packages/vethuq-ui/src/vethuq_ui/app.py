@@ -20,6 +20,7 @@ from vethuq_ui.source_list import SourceListView
 from vethuq_ui.status_bar import StatusBar
 from vethuq_ui.windows.settings.about import AboutWindow
 from vethuq_ui.windows.settings.database.field_window import DatabaseFieldWindow
+from vethuq_ui.windows.settings.index.background_service import BackgroundServiceWindow
 from vethuq_ui.windows.settings.index.retention import RemovedRetentionWindow
 from vethuq_ui.windows.settings.index.stability import StabilityCheckWindow
 from vethuq_ui.windows.settings.index.stale_lock import StaleLockWindow
@@ -122,6 +123,9 @@ class MainWindow(tk.Tk):
                     self.storage,
                     self.status_bar.show_message,
                     self.ribbon.refresh_setting_icons,
+                ),
+                show_background_service=lambda: BackgroundServiceWindow.show(
+                    self, self.status_bar.show_message, self.ribbon.refresh_setting_icons
                 ),
                 show_db_field=lambda name: DatabaseFieldWindow.show(
                     self,

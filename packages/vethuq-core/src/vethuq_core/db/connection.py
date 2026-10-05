@@ -26,7 +26,7 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 34
+    SCHEMA_VERSION = 35
 
     _SCHEMA = (
         """
@@ -149,6 +149,22 @@ CREATE TABLE IF NOT EXISTS index_runs (
     workers INTEGER,
     started_at TEXT NOT NULL,
     completed_at TEXT
+);
+
+-- Index runs requested while the background service is enabled. The service claims them in
+-- order and runs each one; nothing else deletes rows, so `vethuq background-service status`
+-- can show what is waiting and what finished.
+CREATE TABLE IF NOT EXISTS index_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    target TEXT,
+    mode TEXT NOT NULL DEFAULT 'run' CHECK (mode IN ('run', 'restart')),
+    languages TEXT,
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+    error TEXT,
+    requested_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS processing_metrics (

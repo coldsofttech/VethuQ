@@ -7,6 +7,7 @@ from pathlib import Path
 from vethuq_core.db import Db, SchemaVersionError
 from vethuq_core.storage.base import (
     DocumentStore,
+    IndexJobStore,
     IndexRunStore,
     IntegrityStore,
     OcrStore,
@@ -38,6 +39,7 @@ def open_storage(db_path: Path | None = None, *, check_same_thread: bool = True)
 
 __all__ = [
     "DocumentStore",
+    "IndexJobStore",
     "IndexRunStore",
     "IntegrityStore",
     "OcrStore",

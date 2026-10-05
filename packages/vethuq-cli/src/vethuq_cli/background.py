@@ -1,0 +1,179 @@
+"""`vethuq background-service ...` commands: run indexing through a background service."""
+
+from __future__ import annotations
+
+import json
+
+import typer
+from rich.text import Text
+from vethuq_core.background import (
+    BackgroundService,
+    BackgroundServiceError,
+    IndexJobs,
+    ServiceState,
+    ServiceStatus,
+)
+from vethuq_core.index import IndexRunner
+
+from vethuq_cli.console import console, error_console
+from vethuq_cli.index.panel import IndexPanel
+from vethuq_cli.theme import Theme
+
+app = typer.Typer(
+    help=(
+        "Run indexing through a background service. Once installed, every 'vethuq index' "
+        "command queues its work for the service instead of starting its own worker."
+    ),
+    no_args_is_help=True,
+)
+
+TITLE = "Background Service"
+STATE_STYLES = {
+    ServiceState.RUNNING: Theme.SUCCESS,
+    ServiceState.PAUSED: Theme.WARNING,
+    ServiceState.STOPPED: Theme.DANGER,
+    ServiceState.NOT_INSTALLED: "bright_black",
+    ServiceState.UNSUPPORTED: "bright_black",
+}
+
+
+def _perform(action: str, done: str, *, account: str | None = None) -> None:
+    try:
+        status = BackgroundService.perform(action, account=account)
+    except BackgroundServiceError as exc:
+        error_console.print(str(exc), style=Theme.ERROR)
+        raise typer.Exit(code=1) from exc
+    console.print(IndexPanel.message(f"{done} (now {status.state}).", Theme.OK, TITLE))
+
+
+@app.command("install")
+def install(
+    account: str | None = typer.Option(
+        None,
+        "--account",
+        help=(
+            "Windows account to run the service as (DOMAIN\\user); you are asked for its "
+            "password. Default: LocalSystem, which can't reach mapped drives."
+        ),
+    ),
+) -> None:
+    """Install the service, start it, and have it start with the computer.
+
+    On Windows this asks for administrator permission. The service works on your current data
+    folder and database, so every setting applies to its runs as it does to any other.
+    """
+    _perform("install", "Installed and started the background service", account=account)
+    console.print(
+        IndexPanel.message(
+            "Indexing now goes through the service. Add '--one-off' to an index command to run "
+            "it once without the service.",
+            "bright_black",
+            TITLE,
+        )
+    )
+
+
+@app.command("uninstall")
+def uninstall() -> None:
+    """Stop and remove the service. Index commands run their own worker again.
+
+    Jobs still waiting in the queue stay there and run if the service is installed again.
+    """
+    _perform("uninstall", "Removed the background service")
+
+
+@app.command("start")
+def start() -> None:
+    """Start the service."""
+    _perform("start", "Started the background service")
+
+
+@app.command("stop")
+def stop() -> None:
+    """Stop the service. A run in progress is stopped and picked up again on the next start."""
+    _perform("stop", "Stopped the background service")
+
+
+@app.command("restart")
+def restart() -> None:
+    """Stop and start the service."""
+    _perform("restart", "Restarted the background service")
+
+
+@app.command("pause")
+def pause() -> None:
+    """Pause the service: the run in progress pauses and queued jobs wait."""
+    _perform("pause", "Paused the background service")
+
+
+@app.command("resume")
+def resume() -> None:
+    """Resume a paused service."""
+    _perform("resume", "Resumed the background service")
+
+
+def _status_text(status: ServiceStatus) -> Text:
+    style = STATE_STYLES.get(status.state, "white")
+    text = Text.assemble(("Service: ", "white"), (status.state, style))
+    if status.installed:
+        if status.start_type:
+            text.append(f"\nStarts: {status.start_type}", style="white")
+        if status.account:
+            text.append(f"\nRuns as: {status.account}", style="white")
+    elif status.supported:
+        text.append("\n\nInstall it with '", style="white")
+        text.append("vethuq background-service install", style=Theme.COMMAND)
+        text.append("'.", style="white")
+    else:
+        text.append("\n\nThis system has neither Windows services nor systemd.", style="white")
+    return text
+
+
+@app.command("status")
+def status(
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """Show whether the service is installed and running, and what it has queued."""
+    service = BackgroundService.status()
+    queued = IndexJobs.queued() if service.installed else []
+    state = IndexRunner.read_state()
+    if as_json:
+        console.print(
+            json.dumps(
+                {
+                    "service": service.to_dict(),
+                    "queued": [job.to_dict() for job in queued],
+                    "run": json.loads(state.to_json()) if state is not None else None,
+                }
+            )
+        )
+        return
+    text = _status_text(service)
+    if service.installed:
+        text.append(f"\nQueued jobs: {len(queued)}", style="white")
+        if state is not None and state.is_active:
+            text.append(
+                f"\nRunning now: run {state.run_id} "
+                f"({state.processed_files}/{state.total_files} files, {state.status})",
+                style="white",
+            )
+            text.append("\n\nDetails: '", style="white")
+            text.append("vethuq index status", style=Theme.COMMAND)
+            text.append("'.", style="white")
+    console.print(IndexPanel.message(text, STATE_STYLES.get(service.state, Theme.PRIMARY), TITLE))
+    if queued:
+        table = IndexPanel.new_table()
+        table.add_column("Job", justify="right")
+        table.add_column("Kind")
+        table.add_column("Target", no_wrap=False, overflow="fold")
+        table.add_column("Languages")
+        table.add_column("Queued")
+        for job in queued:
+            table.add_row(
+                str(job.id),
+                job.mode,
+                job.target or "all sources",
+                job.languages or "",
+                IndexPanel.friendly_time(job.requested_at),
+            )
+        console.print(IndexPanel.table(table, "Queued Index Jobs"))

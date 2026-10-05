@@ -1,6 +1,6 @@
 # PyInstaller spec for VethuQ Desktop.
 # Builds three executables - VethuQ-UI.exe (desktop, windowed), vethuq.exe
-# (CLI) and vethuq-worker.exe (background index worker) - into ONE shared
+# (CLI) and vethuq-worker.exe (background index worker, also the background service) - into ONE shared
 # folder (build/desktop/VethuQ/), so the heavy OCR libraries exist once
 # instead of once per exe. The folder is then compressed by Inno Setup
 # (vethuq.iss), which can't shrink the already-compressed --onefile archives.
@@ -175,6 +175,12 @@ worker_a = _analysis(
         *paddlex_hidden,
         *paddleocr_hidden,
         *semantic_hidden,
+        # The background service (--service) hosts itself in the Windows service manager.
+        "servicemanager",
+        "win32service",
+        "win32serviceutil",
+        "win32event",
+        "win32timezone",
     ],
 )
 

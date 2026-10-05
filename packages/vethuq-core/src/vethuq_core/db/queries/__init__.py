@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from vethuq_core.db.queries.documents import Document
 from vethuq_core.db.queries.index import Index
+from vethuq_core.db.queries.index_jobs import IndexJobs
 from vethuq_core.db.queries.integrity import Integrity
 from vethuq_core.db.queries.ocr import Ocr
 from vethuq_core.db.queries.semantic import Semantic
@@ -11,4 +12,14 @@ from vethuq_core.db.queries.settings import Settings
 from vethuq_core.db.queries.sources import Source
 from vethuq_core.db.queries.stats import Stats
 
-__all__ = ["Document", "Index", "Integrity", "Ocr", "Semantic", "Settings", "Source", "Stats"]
+__all__ = [
+    "Document",
+    "Index",
+    "IndexJobs",
+    "Integrity",
+    "Ocr",
+    "Semantic",
+    "Settings",
+    "Source",
+    "Stats",
+]

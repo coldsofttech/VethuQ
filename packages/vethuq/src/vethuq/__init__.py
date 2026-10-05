@@ -11,6 +11,15 @@ from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
 
+from vethuq._core.background import BackgroundService as _BackgroundService
+from vethuq._core.background import (
+    BackgroundServiceError,
+    IndexJob,
+    IndexSubmission,
+    ServiceStatus,
+)
+from vethuq._core.background import Dispatch as _Dispatch
+from vethuq._core.background import IndexJobs as _IndexJobs
 from vethuq._core.db.backup import Backup as _Backup
 from vethuq._core.db.backup import BackupError, BackupInfo
 from vethuq._core.db.integrity import IntegrityCheck as _IntegrityCheck
@@ -189,11 +198,15 @@ __all__ = [
     "DocumentResult",
     "ExportFormatSettings",
     "GPUSettings",
+    "BackgroundServiceClient",
     "Index",
     "IndexRun",
     "IndexRunnerError",
     "IndexSettings",
+    "IndexJob",
     "IndexState",
+    "BackgroundServiceError",
+    "ServiceStatus",
     "IntegrityCheckResult",
     "IntegrityCheckSettings",
     "InvalidSettingValueError",
@@ -343,6 +356,20 @@ class Sources:
             storage.close()
 
 
+def _via(one_off: bool) -> str:
+    return _Dispatch.VIA_ONE_OFF if one_off else _Dispatch.VIA_AUTO
+
+
+def _outcome(submission: IndexSubmission, wait: bool) -> int | IndexState | IndexJob | None:
+    """The worker pid or the queued job; on `wait`, the final state."""
+    if submission.pid is not None:
+        return _IndexRunner.wait(submission.pid) if wait else submission.pid
+    assert submission.job_id is not None
+    if wait:
+        return _Dispatch.wait_for_job(submission.job_id)
+    return _IndexJobs.get(submission.job_id)
+
+
 class Index:
     """Run and control background OCR indexing over registered sources.
 
@@ -356,8 +383,13 @@ class Index:
         force: bool = False,
         wait: bool = False,
         languages: str | Sequence[str] | None = None,
-    ) -> int | IndexState | None:
+        one_off: bool = False,
+    ) -> int | IndexState | IndexJob | None:
         """Start OCR indexing on registered sources in the background.
+
+        When the background service is installed (`Vethuq().background_service`), the run is
+        queued for it instead and an `IndexJob` is returned (the final `IndexState` when `wait`
+        is True). `one_off=True` starts a worker of its own anyway.
 
         `languages` reads the files in those languages this run (`"te"`, `"en,te"`, `"auto"`),
         instead of each source's own languages or the `settings.ocr.languages` setting.
@@ -375,13 +407,14 @@ class Index:
         or enabled, and `OcrModelMissingError` if the files would be read in a language
         whose models aren't downloaded (`ocr.models.download`).
         """
-        pid = _IndexRunner.start_run(
+        submission = _Dispatch.submit(
             str(target) if target is not None else None,
             force=force,
             restart=False,
             languages=_language_value(languages),
+            via=_via(one_off),
         )
-        return _IndexRunner.wait(pid) if wait else pid
+        return _outcome(submission, wait)
 
     def restart(
         self,
@@ -390,15 +423,17 @@ class Index:
         force: bool = False,
         wait: bool = False,
         languages: str | Sequence[str] | None = None,
-    ) -> int | IndexState | None:
+        one_off: bool = False,
+    ) -> int | IndexState | IndexJob | None:
         """Retry only previously-failed files, in the background. See `run`."""
-        pid = _IndexRunner.start_run(
+        submission = _Dispatch.submit(
             str(target) if target is not None else None,
             force=force,
             restart=True,
             languages=_language_value(languages),
+            via=_via(one_off),
         )
-        return _IndexRunner.wait(pid) if wait else pid
+        return _outcome(submission, wait)
 
     def reindex(
         self,
@@ -407,15 +442,18 @@ class Index:
         force: bool = False,
         wait: bool = False,
         languages: str | Sequence[str] | None = None,
-    ) -> int | IndexState | None:
+        one_off: bool = False,
+    ) -> int | IndexState | IndexJob | None:
         """Re-index every file under a source (id or path), not just failed ones.
 
         Files are OCR'd again and their existing documents updated in place, so
         nothing is duplicated. `languages` reads them in those languages this time; to make
         it lasting use `sources.set_languages`. Same errors and return value as `run`.
         """
-        pid = _Reindex.start_source(target, force=force, languages=_language_value(languages))
-        return _IndexRunner.wait(pid) if wait else pid
+        submission = _Reindex.submit_source(
+            target, force=force, languages=_language_value(languages), via=_via(one_off)
+        )
+        return _outcome(submission, wait)
 
     def reindex_file(
         self,
@@ -425,7 +463,8 @@ class Index:
         force: bool = False,
         wait: bool = False,
         languages: str | Sequence[str] | None = None,
-    ) -> int | IndexState | None:
+        one_off: bool = False,
+    ) -> int | IndexState | IndexJob | None:
         """Re-index one file, given its document id or path.
 
         `languages` reads it in those languages this time - the way to redo a file whose
@@ -435,10 +474,14 @@ class Index:
         `AmbiguousFileError` if it sits under more than one source and `source`
         (id or path) isn't given. Otherwise like `run`.
         """
-        pid = _Reindex.start_file(
-            file, source=source, force=force, languages=_language_value(languages)
+        submission = _Reindex.submit_file(
+            file,
+            source=source,
+            force=force,
+            languages=_language_value(languages),
+            via=_via(one_off),
         )
-        return _IndexRunner.wait(pid) if wait else pid
+        return _outcome(submission, wait)
 
     def rebuild_search(
         self, *, on_progress: Callable[[str, int, int], None] | None = None
@@ -2063,6 +2106,46 @@ class Semantic:
         return pages
 
 
+class BackgroundServiceClient:
+    """Install and control the background indexing service (Windows service, or a systemd user
+    unit on Linux). Once installed, `Vethuq().index` queues its runs for the service.
+
+    Not instantiated directly - use `Vethuq().background_service`. Installing or changing the
+    service asks for administrator permission on Windows.
+    """
+
+    def status(self) -> ServiceStatus:
+        """Whether the service is installed, and its state ("running", "paused", "stopped"...)."""
+        return _BackgroundService.status()
+
+    def queued(self) -> list[IndexJob]:
+        """The index runs waiting for the service, oldest first."""
+        return _IndexJobs.queued()
+
+    def install(self, *, account: str | None = None) -> ServiceStatus:
+        """Install the service and start it. Raises `BackgroundServiceError` if it can't be."""
+        return _BackgroundService.perform("install", account=account)
+
+    def uninstall(self) -> ServiceStatus:
+        """Stop and remove the service; indexing starts its own workers again."""
+        return _BackgroundService.perform("uninstall")
+
+    def start(self) -> ServiceStatus:
+        return _BackgroundService.perform("start")
+
+    def stop(self) -> ServiceStatus:
+        return _BackgroundService.perform("stop")
+
+    def restart(self) -> ServiceStatus:
+        return _BackgroundService.perform("restart")
+
+    def pause(self) -> ServiceStatus:
+        return _BackgroundService.perform("pause")
+
+    def resume(self) -> ServiceStatus:
+        return _BackgroundService.perform("resume")
+
+
 class Vethuq:
     """Client for VethuQ's local database — the same one the CLI and desktop app use.
 
@@ -2070,6 +2153,7 @@ class Vethuq:
     client = vethuq.Vethuq()
     client.sources.add("./path/to/folder-or-file")
     client.index.run(wait=True)
+    client.background_service.status()
     client.settings.gpu.enable()
     client.stats.processing()
     client.search.run("invoice")
@@ -2083,6 +2167,7 @@ class Vethuq:
     def __init__(self) -> None:
         self.sources = Sources()
         self.index = Index()
+        self.background_service = BackgroundServiceClient()
         self.ocr = Ocr()
         self.semantic = Semantic()
         self.settings = Settings()

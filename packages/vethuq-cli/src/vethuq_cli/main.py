@@ -11,6 +11,7 @@ from vethuq_core.errors import StartupError
 from vethuq_core.logs import Logs
 from vethuq_core.storage import default_db_path
 
+from vethuq_cli.background import app as background_app
 from vethuq_cli.console import error_console
 from vethuq_cli.db import app as db_app
 from vethuq_cli.filetypes import app as types_app
@@ -32,6 +33,7 @@ _logger = Logs.get_logger("cli")
 app = typer.Typer(help=f"{APP_NAME} — {APP_TAGLINE}")
 app.add_typer(source_app, name="source")
 app.add_typer(index_app, name="index")
+app.add_typer(background_app, name="background-service")
 app.add_typer(settings_app, name="settings")
 app.add_typer(stats_app, name="stats")
 app.add_typer(db_app, name="db")

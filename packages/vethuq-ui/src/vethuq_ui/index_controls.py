@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 
+from vethuq_core.background import Dispatch
 from vethuq_core.index import (
     AlreadyRunningError,
     DatabaseIntegrityError,
@@ -24,6 +26,9 @@ from vethuq_ui.status_bar import StatusBar
 
 class IndexControls:
     POLL_INTERVAL_MS = 5000
+    # With the background service installed the rescan is a queued job rather than a free
+    # worker start, so it is asked for less often.
+    SERVICE_RESCAN_SECONDS = 60.0
 
     def __init__(
         self,
@@ -39,6 +44,7 @@ class IndexControls:
         self._status_bar = status_bar
         self._refresh_sources = refresh_sources
         self._closing = False
+        self._last_queued = 0.0
 
     def launch_or_attach(self, *, quiet: bool = False) -> None:
         """Start background indexing, unless a run is already in progress.
@@ -53,8 +59,13 @@ class IndexControls:
         """
         if IndexRunner.is_running(self._db_path)[0]:
             return
+        if quiet and Dispatch.service_status() is not None:
+            now = time.monotonic()
+            if now - self._last_queued < self.SERVICE_RESCAN_SECONDS:
+                return
+            self._last_queued = now
         try:
-            IndexRunner.start_run(db_path=self._db_path)
+            Dispatch.submit(db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
             # AlreadyRunningError: lost a race with something else starting a
             # run just now - fine, we'll just poll it. StaleLockError: only
@@ -92,6 +103,9 @@ class IndexControls:
         # index_runs row), so the app doesn't need to stay open to see that
         # happen.
         self._closing = True
+        if Dispatch.service_status() is not None:
+            # The service keeps indexing after the window closes; that is what it is for.
+            return
         try:
             IndexRunner.signal_stop(db_path=self._db_path)
         except IndexRunnerError:
@@ -99,13 +113,15 @@ class IndexControls:
 
     def start_targeted_run(self, source_id: str, *, restart: bool) -> None:
         try:
-            IndexRunner.start_run(source_id, restart=restart, db_path=self._db_path)
+            Dispatch.submit(source_id, restart=restart, db_path=self._db_path)
         except (
             AlreadyRunningError,
             StaleLockError,
             DatabaseIntegrityError,
             SourceNotFoundError,
         ) as exc:
+            show_error(self._window, "Could not start indexing", str(exc))
+        except IndexRunnerError as exc:
             show_error(self._window, "Could not start indexing", str(exc))
         else:
             self._refresh_sources()

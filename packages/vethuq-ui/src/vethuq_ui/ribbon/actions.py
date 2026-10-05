@@ -27,6 +27,7 @@ class RibbonActions:
     show_stability_check: Callable[[], None]
     show_thread_workers: Callable[[], None]
     show_stale_lock: Callable[[], None]
+    show_background_service: Callable[[], None]
     show_db_field: Callable[[str], None]
     show_log_field: Callable[[str], None]
     show_app_location: Callable[[], None]

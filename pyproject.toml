@@ -66,6 +66,8 @@ icons = [
 # Windows-only for now), so not part of the default `dev` group.
 desktop = [
     "pyinstaller>=6.10; sys_platform == 'win32'",
+    # The background service (vethuq-worker.exe --service) talks to the Windows service manager.
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [tool.ruff]

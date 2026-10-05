@@ -419,7 +419,12 @@ class InteractiveMenu:
                 ).strip()
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_run, target=target or None, wait=wait, force=False, lang=None
+                    index_run,
+                    target=target or None,
+                    wait=wait,
+                    force=False,
+                    lang=None,
+                    one_off=False,
                 )
             elif choice == "2":
                 target = Prompt.ask(
@@ -429,7 +434,12 @@ class InteractiveMenu:
                 ).strip()
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_restart, target=target or None, wait=wait, force=False, lang=None
+                    index_restart,
+                    target=target or None,
+                    wait=wait,
+                    force=False,
+                    lang=None,
+                    one_off=False,
                 )
             elif choice == "3":
                 target = Prompt.ask(
@@ -455,7 +465,12 @@ class InteractiveMenu:
                     continue
                 wait = Confirm.ask("Wait for the run to finish?", console=console, default=False)
                 InteractiveMenu._run_safely(
-                    index_reindex_source, target=target, wait=wait, force=False, lang=None
+                    index_reindex_source,
+                    target=target,
+                    wait=wait,
+                    force=False,
+                    lang=None,
+                    one_off=False,
                 )
             elif choice == "9":
                 file = Prompt.ask("File id or path to re-index", console=console).strip()
@@ -474,6 +489,7 @@ class InteractiveMenu:
                     wait=wait,
                     force=False,
                     lang=None,
+                    one_off=False,
                 )
             elif choice == "10":
                 InteractiveMenu._run_safely(index_rebuild_search, force=False)

@@ -1,4 +1,4 @@
-"""The ribbon's Index tab: retention, stability, workers and stale lock."""
+"""The ribbon's Index tab: retention, stability, workers, stale lock and the background service."""
 
 from __future__ import annotations
 
@@ -43,6 +43,13 @@ class IndexTab(IconTab):
             self.stale_lock_icon_name,
             "\N{OPEN LOCK}",
             "Stale lock",
+        )
+        self._add_button(
+            group,
+            actions.show_background_service,
+            lambda: "background-service",
+            "\N{GEAR}",
+            "Service",
         )
 
     def stability_icon_name(self) -> str:

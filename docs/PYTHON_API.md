@@ -166,12 +166,19 @@ table. Returns a `SearchIndexRebuildResult`; a table that fails is listed in
 `failed` and the others still rebuild. Raises `AlreadyRunningError` while an
 index run is active. Unlike the CLI, it doesn't ask for confirmation.
 
-### `run(target=None, *, force=False, wait=False, languages=None)`
+### `run(target=None, *, force=False, wait=False, languages=None, one_off=False)`
 
 Start OCR indexing on registered sources. `target` is a source id or path;
 omit it to index every pending source. Returns the background process id,
 or, with `wait=True`, blocks until the run finishes and returns its final
 `IndexState` instead.
+
+When the background service is installed (`client.background_service`), the run is
+queued for it instead: the call returns the queued `IndexJob` (the final
+`IndexState` with `wait=True`), and `AlreadyRunningError` is not raised for a
+run already in progress, since the job simply waits. `one_off=True` starts a
+worker of its own anyway. `restart`, `reindex` and `reindex_file` take
+`one_off` and behave the same way.
 
 `languages` reads the files in those languages for this run (`"te"`, `"en,te"`,
 `["en", "te"]` or `"auto"`), instead of each source's own languages or the
@@ -212,6 +219,22 @@ for result in client.index.status(source.id):
 
 Stop the currently running background index and wait for confirmation.
 Raises `IndexRunnerError` if no run is currently active.
+
+## `client.background_service`
+
+Install and control the background indexing service (a Windows service, or a `systemd --user` unit on Linux; see `vethuq background-service` in [CLI.md](CLI.md#background-service)). Installing or changing it asks for administrator permission on Windows.
+
+- `status() -> ServiceStatus` - `installed`, `state` (`"running"`, `"paused"`, `"stopped"`, `"not installed"`, ...), `running`, `account`, `start_type`.
+- `queued() -> list[IndexJob]` - runs waiting for the service, oldest first.
+- `install(*, account=None)`, `uninstall()`, `start()`, `stop()`, `restart()`, `pause()`, `resume()` - each returns the new `ServiceStatus` and raises `BackgroundServiceError` with the reason when it cannot be done (for example installing twice, or controlling a service that is not installed).
+
+On Windows the `vethuq` package depends on `pywin32`, which the service needs.
+
+```python
+client.background_service.install()
+job = client.index.run()                 # queued for the service
+client.background_service.status().state # "running"
+```
 
 ## `client.logs`
 

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from vethuq_core.index.runner import AlreadyRunningError, IndexRunner, IndexRunnerError
 from vethuq_core.logs import Logs
 from vethuq_core.sources import Source, Sources
 from vethuq_core.storage import Storage, default_db_path, open_storage
+
+if TYPE_CHECKING:
+    from vethuq_core.background import IndexSubmission
 
 
 class FileNotTrackedError(IndexRunnerError):
@@ -42,6 +46,42 @@ class Reindex:
         to make the choice lasting, set it on the source (`Sources.set_languages`).
         """
         db_path = db_path or default_db_path()
+        source = Reindex._prepare_source(target, db_path)
+        return IndexRunner.start_run(
+            str(source.id),
+            force=force,
+            db_path=db_path,
+            on_recovery=on_recovery,
+            languages=languages,
+        )
+
+    @staticmethod
+    def submit_source(
+        target: str | Path | int,
+        *,
+        force: bool = False,
+        via: str = "auto",
+        db_path: Path | None = None,
+        on_recovery: Callable[[list[str]], None] | None = None,
+        languages: str | None = None,
+    ) -> IndexSubmission:
+        """Like `start_source`, but through the background service when it is installed."""
+        db_path = db_path or default_db_path()
+        source = Reindex._prepare_source(target, db_path)
+        from vethuq_core.background.dispatch import Dispatch
+
+        return Dispatch.submit(
+            str(source.id),
+            languages=languages,
+            force=force,
+            via=via,
+            db_path=db_path,
+            on_recovery=on_recovery,
+        )
+
+    @staticmethod
+    def _prepare_source(target: str | Path | int, db_path: Path) -> Source:
+        """Reset every file under the source to pending, ready for a run to pick up."""
         Reindex._refuse_if_running(db_path)
         storage = open_storage(db_path)
         try:
@@ -50,13 +90,7 @@ class Reindex:
                 storage.reset_document_index_for_reindex(source.id)
         finally:
             storage.close()
-        return IndexRunner.start_run(
-            str(source.id),
-            force=force,
-            db_path=db_path,
-            on_recovery=on_recovery,
-            languages=languages,
-        )
+        return source
 
     @staticmethod
     def start_file(
@@ -76,6 +110,45 @@ class Reindex:
         path) must say which one - otherwise `AmbiguousFileError` is raised.
         """
         db_path = db_path or default_db_path()
+        owner = Reindex._prepare_file(file, source, db_path)
+        return IndexRunner.start_run(
+            str(owner.id),
+            force=force,
+            db_path=db_path,
+            on_recovery=on_recovery,
+            languages=languages,
+        )
+
+    @staticmethod
+    def submit_file(
+        file: str | Path | int,
+        *,
+        source: str | Path | int | None = None,
+        force: bool = False,
+        via: str = "auto",
+        db_path: Path | None = None,
+        on_recovery: Callable[[list[str]], None] | None = None,
+        languages: str | None = None,
+    ) -> IndexSubmission:
+        """Like `start_file`, but through the background service when it is installed."""
+        db_path = db_path or default_db_path()
+        owner = Reindex._prepare_file(file, source, db_path)
+        from vethuq_core.background.dispatch import Dispatch
+
+        return Dispatch.submit(
+            str(owner.id),
+            languages=languages,
+            force=force,
+            via=via,
+            db_path=db_path,
+            on_recovery=on_recovery,
+        )
+
+    @staticmethod
+    def _prepare_file(
+        file: str | Path | int, source: str | Path | int | None, db_path: Path
+    ) -> Source:
+        """Reset one file to pending; returns the source that owns it."""
         Reindex._refuse_if_running(db_path)
         storage = open_storage(db_path)
         try:
@@ -84,13 +157,7 @@ class Reindex:
                 storage.reset_document_index_for_reindex(row_source.id, file_path)
         finally:
             storage.close()
-        return IndexRunner.start_run(
-            str(row_source.id),
-            force=force,
-            db_path=db_path,
-            on_recovery=on_recovery,
-            languages=languages,
-        )
+        return row_source
 
     @staticmethod
     def _refuse_if_running(db_path: Path) -> None:
