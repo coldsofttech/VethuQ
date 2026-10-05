@@ -23,8 +23,12 @@ def load(folder: Path) -> dict:
 
 
 def needs_ocr(entry: dict) -> bool:
-    """Whether reading the file takes the OCR engine (any page that is not native text)."""
-    return any(page["source"] != "native" for page in entry["pages"].values())
+    """Whether reading the file takes the OCR engine: a page that is not native text, or an entry
+    marked `"needs_ocr"` (a file that cannot be read, but only finds that out once the engine is
+    loaded, as with an image)."""
+    return entry.get("needs_ocr", False) or any(
+        page["source"] != "native" for page in entry["pages"].values()
+    )
 
 
 def case(entry: dict):
@@ -58,3 +62,9 @@ def contains(page_text: str, phrase: str, source: str) -> bool:
     have = set(words(page_text))
     needed = words(phrase)
     return sum(word in have for word in needed) / len(needed) >= OCR_WORD_SHARE
+
+
+# For tests that are not about one entry but still read with the real models.
+needs_models = pytest.mark.skipif(
+    not REAL_OCR, reason="reads with real PaddleOCR: set VETHUQ_REAL_OCR=1 and the models"
+)

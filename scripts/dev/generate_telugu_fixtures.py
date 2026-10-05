@@ -1,12 +1,14 @@
-"""Generate the Telugu PDF fixtures in `tests/integration/fixtures/te/pdf` (deterministic).
+"""Generate the Telugu fixtures in `tests/integration/fixtures/te/{pdf,png}` (deterministic).
 
-    uv run python scripts/dev/generate_telugu_fixtures.py
+    uv run python scripts/dev/generate_telugu_fixtures.py             # every type
+    uv run python scripts/dev/generate_telugu_fixtures.py pdf         # or one: pdf, png
 
 Native PDFs are typeset from HTML by headless Chromium, with the bundled Noto Sans Telugu, so
-their text layer holds real, correctly shaped Telugu. Scanned PDFs are rendered from the same kind
-of page, degraded (tint, blur, noise, rotation, skew, a stamp ...) and saved as images only, so they
-have no text layer and must be read by OCR. The two unreadable ones (password protected, corrupted)
-are made from a native file. Everything is original text; the font is licensed under the SIL OFL.
+their text layer holds real, correctly shaped Telugu. Scanned PDFs and the PNG images are rendered
+from the same kind of page, degraded (tint, blur, noise, rotation, skew, a stamp, low contrast, a
+transparent or 1-bit format ...) and saved as images only, so they have no text layer and must be
+read by OCR. The unreadable ones (password protected, corrupted) are made from a native file or
+from junk bytes. Everything is original text; the font is licensed under the SIL OFL.
 
 Needs Chromium: set CHROMIUM to its path, or have Playwright's (PLAYWRIGHT_BROWSERS_PATH) around.
 After changing a fixture, regenerate `expected.json` with
@@ -20,6 +22,7 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -29,7 +32,9 @@ import pymupdf
 from PIL import Image, ImageDraw, ImageFont
 
 REPO = Path(__file__).resolve().parents[2]
-OUT = REPO / "packages/vethuq-core/tests/integration/fixtures/te/pdf"
+FIXTURES = REPO / "packages/vethuq-core/tests/integration/fixtures/te"
+OUT = FIXTURES / "pdf"
+OUT_PNG = FIXTURES / "png"
 FONT = REPO / "packages/vethuq-ui/src/vethuq_ui/assets/fonts/NotoSansTelugu-Regular.ttf"
 FONT_BOLD = REPO / "packages/vethuq-ui/src/vethuq_ui/assets/fonts/NotoSansTelugu-Bold.ttf"
 PASSWORD = "Abc123"
@@ -103,11 +108,15 @@ def rasterize(pdf: Path, dpi: int) -> list[np.ndarray]:
         return images
 
 
-def paper(image: np.ndarray, rng: np.random.RandomState, tint=(246, 244, 236)) -> np.ndarray:
-    """Off-white scanner paper with a little grain, text kept dark."""
+def paper(
+    image: np.ndarray, rng: np.random.RandomState, tint=(246, 244, 236), grain: float = 0.012
+) -> np.ndarray:
+    """Off-white scanner paper with a little grain, text kept dark. Grain does not compress, so
+    the PNGs (which are kept small) use none."""
     base = np.array(tint, np.float32) / 255.0
     out = image.astype(np.float32) / 255.0 * base
-    out += rng.normal(0, 0.012, out.shape).astype(np.float32)
+    if grain:
+        out += rng.normal(0, grain, out.shape).astype(np.float32)
     return np.clip(out * 255, 0, 255).astype(np.uint8)
 
 
@@ -366,5 +375,103 @@ def build() -> None:
     print(f"wrote {len(list(OUT.glob('*.pdf')))} files to {OUT}")
 
 
+# ---------------------------------------------------------------------------- PNG
+
+
+def crop(image: np.ndarray, margin: int = 40, dark: int = 160) -> np.ndarray:
+    """The image cut to its text (the dark pixels) plus `margin` on every side."""
+    ys, xs = np.where(image.min(axis=2) < dark)
+    top, bottom = max(ys.min() - margin, 0), min(ys.max() + margin, image.shape[0])
+    left, right = max(xs.min() - margin, 0), min(xs.max() + margin, image.shape[1])
+    return image[top:bottom, left:right]
+
+
+def save_png(image: np.ndarray, target: Path, mode: str = "RGB") -> None:
+    pil = Image.fromarray(image)
+    if mode != pil.mode:
+        pil = pil.convert(mode)
+    pil.save(target, "PNG", optimize=True)
+
+
+def build_png() -> None:
+    rng = np.random.RandomState(2027)
+    OUT_PNG.mkdir(parents=True, exist_ok=True)
+    for old in OUT_PNG.glob("*.png"):
+        old.unlink()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+
+        def page(body: str, dpi: int = 120) -> np.ndarray:
+            pdf = work / "page.pdf"
+            native_pdf(body, pdf)
+            return rasterize(pdf, dpi)[0]
+
+        def sheet(body: str) -> np.ndarray:
+            """A page cut down to its text with a generous margin, on flat scanner paper."""
+            return paper(crop(page(body), 80), rng, grain=0)
+
+        def save(name: str, image: np.ndarray, mode: str = "RGB") -> Path:
+            save_png(image, OUT_PNG / name, mode)
+            return OUT_PNG / name
+
+        poem = page(POEM)
+        first = save("01_Telugu_Clean.png", sheet(POEM))
+        save("02_Telugu_Letter.png", sheet(LETTER))
+        save("03_Telugu_Invoice.png", sheet(INVOICE))
+        save("04_Telugu_Table.png", sheet(TABLE))
+        save("05_Telugu_Conjuncts.png", sheet(CONJUNCTS))
+        save("06_Telugu_Mixed_Lines.png", sheet(SCAN_MIXED))
+        save("07_Telugu_Short_Word.png", crop(page(SHORT, 200), 60))
+        save("08_Telugu_Numbers_Only.png", crop(page(NUMBERS), 60))
+        small = crop(poem, 50)
+        save("09_Telugu_LowRes.png", paper(blur(downscale(small, 0.3), 1.2), rng, grain=0))
+        upright = sheet(POEM)
+        save("10_Telugu_Rotated_90.png", rotate(upright, -90))
+        save("11_Telugu_Rotated_180.png", rotate(upright, 180))
+        save("12_Telugu_Skewed.png", speckle(rotate(upright, 8), rng, 0.0015))
+        noisy = watermark(sheet(LETTER), "నమూనా")
+        save("13_Telugu_Noisy.png", scribble(speckle(stamp(noisy, "రహస్యం"), rng, 0.004), rng))
+
+        text = crop(page(POEM), 30)
+        alpha = (255 - text.min(axis=2)).astype(np.uint8)
+        rgba = np.dstack([np.zeros_like(text), alpha])
+        Image.fromarray(rgba, "RGBA").save(OUT_PNG / "14_Telugu_Transparent.png", optimize=True)
+
+        sentence = crop(
+            page("<p style='font-size:20pt;white-space:nowrap'>తెలుగు భాష మధురమైనది</p>"), 25
+        )
+        strip = np.full((sentence.shape[0], 4000, 3), 255, np.uint8)
+        x = 40
+        while x + sentence.shape[1] < 3960:
+            strip[:, x : x + sentence.shape[1]] = sentence
+            x += sentence.shape[1] + 300
+        save("15_Telugu_Wide_Strip.png", strip)
+
+        gray = cv2.cvtColor(crop(poem, 50), cv2.COLOR_RGB2GRAY)
+        save("16_Telugu_1bit.png", cv2.threshold(gray, 160, 255, cv2.THRESH_BINARY)[1], "1")
+        save("17_Telugu_Grayscale.png", gray, "L")
+        dark = np.where(gray[..., None] < 128, 235, 28).astype(np.uint8).repeat(3, axis=2)
+        save("18_Telugu_Dark_Background.png", dark)
+        faint = (235 - (235 - gray.astype(np.float32)) * 0.22).astype(np.uint8)
+        save("19_Telugu_Low_Contrast.png", faint[..., None].repeat(3, axis=2))
+        tiny = cv2.resize(crop(poem, 30), None, fx=0.32, fy=0.32, interpolation=cv2.INTER_AREA)
+        save("20_Telugu_Small_Text.png", tiny)
+        save("21_తెలుగు_చిత్రం.png", sheet(FILENAME_DOC))
+
+    shutil.copy(first, OUT_PNG / "22_Telugu_Duplicate_Of_01.png")
+    junk = np.random.RandomState(23).randint(0, 256, 1500).astype(np.uint8).tobytes()
+    (OUT_PNG / "23_Telugu_Corrupted.png").write_bytes(b"\x89PNG\r\n\x1a\n" + junk)
+    print(f"wrote {len(list(OUT_PNG.glob('*.png')))} files to {OUT_PNG}")
+
+
+def main() -> None:
+    kinds = sys.argv[1:] or ["pdf", "png"]
+    if "pdf" in kinds:
+        build()
+    if "png" in kinds:
+        build_png()
+
+
 if __name__ == "__main__":
-    build()
+    main()

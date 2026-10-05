@@ -117,7 +117,7 @@ def merge(old: dict | None, new: dict) -> dict:
     """`new`, keeping the phrases a person already chose in `old`."""
     if old is None:
         return new
-    for key in ("languages", "engine", "searches", "note", "lang_en"):
+    for key in ("languages", "engine", "searches", "note", "lang_en", "needs_ocr", "known_gaps"):
         if key in old:
             new[key] = old[key]
     for number, info in new["pages"].items():
