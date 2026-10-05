@@ -85,5 +85,10 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["packages"]
 markers = [
-    "integration: tests that run against real fixture files",
+    "integration: runs real fixture files, some with real PaddleOCR; run by integration.yml, not test.yml",
+    "lang_en: integration test on English files (selected by the integration workflow's lang input)",
+    "lang_te: integration test on Telugu files (selected by the integration workflow's lang input)",
+    "type_pdf: integration test on PDF files (selected by the integration workflow's file-type input)",
+    "type_png: integration test on PNG files (selected by the integration workflow's file-type input)",
+    "type_jpg: integration test on JPG files (selected by the integration workflow's file-type input)",
 ]

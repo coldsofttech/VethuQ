@@ -1,0 +1,116 @@
+name: Integration tests
+
+# Started by hand (Actions > Integration tests > Run workflow); never on a push or pull request.
+# Runs the `integration` tests with the real PaddleOCR models, which are far too slow and heavy
+# for the unit-test workflow (test.yml skips them).
+#
+# `lang` and `file-type` choose which tests run. An integration test says what it covers with
+# markers: lang_en / lang_te and type_pdf / type_png / type_jpg. With "all" (the default) nothing
+# is filtered; otherwise only tests carrying the chosen marker run. Add a marker for each new
+# language or file type here and in pyproject.toml.
+on:
+  workflow_dispatch:
+    inputs:
+      lang:
+        description: OCR language to test
+        type: choice
+        options: [all, en, te]
+        default: all
+      file-type:
+        description: File type to test
+        type: choice
+        options: [all, pdf, png, jpg]
+        default: all
+      os:
+        description: Runner operating system
+        type: choice
+        options: [ubuntu-latest, windows-latest]
+        default: ubuntu-latest
+      python-version:
+        description: Python version
+        type: choice
+        options: ["3.12", "3.11"]
+        default: "3.12"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: integration (lang ${{ inputs.lang }}, ${{ inputs.file-type }}, ${{ inputs.os }}, py${{ inputs.python-version }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 90
+    env:
+      # Tests that load the real OCR models check this, so a plain local `pytest` never starts
+      # a model download.
+      VETHUQ_REAL_OCR: "1"
+      # The models live here so they can be cached between runs.
+      PADDLE_PDX_CACHE_HOME: ${{ github.workspace }}/.paddlex-cache
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python ${{ inputs.python-version }}
+        run: uv python install ${{ inputs.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Merge vethuq-core/vethuq-cli into packages/vethuq
+        run: uv run python packages/vethuq/scripts/merge_sources.py
+
+      # Model files are tied to the PaddleOCR version in uv.lock, so the lock file keys the cache.
+      - name: Restore the OCR models
+        uses: actions/cache@v4
+        with:
+          path: .paddlex-cache
+          key: paddle-models-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: paddle-models-${{ runner.os }}-
+
+      - name: Download the OCR models
+        shell: bash
+        env:
+          LANG_INPUT: ${{ inputs.lang }}
+        run: |
+          if [ "$LANG_INPUT" = "all" ]; then
+            uv run vethuq ocr models download --lang en --lang te
+            uv run vethuq ocr models status --lang en --lang te
+          else
+            uv run vethuq ocr models download --lang "$LANG_INPUT"
+            uv run vethuq ocr models status --lang "$LANG_INPUT"
+          fi
+
+      - name: Run the integration tests
+        shell: bash
+        env:
+          LANG_INPUT: ${{ inputs.lang }}
+          TYPE_INPUT: ${{ inputs.file-type }}
+        run: |
+          expr="integration"
+          if [ "$LANG_INPUT" != "all" ]; then
+            expr="$expr and lang_$LANG_INPUT"
+          fi
+          if [ "$TYPE_INPUT" != "all" ]; then
+            expr="$expr and type_$TYPE_INPUT"
+          fi
+          echo "pytest -m \"$expr\""
+          # No -n: the OCR models are heavy and the real tests run one at a time.
+          set +e
+          uv run pytest -m "$expr" -ra --durations=15 --junitxml=integration-results.xml packages
+          code=$?
+          # pytest exits 5 when nothing matched (e.g. no Telugu PNG tests yet) - say so, but pass.
+          if [ $code -eq 5 ]; then
+            echo "::warning::No integration tests matched: $expr"
+            exit 0
+          fi
+          exit $code
+
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results-${{ runner.os }}-lang-${{ inputs.lang }}-${{ inputs.file-type }}-py${{ inputs.python-version }}
+          path: integration-results.xml
+          if-no-files-found: ignore

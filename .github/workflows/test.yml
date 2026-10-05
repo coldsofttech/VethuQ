@@ -31,7 +31,10 @@ jobs:
       - name: Merge vethuq-core/vethuq-cli into packages/vethuq
         run: uv run python packages/vethuq/scripts/merge_sources.py
 
-      - name: Run ${{ matrix.package }} tests
+      # Unit tests only. The `integration` tests run real fixture files (and, for the real-OCR
+      # ones, real PaddleOCR models) and have their own manually started workflow,
+      # integration.yml.
+      - name: Run ${{ matrix.package }} unit tests
         shell: bash
         env:
           # Coverage is measured on one OS/Python pair only - it slows every job down and
@@ -39,7 +42,7 @@ jobs:
           COV_ARGS: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && format('--cov --cov-report=xml:coverage-{0}.xml', matrix.package) || '' }}
         run: |
           set +e
-          uv run pytest -n auto $COV_ARGS packages/${{ matrix.package }}
+          uv run pytest -n auto -m "not integration" $COV_ARGS packages/${{ matrix.package }}
           code=$?
           # pytest exits 5 when a package has no tests (vethuq-ui has none yet) - not a failure.
           if [ $code -eq 5 ]; then
