@@ -28,7 +28,10 @@ def needs_ocr(entry: dict) -> bool:
 
 
 def case(entry: dict):
-    """A parametrized case for `entry`, skipped when it needs OCR and the real models are off."""
+    """A parametrized case for `entry`, skipped when it needs OCR and the real models are off.
+
+    An entry with `"lang_en": true` (English and Telugu together) is marked `lang_en` as well as
+    the module's own language marker, so the workflow's `lang` input picks it up under either."""
     marks = []
     if needs_ocr(entry) and not REAL_OCR:
         marks.append(
@@ -36,6 +39,8 @@ def case(entry: dict):
                 reason="reads with real PaddleOCR: set VETHUQ_REAL_OCR=1 and the models"
             )
         )
+    if entry.get("lang_en"):
+        marks.append(pytest.mark.lang_en)  # a file with English in it also belongs to `lang=en`
     return pytest.param(entry, id=entry["file"].split("_")[0], marks=marks)
 
 

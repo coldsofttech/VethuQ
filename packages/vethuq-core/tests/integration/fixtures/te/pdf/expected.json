@@ -1,0 +1,803 @@
+{
+  "language": "te",
+  "file_type": "pdf",
+  "files": [
+    {
+      "file": "01_Telugu_Native_Letter.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం",
+            "గౌరవనీయులైన శ్రీ రామారావు గారికి",
+            "వార్షిక సమావేశ ఆహ్వానం",
+            "మీ విధేయుడు"
+          ]
+        }
+      },
+      "languages": "te",
+      "searches": [
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "రామారావు గారికి",
+          "engine": "proximity",
+          "found": true
+        },
+        {
+          "query": "రామరావు",
+          "engine": "fuzzy",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": false,
+          "lang": "en"
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        },
+        {
+          "query": "Telugu",
+          "engine": "like",
+          "found": false
+        }
+      ]
+    },
+    {
+      "file": "02_Telugu_Native_Invoice.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "en",
+            "te"
+          ],
+          "contains": [
+            "లక్ష్మి స్టోర్స్",
+            "వినియోగదారు: శ్రీ రామారావు",
+            "కందిపప్పు",
+            "చెల్లించవలసిన మొత్తం",
+            "ధన్యవాదాలు"
+          ]
+        }
+      },
+      "languages": "te",
+      "searches": [
+        {
+          "query": "కందిపప్పు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "కందిపప్పు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "TB-2026-045",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "పెసలు",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "చెల్లించవలసిన మొత్తం",
+          "engine": "proximity",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "03_Telugu_Native_Conjuncts.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "సంయుక్తాక్షరాలు",
+            "పరీక్ష, లక్ష్మి, రక్షణ",
+            "విద్యార్థి, అర్థం",
+            "కృష్ణా నది",
+            "తెలంగాణ‌లో"
+          ]
+        }
+      },
+      "languages": "te",
+      "searches": [
+        {
+          "query": "పరీక్ష",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "పరీక్ష",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "లక్ష్మి",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "2024",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "౨౦౨౪",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "ప్ర",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "ప్రజ",
+          "engine": "exact",
+          "found": false
+        },
+        {
+          "query": "ప్రజ",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణ‌లో",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణ‌లో",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణ‌లో",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణలో",
+          "engine": "fuzzy",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణలో",
+          "engine": "like",
+          "unicode": "full",
+          "found": true
+        },
+        {
+          "query": "తెలంగాణలో",
+          "engine": "exact",
+          "unicode": "full",
+          "found": true
+        }
+      ],
+      "known_gaps": [
+        {
+          "query": "తెలంగాణలో",
+          "engine": "like",
+          "found": true,
+          "note": "typed without the zero-width non-joiner the text has: not found by default; the unicode=full level does find it (like, exact), full-text has no such level"
+        },
+        {
+          "query": "తెలంగాణలో",
+          "engine": "exact",
+          "found": true,
+          "note": "typed without the zero-width non-joiner the text has: not found by default; the unicode=full level does find it (like, exact), full-text has no such level"
+        },
+        {
+          "query": "తెలంగాణలో",
+          "engine": "full-text",
+          "found": true,
+          "note": "typed without the zero-width non-joiner the text has: not found by default; the unicode=full level does find it (like, exact), full-text has no such level"
+        }
+      ]
+    },
+    {
+      "file": "04_Telugu_Native_Multipage.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 3,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "కృష్ణా నది భారతదేశంలో ఒక ప్రధాన నది"
+          ]
+        },
+        "2": {
+          "source": "native",
+          "read_in": [
+            "en"
+          ],
+          "contains": [
+            "The Godavari is the second longest river in India"
+          ]
+        },
+        "3": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "గోదావరి నది తెలుగు ప్రజల జీవనాడి",
+            "నీరు వ్యవసాయానికి"
+          ]
+        }
+      },
+      "languages": "auto",
+      "searches": [
+        {
+          "query": "గోదావరి",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "గోదావరి",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        },
+        {
+          "query": "Godavari",
+          "engine": "like",
+          "found": true,
+          "lang": "en"
+        },
+        {
+          "query": "Godavari",
+          "engine": "like",
+          "found": false,
+          "lang": "te"
+        },
+        {
+          "query": "గోదావరి",
+          "engine": "like",
+          "found": false,
+          "lang": "en"
+        },
+        {
+          "query": "నది",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        }
+      ],
+      "lang_en": true
+    },
+    {
+      "file": "05_Telugu_Native_Mixed_Page.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "en",
+            "te"
+          ],
+          "contains": [
+            "Annual Meeting Notice",
+            "వార్షిక సమావేశ నోటీసు",
+            "Venue: హైదరాబాద్"
+          ]
+        }
+      },
+      "languages": "auto",
+      "searches": [
+        {
+          "query": "Annual Meeting",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "సమావేశ",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "సమావేశ",
+          "engine": "like",
+          "found": true,
+          "lang": "en"
+        },
+        {
+          "query": "Annual",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        }
+      ],
+      "lang_en": true
+    },
+    {
+      "file": "06_Telugu_Native_Table.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "విద్యార్థుల మార్కుల పట్టిక",
+            "క్రమ సంఖ్య",
+            "విజయవాడ",
+            "గుంటూరు",
+            "తిరుపతి"
+          ]
+        }
+      },
+      "languages": "te",
+      "searches": [
+        {
+          "query": "గుంటూరు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "గుంటూరు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "విజయవాడ",
+          "engine": "fuzzy",
+          "found": true
+        },
+        {
+          "query": "తిరుపతి",
+          "engine": "full-text",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "07_Telugu_Scan_Clean.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము",
+            "అమ్మ ఇంటికి వెళ్ళింది",
+            "కాకి చెట్టు మీద కూర్చుంది"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "అమ్మ",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "కాకి చెట్టు",
+          "engine": "proximity",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": false,
+          "lang": "en"
+        }
+      ]
+    },
+    {
+      "file": "08_Telugu_Scan_Mixed_Lines.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "en",
+            "te"
+          ],
+          "contains": [
+            "Invoice total due",
+            "The museum of art is open every day",
+            "తెలుగు సంస్కృతి",
+            "ఆంధ్రప్రదేశ్"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "verified": false,
+      "languages": "auto",
+      "lang_en": true,
+      "note": "English reads the page first; the Telugu lines it cannot read are queued as a Telugu pass, so the page ends up read in both.",
+      "searches": [
+        {
+          "query": "museum",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "సంస్కృతి",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "museum",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        },
+        {
+          "query": "సంస్కృతి",
+          "engine": "like",
+          "found": true,
+          "lang": "en"
+        }
+      ]
+    },
+    {
+      "file": "09_Telugu_Scan_Mixed_Pages.pdf",
+      "status": "indexed",
+      "page_count": 3,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "en"
+          ],
+          "contains": [
+            "The Godavari is the second longest river in India"
+          ],
+          "min_confidence": 0.7
+        },
+        "2": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "కృష్ణా నది భారతదేశంలో ఒక ప్రధాన నది"
+          ],
+          "min_confidence": 0.6
+        },
+        "3": {
+          "source": "ocr",
+          "read_in": [
+            "en"
+          ],
+          "contains": [
+            "Invoice total due",
+            "The museum of art is open every day"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false,
+      "languages": "auto",
+      "lang_en": true,
+      "searches": [
+        {
+          "query": "Godavari",
+          "engine": "like",
+          "found": true,
+          "lang": "en"
+        },
+        {
+          "query": "కృష్ణా",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        },
+        {
+          "query": "కృష్ణా",
+          "engine": "like",
+          "found": false,
+          "lang": "en"
+        },
+        {
+          "query": "museum",
+          "engine": "like",
+          "found": false,
+          "lang": "te"
+        }
+      ]
+    },
+    {
+      "file": "10_Telugu_Scan_LowRes.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.3,
+          "note": "About 35 dpi of detail with blur: the confidence floor is low and only the heading is asserted."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "11_Telugu_Scan_Rotated.pdf",
+      "status": "indexed",
+      "page_count": 2,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.4,
+          "note": "Rotated 90 degrees: read by the moderate phase, which tries the page at 90, 180 and 270 degrees."
+        },
+        "2": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.4,
+          "note": "Rotated 180 degrees."
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "engine": "moderate"
+    },
+    {
+      "file": "12_Telugu_Scan_Skewed.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము"
+          ],
+          "min_confidence": 0.5,
+          "note": "Skewed 8 degrees, with speckle noise."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "13_Telugu_Scan_Short.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు"
+          ],
+          "min_confidence": 0.5,
+          "note": "One short word, below the detector's minimum amount of text: read directly because the source names Telugu."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "14_Telugu_Scan_Numbers_Only.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "12/10/2026",
+            "4,500.00"
+          ],
+          "min_confidence": 0.4,
+          "note": "Telugu and Latin digits only: the Telugu digits are not asserted because their reading by OCR is uncertain."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "15_Telugu_Scan_Table.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "విద్యార్థుల మార్కుల పట్టిక",
+            "విజయవాడ",
+            "గుంటూరు",
+            "తిరుపతి"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "గుంటూరు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "గుంటూరు",
+          "engine": "exact",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "16_Telugu_Scan_Noisy.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం",
+            "గౌరవనీయులైన శ్రీ రామారావు గారికి",
+            "వార్షిక సమావేశ ఆహ్వానం"
+          ],
+          "min_confidence": 0.4,
+          "note": "A letter with a watermark, a red stamp (రహస్యం), speckle and a pen scribble."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "17_తెలుగు_పత్రం.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "ఇది ఒక పరీక్ష పత్రం",
+            "ఫైల్ పేరు తెలుగులో ఉంది"
+          ]
+        }
+      },
+      "languages": "te",
+      "searches": [
+        {
+          "query": "పత్రం",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "పత్రం",
+          "engine": "exact",
+          "found": true
+        }
+      ],
+      "note": "The file name is in Telugu."
+    },
+    {
+      "file": "18_Telugu_Duplicate_Of_01.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం"
+          ]
+        }
+      },
+      "languages": "te",
+      "note": "Byte-identical to 01: indexed with 01 in one source it is a duplicate that shares its pages."
+    },
+    {
+      "file": "19_Telugu_Protected_File (Pass - Abc123).pdf",
+      "status": "unsupported",
+      "verified": true,
+      "page_count": 0,
+      "pages": {}
+    },
+    {
+      "file": "20_Telugu_Corrupted.pdf",
+      "status": "error",
+      "verified": true,
+      "page_count": 0,
+      "pages": {}
+    }
+  ]
+}

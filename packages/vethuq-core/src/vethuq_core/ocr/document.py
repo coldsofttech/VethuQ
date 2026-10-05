@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     pass
 
 from vethuq_core.logs import Logs
+from vethuq_core.ocr.page_languages import PageLanguages
 from vethuq_core.paths.fspath import FsPath
 from vethuq_core.readers import PageResult, Readers
 from vethuq_core.sources import Source
@@ -331,6 +332,7 @@ class Document:
     ) -> None:
         """Replace a document's OCR pages with freshly (re)extracted `pages`."""
         Readers.for_file_type(file_type).storage.store(storage, document_id, pages)
+        PageLanguages.tag(storage, document_id, file_type, pages)
 
     @staticmethod
     def get_results(storage: Storage, source_id: int) -> list[DocumentResult]:

@@ -48,7 +48,15 @@ def floor_to(value: float, step: float = 0.05) -> float:
     return round(math.floor(value / step) * step, 2)
 
 
-def read_file(path: Path, language: str) -> dict | None:
+def read_in(row) -> list[str]:
+    """The languages a stored page was read in (English when none was recorded)."""
+    langs = {part for part in (row["ocr_langs"] or "").split(",") if part}
+    if row["language"]:
+        langs.add(row["language"])
+    return sorted(langs or {"en"})
+
+
+def read_file(path: Path, language: str, engine: str | None = None) -> dict | None:
     """Index `path` for real; the entry found, or None if it could not be read (models, network)."""
     sys.path.insert(0, str(REPO / "packages/vethuq-core/src"))
     from vethuq_core.db import Db
@@ -67,6 +75,10 @@ def read_file(path: Path, language: str) -> dict | None:
         conn = Db.connect(root / "vethuq.db")
         try:
             storage = SqliteStorage(conn)
+            if engine:
+                from vethuq_core.settings import OcrSettings
+
+                OcrSettings.set_engine(storage, engine)
             source = Sources.add(storage, folder, languages=language)
             Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
             doc = conn.execute("SELECT status, error_message FROM document_index").fetchone()
@@ -76,8 +88,10 @@ def read_file(path: Path, language: str) -> dict | None:
                 return None
             entry: dict = {"file": path.name, "status": doc["status"], "verified": True}
             pages = conn.execute(
-                "SELECT page_number, ocr_text, confidence, source FROM pdf_pages "
-                "UNION ALL SELECT 1, ocr_text, confidence, 'ocr' FROM image_pages "
+                "SELECT page_number, ocr_text, confidence, source, language, "
+                "ocr_langs FROM pdf_pages "
+                "UNION ALL SELECT 1, ocr_text, confidence, 'ocr', language, ocr_langs "
+                "FROM image_pages "
                 "ORDER BY 1"
             ).fetchall()
             entry["page_count"] = len(pages)
@@ -88,6 +102,7 @@ def read_file(path: Path, language: str) -> dict | None:
                     continue  # a long document: its first and last pages are enough to pin
                 info: dict = {
                     "source": page["source"],
+                    "read_in": read_in(page),
                     "contains": distinctive_lines(page["ocr_text"]),
                 }
                 if page["source"] != "native":
@@ -102,10 +117,15 @@ def merge(old: dict | None, new: dict) -> dict:
     """`new`, keeping the phrases a person already chose in `old`."""
     if old is None:
         return new
+    for key in ("languages", "engine", "searches", "note", "lang_en"):
+        if key in old:
+            new[key] = old[key]
     for number, info in new["pages"].items():
-        kept = old.get("pages", {}).get(number, {}).get("contains")
-        if kept:
-            info["contains"] = kept
+        before = old.get("pages", {}).get(number, {})
+        if before.get("contains"):
+            info["contains"] = before["contains"]
+        if "note" in before:
+            info["note"] = before["note"]
     return new
 
 
@@ -136,7 +156,8 @@ def main() -> int:
         if args.only and not path.name.startswith(tuple(args.only)):
             continue
         print(f"reading {path.name} ...", flush=True)
-        entry = read_file(path, args.lang)
+        old = by_name.get(path.name) or {}
+        entry = read_file(path, old.get("languages", args.lang), old.get("engine"))
         if entry is None:
             unread.append(path.name)
             by_name.setdefault(path.name, {"file": path.name, "verified": False})
