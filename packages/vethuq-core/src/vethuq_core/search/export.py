@@ -68,6 +68,7 @@ class Export:
             .replace("{{APP_NAME}}", html.escape(APP_NAME))
             .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
             .replace("{{GENERATED_AT}}", html.escape(generated_at))
+            .replace("{{SCRIPT}}", f"<script>\n{Export.template('export.js').rstrip()}\n</script>")
         )
 
     @staticmethod
@@ -77,6 +78,48 @@ class Export:
             f'<div class="{css}"><div class="label">{html.escape(label)}</div>'
             f'<div class="value">{html.escape(value)}</div></div>'
         )
+
+    @staticmethod
+    def _facets(
+        definitions: list[tuple[str, str]], rows: list[dict[str, list[str]]]
+    ) -> tuple[str, list[str]]:
+        """The filter bar and each row's `data-facets` attribute.
+
+        `definitions` are `(key, label)` in display order; `rows[i]` maps a key to the values row
+        `i` has. A facet that fewer than two distinct values would split is left out (it filters
+        nothing). Returns the bar's HTML (empty if there is no facet) and one attribute per row.
+        """
+        dropdowns = []
+        for key, label in definitions:
+            counts: dict[str, int] = {}
+            for row in rows:
+                for value in dict.fromkeys(row.get(key, [])):
+                    counts[value] = counts.get(value, 0) + 1
+            if len(counts) < 2:
+                continue
+            options = "".join(
+                f'<label><input type="checkbox" data-facet="{html.escape(key)}" '
+                f'value="{html.escape(value)}"><span class="v">{Export._tagged(html.escape(value))}'
+                f'</span><span class="count">{count}</span></label>'
+                for value, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            )
+            dropdowns.append(
+                f'<details class="facet"><summary>{html.escape(label)}<span class="n"></span>'
+                f'</summary><div class="menu">{options}</div></details>'
+            )
+        attrs = [
+            f'data-facets="{html.escape(json.dumps(row, ensure_ascii=False), quote=True)}"'
+            for row in rows
+        ]
+        if not dropdowns:
+            return "", attrs
+        bar = (
+            '<div class="filters" aria-label="Filters">'
+            + "".join(dropdowns)
+            + '<button type="button" data-clear hidden>Clear filters</button>'
+            + '<span class="facet-status" aria-live="polite"></span></div>'
+        )
+        return bar, attrs
 
     @staticmethod
     def _chip(label: str, value: str) -> str:
@@ -146,6 +189,27 @@ class Export:
     def _match_type(match: SearchMatch) -> str:
         """How the match was found, as the CLI and UI name it (`Exact`, `Similar 83%`), or ''."""
         return Ranking.hit_badge(match) if match.engine in Ranking.BADGES else ""
+
+    @staticmethod
+    def _match_facets(match: SearchMatch) -> dict[str, list[str]]:
+        """The values `match` is filtered by in the HTML export."""
+        path = Path(match.file_path)
+        facets = {
+            "type": [path.suffix.lstrip(".").upper() or "(none)"],
+            "folder": [path.parent.as_posix()],
+            "origin": [
+                {"native": "Native text", "ocr": "OCR", "mixed": "Native + OCR"}.get(
+                    match.source, match.source
+                )
+            ],
+            "language": [
+                Export._language_names([lang_id])
+                for lang_id in Export.languages_in(Export._matched_text(match))
+            ],
+        }
+        if match.engine in Ranking.BADGES:
+            facets["engine"] = [Ranking.BADGES[match.engine]]
+        return facets
 
     @staticmethod
     def _match_pill(match: SearchMatch) -> str:
@@ -326,8 +390,18 @@ class Export:
             Export._card("Matches", str(len(matches))),
             Export._card("Files", str(len({m.file_path for m in matches})), accent=True),
         ]
+        facet_bar, facet_attrs = Export._facets(
+            [
+                ("engine", "Match type"),
+                ("type", "File type"),
+                ("language", "Language"),
+                ("origin", "Text from"),
+                ("folder", "Folder"),
+            ],
+            [Export._match_facets(match) for match in matches],
+        )
         rows = []
-        for match in matches:
+        for match, facet_attr in zip(matches, facet_attrs, strict=True):
             page = str(match.page_number) if match.page_number is not None else "-"
             total_pages = str(match.total_pages) if match.total_pages is not None else "-"
             snippet = Export._tagged(
@@ -337,6 +411,7 @@ class Export:
             )
             row = (
                 Export.template("export_row.html")
+                .replace("{{FACETS}}", facet_attr)
                 .replace("{{FILE_URI}}", html.escape(Export._file_uri(match.file_path)))
                 .replace("{{FILE_NAME}}", Export._tagged(html.escape(match.file_name)))
                 .replace("{{FILE_PATH}}", Export._tagged(html.escape(match.file_path)))
@@ -353,7 +428,7 @@ class Export:
             .replace("{{QUERY}}", Export._tagged(html.escape(query)))
             .replace("{{CARDS}}", "\n".join(cards))
             .replace("{{CHIPS}}", "".join(chips))
-            .replace("{{SCRIPT}}", f"<script>\n{Export.template('export.js').rstrip()}\n</script>")
+            .replace("{{FACETS}}", facet_bar)
             .replace("{{ROWS}}", "\n".join(rows))
         )
         document = Export._fill_page(
@@ -376,14 +451,20 @@ class Export:
         headers: list[str],
         rows: list[list[str]],
         cards: list[str],
+        facets: tuple[list[tuple[str, str]], list[dict[str, list[str]]]] = ([], []),
     ) -> None:
         """Write an HTML table under summary `cards`; each `rows` cell is escaped HTML."""
         head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-        body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
+        facet_bar, facet_attrs = Export._facets(*facets)
+        body = "\n".join(
+            f"<tr {attr}>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>"
+            for row, attr in zip(rows, facet_attrs or [""] * len(rows), strict=True)
+        )
         document = (
             Export.template("list_export.html")
             .replace("{{TITLE}}", html.escape(title))
             .replace("{{CARDS}}", "\n".join(cards))
+            .replace("{{FACETS}}", facet_bar)
             .replace("{{HEADERS}}", head)
             .replace("{{ROWS}}", body)
         )
@@ -427,7 +508,22 @@ class Export:
                     "Folders", str(sum(s.source_type == "folder" for s in sources)), accent=True
                 ),
             ],
+            (
+                [("type", "Type"), ("status", "Status")],
+                [{"type": [x.source_type], "status": [x.status]} for x in sources],
+            ),
         )
+
+    @staticmethod
+    def _file_facets(
+        file: SourceFile, detail: bool, phase_name: dict[int, str]
+    ) -> dict[str, list[str]]:
+        facets = {"status": [file.status], "type": [file.file_type.upper()]}
+        if detail:
+            if file.ocr_phase is not None:
+                facets["phase"] = [phase_name.get(file.ocr_phase, str(file.ocr_phase))]
+            facets["duplicate"] = ["Duplicate" if file.duplicate_of_path else "Unique"]
+        return facets
 
     @staticmethod
     def _file_name(source: Source, file: SourceFile) -> str:
@@ -538,4 +634,13 @@ class Export:
                 ),
                 Export._card("Failed", str(sum(f.status in ("failed", "error") for f in files))),
             ],
+            (
+                [
+                    ("status", "Status"),
+                    ("type", "File type"),
+                    ("phase", "OCR phase"),
+                    ("duplicate", "Duplicates"),
+                ],
+                [Export._file_facets(f, detail, phase_name) for f in files],
+            ),
         )

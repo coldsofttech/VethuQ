@@ -142,6 +142,63 @@ class TestBrandedHtml:
             assert re.findall(r"#[0-9a-fA-F]{6}\b", Export.template(name)) == []
 
 
+class TestFilters:
+    @staticmethod
+    def _page(tmp_path: Path, matches: list[SearchMatch]) -> str:
+        output = tmp_path / "out.html"
+        Export.search_results(matches, "due", output, "html")
+        return output.read_text(encoding="utf-8")
+
+    def test_rows_carry_their_facet_values_and_the_bar_lists_each_with_counts(self, tmp_path: Path):
+        png = SearchMatch(**{**_match().__dict__, "file_name": "a.png", "file_path": "/x/a.png"})
+
+        text = self._page(tmp_path, [_match(), png])
+
+        assert 'data-facets="' in text
+        assert '<summary>File type<span class="n"></span></summary>' in text
+        assert 'data-facet="type" value="PDF"' in text
+        assert 'data-facet="type" value="PNG"' in text
+        assert 'data-facet="folder" value="/docs"' in text
+
+    def test_a_facet_with_one_value_is_left_out(self, tmp_path: Path):
+        text = self._page(tmp_path, [_match(), _match(page_number=2)])
+
+        assert "<summary>File type" not in text
+        assert 'class="filters"' not in text
+
+    def test_facet_values_are_escaped(self, tmp_path: Path):
+        odd = SearchMatch(**{**_match().__dict__, "file_path": '/a"<b>/x.pdf'})
+
+        text = self._page(tmp_path, [_match(), odd])
+
+        assert "<b>/" not in text
+        assert 'value="/a&quot;&lt;b&gt;"' in text
+
+    def test_source_list_filters_by_type_and_status(self, tmp_path: Path):
+        from vethuq_core.sources import Source
+
+        def source(i: int, kind: str, status: str) -> Source:
+            return Source(
+                id=i,
+                path=f"/p{i}",
+                source_type=kind,
+                status=status,
+                added_at="2026-01-01",
+                last_scanned_at=None,
+                is_active=True,
+                removed_at=None,
+            )
+
+        output = tmp_path / "s.html"
+        Export.sources(
+            [source(1, "folder", "indexed"), source(2, "file", "failed")], output, "html"
+        )
+
+        text = output.read_text(encoding="utf-8")
+        assert '<tr data-facets="{&quot;type&quot;: [&quot;folder&quot;]' in text
+        assert "<summary>Status" in text and "<summary>Type" in text
+
+
 class TestExportTemplates:
     @pytest.mark.parametrize(
         "name",
