@@ -11,7 +11,7 @@ from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "pdf"
+FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
 
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):

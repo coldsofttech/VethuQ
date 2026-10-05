@@ -8,7 +8,7 @@ from vethuq_core.readers import ImagePageStorage, PageResult, PdfPageStorage
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "pdf"
+FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
 
 def _index_fixture(conn: sqlite3.Connection, storage: Storage, path: Path, tmp_path: Path) -> int:

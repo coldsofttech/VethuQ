@@ -22,7 +22,7 @@ from vethuq_core.readers import (
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "pdf"
+FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
 
 def _make_pdf(path: Path, pages: list[str]) -> None:
