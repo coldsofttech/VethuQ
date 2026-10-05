@@ -261,7 +261,7 @@ vethuq logs cli -f
 vethuq logs database --tail 200 --export database-log.txt
 ```
 
-## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE] [--lang LANG]`
+## `search <content> [--engine all|like|exact|full-text|fuzzy|proximity|noise-fuzzy|semantic] [--case-sensitive|--no-case-sensitive] [--threshold N|--fuzziness NAME] [--distance N|NAME] [--leet-level LEVEL] [--noise LEVEL] [--normalize NAME=VALUE] [--lang LANG]`
 
 Search indexed content for `content` and print matching pages. Only
 documents with status `indexed` are searched. `--engine` chooses how
@@ -277,6 +277,7 @@ runs just that engine:
 | `fuzzy` | pages containing words *close to* `content`'s, tolerating typos and OCR misreads; closest first | `Museum`, `Museums`, `Muzeum`, `Musuem`, `Musem` ✓ — `Museurn` (loose only), `mus`, `Mustard` ✗ |
 | `proximity` | passages where all of `content`'s words (two or more, any order) occur within N words of each other; one result per passage | `payment termination` finds "…the **payment** is due within thirty days, subject to the **termination**…" with `--distance 8` or more, not with `tight` |
 | `noise-fuzzy` | `content`'s characters hidden by stray punctuation or whitespace, look-alike symbols and typos *at once*; cleanest first | `hello` finds `hello`, `helo`, `hallo`, `h3ll0`, `he llo`, `h.ello`; with `--noise medium` also `h..e llo` and `h @ 3 l l 0` ✓ — `hxexlxlxo` ✗ |
+| `semantic` | passages that *mean* what `content` means, whatever the wording or language; closest in meaning first. Never part of `all` | `refund policy` finds "customers may return goods for a full reimbursement" ✓ — "lunch is served in the cafeteria" ✗ |
 
 ### `--lang`: only pages read in a language
 
@@ -621,6 +622,34 @@ vethuq search password --engine noise-fuzzy --fuzziness strict --leet-level stan
 vethuq settings search noise-fuzzy noise set medium         # the default from now on
 ```
 
+**`semantic`** finds passages by meaning, not by characters or words:
+
+```bash
+vethuq search "refund policy" --engine semantic              # "...a full reimbursement within thirty days"
+vethuq search "వాపసు విధానం" --engine semantic                # the same English page, from a Telugu query
+vethuq search "refund policy" --engine semantic --fuzziness strict   # near-paraphrases only
+vethuq search "refund policy" --engine semantic --threshold 0.78     # your own closeness in meaning
+vethuq settings search semantic combine full-text            # rank full-text's pages together with it
+```
+
+How it works: a small multilingual model (`intfloat/multilingual-e5-small`) reads every
+passage of every page - a few sentences, about 400 characters - and your query into vectors, and
+the passages whose vector points the same way as the query's are the hits (cosine similarity,
+shown as the `Related 87%` label). The vectors are kept in the database (`semantic_chunks`),
+so each page is read only once; a page whose text changes is read again. It needs the
+`search-semantic` extra (`pip install vethuq[search-semantic]`, or the Semantic engine on the
+installer's search engines page). The model (a few hundred MB) downloads the first time it is
+needed, and the first semantic search of a collection embeds every page first, which takes a
+while - `vethuq semantic index` does that ahead of time. A semantic search never matches case,
+and `--engine all` does not run it (it loads a model). Scores of this model sit high - unrelated
+text still scores around 70% - so `--threshold` means closeness in meaning here and has its own
+presets (`strict` 86%, `balanced` 80%, `loose` 75%; `--fuzziness` picks the same names). At
+most `vethuq settings search semantic limit` pages come back (25 by default), each showing its
+best three passages. `vethuq settings search semantic combine full-text|lexical` runs that
+engine too and ranks both engines' pages together (reciprocal rank fusion: a page both like rises
+above a page only one found), each hit labelled with the engine that found it - the way to
+find an invoice number or a name as well as an idea.
+
 **Look-alikes** with `like` (they are on by default for `noise-fuzzy` and the combined search):
 
 ```bash
@@ -834,7 +863,7 @@ was read.
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one
 of `all` (the default — every engine, ranked together), `like`, `exact`,
-`full-text`, `fuzzy`, `proximity` or `noise-fuzzy`.
+`full-text`, `fuzzy`, `proximity`, `noise-fuzzy` or `semantic`.
 
 ```bash
 vethuq settings search engine set full-text
@@ -918,6 +947,27 @@ engine also uses the fuzzy threshold and the leetspeak normalization settings.
 ```bash
 vethuq settings search noise-fuzzy noise set medium
 vethuq settings search noise-fuzzy noise show
+```
+
+### `search semantic threshold|limit|combine set <value>|show|reset`
+
+Configure the `semantic` engine (`vethuq search --engine semantic`):
+
+- `threshold` - how close in meaning a passage must be: `strict` (86%), `balanced` (80%, the
+  default), `loose` (75%), a percentage (`78%`) or a similarity above 0 and up to 1 (`0.78`). It
+  is separate from the fuzzy threshold, and its numbers are for the multilingual model, which
+  rates unrelated text around 70%.
+- `limit` - the most pages a semantic search returns, 1 to 1000 (25 by default). Every passage
+  has something in common with a query, so without a cap a search would return everything above the
+  threshold.
+- `combine` - `off` (the default, semantic alone), `full-text` or `lexical`: also run that
+  engine and rank both engines' pages together.
+
+```bash
+vethuq settings search semantic threshold set loose
+vethuq settings search semantic limit set 50
+vethuq settings search semantic combine set full-text
+vethuq settings search semantic combine show
 ```
 
 ### `search snippet set <chars>|show`
@@ -1118,9 +1168,44 @@ vethuq ocr models clear --lang te --include-shared
 vethuq ocr models clean
 ```
 
+## `semantic`
+
+The model and the index behind the `semantic` search engine. Needs the `search-semantic` extra
+(`pip install vethuq[search-semantic]`); without it the commands say how to install it.
+
+### `status`
+
+Shows whether the model (`intfloat/multilingual-e5-small`) is downloaded and where, and how many
+searchable pages are embedded, how many are still to do and how many passages that is.
+
+### `download [--force]`
+
+Downloads the model if it is missing (`--force` downloads it again). Needs the internet. A
+semantic search downloads it itself the first time; this lets you do it ahead of time, before
+going offline, say. It is kept under `<data root>/models/semantic/`.
+
+### `index [--rebuild]`
+
+Embeds every searchable page that has no embedding yet, with a progress bar, downloading the model
+first if needed. Pages are embedded in small batches and each batch is kept, so stopping early
+loses nothing - run it again to carry on. A semantic search embeds whatever is missing itself, so
+this only does the work ahead of time. `--rebuild` forgets every embedding first.
+
+### `clear [--model] [--force]`
+
+Forgets every page's embeddings; with `--model` also deletes the downloaded model. Asks first
+unless `--force`. Both come back by themselves the next time a semantic search needs them.
+
+```bash
+vethuq semantic status
+vethuq semantic download
+vethuq semantic index
+vethuq semantic clear --model
+```
+
 ## `search-engines`
 
-Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
+Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`, `search-semantic`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.
 
 ### `list [--all]`
 

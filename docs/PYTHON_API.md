@@ -76,6 +76,31 @@ for model in client.ocr.models.status("te"):
     print(model.name, model.present, model.size_bytes)
 ```
 
+## `client.semantic`
+
+The model and the index behind the `"semantic"` search engine, like `vethuq semantic`. Needs the
+`search-semantic` extra (`pip install vethuq[search-semantic]`).
+
+- `model() -> SemanticModelStatus` — the model's name, folder, whether it is downloaded and its size
+- `status() -> SemanticIndexStatus` — `pages` (searchable), `embedded`, `pending` and `chunks`
+  (passages)
+- `download(*, force=False, on_progress=None)` — downloads the model if it is missing (or again,
+  with `force`); `on_progress(message)` says which file is being fetched. Raises
+  `SemanticModelError` if it can't be downloaded
+- `index(*, rebuild=False, on_progress=None) -> SemanticIndexResult` — embeds every page that has
+  no embedding yet (all of them, with `rebuild`), downloading the model first if needed;
+  `on_progress(done, total)` is called after each batch of pages and every batch is kept.
+  `SemanticIndexResult` has `pages` and `chunks`. A search embeds what is missing itself; this
+  does it ahead of time
+- `clear(*, model=False) -> int` — forgets every embedding (and, with `model`, deletes the
+  downloaded model); both come back by themselves. Returns the pages forgotten
+
+```python
+client.semantic.download()
+client.semantic.index(on_progress=lambda done, total: print(done, "of", total))
+client.search.run("refund policy", engine="semantic")
+```
+
 ## `client.file_types`
 
 Which file types this install can read — mirrors `vethuq file-types list`. It doesn't open the database.
@@ -270,11 +295,27 @@ are never rejected.
   and 12), defaulting to `client.settings.search.noise_fuzzy.noise`. Cleanest first:
   `SearchMatch.score` is 1.0 for text as typed and falls with each edit, look-alike and
   noise character. No minimum query length
+- `"semantic"` — passages that *mean* what `content` means, whatever the wording or language:
+  `"refund policy"` finds "a full reimbursement", and a Telugu query finds the English page that says
+  the same. A multilingual model (`intfloat/multilingual-e5-small`) reads the query and every
+  passage of every page into vectors; the closest first, with `SearchMatch.score` the cosine
+  similarity and `hit_badge` showing `Related 87%`. It needs the `search-semantic` extra and a
+  model that downloads the first time it is used (`client.semantic`); pages with no embedding yet
+  are embedded first, which takes a while the first time. `threshold` is then the closeness in
+  meaning - a name from `SEARCH_SEMANTIC_PRESETS` (`"strict"` 86%, `"balanced"` 80%,
+  `"loose"` 75%), a percentage or a number above 0 and up to 1, defaulting to
+  `client.settings.search.semantic.threshold`; at most `client.settings.search.semantic.limit`
+  pages come back, each with its best three passages; and with
+  `client.settings.search.semantic.combine` set to `"full-text"` or `"lexical"` that engine's
+  pages are ranked together with them (each hit's `engine` says which found it, and
+  `matched_by` lists the engines that found its page). Never case-sensitive, and not part of
+  `"all"`. Raises `SearchEngineUnavailable` if the model can't be downloaded or loaded
 
 `case_sensitive` defaults to `client.settings.search.normalize.case` being `"match"`, and
 only `"like"`, `"lexical"`, `"fuzzy"` and `"noise-fuzzy"` act on it (`"exact"` is always case-sensitive,
-`"full-text"` and `"proximity"` never are; for `"fuzzy"` a difference in case
-counts as one edit). `threshold` (`"fuzzy"` and `"noise-fuzzy"` only) is the minimum similarity between
+`"full-text"`, `"proximity"` and `"semantic"` never are; for `"fuzzy"` a difference in case
+counts as one edit). `threshold` (`"fuzzy"`, `"noise-fuzzy"` and `"semantic"` only; see the
+`"semantic"` engine above for its own) is the minimum similarity between
 `content`'s words and the words found — `1 − edits ÷ length of the longer
 word`, at most 2 edits: a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%,
 `"balanced"` 80%, `"loose"` 65%), a percentage (`"80%"`) or a number above 0 and up
@@ -506,8 +547,8 @@ Invalid values raise `InvalidSettingValueError`.
 
 - `get()` — default engine `search` uses (`"all"` by default: every engine, ranked together)
 - `set(engine)` — `engine` must be one of `SEARCH_ENGINES` (`"all"`, `"like"`, `"exact"`,
-  `"full-text"`, `"fuzzy"`, `"proximity"`, `"noise-fuzzy"`); raises `InvalidSettingValueError`
-  otherwise
+  `"full-text"`, `"fuzzy"`, `"proximity"`, `"noise-fuzzy"`, `"semantic"`); raises
+  `InvalidSettingValueError` otherwise
 
 ### `client.settings.search.fuzzy.threshold`
 
@@ -516,6 +557,20 @@ Invalid values raise `InvalidSettingValueError`.
 - `set(threshold)` — a name from `SEARCH_FUZZY_PRESETS` (`"strict"` 90%, `"balanced"`
   80%, `"loose"` 65%), a percentage (`"75%"`, or a whole number such as `75`) or a
   similarity above 0 and up to 1 (`0.75`); raises `InvalidSettingValueError` otherwise
+
+### `client.settings.search.semantic`
+
+Configure the `"semantic"` engine; each has `get()`, `set(value)` and `reset()`:
+
+- `threshold` — how close in meaning a passage must be: a name from `SEARCH_SEMANTIC_PRESETS`
+  (`"strict"` 86%, `"balanced"` 80%, the default, `"loose"` 75%), a percentage (`"78%"`) or a
+  similarity above 0 and up to 1; `get()` returns it as set. Independent of the fuzzy threshold.
+- `limit` — the most pages a semantic search returns, 1 to `SEARCH_SEMANTIC_MAX_LIMIT` (25 by
+  default); `get()` returns an `int`
+- `combine` — one of `SEARCH_SEMANTIC_COMBINE_VALUES`: `"off"` (the default), `"full-text"` or
+  `"lexical"`; the chosen engine is run too and both engines' pages are ranked together
+
+`set` raises `InvalidSettingValueError` for anything else.
 
 ### `client.settings.search.proximity.distance`
 

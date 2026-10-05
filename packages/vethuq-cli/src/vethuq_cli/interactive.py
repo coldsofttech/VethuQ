@@ -112,6 +112,15 @@ from vethuq_cli.settings import (
     search_engine_reset,
     search_engine_set,
     search_engine_show,
+    semantic_combine_reset,
+    semantic_combine_set,
+    semantic_combine_show,
+    semantic_limit_reset,
+    semantic_limit_set,
+    semantic_limit_show,
+    semantic_threshold_reset,
+    semantic_threshold_set,
+    semantic_threshold_show,
     snippet_reset,
     snippet_set,
     snippet_show,
@@ -265,6 +274,7 @@ class InteractiveMenu:
                 storage, SearchSettings.DEFAULT_LEETSPEAK
             )
             default_noise = SearchSettings.get_noise_level(storage)
+            default_semantic = SearchSettings.get_semantic_threshold_setting(storage)
         finally:
             storage.close()
         engine = Prompt.ask(
@@ -272,7 +282,7 @@ class InteractiveMenu:
         )
         # Only `like`, `lexical`, `fuzzy`, `noise-fuzzy` and `all` (which includes them) have a
         # choice to make:
-        # `exact` is always case-sensitive while `full-text` and `proximity` never are,
+        # `exact` is always case-sensitive while `full-text`, `proximity` and `semantic` never are,
         # so asking would have no effect. `all` uses the stored threshold and distance.
         case_sensitive: bool | None = None
         if engine in (
@@ -292,6 +302,13 @@ class InteractiveMenu:
                 f"Fuzziness ({presets}, a percentage or a similarity 0-1)",
                 console=console,
                 default=default_threshold,
+            )
+        if engine == "semantic":
+            presets = ", ".join(SearchSettings.SEMANTIC_PRESETS)
+            threshold = Prompt.ask(
+                f"Closeness in meaning ({presets}, a percentage or a similarity 0-1)",
+                console=console,
+                default=default_semantic,
             )
         distance: str | None = None
         if engine == "proximity":
@@ -654,6 +671,47 @@ class InteractiveMenu:
                 InteractiveMenu._run_safely(noise_fuzzy_noise_reset)
 
     @staticmethod
+    def _settings_semantic_menu() -> None:
+        while True:
+            choice = InteractiveMenu._select(
+                "Settings > Search > Semantic",
+                [("1", "Threshold"), ("2", "Limit"), ("3", "Combine"), ("0", "Back")],
+            )
+            if choice == "0":
+                return
+            if choice == "1":
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Semantic > Threshold",
+                    (
+                        *SearchSettings.SEMANTIC_PRESETS,
+                        "a percentage",
+                        "a similarity 0-1",
+                    ),
+                    semantic_threshold_show,
+                    semantic_threshold_set,
+                    semantic_threshold_reset,
+                    "threshold",
+                )
+            elif choice == "2":
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Semantic > Limit",
+                    (f"pages 1-{SearchSettings.SEMANTIC_MAX_LIMIT}",),
+                    semantic_limit_show,
+                    semantic_limit_set,
+                    semantic_limit_reset,
+                    "limit",
+                )
+            elif choice == "3":
+                InteractiveMenu._settings_normalize_value_menu(
+                    "Settings > Search > Semantic > Combine",
+                    SearchSettings.COMBINE_VALUES,
+                    semantic_combine_show,
+                    semantic_combine_set,
+                    semantic_combine_reset,
+                    "combine",
+                )
+
+    @staticmethod
     def _settings_search_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
@@ -666,6 +724,7 @@ class InteractiveMenu:
                     ("5", "Proximity Distance"),
                     ("6", "Normalize"),
                     ("7", "Noise Level"),
+                    ("8", "Semantic"),
                     ("0", "Back"),
                 ],
             )
@@ -685,6 +744,8 @@ class InteractiveMenu:
                 InteractiveMenu._settings_normalize_menu()
             elif choice == "7":
                 InteractiveMenu._settings_noise_menu()
+            elif choice == "8":
+                InteractiveMenu._settings_semantic_menu()
 
     @staticmethod
     def _settings_removed_retention_menu() -> None:

@@ -142,3 +142,38 @@ class TestLicenseSummary:
 
         assert "Noto Sans Telugu (font)" in rtf
         assert "SIL Open Font License 1.1" in rtf
+
+
+class TestSemanticSearch:
+    """The Semantic engine is a normal search engine page entry, plus a model and native libraries
+    the frozen app must carry."""
+
+    def test_it_is_in_the_installer_catalog_and_the_generated_include(self):
+        catalog = json.loads((INSTALLER / "search_engines.json").read_text(encoding="utf-8"))
+        engine = next(e for e in catalog["search_engines"] if e["id"] == "semantic")
+
+        assert engine["extra"] == "search-semantic"
+        assert engine["default"] is False
+        assert "'semantic'" in (INSTALLER / "search_engines.iss").read_text(encoding="utf-8")
+
+    def test_the_manifest_requires_what_the_embedder_imports(self):
+        manifest = json.loads(
+            (CORE / "search" / "engines" / "manifests" / "semantic.json").read_text("utf-8")
+        )
+
+        assert manifest["modules"] == ["onnxruntime", "tokenizers", "huggingface_hub"]
+        requirements = " ".join(manifest["requires"])
+        for package in ("onnxruntime", "tokenizers", "huggingface-hub"):
+            assert package in requirements
+
+    @pytest.mark.parametrize("module", ["onnxruntime", "tokenizers", "huggingface_hub"])
+    def test_the_spec_collects_the_native_libraries_for_every_executable(self, module):
+        assert f'"{module}"' in SPEC
+        # one list feeds the UI, the CLI and the worker, which embeds pages as they are indexed
+        assert SPEC.count("*semantic_binaries") >= 3
+        assert SPEC.count("*semantic_datas") >= 3
+        assert SPEC.count("*semantic_hidden") >= 3
+
+    def test_the_installer_says_the_model_downloads_when_first_used(self):
+        assert "language model" in ISS
+        assert "vethuq semantic download" in ISS

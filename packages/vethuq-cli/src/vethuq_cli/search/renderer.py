@@ -24,7 +24,7 @@ class ResultRenderer:
         parts = [f"engine: {options.engine}"]
         if options.case_sensitive:
             parts.append("case-sensitive")
-        if options.engine in ("fuzzy", "noise-fuzzy") and options.threshold is not None:
+        if options.engine in ("fuzzy", "noise-fuzzy", "semantic") and options.threshold is not None:
             parts.append(f"threshold {options.threshold:.0%}")
         if options.engine == "proximity" and options.distance is not None:
             parts.append(f"within {options.distance} words")
@@ -124,6 +124,9 @@ class ResultRenderer:
         label.append(f"[{match.source}]")
         if options.engine == "fuzzy" and match.score is not None:
             label.append(f" similarity {match.score:.0%}")
+        if options.engine == "semantic" and match.engine is not None:
+            # Alone this is `Related 87%`; combined with a keyword engine a hit may be `Word`.
+            label.append(f" [{Ranking.hit_badge(match)}]", style=f"bold {accent}")
         return label
 
     @staticmethod

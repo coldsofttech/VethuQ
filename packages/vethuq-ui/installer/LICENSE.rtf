@@ -309,6 +309,33 @@ JPEG image\par
 \li360\fi-200\bullet  {\b No additional packages; uses OpenCV and NumPy from the core runtim}\par\li0\fi0
 \par
 \par
+\par\fs26\b SEARCH ENGINES (installed when selected)\b0\fs20\par
+\par
+\par
+Semantic (by meaning)\par
+\par
+\li360\fi-200\bullet  {\b vethuq-search-semantic} - MIT\par\li0\fi0
+\li560 How VethuQ uses it: marks the Semantic search engine as installed. It holds no code.\par\li0
+\par
+\li360\fi-200\bullet  {\b onnxruntime} - MIT\par\li0\fi0
+\li560 How VethuQ uses it: runs the language model that reads text into vectors for semantic search.\par\li0
+\par
+\li360\fi-200\bullet  {\b flatbuffers} - Apache-2.0\par\li0\fi0
+\li560 How VethuQ uses it: model file format library used by ONNX Runtime.\par\li0
+\par
+\li360\fi-200\bullet  {\b tokenizers} - Apache-2.0\par\li0\fi0
+\li560 How VethuQ uses it: splits text into the pieces the language model reads.\par\li0
+\par
+\li360\fi-200\bullet  {\b huggingface_hub} - Apache-2.0\par\li0\fi0
+\li560 How VethuQ uses it: downloads the language model (also used for the OCR models, above).\par\li0
+\par
+\li360\fi-200\bullet  {\b multilingual-e5-small (intfloat/multilingual-e5-small)} - MIT. Copyright intfloat\par\li0\fi0
+\li560 How VethuQ uses it: the language model that reads text in about a hundred languages, Telugu and\par\li0
+\li560 English among them, into vectors, so semantic search can find passages by meaning. It is\par\li0
+\li560 downloaded the first time semantic search needs it (or with 'vethuq semantic download'), not\par\li0
+\li560 installed with the app. Source: https://huggingface.co/intfloat/multilingual-e5-small\par\li0
+\par
+\par
 \par\fs26\b LANGUAGES (installed when selected)\b0\fs20\par
 \par
 \par

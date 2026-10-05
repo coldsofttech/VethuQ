@@ -177,7 +177,7 @@ A test enforces that no core module outside `db/` and `storage/` imports
   An engine may raise `SearchEngineUnavailable` when it can't serve queries.
 - `SearchEngines.get(storage, name=None)` (`search/engines/registry.py`) — builds
   the engine registered under `name` (default `like`) on a `Storage`.
-- Five engines are registered (`SearchSettings.ENGINES` lists their names;
+- Eight engines are registered (`SearchSettings.ENGINES` lists their names;
   shared helpers live in `SearchEngineHelpers`, `search/engines/common.py`):
   - `like` (`search/engines/like.py`) — substring match anywhere, even inside a
     word; case-insensitive unless `case_sensitive`. Narrows candidate pages via
@@ -242,6 +242,37 @@ A test enforces that no core module outside `db/` and `storage/` imports
     allowed, otherwise the stretches where enough of the query's two-character pieces fall
     together (a q-gram lemma, `n - 1 - 3k`) — so only those stretches of a page are read and
     verified. Pages without a recorded skeleton are always included.
+  - `semantic` (`search/engines/semantic.py`) — passages that mean what the query means.
+    It is the only engine that needs a model: `intfloat/multilingual-e5-small`, run with
+    ONNX Runtime (`vethuq_core.semantic.OnnxEmbedder`: tokenizer from `tokenizers`, mean
+    pooling, unit vectors) and downloaded on first use by `SemanticModel.download`
+    (`huggingface_hub`) into `<data root>/models/semantic/`. The dependencies are the
+    `search-semantic` extra (`onnxruntime`, `tokenizers`, `huggingface-hub`); `numpy` is a base
+    dependency. `Embedders.get()` is the one place an embedder is made (and what tests replace
+    with `Embedders.use`). **The index:** `Chunker` cuts a page's text into passages of a few
+    sentences (400 characters at most, a span of the text so a hit can point at it);
+    `SemanticIndex.sync` embeds the pages that have none and stores each passage's span and
+    normalized float32 vector as a BLOB in `semantic_chunks` (with `semantic_pages`
+    recording which pages a model has done - a page with no text is recorded too), in batches that
+    each commit (schema v34, `db/queries/semantic.py`). Triggers on `pdf_pages` and
+    `image_pages` drop a page's rows when it is deleted or its text is rewritten, so a stale
+    vector never outlives its text, and the page is simply embedded again by the next sync. The
+    rows are keyed by the model's name, so another model's vectors are separate. **Search:**
+    the query is embedded (with E5's `query: ` prefix; passages get `passage: `), every chunk's
+    vector of searchable pages is loaded into one numpy matrix and `matrix @ query` is the cosine
+    similarity - brute force, which is milliseconds at 100k passages, so no vector database or
+    SQLite extension is needed. Passages at or above the threshold
+    (`SearchSettings.SEMANTIC_PRESETS`, `parse_semantic_threshold`) are grouped by page, the best
+    `search_semantic_limit` pages kept, each with its best `MAX_HITS_PER_PAGE` passages, and the
+    carriers' files (duplicates included) are fetched for them
+    (`Semantic.list_page_rows`). It is not a tier of `Ranking`, so `all` never loads the model;
+    `Ranking.BADGES` still labels its hits `Related`. A model that can't be downloaded or
+    loaded raises `SearchEngineUnavailable`.
+  - `HybridSearchEngine` (`search/engines/hybrid.py`) — what the registry returns for
+    `semantic` when `search_semantic_combine` is `full-text` or `lexical`: both engines run and
+    their pages are ranked together by reciprocal rank fusion (`1 / (60 + position)`, summed
+    over the engines that found a page) because a cosine and a BM25 score can't be compared.
+    Each hit keeps its own engine and `matched_by` lists the engines that found its page.
 - `FallbackSearchEngine(primary, fallback)` — answers from `fallback` when
   `primary` raises `SearchEngineUnavailable`.
 
@@ -249,7 +280,7 @@ A test enforces that no core module outside `db/` and `storage/` imports
 threshold, (proximity only) distance, (like and noise-fuzzy) leetspeak level and (noise-fuzzy only)
 noise level from arguments and the `search_engine` /
 `search_case_sensitive` / `search_fuzzy_threshold` / `search_proximity_distance`
-/ `search_normalize_case` / `search_normalize_unicode` / `search_normalize_leetspeak` / `search_noise_level` settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
+/ `search_normalize_case` / `search_normalize_unicode` / `search_normalize_leetspeak` / `search_noise_level` / `search_semantic_threshold` (the threshold of `semantic`, which has its own presets) settings, rejecting (with `SearchOptionError`) combinations an engine can't honour.
 
 ### Normalizers
 

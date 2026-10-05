@@ -54,6 +54,14 @@ noise_fuzzy_app = typer.Typer(help="Configure the `noise-fuzzy` search engine.")
 noise_fuzzy_noise_app = typer.Typer(
     help="Configure how much stray punctuation and whitespace `noise-fuzzy` search skips."
 )
+semantic_app = typer.Typer(help="Configure the `semantic` search engine.")
+semantic_threshold_app = typer.Typer(
+    help="Configure how close in meaning a passage must be to your query for `semantic` search."
+)
+semantic_limit_app = typer.Typer(help="Configure how many pages `semantic` search returns at most.")
+semantic_combine_app = typer.Typer(
+    help="Configure whether `semantic` search is ranked together with a keyword engine."
+)
 index_app = typer.Typer(help="Configure indexing behavior.")
 removed_retention_app = typer.Typer(
     help="Configure, in minutes, how long a removed source is kept before it's purged from the DB."
@@ -117,6 +125,10 @@ normalize_app.add_typer(normalize_leetspeak_app, name="leetspeak")
 normalize_app.add_typer(normalize_unicode_app, name="unicode")
 search_app.add_typer(noise_fuzzy_app, name="noise-fuzzy")
 noise_fuzzy_app.add_typer(noise_fuzzy_noise_app, name="noise")
+search_app.add_typer(semantic_app, name="semantic")
+semantic_app.add_typer(semantic_threshold_app, name="threshold")
+semantic_app.add_typer(semantic_limit_app, name="limit")
+semantic_app.add_typer(semantic_combine_app, name="combine")
 app.add_typer(index_app, name="index")
 index_app.add_typer(removed_retention_app, name="removed-retention")
 index_app.add_typer(stability_check_app, name="stability-check")
@@ -371,7 +383,13 @@ def search_engine_show() -> None:
         "noise-fuzzy - finds your characters hidden by stray punctuation or whitespace, "
         "look-alike symbols and typos all at once (`h..e llo`, `h @ e # l l o`, `h3ll0` and "
         "`helo` for `hello`). Uses the fuzzy threshold, the leetspeak normalization and how "
-        "much noise is skipped (`settings search noise-fuzzy noise`). Cleanest text first."
+        "much noise is skipped (`settings search noise-fuzzy noise`). Cleanest text first.\n\n"
+        "semantic - finds passages that mean what your text means, whatever the wording or "
+        'language (`refund policy` finds "a full reimbursement"). How close in meaning is set '
+        "by `settings search semantic threshold`, how many pages come back by `settings "
+        "search semantic limit` and whether a keyword engine is ranked with it by `settings "
+        "search semantic combine`. Never case-sensitive. Needs the `search-semantic` extra; "
+        "its model downloads the first time it is used."
     ),
 )
 def search_engine_set(
@@ -2072,3 +2090,231 @@ def noise_fuzzy_noise_set(
         )
     finally:
         storage.close()
+
+
+@semantic_threshold_app.command("show")
+def semantic_threshold_show() -> None:
+    """Show the minimum closeness in meaning `search --engine semantic` accepts."""
+    storage = open_storage()
+    try:
+        setting = SearchSettings.get_semantic_threshold_setting(storage)
+        value = SearchSettings.get_semantic_threshold(storage)
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic threshold: ", "white"),
+                    (setting, Theme.VALUE),
+                    (f" (similarity {value:.0%})", "white"),
+                ),
+                "Semantic Threshold",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_threshold_app.command(
+    "set",
+    help=(
+        "Set the minimum closeness in meaning `search --engine semantic` accepts when none is "
+        "given.\n\n"
+        "A passage matches when the model reads it as at least this close in meaning to your "
+        "text: 100% is identical meaning. The multilingual model scores unrelated text around "
+        "70%, so useful thresholds sit in a narrow band.\n\n"
+        "Thresholds:\n\n"
+        "strict (86%) - near-paraphrases only. Fewest false matches.\n\n"
+        "balanced (80%, the default) - passages clearly about the same thing.\n\n"
+        "loose (75%) - passages broadly related to it, with more noise.\n\n"
+        "A percentage (e.g. 78% or 78) or a similarity above 0 and up to 1 (e.g. 0.78) sets "
+        "your own level: higher is stricter, lower is looser."
+    ),
+)
+def semantic_threshold_set(
+    threshold: str = typer.Argument(
+        ...,
+        metavar="THRESHOLD",
+        help=(
+            f"One of: {', '.join(SearchSettings.SEMANTIC_PRESETS)} - or a percentage (e.g. "
+            "78%) or a similarity above 0 and up to 1 (e.g. 0.78)."
+        ),
+    ),
+) -> None:
+    """Set the minimum closeness in meaning `search --engine semantic` accepts."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_semantic_threshold(storage, threshold)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic threshold set to ", "white"),
+                    (threshold.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Semantic Threshold",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_threshold_app.command("reset")
+def semantic_threshold_reset() -> None:
+    """Reset the default semantic threshold."""
+    ResetPanel.run(
+        SearchSettings.reset_semantic_threshold,
+        "Semantic Threshold",
+        "Semantic threshold",
+        SearchSettings.DEFAULT_SEMANTIC_THRESHOLD,
+    )
+
+
+@semantic_limit_app.command("show")
+def semantic_limit_show() -> None:
+    """Show the most pages `search --engine semantic` returns."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic limit: ", "white"),
+                    (str(SearchSettings.get_semantic_limit(storage)), Theme.VALUE),
+                    (" pages", "white"),
+                ),
+                "Semantic Limit",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_limit_app.command(
+    "set",
+    help=(
+        "Set the most pages `search --engine semantic` returns.\n\n"
+        "Every passage has some meaning in common with a query, so without a cap a semantic "
+        "search would return everything above the threshold. The best pages come first, and "
+        "each shows its best few passages. Default: "
+        f"{SearchSettings.DEFAULT_SEMANTIC_LIMIT}."
+    ),
+)
+def semantic_limit_set(
+    limit: str = typer.Argument(
+        ...,
+        metavar="PAGES",
+        help=f"A whole number from 1 to {SearchSettings.SEMANTIC_MAX_LIMIT}.",
+    ),
+) -> None:
+    """Set the most pages `search --engine semantic` returns."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_semantic_limit(storage, limit)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic limit set to ", "white"),
+                    (limit.strip(), Theme.VALUE),
+                    (" pages.", "white"),
+                ),
+                "Semantic Limit",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_limit_app.command("reset")
+def semantic_limit_reset() -> None:
+    """Reset the most pages `semantic` search returns to the default."""
+    ResetPanel.run(
+        SearchSettings.reset_semantic_limit,
+        "Semantic Limit",
+        "Semantic limit",
+        SearchSettings.DEFAULT_SEMANTIC_LIMIT,
+    )
+
+
+@semantic_combine_app.command("show")
+def semantic_combine_show() -> None:
+    """Show which keyword engine `search --engine semantic` is ranked together with."""
+    storage = open_storage()
+    try:
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic combine: ", "white"),
+                    (SearchSettings.get_semantic_combine(storage), Theme.VALUE),
+                ),
+                "Semantic Combine",
+                Theme.PRIMARY,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_combine_app.command(
+    "set",
+    help=(
+        "Set which keyword engine `search --engine semantic` is ranked together with.\n\n"
+        "Semantic search is weak where keyword search is strong - an invoice number, a name, "
+        "an exact phrase - and the other way round. Combining them runs both and ranks the "
+        "pages by reciprocal rank fusion: a page both engines like rises above a page only one "
+        "found. Each hit says which engine found it.\n\n"
+        "Values:\n\n"
+        "off (the default) - semantic alone.\n\n"
+        "full-text - combine with whole-word, stemmed matching (`full-text`).\n\n"
+        "lexical - combine with substring matching, best pages first (`lexical`; needs at "
+        "least 3 characters, shorter queries then use semantic alone)."
+    ),
+)
+def semantic_combine_set(
+    combine: str = typer.Argument(
+        ...,
+        metavar="ENGINE",
+        help=f"One of: {', '.join(SearchSettings.COMBINE_VALUES)}.",
+    ),
+) -> None:
+    """Set which keyword engine `search --engine semantic` is ranked together with."""
+    storage = open_storage()
+    try:
+        try:
+            SearchSettings.set_semantic_combine(storage, combine)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        console.print(
+            SettingsPanel.build(
+                Text.assemble(
+                    ("Search semantic combine set to ", "white"),
+                    (combine.strip().lower(), Theme.VALUE),
+                    (".", "white"),
+                ),
+                "Semantic Combine",
+                Theme.OK,
+            )
+        )
+    finally:
+        storage.close()
+
+
+@semantic_combine_app.command("reset")
+def semantic_combine_reset() -> None:
+    """Reset `semantic` search to run alone."""
+    ResetPanel.run(
+        SearchSettings.reset_semantic_combine,
+        "Semantic Combine",
+        "Semantic combine",
+        SearchSettings.DEFAULT_SEMANTIC_COMBINE,
+    )

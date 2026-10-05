@@ -112,6 +112,24 @@ CASES = {
         SearchSettings.get_export_format,
         SearchSettings.DEFAULT_EXPORT_FORMAT,
     ),
+    "search-semantic-threshold": (
+        ["settings", "search", "semantic", "threshold", "set", "strict"],
+        ["settings", "search", "semantic", "threshold", "reset"],
+        SearchSettings.get_semantic_threshold_setting,
+        SearchSettings.DEFAULT_SEMANTIC_THRESHOLD,
+    ),
+    "search-semantic-limit": (
+        ["settings", "search", "semantic", "limit", "set", "5"],
+        ["settings", "search", "semantic", "limit", "reset"],
+        SearchSettings.get_semantic_limit,
+        SearchSettings.DEFAULT_SEMANTIC_LIMIT,
+    ),
+    "search-semantic-combine": (
+        ["settings", "search", "semantic", "combine", "set", "lexical"],
+        ["settings", "search", "semantic", "combine", "reset"],
+        SearchSettings.get_semantic_combine,
+        SearchSettings.DEFAULT_SEMANTIC_COMBINE,
+    ),
     "search-engine": (
         ["settings", "search", "engine", "set", "exact"],
         ["settings", "search", "engine", "reset"],

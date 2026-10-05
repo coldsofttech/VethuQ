@@ -59,6 +59,21 @@ from vethuq._core.search import (
 )
 from vethuq._core.search import Search as _Search
 from vethuq._core.search.engines import Ranking as _Ranking
+from vethuq._core.semantic import (
+    Embedders as _Embedders,
+)
+from vethuq._core.semantic import (
+    SemanticIndex as _SemanticIndex,
+)
+from vethuq._core.semantic import (
+    SemanticIndexResult,
+    SemanticIndexStatus,
+    SemanticModelError,
+    SemanticModelStatus,
+)
+from vethuq._core.semantic import (
+    SemanticModel as _SemanticModel,
+)
 from vethuq._core.settings import DbSettings as _DbSettings
 from vethuq._core.settings import GpuSettings as _GpuSettings
 from vethuq._core.settings import IndexSettings as _IndexSettings
@@ -102,6 +117,9 @@ SEARCH_ENGINES = _SearchSettings.ENGINES
 SEARCH_EXPORT_FORMATS = _SearchSettings.EXPORT_FORMATS
 SEARCH_FUZZY_PRESETS = _SearchSettings.FUZZY_PRESETS
 SEARCH_PROXIMITY_PRESETS = _SearchSettings.PROXIMITY_PRESETS
+SEARCH_SEMANTIC_PRESETS = _SearchSettings.SEMANTIC_PRESETS
+SEARCH_SEMANTIC_COMBINE_VALUES = _SearchSettings.COMBINE_VALUES
+SEARCH_SEMANTIC_MAX_LIMIT = _SearchSettings.SEMANTIC_MAX_LIMIT
 SEARCH_LEETSPEAK_LEVELS = _SearchSettings.LEETSPEAK_LEVELS
 SEARCH_LEETSPEAK_VALUES = _SearchSettings.LEETSPEAK_VALUES
 SEARCH_CASE_VALUES = _SearchSettings.CASE_VALUES
@@ -148,6 +166,9 @@ __all__ = [
     "SEARCH_UNICODE_VALUES",
     "SEARCH_PROXIMITY_MAX_DISTANCE",
     "SEARCH_PROXIMITY_PRESETS",
+    "SEARCH_SEMANTIC_COMBINE_VALUES",
+    "SEARCH_SEMANTIC_MAX_LIMIT",
+    "SEARCH_SEMANTIC_PRESETS",
     "STALE_LOCK_VALUES",
     "AlreadyRunningError",
     "AmbiguousFileError",
@@ -205,7 +226,16 @@ __all__ = [
     "SearchProximitySettings",
     "SearchLanguageError",
     "SearchQueryError",
+    "SearchSemanticCombineSettings",
+    "SearchSemanticLimitSettings",
+    "SearchSemanticSettings",
+    "SearchSemanticThresholdSettings",
     "SearchSettings",
+    "Semantic",
+    "SemanticIndexResult",
+    "SemanticIndexStatus",
+    "SemanticModelError",
+    "SemanticModelStatus",
     "Settings",
     "PurgeResult",
     "SettingsError",
@@ -881,6 +911,124 @@ class SearchNoiseFuzzySettings:
         self.noise = SearchNoiseLevelSettings()
 
 
+class SearchSemanticThresholdSettings:
+    """How close in meaning a passage must be to the query for `semantic` search to match it.
+
+    Not instantiated directly — use `Vethuq().settings.search.semantic.threshold`.
+    """
+
+    def get(self) -> str:
+        """The stored threshold, as set: a name from `SEARCH_SEMANTIC_PRESETS`, or a percentage
+        or similarity as text (e.g. `"78%"`). `"balanced"` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_semantic_threshold_setting(storage)
+        finally:
+            storage.close()
+
+    def set(self, threshold: str | float) -> None:
+        """Set the default threshold: a name from `SEARCH_SEMANTIC_PRESETS` (`"strict"` 86%,
+        `"balanced"` 80%, `"loose"` 75%), a percentage (`"78%"`, or a whole number such as `78`)
+        or a similarity above 0 and up to 1 (`0.78`).
+
+        The scores are of the multilingual model, which rates unrelated text around 70%, so the
+        useful range is narrow. Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_semantic_threshold(storage, str(threshold))
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the semantic threshold to the default ('balanced')."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_semantic_threshold(storage)
+        finally:
+            storage.close()
+
+
+class SearchSemanticLimitSettings:
+    """The most pages `semantic` search returns.
+
+    Not instantiated directly — use `Vethuq().settings.search.semantic.limit`.
+    """
+
+    def get(self) -> int:
+        """The most pages a semantic search returns. 25 by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_semantic_limit(storage)
+        finally:
+            storage.close()
+
+    def set(self, pages: int | str) -> None:
+        """Set the limit: a whole number from 1 to `SEARCH_SEMANTIC_MAX_LIMIT`.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_semantic_limit(storage, pages)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the limit to the default (25 pages)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_semantic_limit(storage)
+        finally:
+            storage.close()
+
+
+class SearchSemanticCombineSettings:
+    """Which keyword engine `semantic` search is ranked together with.
+
+    Not instantiated directly — use `Vethuq().settings.search.semantic.combine`.
+    """
+
+    def get(self) -> str:
+        """The stored value, one of `SEARCH_SEMANTIC_COMBINE_VALUES`. `"off"` by default."""
+        storage = _open_storage()
+        try:
+            return _SearchSettings.get_semantic_combine(storage)
+        finally:
+            storage.close()
+
+    def set(self, engine: str) -> None:
+        """Set what semantic search is combined with: `"off"` (semantic alone), `"full-text"`
+        or `"lexical"`. The two engines are run and their pages ranked together, a page both
+        find above a page only one does, and each hit says which engine found it.
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        storage = _open_storage()
+        try:
+            _SearchSettings.set_semantic_combine(storage, engine)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset to semantic alone (`"off"`)."""
+        storage = _open_storage()
+        try:
+            _SearchSettings.reset_semantic_combine(storage)
+        finally:
+            storage.close()
+
+
+class SearchSemanticSettings:
+    """Configure the `semantic` search engine. Not instantiated directly — use
+    `Vethuq().settings.search.semantic`."""
+
+    def __init__(self) -> None:
+        self.threshold = SearchSemanticThresholdSettings()
+        self.limit = SearchSemanticLimitSettings()
+        self.combine = SearchSemanticCombineSettings()
+
+
 class SearchSettings:
     """Configure `search` behavior. Not instantiated directly — use `Vethuq().settings.search`."""
 
@@ -892,6 +1040,7 @@ class SearchSettings:
         self.proximity = SearchProximitySettings()
         self.normalize = SearchNormalizeSettings()
         self.noise_fuzzy = SearchNoiseFuzzySettings()
+        self.semantic = SearchSemanticSettings()
 
 
 class RemovedRetentionSettings:
@@ -1480,7 +1629,7 @@ class Search:
         Returns one `SearchMatch` per occurrence, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a
         page in text order) - or best match first for the `full-text`, `fuzzy`, `proximity`,
-        and `noise-fuzzy` engines. Only successfully indexed documents are considered.
+        `noise-fuzzy` and `semantic` engines. Only successfully indexed documents are considered.
         `context_chars` defaults to `Vethuq().settings.search.snippet` if not given.
 
         `engine` is one of `SEARCH_ENGINES` and defaults to
@@ -1491,7 +1640,20 @@ class Search:
         a word with * for a prefix), best matches first; `fuzzy` finds words
         close to `content`'s - typos and OCR misreads such as `Musuem` or
         `Museurn` for `Museum` - closest first (words under 4 letters and
-        anything with a digit must match exactly); with `leet_level` (`"off"`, `"basic"`,
+        anything with a digit must match exactly); `semantic` finds the passages that MEAN what
+        `content` means, in any wording or language - `refund policy` finds "a full
+        reimbursement", and a Telugu query finds the English page that says the same - best
+        first (`SearchMatch.score` is the cosine similarity of the passage and the query). It
+        needs the `search-semantic` extra and a language model that downloads the first time it
+        is used (see `Vethuq().semantic`); pages not yet embedded are embedded first, which takes
+        a while the first time. `threshold` is then the closeness in meaning (a name from
+        `SEARCH_SEMANTIC_PRESETS`, a percentage or a number above 0 and up to 1, defaulting to
+        `Vethuq().settings.search.semantic.threshold`), at most
+        `Vethuq().settings.search.semantic.limit` pages come back, and with
+        `Vethuq().settings.search.semantic.combine` set the pages of `full-text` or `lexical` are
+        ranked together with them. `semantic` is never case-sensitive, and `all` does not run it
+        (it loads a model). Raises `SearchEngineUnavailable` if its model can't be downloaded or
+        loaded. With `leet_level` (`"off"`, `"basic"`,
         `"standard"` or `"extended"`, defaulting to `Vethuq().settings.search.normalize.leetspeak`
         - off for `like` unless that says otherwise) `like` reads look-alike characters as the
         letters they stand for - `h3ll0` or `p@55w0rd` for `hello` or `password`, and the other
@@ -1509,7 +1671,8 @@ class Search:
         with it on reads every page rather than using the text indexes. `case_sensitive`
         defaults to `Vethuq().settings.search.normalize.case` and only `like`,
         `lexical`, `fuzzy` and `noise-fuzzy` act on it - `exact` is always case-sensitive and
-        `full-text` and `proximity` never are. `threshold` (`fuzzy` and `noise-fuzzy` only)
+        `full-text`, `proximity` and `semantic` never are. `threshold` (`fuzzy`, `noise-fuzzy`
+        and `semantic`)
         is the minimum similarity between `content`'s words and the words found: a
         name from `SEARCH_FUZZY_PRESETS`, a percentage (`"80%"`) or a number above 0
         and up to 1, defaulting to `Vethuq().settings.search.fuzzy.threshold`.
@@ -1830,6 +1993,76 @@ class Ocr:
         return _Languages.enabled_ids()
 
 
+class Semantic:
+    """The model and the index behind `semantic` search, like `vethuq semantic`. Not
+    instantiated directly — use `Vethuq().semantic`.
+
+    Semantic search reads text into vectors with `intfloat/multilingual-e5-small`, a small
+    multilingual model that is downloaded the first time it is needed (or with `download`) and
+    needs the `search-semantic` extra (`pip install vethuq[search-semantic]`).
+    """
+
+    def model(self) -> SemanticModelStatus:
+        """The model's name, folder and whether it is downloaded (and how big it is)."""
+        return _SemanticModel.status()
+
+    def status(self) -> SemanticIndexStatus:
+        """How many searchable pages are embedded, how many are still to do and how many
+        passages that is."""
+        storage = _open_storage()
+        try:
+            return _SemanticIndex.status(storage, _SemanticModel.MODEL_ID)
+        finally:
+            storage.close()
+
+    def download(
+        self, *, force: bool = False, on_progress: Callable[[str], None] | None = None
+    ) -> None:
+        """Download the model if it is missing (or again, with `force`). Needs the internet.
+
+        `on_progress(message)` says which file is being fetched. Raises `SemanticModelError`
+        if it can't be downloaded.
+        """
+        if force:
+            _SemanticModel.remove()
+        _SemanticModel.download(on_progress)
+
+    def index(
+        self,
+        *,
+        rebuild: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> SemanticIndexResult:
+        """Embed every searchable page that has no embedding yet (all of them, with `rebuild`).
+
+        Downloads the model first if needed. A search embeds whatever is missing itself; this
+        does it ahead of time. `on_progress(done, total)` is called after each batch of pages,
+        and every batch is kept, so stopping early loses nothing. Raises `SemanticModelError`
+        if the model can't be downloaded or loaded.
+        """
+        embedder = _Embedders.get()
+        storage = _open_storage()
+        try:
+            if rebuild:
+                _SemanticIndex.clear(storage, embedder.model)
+            return _SemanticIndex.sync(storage, embedder, on_progress=on_progress)
+        finally:
+            storage.close()
+
+    def clear(self, *, model: bool = False) -> int:
+        """Forget every embedding (and, with `model`, delete the downloaded model too). Both
+        come back on their own the next time a semantic search needs them. Returns the number of
+        pages whose embeddings were forgotten."""
+        storage = _open_storage()
+        try:
+            pages = _SemanticIndex.clear(storage)
+        finally:
+            storage.close()
+        if model:
+            _SemanticModel.remove()
+        return pages
+
+
 class Vethuq:
     """Client for VethuQ's local database — the same one the CLI and desktop app use.
 
@@ -1842,6 +2075,7 @@ class Vethuq:
     client.search.run("invoice")
     client.file_types.list()
     client.ocr.models.download("te")
+    client.semantic.index()
     client.version.python
     ```
     """
@@ -1850,6 +2084,7 @@ class Vethuq:
         self.sources = Sources()
         self.index = Index()
         self.ocr = Ocr()
+        self.semantic = Semantic()
         self.settings = Settings()
         self.stats = Stats()
         self.search = Search()

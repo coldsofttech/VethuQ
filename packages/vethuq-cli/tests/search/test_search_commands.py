@@ -472,10 +472,13 @@ class TestSearchEngines:
     @pytest.mark.parametrize(
         ("args", "message"),
         [
-            (["--engine", "like", "--threshold", "0.8"], "Only the fuzzy and noise-fuzzy engines"),
+            (
+                ["--engine", "like", "--threshold", "0.8"],
+                "Only the fuzzy, noise-fuzzy and semantic engines",
+            ),
             (
                 ["--engine", "full-text", "--fuzziness", "loose"],
-                "Only the fuzzy and noise-fuzzy engines",
+                "Only the fuzzy, noise-fuzzy and semantic engines",
             ),
             (["--engine", "fuzzy", "--threshold", "0"], "above 0"),
             (["--engine", "fuzzy", "--threshold", "150"], "above 0"),
@@ -592,7 +595,7 @@ class TestSearchEngines:
             (["--engine", "proximity", "--distance", "nope"], "from 1 to 100"),
             (
                 ["--engine", "proximity", "--threshold", "80%"],
-                "Only the fuzzy and noise-fuzzy engines",
+                "Only the fuzzy, noise-fuzzy and semantic engines",
             ),
             (["--engine", "proximity", "--case-sensitive"], "always case-insensitive"),
             (["--engine", "fuzzy", "--distance", "5"], "Only the proximity engine"),
@@ -794,8 +797,9 @@ class TestSearchLookalikes:
             app, ["search", "hello", "--engine", "like", "--threshold", "0.8"]
         )
 
-        assert threshold.exit_code != 0 and "Only the fuzzy and noise-fuzzy engines" in _flatten(
-            threshold.output
+        assert (
+            threshold.exit_code != 0
+            and "Only the fuzzy, noise-fuzzy and semantic engines" in _flatten(threshold.output)
         )
 
 

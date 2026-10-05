@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import pytest
+from fake_semantic_embedder import FakeEmbedder
 from vethuq_core.db import Db
 from vethuq_core.paths import Paths
+from vethuq_core.semantic import Embedders
 
 
 @pytest.fixture
@@ -36,3 +38,12 @@ def _isolated_data_root(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(
         Paths, "location_file", staticmethod(lambda: root / "config" / "location.json")
     )
+
+
+@pytest.fixture
+def embedder():
+    """Semantic search with a model-free embedder, so no model is downloaded or loaded."""
+    fake = FakeEmbedder()
+    Embedders.use(lambda: fake)
+    yield fake
+    Embedders.use(None)

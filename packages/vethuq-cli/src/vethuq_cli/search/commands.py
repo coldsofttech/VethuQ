@@ -41,6 +41,9 @@ _NO_MATCH_HINTS = {
     "noise-fuzzy": "`noise-fuzzy` finds your characters hidden by a little stray punctuation or "
     "whitespace, look-alike symbols and a typo or two - not letters in between. Try "
     "`--noise medium` (or `high`), `--fuzziness loose` or `--leet-level extended`.",
+    "semantic": "`semantic` only finds passages whose meaning is close enough to yours. Try "
+    "`--fuzziness loose` (or a lower --threshold), more words describing what you mean, or "
+    "`vethuq settings search semantic combine full-text` to also match your exact words.",
 }
 
 
@@ -116,13 +119,13 @@ def _resolve_options(
             raise typer.BadParameter(
                 "give either --threshold or --fuzziness, not both.", param_hint="--fuzziness"
             )
-        preset = SearchSettings.FUZZY_PRESETS.get(fuzziness.strip().lower())
-        if preset is None:
+        if fuzziness.strip().lower() not in SearchSettings.FUZZY_PRESETS:
             raise typer.BadParameter(
                 f"{fuzziness!r} is not one of {', '.join(SearchSettings.FUZZY_PRESETS)}.",
                 param_hint="--fuzziness",
             )
-        threshold = str(preset)
+        # The name, not its number: each engine has its own presets for it.
+        threshold = fuzziness.strip().lower()
     try:
         return Search.resolve_options(
             storage, engine, case_sensitive, threshold, distance, leet_level, noise, unicode
@@ -185,6 +188,15 @@ class SearchHelp:
         "--threshold or --fuzziness of CONTENT, as in `fuzzy`. How much noise is skipped is "
         "set by --noise (low, medium or high) or `vethuq settings search noise-fuzzy noise`. "
         "Honours --case-sensitive; the cleanest text first.\n\n"
+        "semantic - finds passages that MEAN what CONTENT means, whatever the wording or "
+        'language: `refund policy` finds "customers may return goods for a full '
+        'reimbursement", and a Telugu query finds the English page that says the same. '
+        "Needs the `search-semantic` extra and a language model (multilingual-e5-small) that "
+        "downloads the first time it is used, and every page is read once into the semantic "
+        "index (`vethuq semantic index` does it ahead of time). --threshold or --fuzziness "
+        "sets how close in meaning a passage must be, `vethuq settings search semantic limit` "
+        "how many pages come back, and `vethuq settings search semantic combine` ranks the "
+        "pages of `full-text` or `lexical` together with it. Never case-sensitive.\n\n"
         "--normalize decides what counts as the same character, whichever engine matches: "
         "unicode=full folds accents and compatibility forms (`cafe` finds `café`), case=match "
         "or ignore, leetspeak=basic|standard|extended reads look-alikes as letters. They are "
@@ -213,8 +225,9 @@ def search(
             "default), 'like' (substring, even inside a word), 'exact' (as typed, "
             "case-sensitive, whole word), 'full-text' (whole words, stemmed, best match "
             "first), 'fuzzy' (whole words close to yours, tolerating typos and OCR "
-            "misreads), 'proximity' (all your words near each other) or 'noise-fuzzy' (words "
-            "hidden by stray characters, look-alikes and typos at once, e.g. h..e l1o). "
+            "misreads), 'proximity' (all your words near each other), 'noise-fuzzy' (words "
+            "hidden by stray characters, look-alikes and typos at once, e.g. h..e l1o) or "
+            "'semantic' (passages that mean what you asked, in any wording or language). "
             "Defaults to "
             "`vethuq settings search engine`."
         ),
@@ -226,26 +239,26 @@ def search(
             "Match case. Only 'like', 'lexical', 'fuzzy' and 'noise-fuzzy' honour it "
             "(default: "
             "`vethuq settings search normalize case`); 'exact' is always case-sensitive, "
-            "'full-text' and 'proximity' never are. With 'all', each engine applies what it can."
+            "'full-text', 'proximity' and 'semantic' never are. With 'all', each engine "
+            "applies what it can."
         ),
     ),
     threshold: str | None = typer.Option(
         None,
         "--threshold",
         help=(
-            "Fuzzy and noise-fuzzy only: the minimum similarity between your words and the "
-            "words found, as a "
+            "Fuzzy, noise-fuzzy and semantic only: the minimum similarity between your words and "
+            "the words found (semantic: between what you mean and the passage), as a "
             "percentage (80%) or a number above 0 and up to 1 (0.8). Default: `vethuq settings "
-            "search fuzzy threshold`."
+            "search fuzzy threshold` (semantic: `vethuq settings search semantic threshold`)."
         ),
     ),
     fuzziness: str | None = typer.Option(
         None,
         "--fuzziness",
         help=(
-            "Fuzzy and noise-fuzzy only: a named --threshold - 'strict' (0.90), 'balanced' "
-            "(0.80) or "
-            "'loose' (0.65)."
+            "Fuzzy, noise-fuzzy and semantic only: a named --threshold - 'strict', 'balanced' "
+            "or 'loose' (fuzzy: 0.90, 0.80, 0.65; semantic: 0.86, 0.80, 0.75)."
         ),
     ),
     distance: str | None = typer.Option(

@@ -448,6 +448,39 @@ class TestInteractiveSearchEngines:
         assert "Search noise level set to high." in result.stdout
         assert "Search noise level: high" in result.stdout
 
+    def test_settings_semantic_threshold_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Settings > Search > Semantic > Threshold > Set strict; Show; back out.
+        result = runner.invoke(app, [], input="4\n2\n8\n1\n2\nstrict\n1\n0\n0\n0\n0\n10\n")
+
+        assert result.exit_code == 0
+        assert "Search semantic threshold set to strict." in result.stdout
+        assert "Search semantic threshold: strict" in result.stdout
+
+    def test_settings_semantic_limit_and_combine_navigation(self, use_temp_db):
+        use_temp_db()
+
+        # Semantic > Limit > Set 7; Back; Combine > Set full-text; Back out.
+        result = runner.invoke(
+            app, [], input="4\n2\n8\n2\n2\n7\n0\n3\n2\nfull-text\n0\n0\n0\n0\n10\n"
+        )
+
+        assert result.exit_code == 0
+        assert "Search semantic limit set to 7 pages." in result.stdout
+        assert "Search semantic combine set to full-text." in result.stdout
+
+    def test_semantic_search_asks_for_the_closeness_in_meaning(self, use_temp_db, embedder):
+        _seed_page(use_temp_db(), "Customers may get a full reimbursement.")
+
+        # Search > text > engine > closeness (a similarity), then exit.
+        result = runner.invoke(app, [], input="1\nrefund\nsemantic\n0.3\n10\n")
+
+        assert result.exit_code == 0
+        assert "Closeness in meaning" in result.stdout
+        assert "Case-sensitive?" not in result.stdout
+        assert "engine: semantic, threshold 30%" in result.stdout
+
     def test_noise_fuzzy_asks_for_case_fuzziness_level_and_noise(self, use_temp_db):
         _seed_page(use_temp_db(), "say h..e llo to all")
 

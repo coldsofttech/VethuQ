@@ -203,6 +203,9 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
     search.normalize.leetspeak.set("extended")
     search.normalize.unicode.set("full")
     search.noise_fuzzy.noise.set("high")
+    search.semantic.threshold.set("strict")
+    search.semantic.limit.set(5)
+    search.semantic.combine.set("lexical")
     client.settings.gpu.enable()
     client.settings.ocr.retry.set(9)
     client.settings.ocr.engine.set("deep")
@@ -228,6 +231,9 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
         search.normalize.leetspeak,
         search.normalize.unicode,
         search.noise_fuzzy.noise,
+        search.semantic.threshold,
+        search.semantic.limit,
+        search.semantic.combine,
         client.settings.gpu,
         client.settings.ocr.retry,
         client.settings.ocr.engine,
@@ -252,6 +258,9 @@ def test_settings_reset_restores_the_defaults(client: vethuq.Vethuq):
     assert search.normalize.leetspeak.get() == "auto"
     assert search.normalize.unicode.get() == "auto"
     assert search.noise_fuzzy.noise.get() == "low"
+    assert search.semantic.threshold.get() == "balanced"
+    assert search.semantic.limit.get() == 25
+    assert search.semantic.combine.get() == "off"
     assert client.settings.gpu.is_enabled() is False
     assert client.settings.ocr.retry.get() == 3
     assert client.settings.ocr.engine.get() == "quick"
@@ -322,6 +331,9 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         lambda s: s.search.normalize.case.set("sometimes"),
         lambda s: s.search.normalize.unicode.set("nfd"),
         lambda s: s.search.noise_fuzzy.noise.set("loud"),
+        lambda s: s.search.semantic.threshold.set("tight"),
+        lambda s: s.search.semantic.limit.set(0),
+        lambda s: s.search.semantic.combine.set("fuzzy"),
         lambda s: s.index.removed_retention.set(-1),
         lambda s: s.ocr.retry.set(-1),
         lambda s: s.index.thread_workers.set("not-a-number"),
@@ -338,6 +350,9 @@ def test_settings_accept_every_documented_choice(client: vethuq.Vethuq):
         "case",
         "unicode",
         "noise_level",
+        "semantic_threshold",
+        "semantic_limit",
+        "semantic_combine",
         "removed_retention",
         "ocr_retry",
         "thread_workers",
@@ -842,3 +857,183 @@ def test_search_rejects_an_unknown_language(indexed_client: vethuq.Vethuq):
 def test_statistics_can_be_limited_to_a_language(client: vethuq.Vethuq):
     assert client.stats.processing(language="te") == []
     assert client.stats.confidence(language="te") == []
+
+
+class _ConceptEmbedder:
+    """A model-free embedder: words of one concept share a dimension."""
+
+    model = "intfloat/multilingual-e5-small"
+    CONCEPTS = ({"invoice", "bill", "receipt"}, {"cover", "front"})
+
+    def _vector(self, text: str):
+        import re
+        import zlib
+
+        import numpy as np
+
+        vector = np.zeros(len(self.CONCEPTS) + 8, dtype=np.float32)
+        for word in re.findall(r"\w+", text.lower()):
+            for index, concept in enumerate(self.CONCEPTS):
+                if word in concept:
+                    vector[index] += 1.0
+                    break
+            else:
+                vector[len(self.CONCEPTS) + zlib.crc32(word.encode()) % 8] += 0.25
+        norm = np.linalg.norm(vector)
+        return vector / norm if norm else vector
+
+    def embed_passages(self, texts):
+        import numpy as np
+
+        return np.array([self._vector(t) for t in texts], dtype=np.float32).reshape(len(texts), -1)
+
+    def embed_query(self, text):
+        return self._vector(text)
+
+
+@pytest.fixture
+def semantic_embedder():
+    from vethuq._core.semantic import Embedders
+
+    fake = _ConceptEmbedder()
+    Embedders.use(lambda: fake)
+    yield fake
+    Embedders.use(None)
+
+
+def test_semantic_is_an_engine_but_not_a_tier():
+    assert "semantic" in vethuq.SEARCH_ENGINES
+    assert "semantic" not in vethuq.ENGINE_TIERS
+    assert vethuq.ENGINE_BADGES["semantic"] == "Related"
+    assert "semantic" in vethuq.ENGINE_MEANINGS
+    assert vethuq.SEARCH_SEMANTIC_PRESETS == {"strict": 0.86, "balanced": 0.80, "loose": 0.75}
+    assert vethuq.SEARCH_SEMANTIC_COMBINE_VALUES == ("off", "full-text", "lexical")
+    assert vethuq.SEARCH_SEMANTIC_MAX_LIMIT == 1000
+    assert vethuq.engine_badge("semantic", 0.874) == "Related 87%"
+
+
+def test_semantic_settings_round_trip(client: vethuq.Vethuq):
+    semantic = client.settings.search.semantic
+    semantic.threshold.set("loose")
+    semantic.limit.set("12")
+    semantic.combine.set("full-text")
+
+    assert semantic.threshold.get() == "loose"
+    assert semantic.limit.get() == 12
+    assert semantic.combine.get() == "full-text"
+
+    semantic.threshold.set(0.9)
+    assert semantic.threshold.get() == "0.9"
+    with pytest.raises(vethuq.InvalidSettingValueError):
+        semantic.limit.set(vethuq.SEARCH_SEMANTIC_MAX_LIMIT + 1)
+
+
+def test_search_semantic_finds_text_that_means_the_same(
+    indexed_client: vethuq.Vethuq, semantic_embedder
+):
+    assert indexed_client.search.run("bill", engine="full-text") == []
+
+    matches = indexed_client.search.run("bill", engine="semantic", threshold=0.3)
+
+    assert {m.file_path for m in matches} == {"/docs/invoice.pdf", "/docs/scan.png"}
+    assert {m.engine for m in matches} == {"semantic"}
+    assert all(m.score is not None and m.score >= 0.3 for m in matches)
+    assert vethuq.hit_badge(matches[0]).startswith("Related ")
+
+
+def test_search_semantic_uses_its_own_threshold_and_refuses_case(
+    indexed_client: vethuq.Vethuq, semantic_embedder
+):
+    assert indexed_client.search.run("bill", engine="semantic", threshold="strict") != []
+    indexed_client.settings.search.semantic.threshold.set("0.99")
+    assert indexed_client.search.run("cover", engine="semantic") == []
+    with pytest.raises(vethuq.SearchOptionError):
+        indexed_client.search.run("bill", engine="semantic", case_sensitive=True)
+    with pytest.raises(vethuq.SearchOptionError):
+        indexed_client.search.run("bill", engine="semantic", distance=3)
+
+
+def test_search_semantic_can_be_combined_with_full_text(
+    indexed_client: vethuq.Vethuq, semantic_embedder
+):
+    indexed_client.settings.search.semantic.combine.set("full-text")
+
+    matches = indexed_client.search.run("invoice", engine="semantic", threshold=0.3)
+
+    assert {m.engine for m in matches} == {"semantic", "full-text"}
+
+
+def test_search_all_does_not_run_semantic(indexed_client: vethuq.Vethuq, semantic_embedder):
+    indexed_client.search.run_pages("invoice")
+
+    assert semantic_embedder.model  # the fixture is in place, yet nothing was embedded
+    assert indexed_client.semantic.status().embedded == 0
+
+
+def test_search_semantic_without_a_model_raises_engine_unavailable(
+    indexed_client: vethuq.Vethuq, monkeypatch: pytest.MonkeyPatch
+):
+    from vethuq._core.semantic import Embedders
+
+    def refuse():
+        raise vethuq.SemanticModelError("not downloaded")
+
+    Embedders.use(refuse)
+    try:
+        with pytest.raises(vethuq.SearchEngineUnavailable, match="not downloaded"):
+            indexed_client.search.run("bill", engine="semantic")
+    finally:
+        Embedders.use(None)
+
+
+def test_semantic_status_index_and_clear(indexed_client: vethuq.Vethuq, semantic_embedder):
+    before = indexed_client.semantic.status()
+    assert (before.pages, before.embedded, before.pending) == (3, 0, 3)
+
+    progress: list[tuple[int, int]] = []
+    result = indexed_client.semantic.index(
+        on_progress=lambda done, total: progress.append((done, total))
+    )
+
+    assert (result.pages, result.chunks) == (3, 3)
+    assert progress == [(3, 3)]
+    after = indexed_client.semantic.status()
+    assert (after.embedded, after.pending, after.chunks) == (3, 0, 3)
+    assert indexed_client.semantic.index().pages == 0
+    assert indexed_client.semantic.index(rebuild=True).pages == 3
+
+    assert indexed_client.semantic.clear() == 3
+    assert indexed_client.semantic.status().embedded == 0
+
+
+def test_semantic_model_status_and_download(client: vethuq.Vethuq, monkeypatch: pytest.MonkeyPatch):
+    import importlib.machinery
+    import sys
+    import types
+
+    status = client.semantic.model()
+    assert status.model == "intfloat/multilingual-e5-small"
+    assert not status.present
+
+    hub = types.ModuleType("huggingface_hub")
+    hub.__spec__ = importlib.machinery.ModuleSpec("huggingface_hub", None)
+
+    class HfApi:
+        def list_repo_files(self, repo):
+            return ["tokenizer.json", "onnx/model.onnx"]
+
+    def hf_hub_download(repo, filename, local_dir):
+        (local_dir / filename).parent.mkdir(parents=True, exist_ok=True)
+        (local_dir / filename).write_bytes(b"x")
+
+    hub.HfApi = HfApi
+    hub.hf_hub_download = hf_hub_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    messages: list[str] = []
+
+    client.semantic.download(on_progress=messages.append)
+
+    assert client.semantic.model().present
+    assert messages
+    assert client.semantic.clear(model=True) == 0
+    assert not client.semantic.model().present
