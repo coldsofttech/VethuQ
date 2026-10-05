@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from vethuq_core.languages.scripts import Scripts
-from vethuq_core.ocr.catalog import OcrCatalog, OcrComponentInfo
+
+if TYPE_CHECKING:  # the ocr package imports this one, so the catalog is loaded on use
+    from vethuq_core.ocr.catalog import OcrComponentInfo
+
+
+def _catalog():
+    from vethuq_core.ocr.catalog import OcrCatalog
+
+    return OcrCatalog
 
 
 class Languages:
     @staticmethod
     def default() -> OcrComponentInfo:
         """English - what an install with no other choice recognizes."""
-        return OcrCatalog.default_language()
+        return _catalog().default_language()
 
     @staticmethod
     def enabled() -> list[OcrComponentInfo]:
         """Languages OCR can use, default first."""
-        return OcrCatalog.enabled_languages()
+        return _catalog().enabled_languages()
 
     @staticmethod
     def enabled_ids() -> list[str]:
@@ -23,7 +33,7 @@ class Languages:
 
     @staticmethod
     def get(language_id: str) -> OcrComponentInfo | None:
-        return OcrCatalog.language(language_id)
+        return _catalog().language(language_id)
 
     @staticmethod
     def for_text(text: str) -> list[OcrComponentInfo]:

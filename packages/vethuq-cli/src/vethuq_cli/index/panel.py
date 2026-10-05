@@ -104,6 +104,15 @@ class StatePanel:
         return f"{done}/{total} ({percent:.0f}%)"
 
     @staticmethod
+    def queued_language_passes(storage: Storage, state: IndexState) -> int:
+        """How many files still wait for another language's read (0 on English-only installs)."""
+        try:
+            sources = IndexRunner.resolve_targets(storage, state.target)
+        except SourceNotFoundError:
+            return 0
+        return len(storage.list_pending_language_passes([source.id for source in sources]))
+
+    @staticmethod
     def build(storage: Storage, state: IndexState, *, animated: bool) -> Panel:
         status_style = StatePanel.RUN_STATUS_STYLES.get(state.status, "default")
 
@@ -142,6 +151,11 @@ class StatePanel:
                 "Progress",
                 StatePanel.progress_cell(state.processed_files, state.total_files, animated),
             )
+        queued = StatePanel.queued_language_passes(storage, state)
+        if queued:
+            # Only shown when another language is waiting on a file; English-only runs never are.
+            noun = "pass" if queued == 1 else "passes"
+            table.add_row("Languages", Text(f"{queued} more language {noun} queued"))
         failed_style = Theme.ERROR if state.failed_files else "default"
         table.add_row("Failed", Text(str(state.failed_files), style=failed_style))
         table.add_row("Unsupported", Text(str(state.unsupported_files)))

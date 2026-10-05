@@ -59,3 +59,6 @@
   table.list td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--vq-border-soft); }
   table.list td a { color: var(--vq-primary); text-decoration: none; }
   table.list td a:hover { color: var(--vq-primary-hover); text-decoration: underline; }
+  /* Text in a language with its own script: use a font that has it (the monospace and system
+     stacks above have none), with the Noto face last for machines that lack a native one. */
+  [lang="te"] { font-family: "Nirmala UI", Gautami, Vani, "Noto Sans Telugu", sans-serif; }

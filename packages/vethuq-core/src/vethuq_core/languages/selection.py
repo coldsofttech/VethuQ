@@ -12,11 +12,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from vethuq_core.errors import LanguageUnavailableError
-from vethuq_core.ocr.catalog import OcrCatalog
 
 
 class UnknownLanguageError(ValueError):
     """A language id that no manifest declares."""
+
+
+def _catalog():
+    # Imported on use: the ocr package imports this module.
+    from vethuq_core.ocr.catalog import OcrCatalog
+
+    return OcrCatalog
 
 
 @dataclass(frozen=True)
@@ -75,7 +81,7 @@ class LanguageSelection:
             return None
         if LanguageSelection.AUTO in wanted:
             return [LanguageSelection.AUTO]
-        known = [lang.id for lang in OcrCatalog.languages()]
+        known = [lang.id for lang in _catalog().languages()]
         for language_id in wanted:
             if language_id not in known:
                 raise UnknownLanguageError(
@@ -100,7 +106,7 @@ class LanguageSelection:
             requested = list(enabled)
         missing = [language_id for language_id in requested if language_id not in enabled]
         if missing:
-            language = OcrCatalog.language(missing[0])
+            language = _catalog().language(missing[0])
             label = language.label if language is not None else missing[0]
             hint = (
                 f"Install it with: {language.install_hint}, or re-run the installer."

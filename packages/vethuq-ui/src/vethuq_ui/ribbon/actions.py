@@ -21,6 +21,7 @@ class RibbonActions:
     show_gpu: Callable[[], None]
     show_ocr_retry: Callable[[], None]
     show_ocr_engine: Callable[[], None]
+    show_ocr_languages: Callable[[], None]
     show_search_field: Callable[[str], None]
     show_removed_retention: Callable[[], None]
     show_stability_check: Callable[[], None]

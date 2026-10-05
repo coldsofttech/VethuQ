@@ -6,12 +6,15 @@ import functools
 import html
 import json
 import locale
+import re
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
 from vethuq_core.branding import APP_NAME, APP_TAGLINE, Palette
 from vethuq_core.formatting import Formatting
+from vethuq_core.languages.scripts import Scripts
+from vethuq_core.ocr.catalog import OcrCatalog
 from vethuq_core.paths.fspath import FsPath
 from vethuq_core.search.engines import Ranking
 from vethuq_core.search.search import SearchMatch
@@ -27,6 +30,46 @@ class Export:
     def template(name: str) -> str:
         """The text of one of the export's template files (`templates/<name>`)."""
         return (Export._TEMPLATES / name).read_text(encoding="utf-8")
+
+    @staticmethod
+    def languages_in(text: str) -> list[str]:
+        """The ids of the languages `text` is written in, judged by script, in catalog order.
+
+        Every language the catalog knows counts, installed or not: a file read when Telugu was
+        installed still is Telugu in an export made after it was removed. Text with no letters of
+        any known script (digits, punctuation) is in no language.
+        """
+        present = Scripts.present(text)
+        return [lang.id for lang in OcrCatalog.languages() if lang.script in present]
+
+    @staticmethod
+    def _document_language(ids: list[str]) -> str:
+        """The `<html lang>`: the one language used, else English (the rest are tagged inline)."""
+        return ids[0] if len(ids) == 1 else OcrCatalog.default_language().id
+
+    @staticmethod
+    def _language_names(ids: list[str]) -> str:
+        names = []
+        for language_id in ids:
+            info = OcrCatalog.language(language_id)
+            names.append(info.label if info else language_id)
+        return ", ".join(names)
+
+    @staticmethod
+    def _tagged(escaped: str) -> str:
+        """Wrap each run of non-default-language text in `<span lang="..">`, so a browser picks
+        that language's font and shaping inside an English page. `escaped` is already HTML-safe;
+        English text is returned untouched."""
+        default_script = OcrCatalog.default_language().script
+        for lang in OcrCatalog.languages():
+            script = Scripts.get(lang.script)
+            if script is None or lang.script == default_script:
+                continue
+            body = "".join(f"{chr(a)}-{chr(b)}" for a, b in script.ranges)
+            joiners = Scripts.JOINERS
+            run = re.compile(f"[{body}][{body}{joiners} ]*(?<! )")
+            escaped = run.sub(lambda m, i=lang.id: f'<span lang="{i}">{m.group()}</span>', escaped)
+        return escaped
 
     @staticmethod
     def _match_type(match: SearchMatch) -> str:
@@ -112,6 +155,7 @@ class Export:
             "page_number": match.page_number,
             "total_pages": match.total_pages,
             "matched_text": Export._matched_text(match),
+            "languages": Export.languages_in(Export._matched_text(match)),
         }
         if match.engine is not None:
             entry["engine"] = match.engine
@@ -122,6 +166,14 @@ class Export:
         if match.score is not None:
             entry["score"] = match.score
         return entry
+
+    @staticmethod
+    def _union(entries: list[dict[str, object]]) -> list[str]:
+        """The languages of all the matches, in catalog order."""
+        found: set[str] = set()
+        for entry in entries:
+            found.update(entry["languages"])  # type: ignore[arg-type]
+        return [lang.id for lang in OcrCatalog.languages() if lang.id in found]
 
     @staticmethod
     def _write_json(
@@ -150,9 +202,12 @@ class Export:
                 payload["noise"] = noise
             if unicode is not None and unicode != "off":
                 payload["unicode"] = unicode
+        entries = [Export._match_entry(match) for match in matches]
+        payload["query_languages"] = Export.languages_in(query)
+        payload["languages"] = Export._union(entries)
         payload["generated_at"] = Export._generated_at()
         payload["result_count"] = len(matches)
-        payload["matches"] = [Export._match_entry(match) for match in matches]
+        payload["matches"] = entries
         output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     @staticmethod
@@ -183,18 +238,28 @@ class Export:
                 search_mode += f", noise {html.escape(noise)}"
             if unicode is not None and unicode != "off":
                 search_mode += f", unicode {html.escape(unicode)}"
+        used = Export.languages_in(query)
+        for match in matches:
+            for language_id in Export.languages_in(Export._matched_text(match)):
+                if language_id not in used:
+                    used.append(language_id)
+        used = [lang.id for lang in OcrCatalog.languages() if lang.id in used]
+        if used:
+            search_mode += f" &middot; languages: {html.escape(Export._language_names(used))}"
         rows = []
         for match in matches:
             page = str(match.page_number) if match.page_number is not None else "-"
             total_pages = str(match.total_pages) if match.total_pages is not None else "-"
-            snippet = html.escape(Export._matched_text(match)).replace(
-                html.escape(match.matched), f"<mark>{html.escape(match.matched)}</mark>", 1
+            snippet = Export._tagged(
+                html.escape(Export._matched_text(match)).replace(
+                    html.escape(match.matched), f"<mark>{html.escape(match.matched)}</mark>", 1
+                )
             )
             row = (
                 Export.template("export_row.html")
                 .replace("{{FILE_URI}}", html.escape(Export._file_uri(match.file_path)))
-                .replace("{{FILE_NAME}}", html.escape(match.file_name))
-                .replace("{{FILE_PATH}}", html.escape(match.file_path))
+                .replace("{{FILE_NAME}}", Export._tagged(html.escape(match.file_name)))
+                .replace("{{FILE_PATH}}", Export._tagged(html.escape(match.file_path)))
                 .replace("{{PAGE}}", page)
                 .replace("{{TOTAL_PAGES}}", total_pages)
                 .replace("{{MATCH}}", html.escape(Export._match_type(match)))
@@ -204,11 +269,13 @@ class Export:
 
         document = (
             Export.template("export.html")
+            .replace("{{LANG}}", Export._document_language(used))
             .replace("{{PALETTE}}", Palette.css_variables())
             .replace("{{STYLE}}", Export.template("export.css").rstrip("\n"))
             .replace("{{APP_NAME}}", html.escape(APP_NAME))
             .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
-            .replace("{{QUERY}}", html.escape(query))
+            .replace("{{QUERY_TEXT}}", html.escape(query))
+            .replace("{{QUERY}}", Export._tagged(html.escape(query)))
             .replace("{{RESULT_COUNT}}", str(len(matches)))
             .replace("{{SEARCH_MODE}}", search_mode)
             .replace("{{GENERATED_AT}}", html.escape(Export._generated_at()))
@@ -234,6 +301,7 @@ class Export:
         body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
         document = (
             Export.template("list_export.html")
+            .replace("{{LANG}}", "en")
             .replace("{{PALETTE}}", Palette.css_variables())
             .replace("{{STYLE}}", Export.template("export.css").rstrip("\n"))
             .replace("{{APP_NAME}}", html.escape(APP_NAME))
@@ -256,14 +324,15 @@ class Export:
                 "source_count": len(sources),
                 "sources": [source.to_dict() for source in sources],
             }
-            output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             return
         rows = [
             [
                 str(s.id),
                 html.escape(s.source_type),
                 html.escape(s.status),
-                f'<a href="{html.escape(Export._file_uri(s.path))}">{html.escape(s.path)}</a>',
+                f'<a href="{html.escape(Export._file_uri(s.path))}">'
+                f"{Export._tagged(html.escape(s.path))}</a>",
                 html.escape(s.added_at),
                 html.escape(s.last_scanned_at or "-"),
             ]
@@ -318,7 +387,7 @@ class Export:
                 "detail": detail,
                 "files": entries,
             }
-            output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             return
 
         headers = ["ID", "File Name", "Status"]
@@ -344,7 +413,7 @@ class Export:
             row = [
                 str(file.id),
                 f'<a href="{html.escape(Export._file_uri(file.file_path))}">'
-                f"{html.escape(Export._file_name(source, file))}</a>",
+                f"{Export._tagged(html.escape(Export._file_name(source, file)))}</a>",
                 html.escape(file.status),
             ]
             if detail:

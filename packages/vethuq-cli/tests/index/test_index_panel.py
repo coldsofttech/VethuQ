@@ -62,6 +62,62 @@ class TestStatePanel:
         assert "Moderate" in text and "2/3 (67%)" in text
         assert "Deep" in text and "1/3 (33%)" in text
 
+    @staticmethod
+    def _state(phase: int = 1):
+        now = datetime.now(UTC).isoformat()
+        return index_runner_module.IndexState(
+            run_id=1,
+            pid=1,
+            target=None,
+            mode="run",
+            status="running",
+            total_files=1,
+            processed_files=1,
+            failed_files=0,
+            thread_workers_setting="0",
+            workers=1,
+            current_files=[],
+            started_at=now,
+            updated_at=now,
+            phase=phase,
+        )
+
+    def _render(self, use_temp_db, tmp_path, pending: bool) -> str:
+        from rich.console import Console
+
+        conn = db_module.Db.connect(use_temp_db())
+        folder = tmp_path / "src"
+        folder.mkdir()
+        storage = SqliteStorage(conn)
+        source = Sources.add(storage, folder)
+        document_id = conn.execute(
+            "INSERT INTO documents (created_at) VALUES ('2026-01-01')"
+        ).lastrowid
+        row_id = conn.execute(
+            "INSERT INTO document_index (source_id, document_id, file_path, file_type, status) "
+            "VALUES (?, ?, ?, 'image', 'indexed')",
+            (source.id, document_id, str(folder / "a.png")),
+        ).lastrowid
+        if pending:
+            storage.replace_document_languages(
+                row_id, [("en", 0, "done", "auto", 0.5), ("te", 1, "pending", "auto", None)]
+            )
+        conn.commit()
+        console = Console(width=100, record=True)
+        console.print(StatePanel.build(storage, self._state(), animated=False))
+        conn.close()
+        return console.export_text()
+
+    def test_state_panel_shows_queued_language_passes(self, use_temp_db, tmp_path):
+        text = self._render(use_temp_db, tmp_path, pending=True)
+
+        assert "1 more language pass queued" in text
+
+    def test_state_panel_has_no_language_row_without_a_queue(self, use_temp_db, tmp_path):
+        text = self._render(use_temp_db, tmp_path, pending=False)
+
+        assert "Languages" not in text
+
 
 class TestFriendlyTime:
     NOW = datetime(2026, 10, 3, 15, 0).astimezone()

@@ -128,3 +128,16 @@ class TestForText:
         assert Languages.is_default_only("invoice 2024")
         assert Languages.is_default_only("")
         assert not Languages.is_default_only("invoice తెలుగు")
+
+
+def test_the_languages_package_imports_first_in_a_fresh_interpreter():
+    import subprocess
+    import sys
+
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", "from vethuq_core.languages import Languages, LanguageSelection"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr

@@ -220,6 +220,10 @@ matches = client.search.run("invoice")
 client.search.export(matches, "invoice", "results.html", "html")
 ```
 
+Text may be English, Telugu or both: JSON adds `languages` to each match (plus `query_languages`
+and `languages` for the file), and HTML tags Telugu runs with `lang="te"`. See
+[Languages in exports](CLI.md#languages-in-exports).
+
 ### `run(content, *, context_chars=None, engine=None, case_sensitive=None, threshold=None, distance=None, leet_level=None, noise=None, unicode=None)`
 
 Search indexed OCR text for `content`. Returns one `SearchMatch` per

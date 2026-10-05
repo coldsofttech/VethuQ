@@ -28,6 +28,7 @@ from vethuq_ui.windows.settings.location import LocationWindow
 from vethuq_ui.windows.settings.logs.field_window import LogFieldWindow
 from vethuq_ui.windows.settings.ocr.engine import OcrEngineWindow
 from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
+from vethuq_ui.windows.settings.ocr.languages import OcrLanguagesWindow
 from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
 from vethuq_ui.windows.settings.search.field_window import SearchFieldWindow
 
@@ -83,6 +84,12 @@ class MainWindow(tk.Tk):
                     self.ribbon.refresh_setting_icons,
                 ),
                 show_ocr_engine=lambda: OcrEngineWindow.show(
+                    self,
+                    self.storage,
+                    self.status_bar.show_message,
+                    self.ribbon.refresh_setting_icons,
+                ),
+                show_ocr_languages=lambda: OcrLanguagesWindow.show(
                     self,
                     self.storage,
                     self.status_bar.show_message,

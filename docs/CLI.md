@@ -804,6 +804,18 @@ vethuq settings search export-format set html
 vethuq settings search export-format show
 ```
 
+#### Languages in exports
+
+Exports work the same for English, Telugu and a mix, and Telugu is written as is (never `\u0c24`
+escapes). The language of a result is read from its text, so it is right for any file, however it
+was read.
+
+- **JSON** gives each match a `languages` list (`["en"]`, `["te"]`, `["en", "te"]`), and the
+  file a `query_languages` list and a `languages` list for all the matches together.
+- **HTML** sets `<html lang>` to the one language the results use, or `en` for a mix. Telugu
+  runs (in a snippet, a file name or the query) are wrapped in `<span lang="te">` so the browser
+  uses a Telugu font, and the header lists the languages. English-only pages look as before.
+
 ### `search engine set <engine>|show`
 
 Configure the engine `vethuq search` uses when `--engine` isn't given: one

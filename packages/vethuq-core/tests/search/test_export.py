@@ -201,3 +201,99 @@ class TestExportSearchMode:
         Export.search_results([_match()], "a b", output, "html", engine="proximity", distance=3)
 
         assert "engine: proximity, within 3 words" in output.read_text()
+
+
+def _telugu_match(before: str, matched: str, after: str, name: str = "invoice.pdf") -> SearchMatch:
+    return SearchMatch(
+        file_id=2,
+        file_name=name,
+        file_path=f"/docs/{name}",
+        page_number=1,
+        total_pages=1,
+        before=before,
+        matched=matched,
+        after=after,
+        truncated_before=False,
+        truncated_after=False,
+        duplicate_of_path=None,
+    )
+
+
+class TestExportLanguages:
+    ENGLISH = _match()
+    TELUGU = _telugu_match("ఈ ", "తెలుగు పదం", " ఇక్కడ")
+    MIXED = _telugu_match("Total ", "తెలుగు", " due")
+
+    def test_english_only_json_lists_english(self, tmp_path: Path):
+        output = tmp_path / "out.json"
+
+        Export.search_results([self.ENGLISH], "amount due", output, "json")
+
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["languages"] == ["en"]
+        assert payload["query_languages"] == ["en"]
+        assert payload["matches"][0]["languages"] == ["en"]
+
+    def test_telugu_only_json_is_readable_not_escaped(self, tmp_path: Path):
+        output = tmp_path / "out.json"
+
+        Export.search_results([self.TELUGU], "తెలుగు", output, "json")
+
+        raw = output.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        assert "తెలుగు పదం" in raw
+        assert payload["languages"] == ["te"]
+        assert payload["query_languages"] == ["te"]
+        assert payload["matches"][0]["languages"] == ["te"]
+
+    def test_mixed_json_lists_both_per_match_and_overall(self, tmp_path: Path):
+        output = tmp_path / "out.json"
+
+        Export.search_results([self.ENGLISH, self.MIXED], "due", output, "json")
+
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["matches"][0]["languages"] == ["en"]
+        assert payload["matches"][1]["languages"] == ["en", "te"]
+        assert payload["languages"] == ["en", "te"]
+
+    def test_digits_only_text_has_no_language(self, tmp_path: Path):
+        assert Export.languages_in("2024 - 15") == []
+
+    def test_english_html_is_unchanged_in_language(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([self.ENGLISH], "amount due", output, "html")
+
+        page = output.read_text(encoding="utf-8")
+        assert '<html lang="en">' in page
+        assert 'span lang="te"' not in page
+        assert "languages: English" in page
+
+    def test_telugu_only_html_is_a_telugu_document(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([self.TELUGU], "తెలుగు", output, "html")
+
+        page = output.read_text(encoding="utf-8")
+        assert '<html lang="te">' in page
+        assert '<mark><span lang="te">తెలుగు పదం</span></mark>' in page
+        assert "languages: Telugu" in page
+        assert "<title>VethuQ search export: తెలుగు</title>" in page
+
+    def test_mixed_html_tags_only_the_telugu_runs(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([self.ENGLISH, self.MIXED], "due", output, "html")
+
+        page = output.read_text(encoding="utf-8")
+        assert '<html lang="en">' in page
+        assert '<mark><span lang="te">తెలుగు</span></mark> due' in page
+        assert "languages: English, Telugu" in page
+
+    def test_a_telugu_file_name_is_tagged(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+        match = _telugu_match("a ", "b", " c", name="నివేదిక.pdf")
+
+        Export.search_results([match], "b", output, "html")
+
+        assert '<span lang="te">నివేదిక</span>.pdf' in output.read_text(encoding="utf-8")

@@ -16,8 +16,12 @@ from vethuq_core.storage import Storage
 from vethuq_ui.dialogs import ask_yes_no, show_error, show_warning
 from vethuq_ui.history_pane import HistoryPane
 from vethuq_ui.icons import Icons
+from vethuq_ui.languages import LanguageChoice
 from vethuq_ui.tooltip import TreeviewTooltip
 from vethuq_ui.widgets import Widgets
+from vethuq_ui.windows.source_languages import SourceLanguagesDialog
+
+_CANCELLED = object()
 
 
 class SourceListView(ttk.Frame):
@@ -70,16 +74,32 @@ class SourceListView(ttk.Frame):
     def on_add_folder(self) -> None:
         path = filedialog.askdirectory(title="Select a folder to add to VethuQ")
         if path:
-            self.add_source(path)
+            languages = self._ask_languages(path)
+            if languages is not _CANCELLED:
+                self.add_source(path, languages)
 
     def on_add_file(self) -> None:
         paths = filedialog.askopenfilenames(title="Select file(s) to add to VethuQ")
+        if not paths:
+            return
+        what = paths[0] if len(paths) == 1 else f"{len(paths)} files"
+        languages = self._ask_languages(what)
+        if languages is _CANCELLED:
+            return
         for path in paths:
-            self.add_source(path)
+            self.add_source(path, languages)
 
-    def add_source(self, path: str) -> None:
+    def _ask_languages(self, what: str) -> str | None | object:
+        """The languages to add a source in: None (the setting decides) when there is nothing to
+        choose, the person's choice otherwise, or `_CANCELLED`."""
+        if not LanguageChoice.available():
+            return None
+        chosen = SourceLanguagesDialog.ask(self.winfo_toplevel(), self._storage, what)
+        return _CANCELLED if chosen is None else chosen
+
+    def add_source(self, path: str, languages: str | None = None) -> None:
         try:
-            Sources.add(self._storage, path)
+            Sources.add(self._storage, path, languages=languages)
         except SourceAlreadyExistsError:
             show_warning(self.winfo_toplevel(), "Already added", f"{path} is already registered.")
         except SourceError as exc:
