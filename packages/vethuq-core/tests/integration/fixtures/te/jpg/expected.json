@@ -1,0 +1,662 @@
+{
+  "language": "te",
+  "file_type": "jpg",
+  "files": [
+    {
+      "file": "01_Telugu_Clean.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము",
+            "అమ్మ ఇంటికి వెళ్ళింది",
+            "కాకి చెట్టు మీద కూర్చుంది"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "అమ్మ",
+          "engine": "full-text",
+          "found": true
+        },
+        {
+          "query": "కాకి చెట్టు",
+          "engine": "proximity",
+          "found": true
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": false,
+          "lang": "en"
+        },
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        }
+      ]
+    },
+    {
+      "file": "02_Telugu_Letter.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం",
+            "గౌరవనీయులైన శ్రీ రామారావు గారికి",
+            "వార్షిక సమావేశ ఆహ్వానం",
+            "మీ విధేయుడు"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "సాహిత్య",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "రామారావు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "రామారావు గారికి",
+          "engine": "proximity",
+          "found": true
+        },
+        {
+          "query": "రామరావు",
+          "engine": "fuzzy",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "03_Telugu_Invoice.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "లక్ష్మి స్టోర్స్",
+            "కందిపప్పు",
+            "చెల్లించవలసిన మొత్తం",
+            "ధన్యవాదాలు",
+            "TB-2026-045"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "కందిపప్పు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "కందిపప్పు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "TB-2026-045",
+          "engine": "like",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "04_Telugu_Table.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "విద్యార్థుల మార్కుల పట్టిక",
+            "క్రమ సంఖ్య",
+            "విజయవాడ",
+            "గుంటూరు",
+            "తిరుపతి"
+          ],
+          "min_confidence": 0.6
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "గుంటూరు",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "గుంటూరు",
+          "engine": "exact",
+          "found": true
+        },
+        {
+          "query": "విజయవాడ",
+          "engine": "fuzzy",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "05_Telugu_Conjuncts.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "సంయుక్తాక్షరాలు",
+            "పరీక్ష",
+            "లక్ష్మి",
+            "విద్యార్థి",
+            "కృష్ణా నది"
+          ],
+          "min_confidence": 0.6,
+          "note": "The Telugu digits and the joiner in the last paragraph are not asserted."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "06_Telugu_Mixed_Lines.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "en",
+            "te"
+          ],
+          "contains": [
+            "Invoice total due",
+            "The museum of art is open every day",
+            "తెలుగు సంస్కృతి",
+            "ఆంధ్రప్రదేశ్"
+          ],
+          "min_confidence": 0.6,
+          "note": "English reads the image first; the Telugu lines it cannot read are queued as a Telugu pass, so the page ends up read in both."
+        }
+      },
+      "verified": false,
+      "languages": "auto",
+      "lang_en": true,
+      "searches": [
+        {
+          "query": "museum",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "సంస్కృతి",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "museum",
+          "engine": "like",
+          "found": true,
+          "lang": "te"
+        },
+        {
+          "query": "సంస్కృతి",
+          "engine": "like",
+          "found": true,
+          "lang": "en"
+        }
+      ]
+    },
+    {
+      "file": "07_Telugu_Short_Word.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు"
+          ],
+          "min_confidence": 0.5,
+          "note": "One short word, below the detector's minimum amount of text: read directly because the source names Telugu."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "08_Telugu_Numbers_Only.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "12/10/2026",
+            "4,500.00"
+          ],
+          "min_confidence": 0.4,
+          "note": "Telugu and Latin digits only: the Telugu digits are not asserted because their reading by OCR is uncertain."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "09_Telugu_LowRes.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.3,
+          "note": "Downscaled to about a third, blurred, then saved at quality 60: only the heading is asserted."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "10_Telugu_Heavy_Compression.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము"
+          ],
+          "min_confidence": 0.4,
+          "note": "Saved at JPEG quality 8 with 4:2:0 chroma: blocky, with ringing around the letters."
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "తెలుగు",
+          "engine": "like",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "11_Telugu_Rotated_90.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.4,
+          "note": "Rotated 90 degrees: read by the moderate phase, which tries the image at 90, 180 and 270 degrees."
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "engine": "moderate"
+    },
+    {
+      "file": "12_Telugu_Rotated_180.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.4,
+          "note": "Rotated 180 degrees."
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "engine": "moderate"
+    },
+    {
+      "file": "13_Telugu_Skewed.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము"
+          ],
+          "min_confidence": 0.5,
+          "note": "Skewed 8 degrees, with speckle noise, saved at quality 80."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "14_Telugu_Noisy.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం",
+            "వార్షిక సమావేశ ఆహ్వానం"
+          ],
+          "min_confidence": 0.4,
+          "note": "A letter with a watermark, a red stamp (రహస్యం), speckle and a pen scribble, saved at quality 70; only the top lines, which nothing covers, are asserted."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "15_Telugu_Photo_Like.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు సాహిత్య సంఘం",
+            "వార్షిక సమావేశ ఆహ్వానం"
+          ],
+          "min_confidence": 0.4,
+          "note": "A letter as if photographed: tilted in perspective on a dark desk, uneven light, a soft shadow, blur and noise."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "16_Telugu_Grayscale.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము",
+            "అమ్మ ఇంటికి వెళ్ళింది",
+            "కాకి చెట్టు మీద కూర్చుంది"
+          ],
+          "min_confidence": 0.6,
+          "note": "Single-channel (grayscale) JPEG."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "17_Telugu_Progressive.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము",
+            "అమ్మ ఇంటికి వెళ్ళింది",
+            "కాకి చెట్టు మీద కూర్చుంది"
+          ],
+          "min_confidence": 0.7,
+          "note": "A progressive JPEG (the picture comes in as passes of increasing detail)."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "18_Telugu_Coloured_Text.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము"
+          ],
+          "min_confidence": 0.5,
+          "note": "Dark blue text on yellow with 4:2:0 chroma subsampling, which smears colour edges."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "19_Telugu_Dark_Background.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము"
+          ],
+          "min_confidence": 0.5,
+          "note": "Light text on a dark background."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "20_Telugu_Wide_Strip.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.4,
+          "note": "4000x84: the same line six times across a very wide strip."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "21_Telugu_EXIF_Rotated.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది",
+            "నా పేరు రాము",
+            "అమ్మ ఇంటికి వెళ్ళింది",
+            "కాకి చెట్టు మీద కూర్చుంది"
+          ],
+          "min_confidence": 0.6,
+          "note": "Stored on its side (373x559) with the EXIF orientation tag set to 6, which means turn it upright for display. OpenCV applies the tag when it decodes, so the engine sees the page upright."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "22_Telugu_Small_Text.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [],
+          "note": "147x87 with about 6 px text: it must be indexed without an error; reading it is not asserted."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "23_తెలుగు_చిత్రం.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "ఇది ఒక పరీక్ష పత్రం",
+            "ఫైల్ పేరు తెలుగులో ఉంది"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false,
+      "languages": "te",
+      "searches": [
+        {
+          "query": "పత్రం",
+          "engine": "like",
+          "found": true
+        },
+        {
+          "query": "పత్రం",
+          "engine": "exact",
+          "found": true
+        }
+      ]
+    },
+    {
+      "file": "24_Telugu_Duplicate_Of_01.jpeg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "read_in": [
+            "te"
+          ],
+          "contains": [
+            "తెలుగు భాష మధురమైనది"
+          ],
+          "min_confidence": 0.7,
+          "note": "Byte-identical to 01_Telugu_Clean.jpg but with the other extension: indexed with it in one source it is a duplicate that shares its pages."
+        }
+      },
+      "verified": false,
+      "languages": "te"
+    },
+    {
+      "file": "25_Telugu_Corrupted.jpg",
+      "status": "error",
+      "page_count": 0,
+      "pages": {},
+      "verified": false,
+      "needs_ocr": true,
+      "note": "A JPEG header followed by junk. The decoder runs after the OCR engine is loaded, so even failing to read this file needs the models."
+    }
+  ]
+}

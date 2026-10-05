@@ -1,7 +1,7 @@
-"""Generate the Telugu fixtures in `tests/integration/fixtures/te/{pdf,png}` (deterministic).
+"""Generate the Telugu fixtures in `tests/integration/fixtures/te/{pdf,png,jpg}` (deterministic).
 
     uv run python scripts/dev/generate_telugu_fixtures.py             # every type
-    uv run python scripts/dev/generate_telugu_fixtures.py pdf         # or one: pdf, png
+    uv run python scripts/dev/generate_telugu_fixtures.py pdf         # or one: pdf, png, jpg
 
 Native PDFs are typeset from HTML by headless Chromium, with the bundled Noto Sans Telugu, so
 their text layer holds real, correctly shaped Telugu. Scanned PDFs and the PNG images are rendered
@@ -35,6 +35,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "packages/vethuq-core/tests/integration/fixtures/te"
 OUT = FIXTURES / "pdf"
 OUT_PNG = FIXTURES / "png"
+OUT_JPG = FIXTURES / "jpg"
 FONT = REPO / "packages/vethuq-ui/src/vethuq_ui/assets/fonts/NotoSansTelugu-Regular.ttf"
 FONT_BOLD = REPO / "packages/vethuq-ui/src/vethuq_ui/assets/fonts/NotoSansTelugu-Bold.ttf"
 PASSWORD = "Abc123"
@@ -465,12 +466,142 @@ def build_png() -> None:
     print(f"wrote {len(list(OUT_PNG.glob('*.png')))} files to {OUT_PNG}")
 
 
+# ---------------------------------------------------------------------------- JPG / JPEG
+
+
+def save_jpeg(
+    image: np.ndarray,
+    target: Path,
+    quality: int = 88,
+    *,
+    mode: str = "RGB",
+    subsampling: int | None = None,
+    progressive: bool = False,
+    orientation: int | None = None,
+) -> Path:
+    """JPEG with the knobs that matter to a reader: quality, chroma subsampling, progressive
+    scan, grayscale and the EXIF orientation tag."""
+    pil = Image.fromarray(image)
+    if mode != pil.mode:
+        pil = pil.convert(mode)
+    options: dict = {"quality": quality, "optimize": True, "progressive": progressive}
+    if subsampling is not None and mode == "RGB":
+        options["subsampling"] = subsampling
+    if orientation:
+        exif = Image.Exif()
+        exif[0x0112] = orientation
+        options["exif"] = exif.tobytes()
+    pil.save(target, "JPEG", **options)
+    return target
+
+
+def photo_like(image: np.ndarray, rng: np.random.RandomState) -> np.ndarray:
+    """A page as if photographed: tilted in perspective on a desk, uneven light, a soft shadow
+    and a little blur and noise."""
+    h, w = image.shape[:2]
+    pad = int(0.12 * max(h, w))
+    canvas = np.full((h + 2 * pad, w + 2 * pad, 3), (92, 74, 58), np.uint8)
+    canvas[pad : pad + h, pad : pad + w] = image
+    ch, cw = canvas.shape[:2]
+    src = np.float32([[0, 0], [cw, 0], [cw, ch], [0, ch]])
+    dst = np.float32(
+        [[cw * 0.03, ch * 0.05], [cw * 0.97, 0], [cw * 0.94, ch * 0.97], [0, ch * 0.92]]
+    )
+    warped = cv2.warpPerspective(canvas, cv2.getPerspectiveTransform(src, dst), (cw, ch))
+    yy, xx = np.mgrid[0:ch, 0:cw]
+    light = 0.78 + 0.22 * (1 - np.hypot(xx - cw * 0.35, yy - ch * 0.3) / np.hypot(cw, ch))
+    shadow = 1 - 0.28 * np.clip((xx - cw * 0.7) / (cw * 0.3), 0, 1)
+    lit = np.clip(warped * (light * shadow)[..., None], 0, 255)
+    lit += rng.normal(0, 3, lit.shape)
+    return blur(np.clip(lit, 0, 255).astype(np.uint8), 0.7)
+
+
+def build_jpg() -> None:
+    """The same pages as the PNGs, saved as JPEG: some `.jpg`, some `.jpeg` (both are the same
+    format and must be read alike), at different qualities and in the formats JPEG offers."""
+    rng = np.random.RandomState(2028)
+    OUT_JPG.mkdir(parents=True, exist_ok=True)
+    for old in [*OUT_JPG.glob("*.jpg"), *OUT_JPG.glob("*.jpeg")]:
+        old.unlink()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+
+        def page(body: str, dpi: int = 120) -> np.ndarray:
+            pdf = work / "page.pdf"
+            native_pdf(body, pdf)
+            return rasterize(pdf, dpi)[0]
+
+        def sheet(body: str) -> np.ndarray:
+            return paper(crop(page(body), 80), rng, grain=0)
+
+        def out(name: str) -> Path:
+            return OUT_JPG / name
+
+        poem = page(POEM)
+        upright = sheet(POEM)
+        first = save_jpeg(upright, out("01_Telugu_Clean.jpg"), 90)
+        save_jpeg(sheet(LETTER), out("02_Telugu_Letter.jpeg"), 85)
+        save_jpeg(sheet(INVOICE), out("03_Telugu_Invoice.jpg"), 85)
+        save_jpeg(sheet(TABLE), out("04_Telugu_Table.jpeg"), 85)
+        save_jpeg(sheet(CONJUNCTS), out("05_Telugu_Conjuncts.jpg"), 90)
+        save_jpeg(sheet(SCAN_MIXED), out("06_Telugu_Mixed_Lines.jpeg"), 85)
+        save_jpeg(crop(page(SHORT, 200), 60), out("07_Telugu_Short_Word.jpg"), 90)
+        save_jpeg(crop(page(NUMBERS), 60), out("08_Telugu_Numbers_Only.jpeg"), 90)
+        small = crop(poem, 50)
+        low = paper(blur(downscale(small, 0.3), 1.2), rng, grain=0)
+        save_jpeg(low, out("09_Telugu_LowRes.jpg"), 60)
+        save_jpeg(upright, out("10_Telugu_Heavy_Compression.jpeg"), 8, subsampling=2)
+        save_jpeg(rotate(upright, -90), out("11_Telugu_Rotated_90.jpg"), 85)
+        save_jpeg(rotate(upright, 180), out("12_Telugu_Rotated_180.jpeg"), 85)
+        save_jpeg(speckle(rotate(upright, 8), rng, 0.0015), out("13_Telugu_Skewed.jpg"), 80)
+        noisy = watermark(sheet(LETTER), "నమూనా")
+        noisy = scribble(speckle(stamp(noisy, "రహస్యం"), rng, 0.004), rng)
+        save_jpeg(noisy, out("14_Telugu_Noisy.jpeg"), 70)
+        save_jpeg(photo_like(sheet(LETTER), rng), out("15_Telugu_Photo_Like.jpg"), 80)
+        gray = cv2.cvtColor(crop(poem, 50), cv2.COLOR_RGB2GRAY)
+        save_jpeg(gray, out("16_Telugu_Grayscale.jpg"), 85, mode="L")
+        save_jpeg(upright, out("17_Telugu_Progressive.jpeg"), 85, progressive=True)
+
+        coloured = np.full_like(upright, (250, 226, 120))
+        coloured[upright.min(axis=2) < 140] = (30, 60, 170)
+        save_jpeg(coloured, out("18_Telugu_Coloured_Text.jpg"), 80, subsampling=2)
+        dark = np.where(gray[..., None] < 128, 235, 28).astype(np.uint8).repeat(3, axis=2)
+        save_jpeg(dark, out("19_Telugu_Dark_Background.jpeg"), 85)
+
+        sentence = crop(
+            page("<p style='font-size:20pt;white-space:nowrap'>తెలుగు భాష మధురమైనది</p>"), 25
+        )
+        strip = np.full((sentence.shape[0], 4000, 3), 255, np.uint8)
+        x = 40
+        while x + sentence.shape[1] < 3960:
+            strip[:, x : x + sentence.shape[1]] = sentence
+            x += sentence.shape[1] + 300
+        save_jpeg(strip, out("20_Telugu_Wide_Strip.jpeg"), 85)
+
+        # Stored on its side, with the EXIF tag that tells a viewer to turn it upright (6 =
+        # rotate 90 degrees clockwise to display).
+        save_jpeg(rotate(upright, 90), out("21_Telugu_EXIF_Rotated.jpg"), 85, orientation=6)
+        tiny = cv2.resize(crop(poem, 30), None, fx=0.32, fy=0.32, interpolation=cv2.INTER_AREA)
+        save_jpeg(tiny, out("22_Telugu_Small_Text.jpg"), 85)
+        save_jpeg(sheet(FILENAME_DOC), out("23_తెలుగు_చిత్రం.jpeg"), 85)
+
+    # The same bytes under the other extension: a duplicate whatever it is called.
+    shutil.copy(first, OUT_JPG / "24_Telugu_Duplicate_Of_01.jpeg")
+    junk = np.random.RandomState(26).randint(0, 256, 1500).astype(np.uint8).tobytes()
+    (OUT_JPG / "25_Telugu_Corrupted.jpg").write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF" + junk)
+    files = [*OUT_JPG.glob("*.jpg"), *OUT_JPG.glob("*.jpeg")]
+    print(f"wrote {len(files)} files to {OUT_JPG}")
+
+
 def main() -> None:
-    kinds = sys.argv[1:] or ["pdf", "png"]
+    kinds = sys.argv[1:] or ["pdf", "png", "jpg"]
     if "pdf" in kinds:
         build()
     if "png" in kinds:
         build_png()
+    if "jpg" in kinds:
+        build_jpg()
 
 
 if __name__ == "__main__":
