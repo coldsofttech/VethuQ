@@ -36,7 +36,7 @@ def case(entry: dict):
                 reason="reads with real PaddleOCR: set VETHUQ_REAL_OCR=1 and the models"
             )
         )
-    return pytest.param(entry, id=entry["file"][:2], marks=marks)
+    return pytest.param(entry, id=entry["file"].split("_")[0], marks=marks)
 
 
 def words(text: str) -> list[str]:
