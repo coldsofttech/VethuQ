@@ -442,6 +442,24 @@ class IntegrityStore(Protocol):
     def run_integrity_check_pragma(self) -> list[str]: ...
 
 
+class SemanticStore(Protocol):
+    """Storage operations for the semantic search index (page chunk embeddings)."""
+
+    def list_unembedded_pages(self, model: str, limit: int) -> Sequence[Row]: ...
+
+    def count_semantic(self, model: str) -> dict[str, int]: ...
+
+    def replace_semantic_page(
+        self, kind: str, page_id: int, model: str, chunks: Sequence[tuple[int, int, int, bytes]]
+    ) -> None: ...
+
+    def list_semantic_chunks(self, model: str) -> Sequence[Row]: ...
+
+    def list_semantic_page_rows(self, kind: str, page_ids: Sequence[int]) -> Sequence[Row]: ...
+
+    def clear_semantic(self, model: str | None = None) -> int: ...
+
+
 class Storage(
     SourceStore,
     DocumentStore,
@@ -450,6 +468,7 @@ class Storage(
     IndexRunStore,
     OcrStore,
     IntegrityStore,
+    SemanticStore,
     Protocol,
 ):
     """Everything the application reads from or writes to persistent storage."""

@@ -34,6 +34,24 @@ CASES = {
         SearchSettings.get_fuzzy_threshold_setting,
         SearchSettings.DEFAULT_FUZZY_THRESHOLD,
     ),
+    "semantic-threshold": (
+        lambda s: SearchSettings.set_semantic_threshold(s, "strict"),
+        SearchSettings.reset_semantic_threshold,
+        SearchSettings.get_semantic_threshold_setting,
+        SearchSettings.DEFAULT_SEMANTIC_THRESHOLD,
+    ),
+    "semantic-limit": (
+        lambda s: SearchSettings.set_semantic_limit(s, 5),
+        SearchSettings.reset_semantic_limit,
+        SearchSettings.get_semantic_limit,
+        SearchSettings.DEFAULT_SEMANTIC_LIMIT,
+    ),
+    "semantic-combine": (
+        lambda s: SearchSettings.set_semantic_combine(s, "lexical"),
+        SearchSettings.reset_semantic_combine,
+        SearchSettings.get_semantic_combine,
+        SearchSettings.DEFAULT_SEMANTIC_COMBINE,
+    ),
     "proximity-distance": (
         lambda s: SearchSettings.set_proximity_distance(s, "tight"),
         SearchSettings.reset_proximity_distance,

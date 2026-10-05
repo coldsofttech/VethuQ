@@ -1,9 +1,11 @@
 from unittest.mock import MagicMock
 
 import pytest
+from fake_embedder import FakeEmbedder
 from vethuq_core.db import Db
 from vethuq_core.ocr.engines.paddle import PaddleOcrEngine
 from vethuq_core.paths import Paths
+from vethuq_core.semantic import Embedders
 from vethuq_core.settings import OcrSettings
 from vethuq_core.storage.sqlite import SqliteStorage
 
@@ -48,3 +50,12 @@ class PaddleStub(PaddleOcrEngine):
 def _no_stability_wait(monkeypatch):
     """Skip the pre-processing stability wait; tests of that check set their own interval."""
     monkeypatch.setattr(OcrSettings, "get_stability_check_seconds", staticmethod(lambda storage: 0))
+
+
+@pytest.fixture
+def embedder():
+    """Semantic search with `FakeEmbedder`, so no model is downloaded or loaded."""
+    fake = FakeEmbedder()
+    Embedders.use(lambda: fake)
+    yield fake
+    Embedders.use(None)

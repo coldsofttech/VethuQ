@@ -81,6 +81,20 @@ class SearchEngines:
         return NoiseFuzzySearchEngine(storage)
 
     @staticmethod
+    def _semantic_factory(storage: Storage) -> SearchEngine:
+        from vethuq_core.search.engines.hybrid import HybridSearchEngine
+        from vethuq_core.search.engines.semantic import SemanticSearchEngine
+        from vethuq_core.settings import SearchSettings
+
+        semantic = SemanticSearchEngine(storage)
+        partner = SearchSettings.get_semantic_combine(storage)
+        if partner == SearchSettings.COMBINE_OFF or not SearchEngineCatalog.is_name_enabled(
+            partner
+        ):
+            return semantic
+        return HybridSearchEngine(semantic, SearchEngines.get(storage, partner))
+
+    @staticmethod
     def available() -> list[str]:
         """Names of the registered engines that are installed and enabled, sorted."""
         return sorted(n for n in SearchEngines._factories if SearchEngineCatalog.is_name_enabled(n))
@@ -93,3 +107,4 @@ SearchEngines.register("full-text", SearchEngines._fulltext_factory)
 SearchEngines.register("fuzzy", SearchEngines._fuzzy_factory)
 SearchEngines.register("proximity", SearchEngines._proximity_factory)
 SearchEngines.register("noise-fuzzy", SearchEngines._noise_fuzzy_factory)
+SearchEngines.register("semantic", SearchEngines._semantic_factory)

@@ -24,6 +24,7 @@ class SearchSettings:
         "fuzzy",
         "proximity",
         "noise-fuzzy",
+        "semantic",
     )
     CASE_SENSITIVE_KEY = "search_case_sensitive"
     FUZZY_THRESHOLD_KEY = "search_fuzzy_threshold"
@@ -31,6 +32,21 @@ class SearchSettings:
     # Minimum similarity (0-1] between a query word and a page word for the `fuzzy`
     # engine to count it as a match, by name.
     FUZZY_PRESETS = {"strict": 0.90, "balanced": 0.80, "loose": 0.65}
+    SEMANTIC_THRESHOLD_KEY = "search_semantic_threshold"
+    DEFAULT_SEMANTIC_THRESHOLD = "balanced"
+    # Minimum cosine similarity (0-1] between the query and a chunk of a page for the `semantic`
+    # engine to count it as a match, by name. These are for `multilingual-e5-small`, whose scores
+    # sit high: unrelated text still scores around 0.7, so the useful range is narrow.
+    SEMANTIC_PRESETS = {"strict": 0.86, "balanced": 0.80, "loose": 0.75}
+    SEMANTIC_LIMIT_KEY = "search_semantic_limit"
+    DEFAULT_SEMANTIC_LIMIT = 25
+    SEMANTIC_MAX_LIMIT = 1000
+    SEMANTIC_COMBINE_KEY = "search_semantic_combine"
+    COMBINE_OFF = "off"
+    # What the `semantic` engine can be combined with: `off` is semantic alone, otherwise the
+    # engine whose pages are ranked together with the semantic ones.
+    COMBINE_VALUES = (COMBINE_OFF, "full-text", "lexical")
+    DEFAULT_SEMANTIC_COMBINE = COMBINE_OFF
     PROXIMITY_DISTANCE_KEY = "search_proximity_distance"
     DEFAULT_PROXIMITY_DISTANCE = "medium"
     # Most words the `proximity` engine lets sit between its first and last term, by name.
@@ -186,20 +202,19 @@ class SearchSettings:
         SearchSettings.set_case(storage, SearchSettings.NORMALIZE_AUTO)
 
     @staticmethod
-    def parse_fuzzy_threshold(value: str | float) -> float:
-        """Resolve a fuzzy threshold to a similarity in (0, 1].
+    def _parse_similarity(value: str | float, presets: dict[str, float]) -> float:
+        """Resolve a similarity to a number in (0, 1].
 
-        `value` is a preset name (`strict`, `balanced`, `loose`), a percentage
-        (`"80%"`, or a whole number above 1 such as `80`), or a similarity
-        (`0.8`, `1`). Raises `InvalidSettingValueError` for anything else.
+        `value` is a name from `presets`, a percentage (`"80%"`, or a whole number above 1 such
+        as `80`), or a similarity (`0.8`, `1`). Raises `InvalidSettingValueError` otherwise.
         """
         invalid = InvalidSettingValueError(
-            f"threshold must be one of {tuple(SearchSettings.FUZZY_PRESETS)}, a percentage "
+            f"threshold must be one of {tuple(presets)}, a percentage "
             "above 0 and up to 100 (e.g. 80%), or a similarity above 0 and up to 1 (e.g. 0.8)"
         )
         if isinstance(value, str):
             text = value.strip().lower()
-            preset = SearchSettings.FUZZY_PRESETS.get(text)
+            preset = presets.get(text)
             if preset is not None:
                 return preset
             percent = text.endswith("%")
@@ -222,6 +237,26 @@ class SearchSettings:
         if not 0 < number <= 1:
             raise invalid
         return number
+
+    @staticmethod
+    def parse_fuzzy_threshold(value: str | float) -> float:
+        """Resolve a fuzzy threshold to a similarity in (0, 1].
+
+        `value` is a preset name (`strict`, `balanced`, `loose`), a percentage
+        (`"80%"`, or a whole number above 1 such as `80`), or a similarity
+        (`0.8`, `1`). Raises `InvalidSettingValueError` for anything else.
+        """
+        return SearchSettings._parse_similarity(value, SearchSettings.FUZZY_PRESETS)
+
+    @staticmethod
+    def parse_semantic_threshold(value: str | float) -> float:
+        """Resolve a semantic threshold to a cosine similarity in (0, 1].
+
+        `value` is a preset name (`strict`, `balanced`, `loose`; see `SEMANTIC_PRESETS`), a
+        percentage (`"80%"`, or a whole number above 1 such as `80`), or a similarity (`0.8`).
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        return SearchSettings._parse_similarity(value, SearchSettings.SEMANTIC_PRESETS)
 
     @staticmethod
     def get_fuzzy_threshold_setting(storage: Storage) -> str:
@@ -252,6 +287,113 @@ class SearchSettings:
     def reset_fuzzy_threshold(storage: Storage) -> None:
         """Back to the default fuzzy threshold."""
         SearchSettings.set_fuzzy_threshold(storage, SearchSettings.DEFAULT_FUZZY_THRESHOLD)
+
+    @staticmethod
+    def get_semantic_threshold_setting(storage: Storage) -> str:
+        """The stored semantic threshold as set - a preset name or a number. 'balanced' by
+        default."""
+        value = Settings.get(storage, SearchSettings.SEMANTIC_THRESHOLD_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_SEMANTIC_THRESHOLD
+        try:
+            SearchSettings.parse_semantic_threshold(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_SEMANTIC_THRESHOLD
+        return value
+
+    @staticmethod
+    def get_semantic_threshold(storage: Storage) -> float:
+        """Minimum cosine similarity the `semantic` engine accepts by default (0.80 is
+        'balanced')."""
+        return SearchSettings.parse_semantic_threshold(
+            SearchSettings.get_semantic_threshold_setting(storage)
+        )
+
+    @staticmethod
+    def set_semantic_threshold(storage: Storage, value: str) -> None:
+        """Store the default semantic threshold: a preset name or a similarity in (0, 1]."""
+        SearchSettings.parse_semantic_threshold(value)  # validate
+        Settings.set(storage, SearchSettings.SEMANTIC_THRESHOLD_KEY, value.strip().lower())
+
+    @staticmethod
+    def reset_semantic_threshold(storage: Storage) -> None:
+        """Back to the default semantic threshold."""
+        SearchSettings.set_semantic_threshold(storage, SearchSettings.DEFAULT_SEMANTIC_THRESHOLD)
+
+    @staticmethod
+    def parse_semantic_limit(value: str | int) -> int:
+        """Resolve the most pages a `semantic` search returns: a whole number from 1 to
+        `SEMANTIC_MAX_LIMIT`. Raises `InvalidSettingValueError` for anything else."""
+        invalid = InvalidSettingValueError(
+            f"limit must be a whole number of pages from 1 to {SearchSettings.SEMANTIC_MAX_LIMIT}"
+        )
+        if isinstance(value, bool):
+            raise invalid
+        try:
+            number = int(value.strip()) if isinstance(value, str) else int(value)
+        except ValueError:
+            raise invalid from None
+        if isinstance(value, float) or not 1 <= number <= SearchSettings.SEMANTIC_MAX_LIMIT:
+            raise invalid
+        return number
+
+    @staticmethod
+    def get_semantic_limit(storage: Storage) -> int:
+        """Most pages a `semantic` search returns. 25 by default: it always has near
+        neighbours, so without a cap it would return everything above the threshold."""
+        value = Settings.get(storage, SearchSettings.SEMANTIC_LIMIT_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_SEMANTIC_LIMIT
+        try:
+            return SearchSettings.parse_semantic_limit(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_SEMANTIC_LIMIT
+
+    @staticmethod
+    def set_semantic_limit(storage: Storage, value: str | int) -> None:
+        number = SearchSettings.parse_semantic_limit(value)
+        Settings.set(storage, SearchSettings.SEMANTIC_LIMIT_KEY, str(number))
+
+    @staticmethod
+    def reset_semantic_limit(storage: Storage) -> None:
+        """Back to the default result limit."""
+        SearchSettings.set_semantic_limit(storage, SearchSettings.DEFAULT_SEMANTIC_LIMIT)
+
+    @staticmethod
+    def parse_semantic_combine(value: str) -> str:
+        """Resolve what `semantic` is combined with: `off`, `full-text` or `lexical`. Raises
+        `InvalidSettingValueError` for anything else."""
+        text = value.strip().lower() if isinstance(value, str) else ""
+        if text not in SearchSettings.COMBINE_VALUES:
+            raise InvalidSettingValueError(
+                f"combine must be one of {', '.join(SearchSettings.COMBINE_VALUES)}"
+            )
+        return text
+
+    @staticmethod
+    def get_semantic_combine(storage: Storage) -> str:
+        """The engine `semantic` search is combined with by default; `off` (semantic alone)
+        unless set."""
+        value = Settings.get(storage, SearchSettings.SEMANTIC_COMBINE_KEY)
+        if value is None:
+            return SearchSettings.DEFAULT_SEMANTIC_COMBINE
+        try:
+            return SearchSettings.parse_semantic_combine(value)
+        except InvalidSettingValueError:
+            return SearchSettings.DEFAULT_SEMANTIC_COMBINE
+
+    @staticmethod
+    def set_semantic_combine(storage: Storage, value: str) -> None:
+        Settings.set(
+            storage,
+            SearchSettings.SEMANTIC_COMBINE_KEY,
+            SearchSettings.parse_semantic_combine(value),
+        )
+
+    @staticmethod
+    def reset_semantic_combine(storage: Storage) -> None:
+        """Back to semantic alone."""
+        SearchSettings.set_semantic_combine(storage, SearchSettings.DEFAULT_SEMANTIC_COMBINE)
 
     @staticmethod
     def parse_proximity_distance(value: str | int) -> int:

@@ -46,7 +46,8 @@ class SearchOptionError(ValueError):
 class SearchOptions(NamedTuple):
     """The resolved options a search runs with.
 
-    `threshold` is set for `fuzzy`, `noise-fuzzy` and `all`, `distance` for `proximity` and
+    `threshold` is set for `fuzzy`, `noise-fuzzy`, `semantic` (its own cosine similarity) and
+    `all` (the fuzzy one), `distance` for `proximity` and
     `all`, `level` (the leetspeak normalization) for `like`, `noise-fuzzy` and `all`, and `noise`
     (the noise level) for `noise-fuzzy` and `all`, and `unicode` (the Unicode normalization)
     for `like`, `exact`, `fuzzy`, `noise-fuzzy` and `all`.
@@ -77,8 +78,9 @@ class Search:
         leetspeak level and noise level.
 
         Each falls back to its setting when None. The engines differ in what they
-        can honour: `exact` is always case-sensitive while `full-text` and
-        `proximity` never are, only `fuzzy` and `noise-fuzzy` have a similarity `threshold`,
+        can honour: `exact` is always case-sensitive while `full-text`, `proximity` and
+        `semantic` never are, only `fuzzy`, `noise-fuzzy` and `semantic` have a similarity
+        `threshold`,
         only `proximity` has a word `distance`, only `like` and `noise-fuzzy` have a
         `level`, and only `noise-fuzzy` has a `noise` level. `all` runs
         every engine, each applying the options it can, so it accepts them all and never
@@ -103,14 +105,24 @@ class Search:
             # The saved default names an engine that is no longer enabled: search with the rest.
             resolved_engine = SearchSettings.ENGINE_ALL
         if threshold is not None:
+            parse_threshold = (
+                SearchSettings.parse_semantic_threshold
+                if resolved_engine == "semantic"
+                else SearchSettings.parse_fuzzy_threshold
+            )
             try:
-                threshold = SearchSettings.parse_fuzzy_threshold(threshold)
+                threshold = parse_threshold(threshold)
             except ValueError as exc:
                 raise SearchOptionError(str(exc), "threshold") from exc
-            if resolved_engine not in ("fuzzy", "noise-fuzzy", SearchSettings.ENGINE_ALL):
+            if resolved_engine not in (
+                "fuzzy",
+                "noise-fuzzy",
+                "semantic",
+                SearchSettings.ENGINE_ALL,
+            ):
                 raise SearchOptionError(
-                    "Only the fuzzy and noise-fuzzy engines have a similarity threshold; "
-                    "use --engine fuzzy or noise-fuzzy to set one.",
+                    "Only the fuzzy, noise-fuzzy and semantic engines have a similarity "
+                    "threshold; use --engine fuzzy, noise-fuzzy or semantic to set one.",
                     "threshold",
                 )
         if distance is not None:
@@ -190,6 +202,23 @@ class Search:
                 ),
                 noise if noise is not None else SearchSettings.get_noise_level(storage),
                 None if explicit_unicode == SearchSettings.NORMALIZE_AUTO else explicit_unicode,
+            )
+        if resolved_engine == "semantic":
+            if case_sensitive:
+                raise SearchOptionError(
+                    "The semantic engine is always case-insensitive; "
+                    "use the like, exact, fuzzy or noise-fuzzy engine for a case-sensitive "
+                    "search.",
+                    "case_sensitive",
+                )
+            return SearchOptions(
+                resolved_engine,
+                False,
+                (
+                    threshold
+                    if threshold is not None
+                    else SearchSettings.get_semantic_threshold(storage)
+                ),
             )
         if resolved_engine in ("full-text", "proximity"):
             if case_sensitive:
@@ -345,7 +374,7 @@ class Search:
 
         Returns one `SearchMatch` per occurrence of `query`, ordered by file path
         (pages of the same PDF stay in page order, occurrences within a page in
-        text order) - or best match first for the ranked `full-text`, `fuzzy` and
+        text order) - or best match first for the ranked `full-text`, `fuzzy`, `semantic` and
         `proximity` engines. `engine="all"` runs every engine and returns the hits of
         `indexed_pages`, in ranked page order. Only successfully indexed documents
         are considered.

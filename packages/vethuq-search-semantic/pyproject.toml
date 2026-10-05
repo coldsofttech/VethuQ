@@ -1,0 +1,13 @@
+[project]
+name = "vethuq-search-semantic"
+version = "0.1.0"
+description = "Marker package: enables the semantic search engine when installed with vethuq[search-semantic]"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_search_semantic"]

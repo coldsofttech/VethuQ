@@ -18,6 +18,12 @@
 ; {"enabled": [...]}. The language's OCR models are not part of the installer - they download the
 ; first time they are needed, or with "vethuq ocr models download --lang te".
 ;
+; Search engines: like is always installed; the others are a page checkbox (or /ENGINES=exact,fuzzy
+; for a silent install) recorded in %LOCALAPPDATA%\VethuQ\search_engines.json. The Semantic engine
+; needs its language model (multilingual-e5-small, a few hundred MB) which, like the OCR models, is not
+; part of the installer: it downloads the first time a semantic search needs it, or with
+; "vethuq semantic download".
+;
 ; Install scope: Setup starts unelevated (PrivilegesRequired=lowest) and, because of
 ; PrivilegesRequiredOverridesAllowed=dialog, Inno's own first screen asks "Install for
 ; all users" or "Install for me only" and elevates itself when all users is chosen (UAC
@@ -324,6 +330,7 @@ begin
     TypesPage.ID, 'Search engines',
     'Which search engines should VethuQ offer?',
     'Engines that are not selected are not available for searching. ' +
+    'Semantic search downloads its language model (a few hundred MB) the first time it is used. ' +
     'Run this installer again to add more later.',
     False, False
   );

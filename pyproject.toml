@@ -21,6 +21,7 @@ vethuq-search-fuzzy = { workspace = true }
 vethuq-search-lexical = { workspace = true }
 vethuq-search-noise-fuzzy = { workspace = true }
 vethuq-search-proximity = { workspace = true }
+vethuq-search-semantic = { workspace = true }
 # Remaining workspace packages (vethuq-entitlements, vethuq-intelligence,
 # vethuq-security, vethuq-sdk, vethuq-api, vethuq-mcp, vethuq-ai) are added
 # here as they are built — see docs/architecture.md for the planned package map.
@@ -45,6 +46,11 @@ dev = [
     "vethuq-search-lexical",
     "vethuq-search-noise-fuzzy",
     "vethuq-search-proximity",
+    "vethuq-search-semantic",
+    # What the `search-semantic` extra requires (the marker above only records the choice).
+    "onnxruntime>=1.18",
+    "tokenizers>=0.20",
+    "huggingface-hub>=0.24",
 ]
 
 # For scripts/dev/generate_icons.py only - opt-in via

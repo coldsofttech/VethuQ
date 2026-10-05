@@ -12,7 +12,16 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 
 from vethuq_core.db import Db
-from vethuq_core.db.queries import Document, Index, Integrity, Ocr, Settings, Source, Stats
+from vethuq_core.db.queries import (
+    Document,
+    Index,
+    Integrity,
+    Ocr,
+    Semantic,
+    Settings,
+    Source,
+    Stats,
+)
 from vethuq_core.storage.base import SearchIndexRebuildError
 
 
@@ -659,6 +668,30 @@ class _IntegrityStoreMixin:
         return Integrity.run_pragma(self._conn)
 
 
+class _SemanticStoreMixin:
+    _conn: sqlite3.Connection
+
+    def list_unembedded_pages(self, model: str, limit: int) -> list[sqlite3.Row]:
+        return Semantic.list_unembedded_pages(self._conn, model, limit)
+
+    def count_semantic(self, model: str) -> dict[str, int]:
+        return Semantic.count(self._conn, model)
+
+    def replace_semantic_page(
+        self, kind: str, page_id: int, model: str, chunks: Sequence[tuple[int, int, int, bytes]]
+    ) -> None:
+        return Semantic.replace_page(self._conn, kind, page_id, model, chunks)
+
+    def list_semantic_chunks(self, model: str) -> list[sqlite3.Row]:
+        return Semantic.list_chunks(self._conn, model)
+
+    def list_semantic_page_rows(self, kind: str, page_ids: Sequence[int]) -> list[sqlite3.Row]:
+        return Semantic.list_page_rows(self._conn, kind, page_ids)
+
+    def clear_semantic(self, model: str | None = None) -> int:
+        return Semantic.clear(self._conn, model)
+
+
 class SqliteStorage(
     _SourceStoreMixin,
     _DocumentStoreMixin,
@@ -667,6 +700,7 @@ class SqliteStorage(
     _IndexRunStoreMixin,
     _OcrStoreMixin,
     _IntegrityStoreMixin,
+    _SemanticStoreMixin,
 ):
     """A `Storage` over one SQLite connection."""
 

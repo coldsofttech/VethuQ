@@ -55,6 +55,25 @@ from paddlex.utils import deps as paddlex_deps  # noqa: E402
 for _dep in paddlex_deps.EXTRAS["ocr-core"]:
     paddle_metadata += copy_metadata(_dep)
 
+# Semantic search runs its embedding model with ONNX Runtime and reads text with `tokenizers`
+# (both native), and downloads the model with `huggingface_hub`. All three are imported lazily by
+# `vethuq_core.semantic`, and ONNX Runtime and `tokenizers` load native libraries by name, so they
+# are collected whole - for all three executables: the worker embeds the pages as they are indexed,
+# the CLI and UI embed the query and any pages that are still missing. Only present when the
+# `search-semantic` extra is installed in the build environment.
+SEMANTIC_MODULES = ["onnxruntime", "tokenizers", "huggingface_hub"]
+semantic_datas, semantic_binaries, semantic_hidden = [], [], []
+for _module in SEMANTIC_MODULES:
+    if importlib.util.find_spec(_module) is not None:
+        _datas, _binaries, _hidden = collect_all(_module)
+        semantic_datas += _datas
+        semantic_binaries += _binaries
+        semantic_hidden += _hidden
+        try:
+            semantic_datas += copy_metadata(_module.replace("_", "-"))
+        except Exception:  # noqa: BLE001 - a build such as onnxruntime-gpu has another name
+            pass
+
 # File types are discovered at run time: FileTypes.all() lists the type.json manifests beside the
 # package (so they must ship as files), and each type's reader is imported by name from the
 # manifest (so static analysis can't see it).
@@ -115,9 +134,10 @@ ui_a = _analysis(
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
         *OCR_MANIFEST_DATAS,
+        *semantic_datas,
     ],
-    binaries=sv_ttk_binaries,
-    hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN],
+    binaries=[*sv_ttk_binaries, *semantic_binaries],
+    hiddenimports=[*sv_ttk_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN, *semantic_hidden],
     excludes=OCR_MODULES,
 )
 cli_a = _analysis(
@@ -131,9 +151,10 @@ cli_a = _analysis(
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
         *OCR_MANIFEST_DATAS,
+        *semantic_datas,
     ],
-    binaries=rich_binaries,
-    hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN],
+    binaries=[*rich_binaries, *semantic_binaries],
+    hiddenimports=[*rich_hidden, *FILETYPE_HIDDEN, *LANGUAGE_HIDDEN, *semantic_hidden],
     excludes=OCR_MODULES,
 )
 worker_a = _analysis(
@@ -145,9 +166,16 @@ worker_a = _analysis(
         *paddlex_datas,
         *paddleocr_datas,
         *paddle_metadata,
+        *semantic_datas,
     ],
-    binaries=[*paddle_binaries, *paddlex_binaries, *paddleocr_binaries],
-    hiddenimports=[*FILETYPE_HIDDEN, *LANGUAGE_HIDDEN, *paddlex_hidden, *paddleocr_hidden],
+    binaries=[*paddle_binaries, *paddlex_binaries, *paddleocr_binaries, *semantic_binaries],
+    hiddenimports=[
+        *FILETYPE_HIDDEN,
+        *LANGUAGE_HIDDEN,
+        *paddlex_hidden,
+        *paddleocr_hidden,
+        *semantic_hidden,
+    ],
 )
 
 

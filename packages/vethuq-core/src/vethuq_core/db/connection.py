@@ -7,6 +7,7 @@ from pathlib import Path
 
 from vethuq_core.db.migration import Migration
 from vethuq_core.db.queries.documents import Document
+from vethuq_core.db.queries.semantic import Semantic
 from vethuq_core.errors import CorruptDatabaseError, SchemaVersionError
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
@@ -25,9 +26,10 @@ class Db:
     # same database) rather than failing immediately.
     BUSY_TIMEOUT_MS = 5000
 
-    SCHEMA_VERSION = 33
+    SCHEMA_VERSION = 34
 
-    _SCHEMA = """
+    _SCHEMA = (
+        """
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER NOT NULL
 );
@@ -295,7 +297,10 @@ CREATE TRIGGER IF NOT EXISTS image_pages_words_au AFTER UPDATE ON image_pages BE
         VALUES ('delete', old.id, old.ocr_text);
     INSERT INTO image_pages_words(rowid, ocr_text) VALUES (new.id, new.ocr_text);
 END;
-""" + Document.derived_schema()
+"""
+        + Document.derived_schema()
+        + Semantic.schema()
+    )
 
     @staticmethod
     def _migrate_legacy_db(root: Path, db_dir: Path) -> None:

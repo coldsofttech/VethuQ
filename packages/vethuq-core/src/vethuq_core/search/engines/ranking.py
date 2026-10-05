@@ -88,6 +88,8 @@ class Ranking:
         "full-text": "Word",
         "fuzzy": "Similar",
         "noise-fuzzy": "Obscured",
+        # Not a tier: `all` never runs it, but its hits are labelled when it is asked for.
+        "semantic": "Related",
     }
 
     # What each badge means in plain language, shared by the CLI and the UI.
@@ -100,6 +102,8 @@ class Ranking:
         "fuzzy": "a word close to yours, tolerating typos and OCR misreads (the % is how close)",
         "noise-fuzzy": "your words hidden by stray characters, look-alike symbols or typos "
         "(h..e llo, h @ 3 l l 0)",
+        "semantic": "a passage that means what you asked, in any wording or language "
+        "(the % is how close in meaning)",
     }
 
     # What a normalization a hit needed is called, and what it means.
@@ -122,7 +126,7 @@ class Ranking:
         """The user-facing name of `engine`; `Similar` also shows how similar the word was, and
         any `modifiers` follow (`Contains · look-alike`)."""
         badge = Ranking.BADGES[engine]
-        if engine == "fuzzy" and score is not None:
+        if engine in ("fuzzy", "semantic") and score is not None:
             badge += f" {score:.0%}"
         return " · ".join((badge, *modifiers))
 
@@ -130,7 +134,9 @@ class Ranking:
     def hit_badge(hit: SearchMatch) -> str:
         """The badge of a hit: the strictest engine that found it, and what it needed."""
         return Ranking.engine_badge(
-            hit.engine or "like", hit.score if hit.engine == "fuzzy" else None, hit.modifiers
+            hit.engine or "like",
+            hit.score if hit.engine in ("fuzzy", "semantic") else None,
+            hit.modifiers,
         )
 
     @staticmethod

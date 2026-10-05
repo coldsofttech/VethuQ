@@ -1,0 +1,8 @@
+{
+  "id": "semantic",
+  "label": "Semantic (by meaning)",
+  "extra": "search-semantic",
+  "requires": ["onnxruntime>=1.18", "tokenizers>=0.20", "huggingface-hub>=0.24"],
+  "modules": ["onnxruntime", "tokenizers", "huggingface_hub"],
+  "default": false
+}
