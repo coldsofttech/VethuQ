@@ -1,271 +1,152 @@
+"""PDFs read for real: native text, scans and mixed pages, checked against `expected.json`.
+
+`fixtures/en/pdf/expected.json` says what each file must come out as: its status, page count and,
+per page, where the text came from (`native`, `ocr` or `mixed`), the OCR confidence it must reach
+and phrases it must contain. `scripts/dev/generate_integration_expected.py` regenerates it.
+
+A file with only native pages needs no OCR, so those cases run anywhere. A file with a scanned or
+mixed page is read with the real PaddleOCR models: those cases run only when `VETHUQ_REAL_OCR=1`
+(set by `.github/workflows/integration.yml`, which downloads the models first). Locally:
+
+    uv run vethuq ocr models download --lang en
+    VETHUQ_REAL_OCR=1 uv run pytest -m integration packages/vethuq-core/tests/integration
+"""
+
+import json
+import os
 import sqlite3
+import unicodedata
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from conftest import PaddleStub
-from vethuq_core.ocr import Quick
+from vethuq_core.ocr import Ocr
+from vethuq_core.ocr.engines import Engines
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures" / "pdf"
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "en" / "pdf"
+EXPECTED = json.loads((FIXTURES_DIR / "expected.json").read_text(encoding="utf-8"))
+LANGUAGE = EXPECTED["language"]
+
+# What fraction of a phrase's words OCR must have read for the phrase to count as found. OCR is
+# not byte-exact (a stray character here and there), so a scanned page is matched by its words.
+OCR_WORD_SHARE = 0.8
+
+pytestmark = [pytest.mark.integration, pytest.mark.lang_en, pytest.mark.type_pdf]
+
+_ENTRIES = EXPECTED["files"]
+_REAL_OCR = os.environ.get("VETHUQ_REAL_OCR") == "1"
 
 
-def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
-    return [{"rec_texts": [text], "rec_scores": [score]}]
+def _needs_ocr(entry: dict) -> bool:
+    return any(page["source"] != "native" for page in entry["pages"].values())
 
 
-_PDF_CASES = [
-    (
-        "06_Digital Structured Business Documents.pdf",
-        "native",
-        3,
-        0,
-        {
-            1: "NEXUS LOGISTICS SOLUTIONS",
-            2: "FINANCIAL SUMMARY Q3 2026",
-            3: "EQUIPMENT SERVICE & MAINTENANCE FORM",
-        },
-    ),
-    (
-        "07_Digital Academic Journal Article.pdf",
-        "native",
-        2,
-        0,
-        {
-            1: "Distributed Neural Optimization in Asynchronous Multi-Agent Systems",
-            2: "RESULTS & ANALYSIS",
-        },
-    ),
-    (
-        "08_Digital Patient Registration & History Form.pdf",
-        "native",
-        1,
-        0,
-        {1: "METRO HEALTH MEDICAL CENTER"},
-    ),
-    (
-        "09_Digital Patient Registration & History Form.pdf",
-        "ocr",
-        1,
-        1,
-        {1: "ocr text"},
-    ),
-    (
-        "10_Digital Document Skew & Rotation Analysis Report.pdf",
-        "native",
-        1,
-        0,
-        {1: "DOCUMENT ROTATION & SKEW ANALYSIS"},
-    ),
-    (
-        "11_Digital Archival Intelligence Briefing - Project Aurora.pdf",
-        "ocr",
-        1,
-        1,
-        {1: "ocr text"},
-    ),
-    (
-        "12_Digital Programmatic PDF Edge Cases & Stress Test.pdf",
-        "native",
-        3,
-        0,
-        {
-            1: "PDF ENGINE EDGE-CASE DIAGNOSTIC REPORT",
-            2: "THIS PAGE INTENTIONALLY LEFT BLANK",
-            3: "DIAGNOSTIC TEST RESULTS",
-        },
-    ),
-    (
-        "13_Digital 50 Page Guide.pdf",
-        "native",
-        50,
-        0,
-        {
-            1: "ENTERPRISE SYSTEMS ARCHITECTURE & ENGINEERING",
-            50: "Regulatory Compliance & Security Logging",
-        },
-    ),
-    (
-        "14_Digital A3 Executive Analytics & Systems Dashboard.pdf",
-        "native",
-        1,
-        0,
-        {1: "Global Cloud Infrastructure & Operational Overview"},
-    ),
-    (
-        "15_Digital Letter Corporate Performance & Strategic Overview.pdf",
-        "native",
-        1,
-        0,
-        {1: "EXECUTIVE STRATEGIC REPORT"},
-    ),
-    (
-        "16_Digital Receipt Thermal Receipt Reference.pdf",
-        "native",
-        1,
-        0,
-        {1: "METRO PROVISIONS"},
-    ),
-]
+def _case(entry: dict):
+    marks = []
+    if _needs_ocr(entry) and not _REAL_OCR:
+        marks.append(
+            pytest.mark.skip(
+                reason="reads with real PaddleOCR: set VETHUQ_REAL_OCR=1 and the models"
+            )
+        )
+    return pytest.param(entry, id=entry["file"][:2], marks=marks)
+
+
+def _words(text: str) -> list[str]:
+    return unicodedata.normalize("NFC", text).casefold().split()
+
+
+def _contains(page_text: str, phrase: str, source: str) -> bool:
+    """Native text must hold the phrase as written (whitespace aside); OCR text, most of its
+    words."""
+    page = " ".join(unicodedata.normalize("NFC", page_text).split())
+    wanted = " ".join(unicodedata.normalize("NFC", phrase).split())
+    if source == "native":
+        return wanted in page
+    have = set(_words(page_text))
+    words = _words(phrase)
+    return sum(word in have for word in words) / len(words) >= OCR_WORD_SHARE
+
+
+def _index(storage: Storage, tmp_path: Path, name: str):
+    pdf_path = tmp_path / "doc.pdf"
+    pdf_path.write_bytes((FIXTURES_DIR / name).read_bytes())
+    source = Sources.add(storage, pdf_path, languages=LANGUAGE)
+    Ocr.run_phased(storage, lambda: [Sources.get(storage, source.id)])
+    return pdf_path
+
+
+class TestFixtures:
+    def test_every_fixture_has_an_expected_entry(self):
+        on_disk = {path.name for path in FIXTURES_DIR.glob("*.pdf")}
+
+        assert on_disk == {entry["file"] for entry in _ENTRIES}
+
+    def test_the_expected_file_names_its_language_and_type(self):
+        assert EXPECTED["language"] == "en"
+        assert EXPECTED["file_type"] == "pdf"
 
 
 class TestPdfIntegration:
-    @pytest.mark.integration
-    @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_digital_pdf_skips_engine_entirely(
-        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES])
+    def test_the_file_is_indexed_as_expected(
+        self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
-        pdf_path = tmp_path / "digital.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
-        source = Sources.add(storage, pdf_path)
-
-        Quick.run(storage, source)
-
-        mock_get_engine.assert_not_called()
+        pdf_path = _index(storage, tmp_path, entry["file"])
 
         doc = conn.execute(
             "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
         ).fetchone()
-        assert doc["status"] == "indexed"
+        assert doc["status"] == entry["status"], doc["error_message"]
+        if entry["status"] != "indexed":
+            assert doc["error_message"]
+            assert conn.execute("SELECT COUNT(*) FROM pdf_pages").fetchone()[0] == 0
+            return
 
-        page = conn.execute(
-            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-        ).fetchone()
-        assert page["source"] == "native"
-        assert page["confidence"] == pytest.approx(1.0)
-        assert len(page["ocr_text"]) > 0
+        pages = {
+            page["page_number"]: page
+            for page in conn.execute(
+                "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
+            ).fetchall()
+        }
+        assert len(pages) == entry["page_count"]
+        for number, expected in entry["pages"].items():
+            page = pages[int(number)]
+            assert page["source"] == expected["source"], f"page {number}"
+            assert page["language"] in (None, "", LANGUAGE)
+            if "min_confidence" in expected:
+                assert page["confidence"] >= expected["min_confidence"], f"page {number}"
+            for phrase in expected["contains"]:
+                assert _contains(page["ocr_text"], phrase, expected["source"]), (
+                    f"page {number}: {phrase!r}"
+                )
 
-    @pytest.mark.integration
-    @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_scanned_pdf_runs_full_page_ocr(
-        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES if not _needs_ocr(e)])
+    def test_native_files_never_start_the_ocr_engine(
+        self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
-        engine = PaddleStub()
-        engine.predict.return_value = _fake_ocr_result("scanned page text")
-        mock_get_engine.return_value = engine
+        if entry["status"] != "indexed":
+            pytest.skip("not an indexed file")
 
-        pdf_path = tmp_path / "scanned.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
-        source = Sources.add(storage, pdf_path)
+        with patch("vethuq_core.ocr.engines.Engines.get", wraps=Engines.get) as spy:
+            _index(storage, tmp_path, entry["file"])
 
-        Quick.run(storage, source)
+        spy.assert_not_called()
+        confidences = [row[0] for row in conn.execute("SELECT confidence FROM pdf_pages")]
+        assert confidences == [pytest.approx(1.0)] * len(confidences)
 
-        engine.predict.assert_called_once()
-
-        doc = conn.execute(
-            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-        ).fetchone()
-        page = conn.execute(
-            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-        ).fetchone()
-        assert page["source"] == "ocr"
-        assert page["ocr_text"] == "scanned page text"
-
-    @pytest.mark.integration
-    @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_mixed_pdf_keeps_native_text_and_ocrs_image_region(
-        self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
+    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES if _needs_ocr(e)])
+    def test_scanned_and_mixed_files_are_read_by_the_ocr_engine(
+        self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
-        engine = PaddleStub()
-        engine.predict.return_value = _fake_ocr_result("banner region text")
-        mock_get_engine.return_value = engine
+        _index(storage, tmp_path, entry["file"])
 
-        pdf_path = tmp_path / "mixed.pdf"
-        pdf_path.write_bytes(
-            (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
-        )
-        source = Sources.add(storage, pdf_path)
-
-        Quick.run(storage, source)
-
-        engine.predict.assert_called_once()
-
-        doc = conn.execute(
-            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-        ).fetchone()
-        page = conn.execute(
-            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-        ).fetchone()
-        assert page["source"] == "mixed"
-        assert "Discover Andhra Pradesh" in page["ocr_text"]
-        assert "banner region text" in page["ocr_text"]
-
-    @pytest.mark.integration
-    @pytest.mark.parametrize(
-        ("fixture_name", "source_type", "page_count", "engine_calls", "expected_text"),
-        _PDF_CASES,
-        ids=[case[0][:2] for case in _PDF_CASES],
-    )
-    @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_fixture_pdf_indexes_expected_pages(
-        self,
-        mock_get_engine,
-        fixture_name,
-        source_type,
-        page_count,
-        engine_calls,
-        expected_text,
-        conn: sqlite3.Connection,
-        storage: Storage,
-        tmp_path,
-    ):
-        engine = PaddleStub()
-        engine.predict.return_value = _fake_ocr_result("ocr text")
-        mock_get_engine.return_value = engine
-
-        pdf_path = tmp_path / "doc.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-        source = Sources.add(storage, pdf_path)
-
-        Quick.run(storage, source)
-
-        doc = conn.execute(
-            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-        ).fetchone()
-        assert doc["status"] == "indexed"
-
-        pages = conn.execute(
-            "SELECT * FROM pdf_pages WHERE document_id = ?", (doc["id"],)
-        ).fetchall()
-        assert len(pages) == page_count
-        assert {page["source"] for page in pages} == {source_type}
-        assert engine.predict.call_count == engine_calls
-
-        text_by_page = {page["page_number"]: " ".join(page["ocr_text"].split()) for page in pages}
-        for page_number, phrase in expected_text.items():
-            assert phrase in text_by_page[page_number]
-
-    @pytest.mark.integration
-    @pytest.mark.parametrize(
-        ("fixture_name", "expected_status"),
-        [
-            ("17_Digital Protected File (Pass - Abc123).pdf", "unsupported"),
-            ("18_Digital Corrupted.pdf", "error"),
-        ],
-        ids=["protected", "corrupted"],
-    )
-    @patch("vethuq_core.ocr.engines.Engines.get")
-    def test_run_ocr_unreadable_pdf_records_error_without_aborting(
-        self,
-        mock_get_engine,
-        fixture_name,
-        expected_status,
-        conn: sqlite3.Connection,
-        storage: Storage,
-        tmp_path,
-    ):
-        pdf_path = tmp_path / "doc.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / fixture_name).read_bytes())
-        source = Sources.add(storage, pdf_path)
-
-        Quick.run(storage, source)
-
-        mock_get_engine.return_value.predict.assert_not_called()
-
-        doc = conn.execute(
-            "SELECT * FROM document_index WHERE file_path = ?", (str(pdf_path.resolve()),)
-        ).fetchone()
-        assert doc["status"] == expected_status
-        assert doc["error_message"]
-        assert conn.execute("SELECT COUNT(*) FROM pdf_pages").fetchone()[0] == 0
+        scanned = [
+            row["ocr_text"]
+            for row in conn.execute("SELECT ocr_text, source FROM pdf_pages")
+            if row["source"] != "native"
+        ]
+        assert scanned
+        assert all(text.strip() for text in scanned)

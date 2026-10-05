@@ -1,0 +1,313 @@
+{
+  "language": "en",
+  "file_type": "pdf",
+  "files": [
+    {
+      "file": "01_Digital Invoice.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "ACME Creative Studio",
+            "Design & Digital Solutions",
+            "ACME Creative Studio Inc."
+          ]
+        }
+      }
+    },
+    {
+      "file": "02_Digital Financial Report.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 2,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS",
+            "Currency: USD ($ in Millions)",
+            "Status: Unaudited Financial Statement"
+          ]
+        },
+        "2": {
+          "source": "native",
+          "contains": [
+            "2. Consolidated Balance Sheet",
+            "Assets & Liabilities",
+            "Cash and Cash Equivalents"
+          ]
+        }
+      }
+    },
+    {
+      "file": "03_Digital Formal Letter.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "Vanguard Advisory Group",
+            "STRATEGIC MANAGEMENT CONSULTANTS",
+            "Mr. Jonathan Reynolds"
+          ]
+        }
+      }
+    },
+    {
+      "file": "04_Digital Bilingual Travel & Cultural Guide.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "mixed",
+          "contains": [
+            "Discover Andhra Pradesh",
+            "Essential Destination Directory",
+            "Tirupati & Spiritual Hubs"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "05_Scanned Document.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "contains": [
+            "DEPARTMENT OF ARCHIVAL RECORDS",
+            "CENTRAL REGISTRY OFFICE",
+            "REC-2026-88941-X",
+            "DIVISION OF FINANCIAL OVERSIGHT",
+            "SUMMARY OF AUDIT FINDINGS",
+            "Approved by Inspector"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "06_Digital Structured Business Documents.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 3,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "NEXUS LOGISTICS SOLUTIONS"
+          ]
+        },
+        "2": {
+          "source": "native",
+          "contains": [
+            "FINANCIAL SUMMARY Q3 2026"
+          ]
+        },
+        "3": {
+          "source": "native",
+          "contains": [
+            "EQUIPMENT SERVICE & MAINTENANCE FORM"
+          ]
+        }
+      }
+    },
+    {
+      "file": "07_Digital Academic Journal Article.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 2,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "Distributed Neural Optimization in Asynchronous Multi-Agent Systems"
+          ]
+        },
+        "2": {
+          "source": "native",
+          "contains": [
+            "RESULTS & ANALYSIS"
+          ]
+        }
+      }
+    },
+    {
+      "file": "08_Digital Patient Registration & History Form.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "METRO HEALTH MEDICAL CENTER"
+          ]
+        }
+      }
+    },
+    {
+      "file": "09_Digital Patient Registration & History Form.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "contains": [
+            "METRO HEALTH MEDICAL CENTER",
+            "PATIENT DEMOGRAPHIC INFORMATION",
+            "Blue Cross Blue Shield",
+            "Albuterol Inhaler",
+            "EMERGENCY CONTACT & AUTHORIZATION",
+            "MRN-2026-9041"
+          ],
+          "min_confidence": 0.7
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "10_Digital Document Skew & Rotation Analysis Report.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "DOCUMENT ROTATION & SKEW ANALYSIS"
+          ]
+        }
+      }
+    },
+    {
+      "file": "11_Digital Archival Intelligence Briefing - Project Aurora.pdf",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "contains": [
+            "DEPARTMENT OF SCIENTIFIC INTELLIGENCE",
+            "PROJECT AURORA",
+            "EXECUTIVE SUMMARY & SITE ASSESSMENT",
+            "SENSOR READINGS & ANOMALY TELEMETRY LOG",
+            "Senior Operations Director"
+          ],
+          "min_confidence": 0.5
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "12_Digital Programmatic PDF Edge Cases & Stress Test.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 3,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "PDF ENGINE EDGE-CASE DIAGNOSTIC REPORT"
+          ]
+        },
+        "2": {
+          "source": "native",
+          "contains": [
+            "THIS PAGE INTENTIONALLY LEFT BLANK"
+          ]
+        },
+        "3": {
+          "source": "native",
+          "contains": [
+            "DIAGNOSTIC TEST RESULTS"
+          ]
+        }
+      }
+    },
+    {
+      "file": "13_Digital 50 Page Guide.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 50,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "ENTERPRISE SYSTEMS ARCHITECTURE & ENGINEERING"
+          ]
+        },
+        "50": {
+          "source": "native",
+          "contains": [
+            "Regulatory Compliance & Security Logging"
+          ]
+        }
+      }
+    },
+    {
+      "file": "14_Digital A3 Executive Analytics & Systems Dashboard.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "Global Cloud Infrastructure & Operational Overview"
+          ]
+        }
+      }
+    },
+    {
+      "file": "15_Digital Letter Corporate Performance & Strategic Overview.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "EXECUTIVE STRATEGIC REPORT"
+          ]
+        }
+      }
+    },
+    {
+      "file": "16_Digital Receipt Thermal Receipt Reference.pdf",
+      "status": "indexed",
+      "verified": true,
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "native",
+          "contains": [
+            "METRO PROVISIONS"
+          ]
+        }
+      }
+    },
+    {
+      "file": "17_Digital Protected File (Pass - Abc123).pdf",
+      "status": "unsupported",
+      "verified": true,
+      "page_count": 0,
+      "pages": {}
+    },
+    {
+      "file": "18_Digital Corrupted.pdf",
+      "status": "error",
+      "verified": true,
+      "page_count": 0,
+      "pages": {}
+    }
+  ]
+}
