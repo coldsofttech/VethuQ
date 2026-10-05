@@ -98,6 +98,7 @@ class TestStatePanel:
             "VALUES (?, ?, ?, 'image', 'indexed')",
             (source.id, document_id, str(folder / "a.png")),
         ).lastrowid
+        assert row_id is not None
         if pending:
             storage.replace_document_languages(
                 row_id, [("en", 0, "done", "auto", 0.5), ("te", 1, "pending", "auto", None)]

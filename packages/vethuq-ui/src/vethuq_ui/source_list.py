@@ -21,8 +21,6 @@ from vethuq_ui.tooltip import TreeviewTooltip
 from vethuq_ui.widgets import Widgets
 from vethuq_ui.windows.source_languages import SourceLanguagesDialog
 
-_CANCELLED = object()
-
 
 class SourceListView(ttk.Frame):
     def __init__(
@@ -74,8 +72,8 @@ class SourceListView(ttk.Frame):
     def on_add_folder(self) -> None:
         path = filedialog.askdirectory(title="Select a folder to add to VethuQ")
         if path:
-            languages = self._ask_languages(path)
-            if languages is not _CANCELLED:
+            proceed, languages = self._ask_languages(path)
+            if proceed:
                 self.add_source(path, languages)
 
     def on_add_file(self) -> None:
@@ -83,19 +81,19 @@ class SourceListView(ttk.Frame):
         if not paths:
             return
         what = paths[0] if len(paths) == 1 else f"{len(paths)} files"
-        languages = self._ask_languages(what)
-        if languages is _CANCELLED:
+        proceed, languages = self._ask_languages(what)
+        if not proceed:
             return
         for path in paths:
             self.add_source(path, languages)
 
-    def _ask_languages(self, what: str) -> str | None | object:
-        """The languages to add a source in: None (the setting decides) when there is nothing to
-        choose, the person's choice otherwise, or `_CANCELLED`."""
+    def _ask_languages(self, what: str) -> tuple[bool, str | None]:
+        """`(proceed, languages)`: None languages (the setting decides) when there is nothing to
+        choose, the person's choice otherwise; not proceeding if they cancelled."""
         if not LanguageChoice.available():
-            return None
+            return True, None
         chosen = SourceLanguagesDialog.ask(self.winfo_toplevel(), self._storage, what)
-        return _CANCELLED if chosen is None else chosen
+        return chosen is not None, chosen
 
     def add_source(self, path: str, languages: str | None = None) -> None:
         try:

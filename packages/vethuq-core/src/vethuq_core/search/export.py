@@ -68,7 +68,8 @@ class Export:
             body = "".join(f"{chr(a)}-{chr(b)}" for a, b in script.ranges)
             joiners = Scripts.JOINERS
             run = re.compile(f"[{body}][{body}{joiners} ]*(?<! )")
-            escaped = run.sub(lambda m, i=lang.id: f'<span lang="{i}">{m.group()}</span>', escaped)
+            tag = f'<span lang="{lang.id}">\\g<0></span>'
+            escaped = run.sub(tag, escaped)
         return escaped
 
     @staticmethod
