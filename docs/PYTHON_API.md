@@ -83,7 +83,11 @@ The model and the index behind the `"semantic"` search engine, like `vethuq sema
 
 - `model() -> SemanticModelStatus` — the model's name, folder, whether it is downloaded and its size
 - `status() -> SemanticIndexStatus` — `pages` (searchable), `embedded`, `pending` and `chunks`
-  (passages)
+  (passages), `stale` (pages embedded another way, re-embedded by the next sync), `version`
+  (how text is embedded now), and the `path` and `size_bytes` of the store. The embeddings are
+  kept in a file of their own beside the database (`<database name>.semantic.db`), versioned by
+  model and by how text is cut and prepared, so they never bloat the database or its backups
+  and any that were made another way are dropped and made again
 - `download(*, force=False, on_progress=None)` — downloads the model if it is missing (or again,
   with `force`); `on_progress(message)` says which file is being fetched. Raises
   `SemanticModelError` if it can't be downloaded

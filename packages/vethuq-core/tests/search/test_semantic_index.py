@@ -48,7 +48,7 @@ class TestSync:
         _page(conn, "Refund policy.")
         SemanticIndex.sync(storage, embedder)
 
-        (row,) = storage.list_semantic_chunks(model)
+        (row,) = storage.list_semantic_chunks(model, SemanticIndex.version())
 
         assert len(row["vector"]) == 4 * embedder.embed_query("x").shape[0]
         assert (row["kind"], row["start_char"], row["end_char"]) == ("pdf", 0, 14)
@@ -70,7 +70,7 @@ class TestSync:
         assert SemanticIndex.status(storage, model).pending == 1
         SemanticIndex.sync(storage, embedder)
 
-        (row,) = storage.list_semantic_chunks(model)
+        (row,) = storage.list_semantic_chunks(model, SemanticIndex.version())
         assert embedder.passages[-1] == "The museum is closed."
         assert row["end_char"] == len("The museum is closed.")
 
@@ -90,9 +90,10 @@ class TestSync:
 
         conn.execute("DELETE FROM pdf_pages")
         conn.commit()
+        SemanticIndex.status(storage, model)  # the queue of changed pages is applied on reading
 
-        assert conn.execute("SELECT COUNT(*) FROM semantic_chunks").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM semantic_pages").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM semantic.chunks").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM semantic.pages").fetchone()[0] == 0
 
     def test_only_pages_search_can_see_are_embedded(self, conn, storage, embedder, model):
         source = SearchData.add_source(conn, "/live")

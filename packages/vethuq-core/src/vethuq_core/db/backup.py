@@ -27,6 +27,7 @@ from pathlib import Path
 
 from vethuq_core.db.connection import Db
 from vethuq_core.db.integrity import IntegrityCheckResult
+from vethuq_core.db.queries.semantic import Semantic
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
 from vethuq_core.settings import DbSettings, Settings
@@ -377,6 +378,7 @@ class Backup:
                 )
             safety = Backup._safety_snapshot(db_path)
             Backup._replace_db(db_path, staging)
+            Semantic.discard(db_path)
         finally:
             staging.unlink(missing_ok=True)
         _logger.info("Restored database from %s", source)
@@ -391,6 +393,7 @@ class Backup:
         """
         safety = Backup._safety_snapshot(db_path)
         Backup._replace_db(db_path, None)
+        Semantic.discard(db_path)
         _logger.info("Reset the database (all data cleared)")
         return safety
 

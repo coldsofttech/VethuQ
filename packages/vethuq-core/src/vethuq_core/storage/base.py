@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -443,21 +444,34 @@ class IntegrityStore(Protocol):
 
 
 class SemanticStore(Protocol):
-    """Storage operations for the semantic search index (page chunk embeddings)."""
+    """Storage operations for the semantic search index (page chunk embeddings).
 
-    def list_unembedded_pages(self, model: str, limit: int) -> Sequence[Row]: ...
+    The embeddings are kept in a store of their own (see `vethuq_core.db.queries.semantic`);
+    every call that reads them is for one `model` at one `version` of how text is embedded.
+    """
 
-    def count_semantic(self, model: str) -> dict[str, int]: ...
+    def list_unembedded_pages(self, model: str, version: str, limit: int) -> Sequence[Row]: ...
+
+    def count_semantic(self, model: str, version: str) -> dict[str, int]: ...
 
     def replace_semantic_page(
-        self, kind: str, page_id: int, model: str, chunks: Sequence[tuple[int, int, int, bytes]]
+        self,
+        kind: str,
+        page_id: int,
+        model: str,
+        version: str,
+        chunks: Sequence[tuple[int, int, int, bytes]],
     ) -> None: ...
 
-    def list_semantic_chunks(self, model: str) -> Sequence[Row]: ...
+    def list_semantic_chunks(self, model: str, version: str) -> Sequence[Row]: ...
 
     def list_semantic_page_rows(self, kind: str, page_ids: Sequence[int]) -> Sequence[Row]: ...
 
+    def purge_stale_semantic(self, model: str, version: str) -> int: ...
+
     def clear_semantic(self, model: str | None = None) -> int: ...
+
+    def semantic_store_path(self) -> Path | None: ...
 
 
 class Storage(

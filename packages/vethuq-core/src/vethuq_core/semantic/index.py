@@ -5,12 +5,18 @@ only for pages that have no embedding yet - a page whose text changes or is dele
 vectors (see `vethuq_core.db.queries.semantic`) and is picked up again here. `vethuq semantic
 index` brings the whole index up to date with progress; a semantic search does the same for
 whatever is missing before it looks.
+
+The vectors are kept in a store of their own, beside the main database, and versioned: each
+page records the model and the `SemanticIndex.version()` it was embedded with, and vectors of
+any other version are dropped and made again, so a change to how text is cut or prepared
+never leaves vectors that disagree with a query embedded the new way.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from vethuq_core.logs import Logs
 from vethuq_core.semantic.chunker import Chunker
@@ -28,6 +34,12 @@ class SemanticIndexStatus:
     pages: int
     embedded: int
     chunks: int
+    # Pages embedded with another version: not searched, and embedded again by the next sync.
+    stale: int = 0
+    version: str = ""
+    # The store's file and its size on disk (0 if it is not there yet).
+    path: Path | None = None
+    size_bytes: int = 0
 
     @property
     def pending(self) -> int:
@@ -43,18 +55,42 @@ class SemanticIndexResult:
 
 
 class SemanticIndex:
+    # The version of how a page's text becomes vectors: how it is cut (`Chunker`), what is put
+    # in front of it and how the model's output is pooled. Bump it when any of that changes, so
+    # vectors made the old way are dropped and made again; `Chunker.MAX_CHARS` is part of the
+    # version key, so changing it needs no bump.
+    VERSION = 1
+
     # Pages embedded (and committed) at a time: small enough that an interrupted run keeps most
     # of its work, large enough that the model sees full batches of chunks.
     PAGES_PER_BATCH = 8
 
     @staticmethod
+    def version() -> str:
+        """What vectors made now are labelled with: the format version and the chunk size."""
+        return f"{SemanticIndex.VERSION}/{Chunker.MAX_CHARS}"
+
+    @staticmethod
     def status(storage: Storage, embedder_model: str) -> SemanticIndexStatus:
-        counts = storage.count_semantic(embedder_model)
+        version = SemanticIndex.version()
+        counts = storage.count_semantic(embedder_model, version)
+        path = storage.semantic_store_path()
+        size = 0
+        if path is not None:
+            size = sum(
+                Path(f"{path}{suffix}").stat().st_size
+                for suffix in ("", "-wal")
+                if Path(f"{path}{suffix}").exists()
+            )
         return SemanticIndexStatus(
             model=embedder_model,
             pages=counts["pages"],
             embedded=counts["embedded"],
             chunks=counts["chunks"],
+            stale=counts["stale"],
+            version=version,
+            path=path,
+            size_bytes=size,
         )
 
     @staticmethod
@@ -69,11 +105,16 @@ class SemanticIndex:
         `on_progress(done, total)` fires after each batch of pages. Each batch is committed on
         its own, so stopping early (or a failure) keeps what was done.
         """
-        total = storage.count_semantic(embedder.model)
+        version = SemanticIndex.version()
+        with storage.transaction():
+            storage.purge_stale_semantic(embedder.model, version)
+        total = storage.count_semantic(embedder.model, version)
         todo = total["pages"] - total["embedded"]
         pages_done = chunks_done = 0
         while True:
-            rows = storage.list_unembedded_pages(embedder.model, SemanticIndex.PAGES_PER_BATCH)
+            rows = storage.list_unembedded_pages(
+                embedder.model, version, SemanticIndex.PAGES_PER_BATCH
+            )
             if not rows:
                 break
             chunks_done += SemanticIndex._embed_pages(storage, embedder, rows)
@@ -116,7 +157,9 @@ class SemanticIndex:
                     )
                     for index, chunk in enumerate(chunks)
                 ]
-                storage.replace_semantic_page(kind, page_id, embedder.model, recorded)
+                storage.replace_semantic_page(
+                    kind, page_id, embedder.model, SemanticIndex.version(), recorded
+                )
                 offset += len(chunks)
                 written += len(chunks)
         return written

@@ -299,7 +299,7 @@ CREATE TRIGGER IF NOT EXISTS image_pages_words_au AFTER UPDATE ON image_pages BE
 END;
 """
         + Document.derived_schema()
-        + Semantic.schema()
+        + Semantic.main_schema()
     )
 
     @staticmethod
@@ -376,6 +376,7 @@ END;
             raise
         try:
             Db._ensure_schema(conn, path)
+            Semantic.attach(conn, path)
         except BaseException as exc:
             if isinstance(exc, sqlite3.Error):
                 _logger.exception("Could not prepare database schema: path=%s", path)

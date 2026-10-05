@@ -635,8 +635,11 @@ vethuq settings search semantic combine full-text            # rank full-text's 
 How it works: a small multilingual model (`intfloat/multilingual-e5-small`) reads every
 passage of every page - a few sentences, about 400 characters - and your query into vectors, and
 the passages whose vector points the same way as the query's are the hits (cosine similarity,
-shown as the `Related 87%` label). The vectors are kept in the database (`semantic_chunks`),
-so each page is read only once; a page whose text changes is read again. It needs the
+shown as the `Related 87%` label). The vectors are kept in a file of their own beside the
+database (`vethuq.semantic.db`, so the database and its backups stay small and the vectors can
+always be discarded and made again), so each page is read only once; a page whose text changes
+is read again, and vectors made an older way (a new model, or a change to how text is cut) are
+dropped and made again too. It needs the
 `search-semantic` extra (`pip install vethuq[search-semantic]`, or the Semantic engine on the
 installer's search engines page). The model (a few hundred MB) downloads the first time it is
 needed, and the first semantic search of a collection embeds every page first, which takes a
@@ -1175,8 +1178,10 @@ The model and the index behind the `semantic` search engine. Needs the `search-s
 
 ### `status`
 
-Shows whether the model (`intfloat/multilingual-e5-small`) is downloaded and where, and how many
-searchable pages are embedded, how many are still to do and how many passages that is.
+Shows whether the model (`intfloat/multilingual-e5-small`) is downloaded and where, how many
+searchable pages are embedded, how many are still to do and how many passages that is, the
+embedding version, any pages that were embedded another way ("Out of date" - they are embedded
+again by the next search or `index`), and the store's file and size.
 
 ### `download [--force]`
 
@@ -1193,8 +1198,8 @@ this only does the work ahead of time. `--rebuild` forgets every embedding first
 
 ### `clear [--model] [--force]`
 
-Forgets every page's embeddings; with `--model` also deletes the downloaded model. Asks first
-unless `--force`. Both come back by themselves the next time a semantic search needs them.
+Forgets every page's embeddings (emptying the store file and giving its space back); with
+`--model` also deletes the downloaded model. Asks first unless `--force`. Both come back by themselves the next time a semantic search needs them.
 
 ```bash
 vethuq semantic status

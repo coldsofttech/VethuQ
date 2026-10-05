@@ -100,7 +100,10 @@ def status() -> None:
         if model.present
         else Text("no - downloads the first time it is used", style=Theme.WARNING),
     )
-    table.add_row("Folder", Text(str(model.path), style="bright_black"))
+    table.add_row(
+        "Folder",
+        Text(str(model.path), style="bright_black", no_wrap=False, overflow="fold"),
+    )
     table.add_row(
         "Pages embedded",
         Text(
@@ -110,6 +113,26 @@ def status() -> None:
         ),
     )
     table.add_row("Passages", Text(str(index.chunks)))
+    if index.stale:
+        table.add_row(
+            "Out of date",
+            Text(
+                f"{index.stale} pages were embedded another way and are embedded again "
+                "by the next search or `vethuq semantic index`",
+                style=Theme.WARNING,
+            ),
+        )
+    table.add_row("Embedding version", Text(index.version))
+    if index.path is not None:
+        table.add_row(
+            "Store",
+            Text(
+                f"{index.path} ({Formatting.size(index.size_bytes)})",
+                style="bright_black",
+                no_wrap=False,
+                overflow="fold",
+            ),
+        )
     console.print(SemanticCommand.panel(table))
 
 

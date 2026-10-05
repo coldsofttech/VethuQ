@@ -79,7 +79,7 @@ class SemanticSearchEngine:
         except SemanticModelError as exc:
             raise SearchEngineUnavailable(str(exc)) from exc
 
-        rows = self._storage.list_semantic_chunks(embedder.model)
+        rows = self._storage.list_semantic_chunks(embedder.model, SemanticIndex.version())
         if not rows:
             return []
         matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=np.float32).reshape(

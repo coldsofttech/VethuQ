@@ -252,12 +252,25 @@ A test enforces that no core module outside `db/` and `storage/` imports
     with `Embedders.use`). **The index:** `Chunker` cuts a page's text into passages of a few
     sentences (400 characters at most, a span of the text so a hit can point at it);
     `SemanticIndex.sync` embeds the pages that have none and stores each passage's span and
-    normalized float32 vector as a BLOB in `semantic_chunks` (with `semantic_pages`
-    recording which pages a model has done - a page with no text is recorded too), in batches that
-    each commit (schema v34, `db/queries/semantic.py`). Triggers on `pdf_pages` and
-    `image_pages` drop a page's rows when it is deleted or its text is rewritten, so a stale
-    vector never outlives its text, and the page is simply embedded again by the next sync. The
-    rows are keyed by the model's name, so another model's vectors are separate. **Search:**
+    normalized float32 vector as a BLOB, in batches that each commit. **A separate, versioned
+    store** (`db/queries/semantic.py`): the vectors are derived data and large, so they live in
+    their own SQLite file, `<database name>.semantic.db` beside the main database, attached to
+    every connection as the schema `semantic` (`Semantic.attach`, called by `Db.connect`;
+    tables `meta`, `pages`, `chunks`). The main database stays small, its backups carry no
+    vectors, and the store can be thrown away without losing anything that can't be computed
+    again - a damaged file is recreated, `vethuq semantic clear` empties it (and gives the space
+    back) and `db reset` / `db restore` discard it. Nothing in it can describe the wrong text:
+    each page records the `model` and the `version` it was embedded with
+    (`SemanticIndex.version()`: `SemanticIndex.VERSION` - bumped when chunking, text
+    preparation, pooling or prefixes change - and `Chunker.MAX_CHARS`), pages of another version
+    are never searched and `sync` drops and re-embeds them; the file has its own layout version
+    (`Semantic.STORE_VERSION`) and a file of another layout is emptied; and it records the
+    `database_id` (in the main `database_identity` table) it was built for, because page ids only mean something
+    inside one database, so a store built for another one is emptied. Triggers on `pdf_pages` and
+    `image_pages` can't write to an attached file, so a deleted page or one whose text changes is
+    queued in `semantic_dirty` (main database) and the queue is applied to the store before it
+    is next read; the queue is dropped when the store is empty. The next sync embeds those pages
+    again.     rows are keyed by the model's name, so another model's vectors are separate. **Search:**
     the query is embedded (with E5's `query: ` prefix; passages get `passage: `), every chunk's
     vector of searchable pages is loaded into one numpy matrix and `matrix @ query` is the cosine
     similarity - brute force, which is milliseconds at 100k passages, so no vector database or

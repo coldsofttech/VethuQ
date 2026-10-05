@@ -671,25 +671,36 @@ class _IntegrityStoreMixin:
 class _SemanticStoreMixin:
     _conn: sqlite3.Connection
 
-    def list_unembedded_pages(self, model: str, limit: int) -> list[sqlite3.Row]:
-        return Semantic.list_unembedded_pages(self._conn, model, limit)
+    def list_unembedded_pages(self, model: str, version: str, limit: int) -> list[sqlite3.Row]:
+        return Semantic.list_unembedded_pages(self._conn, model, version, limit)
 
-    def count_semantic(self, model: str) -> dict[str, int]:
-        return Semantic.count(self._conn, model)
+    def count_semantic(self, model: str, version: str) -> dict[str, int]:
+        return Semantic.count(self._conn, model, version)
 
     def replace_semantic_page(
-        self, kind: str, page_id: int, model: str, chunks: Sequence[tuple[int, int, int, bytes]]
+        self,
+        kind: str,
+        page_id: int,
+        model: str,
+        version: str,
+        chunks: Sequence[tuple[int, int, int, bytes]],
     ) -> None:
-        return Semantic.replace_page(self._conn, kind, page_id, model, chunks)
+        return Semantic.replace_page(self._conn, kind, page_id, model, version, chunks)
 
-    def list_semantic_chunks(self, model: str) -> list[sqlite3.Row]:
-        return Semantic.list_chunks(self._conn, model)
+    def list_semantic_chunks(self, model: str, version: str) -> list[sqlite3.Row]:
+        return Semantic.list_chunks(self._conn, model, version)
 
     def list_semantic_page_rows(self, kind: str, page_ids: Sequence[int]) -> list[sqlite3.Row]:
         return Semantic.list_page_rows(self._conn, kind, page_ids)
 
+    def purge_stale_semantic(self, model: str, version: str) -> int:
+        return Semantic.purge_stale(self._conn, model, version)
+
     def clear_semantic(self, model: str | None = None) -> int:
         return Semantic.clear(self._conn, model)
+
+    def semantic_store_path(self) -> Path | None:
+        return Semantic.store_file(self._conn)
 
 
 class SqliteStorage(

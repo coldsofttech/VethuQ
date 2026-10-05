@@ -5,7 +5,7 @@ import types
 import pytest
 from typer.testing import CliRunner
 from vethuq_cli.main import app
-from vethuq_core.semantic import SemanticModel
+from vethuq_core.semantic import SemanticIndex, SemanticModel
 from vethuq_core.storage import open_storage
 
 runner = CliRunner()
@@ -77,6 +77,31 @@ class TestStatus:
 
         assert "yes (" in result.stdout
         assert "1 of 1" in result.stdout
+
+
+class TestStatusStore:
+    def test_shows_the_separate_store_and_the_embedding_version(self, use_temp_db, embedder):
+        _seed(use_temp_db())
+        runner.invoke(app, ["semantic", "index"])
+
+        result = runner.invoke(app, ["semantic", "status"])
+
+        flat = " ".join(result.stdout.split())
+        assert "vethuq.semantic.db" in flat.replace("│", "").replace(" ", "")
+        assert "Embedding version" in flat
+        assert "Out of date" not in flat
+
+    def test_says_when_pages_were_embedded_another_way(self, use_temp_db, embedder, monkeypatch):
+        from vethuq_core.semantic import SemanticIndex
+
+        _seed(use_temp_db())
+        runner.invoke(app, ["semantic", "index"])
+        monkeypatch.setattr(SemanticIndex, "VERSION", SemanticIndex.VERSION + 1)
+
+        result = runner.invoke(app, ["semantic", "status"])
+
+        assert "Out of date" in result.stdout
+        assert "0 of 1" in result.stdout
 
 
 class TestDownload:
@@ -169,7 +194,10 @@ class TestClear:
         assert "Forgot the embeddings of 1 pages" in result.stdout.replace("\n", " ")
         storage = open_storage()
         try:
-            assert storage.count_semantic(SemanticModel.MODEL_ID)["embedded"] == 0
+            assert (
+                storage.count_semantic(SemanticModel.MODEL_ID, SemanticIndex.version())["embedded"]
+                == 0
+            )
         finally:
             storage.close()
 
