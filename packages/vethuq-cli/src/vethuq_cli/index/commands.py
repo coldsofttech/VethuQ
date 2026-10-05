@@ -13,14 +13,15 @@ from rich.prompt import Confirm, Prompt
 from rich.text import Text
 from typer._click.core import Context
 from typer.core import TyperGroup
-from vethuq_core.background import Dispatch, IndexJobs, IndexSubmission
 from vethuq_core.index import (
     AlreadyRunningError,
     AmbiguousFileError,
     DatabaseIntegrityError,
     FileNotTrackedError,
+    Indexing,
     IndexRunner,
     IndexRunnerError,
+    IndexSubmission,
     Reindex,
     SearchIndexRebuild,
     StaleLockError,
@@ -60,15 +61,15 @@ def _choose_route(one_off: bool) -> str:
     terminal it is queued, which is what the service being installed means.
     """
     if one_off:
-        return Dispatch.VIA_ONE_OFF
-    service = Dispatch.service_status()
+        return Indexing.VIA_ONE_OFF
+    service = Indexing.service_status()
     if service is None or service.running:
-        return Dispatch.VIA_AUTO
+        return Indexing.VIA_AUTO
     if not _is_interactive():
-        return Dispatch.VIA_SERVICE
+        return Indexing.VIA_SERVICE
     console.print(
         IndexPanel.message(
-            f"The background service is {Dispatch.describe_state(service)}, so a queued job "
+            f"The background service is {Indexing.describe_state(service)}, so a queued job "
             "waits until it is running again.",
             Theme.NOTICE,
         )
@@ -79,7 +80,7 @@ def _choose_route(one_off: bool) -> str:
         choices=["queue", "one-off"],
         default="queue",
     )
-    return Dispatch.VIA_ONE_OFF if choice == "one-off" else Dispatch.VIA_SERVICE
+    return Indexing.VIA_ONE_OFF if choice == "one-off" else Indexing.VIA_SERVICE
 
 
 def _languages(lang: list[str] | None) -> str | None:
@@ -125,7 +126,7 @@ def _start_and_report(
 
     via = _choose_route(one_off)
     try:
-        submission = Dispatch.submit(
+        submission = Indexing.submit(
             target,
             force=force,
             restart=restart,
@@ -176,7 +177,7 @@ def _report_submitted(submission: IndexSubmission, verb: str, *, wait: bool) -> 
     )
     if submission.service_idle and submission.service is not None:
         text.append(
-            f"\n\nThe service is {Dispatch.describe_state(submission.service)}; the job waits "
+            f"\n\nThe service is {Indexing.describe_state(submission.service)}; the job waits "
             "until it is running. Use '",
             style="white",
         )
@@ -198,6 +199,8 @@ def _report_submitted(submission: IndexSubmission, verb: str, *, wait: bool) -> 
 def _wait_for_job(job_id: int) -> bool:
     """Block until the queued job is finished, showing the run once it starts. True if the
     user interrupted (the job stays queued; it is the service's now)."""
+    from vethuq_core.background import IndexJobs
+
     try:
         with console.status("Waiting for the background service...", spinner_style=Theme.PRIMARY):
             while True:
@@ -229,7 +232,9 @@ def run(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
-    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
+    one_off: bool = typer.Option(
+        False, "--one-off", help=ONE_OFF_HELP, hidden=not Indexing.has_service()
+    ),
 ) -> None:
     """Start OCR indexing in the background and return immediately.
 
@@ -261,7 +266,9 @@ def restart(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
-    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
+    one_off: bool = typer.Option(
+        False, "--one-off", help=ONE_OFF_HELP, hidden=not Indexing.has_service()
+    ),
 ) -> None:
     """Retry only previously-failed files, in the background.
 
@@ -360,7 +367,9 @@ def reindex_source(
         ),
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
-    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
+    one_off: bool = typer.Option(
+        False, "--one-off", help=ONE_OFF_HELP, hidden=not Indexing.has_service()
+    ),
 ) -> None:
     """Re-index every file under a source, not just failed ones.
 
@@ -396,7 +405,9 @@ def reindex_file(
         False, "--force", help="Clear a stale lock left by a run that didn't exit cleanly."
     ),
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
-    one_off: bool = typer.Option(False, "--one-off", help=ONE_OFF_HELP),
+    one_off: bool = typer.Option(
+        False, "--one-off", help=ONE_OFF_HELP, hidden=not Indexing.has_service()
+    ),
 ) -> None:
     """Re-index a single file, updating its existing document in place.
 

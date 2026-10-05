@@ -64,12 +64,14 @@ VethuQ takes a compressed backup automatically the first time it opens the datab
 
 ## `background-service`
 
+**Desktop build only.** These commands, and the `--one-off` option, exist in the `vethuq.exe` the Windows installer ships; the `vethuq` pip package has no background service, and its index commands and Python functions always run a one-off worker.
+
 Run indexing through a background service instead of a worker started by each command. Once the service is installed, every `index run`, `restart`, `reindex` and `reindex file` (and the desktop app, and `client.index` in Python) puts its work in a queue and the service runs it, one run at a time, with the same settings, sources and languages a one-off run would use. Without the service nothing changes: each command starts its own `vethuq-worker`.
 
 - **Windows**: a Windows service named `VethuQBackground`, started automatically with Windows (delayed start) and restarted after a crash. It runs `vethuq-worker.exe --service` as a Windows account you choose (by default yours).
 - **Linux**: a `systemd --user` unit, `vethuq-background.service`, which needs no root. `pause` and `resume` are handled by VethuQ itself, since systemd has no pause.
 
-The service is never installed for you - not by the Windows installer, not by `pip install` - because it needs administrator rights and a Windows account to run as. Without it, indexing runs in a worker VethuQ starts itself: the desktop app indexes only while it is open, and `vethuq index run` until it finishes.
+The service is never installed for you - not by the Windows installer, because it needs administrator rights and a Windows account to run as (and it is not in the pip package at all). Without it, indexing runs in a worker VethuQ starts itself: the desktop app indexes only while it is open, and `vethuq index run` until it finishes.
 
 The service works on one data folder and database, by default the one of the user who installed it (`%LOCALAPPDATA%\\VethuQ`, or a location set with `vethuq settings location` or `VETHUQ_HOME`); `install --home` chooses another. Index commands only use a service that works on the data folder they are using, so another user's service is left alone and they run their own worker. If you move the data location, run `vethuq background-service uninstall` and `install` again.
 

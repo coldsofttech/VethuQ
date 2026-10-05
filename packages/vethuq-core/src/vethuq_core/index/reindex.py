@@ -12,7 +12,7 @@ from vethuq_core.sources import Source, Sources
 from vethuq_core.storage import Storage, default_db_path, open_storage
 
 if TYPE_CHECKING:
-    from vethuq_core.background import IndexSubmission
+    from vethuq_core.index.submit import IndexSubmission
 
 
 class FileNotTrackedError(IndexRunnerError):
@@ -65,12 +65,12 @@ class Reindex:
         on_recovery: Callable[[list[str]], None] | None = None,
         languages: str | None = None,
     ) -> IndexSubmission:
-        """Like `start_source`, but through the background service when it is installed."""
+        """Like `start_source`, but queued for the background service when this build has one."""
         db_path = db_path or default_db_path()
         source = Reindex._prepare_source(target, db_path)
-        from vethuq_core.background.dispatch import Dispatch
+        from vethuq_core.index.submit import Indexing
 
-        return Dispatch.submit(
+        return Indexing.submit(
             str(source.id),
             languages=languages,
             force=force,
@@ -130,12 +130,12 @@ class Reindex:
         on_recovery: Callable[[list[str]], None] | None = None,
         languages: str | None = None,
     ) -> IndexSubmission:
-        """Like `start_file`, but through the background service when it is installed."""
+        """Like `start_file`, but queued for the background service when this build has one."""
         db_path = db_path or default_db_path()
         owner = Reindex._prepare_file(file, source, db_path)
-        from vethuq_core.background.dispatch import Dispatch
+        from vethuq_core.index.submit import Indexing
 
-        return Dispatch.submit(
+        return Indexing.submit(
             str(owner.id),
             languages=languages,
             force=force,

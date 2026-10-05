@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 import vethuq
-from vethuq._core.background import IndexSubmission
 from vethuq._core.index import IndexRunner, Reindex
 from vethuq._core.ocr.models import OcrModels
 
@@ -43,17 +42,17 @@ def started(monkeypatch: pytest.MonkeyPatch):
         calls.append(("run", kwargs))
         return 4321
 
-    def submit_source(target, **kwargs):
+    def start_source(target, **kwargs):
         calls.append(("source", kwargs))
-        return IndexSubmission(4321, None, None)
+        return 4321
 
-    def submit_file(file, **kwargs):
+    def start_file(file, **kwargs):
         calls.append(("file", kwargs))
-        return IndexSubmission(4321, None, None)
+        return 4321
 
     monkeypatch.setattr(IndexRunner, "start_run", staticmethod(start_run))
-    monkeypatch.setattr(Reindex, "submit_source", staticmethod(submit_source))
-    monkeypatch.setattr(Reindex, "submit_file", staticmethod(submit_file))
+    monkeypatch.setattr(Reindex, "start_source", staticmethod(start_source))
+    monkeypatch.setattr(Reindex, "start_file", staticmethod(start_file))
     return calls
 
 

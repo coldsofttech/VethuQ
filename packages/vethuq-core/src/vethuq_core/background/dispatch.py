@@ -9,32 +9,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
 from vethuq_core.background.jobs import IndexJobs
 from vethuq_core.background.service import BackgroundService, ServiceState, ServiceStatus
 from vethuq_core.index.runner import IndexRunner, IndexState
+from vethuq_core.index.submit import IndexSubmission
 from vethuq_core.paths import Paths
 from vethuq_core.storage import default_db_path, open_storage
-
-
-@dataclass
-class IndexSubmission:
-    """What became of an index request."""
-
-    pid: int | None  # the worker's pid when it was started directly (one-off)
-    job_id: int | None  # the queued job's id when it went to the service
-    service: ServiceStatus | None  # the service's state when the request was queued
-
-    @property
-    def queued(self) -> bool:
-        return self.job_id is not None
-
-    @property
-    def service_idle(self) -> bool:
-        """Queued, but the service isn't taking jobs right now (stopped or paused)."""
-        return self.queued and self.service is not None and not self.service.running
 
 
 class Dispatch:

@@ -14,6 +14,7 @@ from vethuq_core.index.runner import (
     IndexState,
     StaleLockError,
 )
+from vethuq_core.index.submit import Indexing, IndexSubmission
 
 __all__ = [
     "AlreadyRunningError",
@@ -24,6 +25,8 @@ __all__ = [
     "IndexRun",
     "IndexRunner",
     "IndexRunnerError",
+    "IndexSubmission",
+    "Indexing",
     "IndexState",
     "Reindex",
     "SearchIndexRebuild",

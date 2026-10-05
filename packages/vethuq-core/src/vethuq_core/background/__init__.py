@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq_core.background.dispatch import Dispatch, IndexSubmission
+from vethuq_core.background.dispatch import Dispatch
 from vethuq_core.background.jobs import IndexJob, IndexJobs
 from vethuq_core.background.service import (
     BackgroundService,
@@ -10,6 +10,7 @@ from vethuq_core.background.service import (
     ServiceState,
     ServiceStatus,
 )
+from vethuq_core.index.submit import IndexSubmission
 
 __all__ = [
     "BackgroundService",
