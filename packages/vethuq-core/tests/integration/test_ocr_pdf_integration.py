@@ -12,13 +12,11 @@ mixed page is read with the real PaddleOCR models: those cases run only when `VE
     VETHUQ_REAL_OCR=1 uv run pytest -m integration packages/vethuq-core/tests/integration
 """
 
-import json
-import os
 import sqlite3
-import unicodedata
 from pathlib import Path
 from unittest.mock import patch
 
+import expected_support as expected
 import pytest
 from vethuq_core.ocr import Ocr
 from vethuq_core.ocr.engines import Engines
@@ -26,48 +24,12 @@ from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "en" / "pdf"
-EXPECTED = json.loads((FIXTURES_DIR / "expected.json").read_text(encoding="utf-8"))
+EXPECTED = expected.load(FIXTURES_DIR)
 LANGUAGE = EXPECTED["language"]
-
-# What fraction of a phrase's words OCR must have read for the phrase to count as found. OCR is
-# not byte-exact (a stray character here and there), so a scanned page is matched by its words.
-OCR_WORD_SHARE = 0.8
 
 pytestmark = [pytest.mark.integration, pytest.mark.lang_en, pytest.mark.type_pdf]
 
 _ENTRIES = EXPECTED["files"]
-_REAL_OCR = os.environ.get("VETHUQ_REAL_OCR") == "1"
-
-
-def _needs_ocr(entry: dict) -> bool:
-    return any(page["source"] != "native" for page in entry["pages"].values())
-
-
-def _case(entry: dict):
-    marks = []
-    if _needs_ocr(entry) and not _REAL_OCR:
-        marks.append(
-            pytest.mark.skip(
-                reason="reads with real PaddleOCR: set VETHUQ_REAL_OCR=1 and the models"
-            )
-        )
-    return pytest.param(entry, id=entry["file"][:2], marks=marks)
-
-
-def _words(text: str) -> list[str]:
-    return unicodedata.normalize("NFC", text).casefold().split()
-
-
-def _contains(page_text: str, phrase: str, source: str) -> bool:
-    """Native text must hold the phrase as written (whitespace aside); OCR text, most of its
-    words."""
-    page = " ".join(unicodedata.normalize("NFC", page_text).split())
-    wanted = " ".join(unicodedata.normalize("NFC", phrase).split())
-    if source == "native":
-        return wanted in page
-    have = set(_words(page_text))
-    words = _words(phrase)
-    return sum(word in have for word in words) / len(words) >= OCR_WORD_SHARE
 
 
 def _index(storage: Storage, tmp_path: Path, name: str):
@@ -90,7 +52,7 @@ class TestFixtures:
 
 
 class TestPdfIntegration:
-    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES])
+    @pytest.mark.parametrize("entry", [expected.case(e) for e in _ENTRIES])
     def test_the_file_is_indexed_as_expected(
         self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
@@ -112,18 +74,20 @@ class TestPdfIntegration:
             ).fetchall()
         }
         assert len(pages) == entry["page_count"]
-        for number, expected in entry["pages"].items():
+        for number, want in entry["pages"].items():
             page = pages[int(number)]
-            assert page["source"] == expected["source"], f"page {number}"
+            assert page["source"] == want["source"], f"page {number}"
             assert page["language"] in (None, "", LANGUAGE)
-            if "min_confidence" in expected:
-                assert page["confidence"] >= expected["min_confidence"], f"page {number}"
-            for phrase in expected["contains"]:
-                assert _contains(page["ocr_text"], phrase, expected["source"]), (
+            if "min_confidence" in want:
+                assert page["confidence"] >= want["min_confidence"], f"page {number}"
+            for phrase in want["contains"]:
+                assert expected.contains(page["ocr_text"], phrase, want["source"]), (
                     f"page {number}: {phrase!r}"
                 )
 
-    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES if not _needs_ocr(e)])
+    @pytest.mark.parametrize(
+        "entry", [expected.case(e) for e in _ENTRIES if not expected.needs_ocr(e)]
+    )
     def test_native_files_never_start_the_ocr_engine(
         self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
@@ -137,7 +101,7 @@ class TestPdfIntegration:
         confidences = [row[0] for row in conn.execute("SELECT confidence FROM pdf_pages")]
         assert confidences == [pytest.approx(1.0)] * len(confidences)
 
-    @pytest.mark.parametrize("entry", [_case(e) for e in _ENTRIES if _needs_ocr(e)])
+    @pytest.mark.parametrize("entry", [expected.case(e) for e in _ENTRIES if expected.needs_ocr(e)])
     def test_scanned_and_mixed_files_are_read_by_the_ocr_engine(
         self, entry, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):

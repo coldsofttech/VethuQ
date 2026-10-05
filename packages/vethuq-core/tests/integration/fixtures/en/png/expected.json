@@ -1,0 +1,330 @@
+{
+  "language": "en",
+  "file_type": "png",
+  "files": [
+    {
+      "file": "01_Digital Invoice.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "NEXUS DIGITAL SOLUTIONS",
+            "INV-2026-089",
+            "Billed To",
+            "Enterprise Cloud Migration",
+            "Total Due",
+            "Vanguard Logistics Corp"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "02_Digital Financial Report.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "APEX GLOBAL TECHNOLOGIES",
+            "Q3 2026 Financial Report",
+            "CONSOLIDATED STATEMENT OF OPERATIONS",
+            "Cloud & Software Subscriptions",
+            "Total Net Revenue"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "03_Digital Formal Letter.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "STERLING & CO. ADVISORY",
+            "Ms. Eleanor Vance",
+            "Strategic IT Transformation & Cloud Infrastructure Roadmap",
+            "Cybersecurity Alignment",
+            "Arthur Pendelton"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "04_Digital Bilingual Travel & Cultural Guide.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "Discover Andhra Pradesh",
+            "Essential Destination Directory",
+            "Tirupati & Spiritual Hubs",
+            "Visakhapatnam Beaches",
+            "Kanaka Durga Temple & Prakasam Barrage"
+          ],
+          "note": "The Telugu text on this page is not asserted: the English model is not expected to read it."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "05_Scanned Document.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "DEPARTMENT OF ARCHIVAL RECORDS",
+            "CENTRAL REGISTRY OFFICE",
+            "REC-2026-88941-X",
+            "DIVISION OF FINANCIAL OVERSIGHT",
+            "SUMMARY OF AUDIT FINDINGS",
+            "Approved by Inspector"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "06_Digital Structured Business Documents.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "VERTEX CLOUD INFRASTRUCTURE",
+            "TAX INVOICE",
+            "#INV-2026-9042",
+            "Horizon Media Dynamics",
+            "Total Due"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "07_Digital Academic Journal Article.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "The Daily Chronicle",
+            "TRANS-ATLANTIC WIRELESS TELEGRAPH RECORD BROKEN",
+            "ROYAL SOCIETY PRAISES FEAT",
+            "MARKET STOCKS RALLY",
+            "WEATHER PROSPECTS"
+          ],
+          "note": "A newspaper layout in small type with three columns; the text of the columns interleaves."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "08_Image_Quality_and_Resolution_OCR_Test_Matrix.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "OCR TEST CELL #2026",
+            "Invoice ID: INV-990214",
+            "Amount Due: $1,482.50",
+            "Status: PENDING REVIEW",
+            "Clean High-Res (Reference)"
+          ],
+          "note": "Eight cells from clean to blurred, dark and low-contrast; only the reference cells are asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "09_Image_Orientation_Layout_Skew_OCR_Test.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.5,
+          "contains": [
+            "DOC-SKEW TEST REPORT #2026",
+            "Invoice ID: INV-2026-8802",
+            "Total Amount Due: $14,820.00",
+            "Routing Code: PCBUS33X",
+            "Account: Vertex Cloud Ops",
+            "COLUMN B (SERVICE)"
+          ],
+          "note": "Rotated and skewed cells are read by the deeper OCR phases, not the quick pass; the upright cells are asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "10_Complex_Formatting_Structural_Elements_OCR_Test.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "Invoice Number: INV-2026-99042",
+            "Billing Account: ACCT-8812-X9",
+            "Payment Terms: Net 30 Days",
+            "CONTROL REFERENCE CELL",
+            "Value: 98.4%",
+            "HEADER: SECTION 4.1"
+          ],
+          "note": "CJK, Arabic and math cells are not asserted: the English model does not read them."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "11_Background_Interferences_OCR_Test.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "INVOICE REF: #INV-2026-BKGD",
+            "Total Amount Due: $18,450.00",
+            "Routing Code: PCBUS33X",
+            "Authorized Signature Required",
+            "Status: CONFIDENTIAL & RESTRICTED"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "12_Mixed_Media_OCR_Test.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "MIXED MEDIA REFERENCE CELL",
+            "Standard Printed Form Layout",
+            "Patient Name: Sarah J. Anderson",
+            "METRO PROVISIONS",
+            "DOCUMENT IDENTIFIER: REC-2026-9904",
+            "Bottom Baseline Control Text"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "13_Edge_Case_Transparent.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "Transparent Background (Alpha Channel)"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "14_Edge_Case_Wide_Strip.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "contains": [],
+          "note": "4000x100 with about 8 px text: it must be indexed without an error; reading it is not asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "15_Edge_Case_1bit.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "1-Bit Monochrome Test"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "16_Edge_Case_Grayscale.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "Grayscale (8-bit L) Test"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "17_Edge_Case_24bit.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "24-Bit Truecolor RGB Test"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "18_Edge_Case_Large_Dimensions.png",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "contains": [],
+          "note": "4000x4000 with about 10 px text: it must be indexed without an error; reading it is not asserted."
+        }
+      },
+      "verified": false
+    }
+  ]
+}
