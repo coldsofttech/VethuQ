@@ -106,8 +106,57 @@ class TestExport:
         assert not re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", html)
 
 
+class TestBrandedHtml:
+    def test_search_export_carries_the_logo_favicon_and_summary(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match(), _match(page_number=2)], "amount due", output, "html")
+
+        text = output.read_text(encoding="utf-8")
+        assert '<svg class="logo"' in text
+        assert 'rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,' in text
+        assert 'name="viewport"' in text
+        assert '<div class="label">Matches</div><div class="value">2</div>' in text
+        assert '<div class="label">Files</div><div class="value">1</div>' in text
+        assert "@media print" in text
+
+    def test_match_type_is_a_pill_only_when_the_engine_is_known(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+        fuzzy = SearchMatch(**{**_match().__dict__, "engine": "fuzzy", "score": 0.83})
+
+        Export.search_results([fuzzy, _match()], "due", output, "html", engine="fuzzy")
+
+        text = output.read_text(encoding="utf-8")
+        assert text.count('<span class="pill">') == 1
+        assert "Similar 83%" in text
+
+    def test_logo_is_inlined_once_so_its_gradient_ids_stay_unique(self, tmp_path: Path):
+        output = tmp_path / "out.html"
+
+        Export.search_results([_match()], "due", output, "html")
+
+        assert output.read_text(encoding="utf-8").count('id="m"') == 1
+
+    def test_the_rendered_page_never_hardcodes_a_color_outside_the_logo(self):
+        for name in ("page_head.html", "page_header.html", "page_footer.html", "export.js"):
+            assert re.findall(r"#[0-9a-fA-F]{6}\b", Export.template(name)) == []
+
+
 class TestExportTemplates:
-    @pytest.mark.parametrize("name", ["export.html", "export_row.html", "export.css"])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "export.html",
+            "export_row.html",
+            "export.css",
+            "export.js",
+            "list_export.html",
+            "logo.svg",
+            "page_head.html",
+            "page_header.html",
+            "page_footer.html",
+        ],
+    )
     def test_template_files_ship_with_the_package(self, name: str):
         assert Export.template(name).strip()
 
@@ -162,7 +211,9 @@ class TestExportSearchMode:
 
         Export.search_results([_match()], "due", output, "html", engine="like", case_sensitive=True)
 
-        assert "engine: like, case-sensitive" in output.read_text()
+        text = output.read_text()
+        assert '<span class="k">Engine</span>like' in text
+        assert '<span class="k">Case</span>sensitive' in text
 
     def test_json_export_records_threshold_only_when_given(self, tmp_path: Path):
         with_threshold = tmp_path / "with.json"
@@ -181,7 +232,9 @@ class TestExportSearchMode:
 
         Export.search_results([_match()], "due", output, "html", engine="fuzzy", threshold=0.65)
 
-        assert "engine: fuzzy, threshold 65%" in output.read_text()
+        text = output.read_text()
+        assert '<span class="k">Engine</span>fuzzy' in text
+        assert '<span class="k">Threshold</span>65%' in text
 
     def test_json_export_records_distance_only_when_given(self, tmp_path: Path):
         with_distance = tmp_path / "with.json"
@@ -200,7 +253,9 @@ class TestExportSearchMode:
 
         Export.search_results([_match()], "a b", output, "html", engine="proximity", distance=3)
 
-        assert "engine: proximity, within 3 words" in output.read_text()
+        text = output.read_text()
+        assert '<span class="k">Engine</span>proximity' in text
+        assert '<span class="k">Within</span>3 words' in text
 
 
 def _telugu_match(before: str, matched: str, after: str, name: str = "invoice.pdf") -> SearchMatch:
@@ -267,7 +322,7 @@ class TestExportLanguages:
         page = output.read_text(encoding="utf-8")
         assert '<html lang="en">' in page
         assert 'span lang="te"' not in page
-        assert "languages: English" in page
+        assert '<span class="k">Languages</span>English' in page
 
     def test_telugu_only_html_is_a_telugu_document(self, tmp_path: Path):
         output = tmp_path / "out.html"
@@ -277,7 +332,7 @@ class TestExportLanguages:
         page = output.read_text(encoding="utf-8")
         assert '<html lang="te">' in page
         assert '<mark><span lang="te">తెలుగు పదం</span></mark>' in page
-        assert "languages: Telugu" in page
+        assert '<span class="k">Languages</span>Telugu' in page
         assert "<title>VethuQ search export: తెలుగు</title>" in page
 
     def test_mixed_html_tags_only_the_telugu_runs(self, tmp_path: Path):
@@ -288,7 +343,7 @@ class TestExportLanguages:
         page = output.read_text(encoding="utf-8")
         assert '<html lang="en">' in page
         assert '<mark><span lang="te">తెలుగు</span></mark> due' in page
-        assert "languages: English, Telugu" in page
+        assert '<span class="k">Languages</span>English, Telugu' in page
 
     def test_a_telugu_file_name_is_tagged(self, tmp_path: Path):
         output = tmp_path / "out.html"
@@ -297,3 +352,31 @@ class TestExportLanguages:
         Export.search_results([match], "b", output, "html")
 
         assert '<span lang="te">నివేదిక</span>.pdf' in output.read_text(encoding="utf-8")
+
+
+class TestListExport:
+    def test_source_list_is_a_branded_table_with_status_pills(self, tmp_path: Path):
+        from vethuq_core.sources import Source
+
+        sources = [
+            Source(
+                id=1,
+                source_type="folder",
+                path=str(tmp_path),
+                status="indexed",
+                added_at="2026-01-01",
+                last_scanned_at=None,
+                is_active=True,
+                removed_at=None,
+            )
+        ]
+        output = tmp_path / "sources.html"
+
+        Export.sources(sources, output, "html")
+
+        text = output.read_text(encoding="utf-8")
+        assert "{{" not in text
+        assert '<svg class="logo"' in text
+        assert '<span class="pill ok">indexed</span>' in text
+        assert '<div class="label">Sources</div><div class="value">1</div>' in text
+        assert '<table class="list">' in text
