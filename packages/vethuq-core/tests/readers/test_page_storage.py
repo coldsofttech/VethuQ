@@ -2,19 +2,17 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+import pdf_factory
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
 from vethuq_core.readers import ImagePageStorage, PageResult, PdfPageStorage
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
 
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
-
-def _index_fixture(conn: sqlite3.Connection, storage: Storage, path: Path, tmp_path: Path) -> int:
-    target = tmp_path / path.name
-    target.write_bytes(path.read_bytes())
-    Quick.run(storage, Sources.add(storage, target))
+def _index_pdf(conn: sqlite3.Connection, storage: Storage, tmp_path: Path) -> int:
+    """Index a small native PDF made for the test."""
+    Quick.run(storage, Sources.add(storage, pdf_factory.native(tmp_path / "doc.pdf")))
     return conn.execute("SELECT id FROM document_index").fetchone()["id"]
 
 
@@ -44,9 +42,7 @@ class TestPdfPageStorage:
         self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
         # A digital PDF is read from its text layer, so no engine is involved.
-        document_id = _index_fixture(
-            conn, storage, FIXTURES_DIR / "03_Digital Formal Letter.pdf", tmp_path
-        )
+        document_id = _index_pdf(conn, storage, tmp_path)
         page_storage = PdfPageStorage()
 
         grouped = page_storage.confidences_by_process_type(storage, document_id)

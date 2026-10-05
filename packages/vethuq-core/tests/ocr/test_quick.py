@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+import pdf_factory
 import pytest
 from conftest import PaddleStub
 from vethuq_core.ocr import Quick
@@ -10,8 +11,6 @@ from vethuq_core.ocr.document import Document
 from vethuq_core.settings import OcrSettings
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
-
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
 
 def _fake_ocr_result(text: str = "hello world", score: float = 0.95):
@@ -661,8 +660,7 @@ class TestQuick:
     def test_run_ocr_digital_pdf_skips_engine_entirely(
         self, mock_get_engine, conn: sqlite3.Connection, storage: Storage, tmp_path
     ):
-        pdf_path = tmp_path / "digital.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / "03_Digital Formal Letter.pdf").read_bytes())
+        pdf_path = pdf_factory.native(tmp_path / "digital.pdf")
         source = Sources.add(storage, pdf_path)
 
         Quick.run(storage, source)
@@ -689,8 +687,7 @@ class TestQuick:
         engine.predict.return_value = _fake_ocr_result("scanned page text")
         mock_get_engine.return_value = engine
 
-        pdf_path = tmp_path / "scanned.pdf"
-        pdf_path.write_bytes((FIXTURES_DIR / "05_Scanned Document.pdf").read_bytes())
+        pdf_path = pdf_factory.scanned(tmp_path / "scanned.pdf")
         source = Sources.add(storage, pdf_path)
 
         Quick.run(storage, source)
@@ -714,10 +711,7 @@ class TestQuick:
         engine.predict.return_value = _fake_ocr_result("banner region text")
         mock_get_engine.return_value = engine
 
-        pdf_path = tmp_path / "mixed.pdf"
-        pdf_path.write_bytes(
-            (FIXTURES_DIR / "04_Digital Bilingual Travel & Cultural Guide.pdf").read_bytes()
-        )
+        pdf_path = pdf_factory.mixed(tmp_path / "mixed.pdf", "Discover Andhra Pradesh, a guide")
         source = Sources.add(storage, pdf_path)
 
         Quick.run(storage, source)

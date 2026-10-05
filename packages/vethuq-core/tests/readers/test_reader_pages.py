@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
+import pdf_factory
 import pymupdf
 import pytest
 from vethuq_core.filetypes.jpg.reader import JpgReader
@@ -21,8 +22,6 @@ from vethuq_core.readers import (
 )
 from vethuq_core.sources import Sources
 from vethuq_core.storage import Storage
-
-FIXTURES_DIR = Path(__file__).parent.parent / "integration" / "fixtures" / "en" / "pdf"
 
 
 def _make_pdf(path: Path, pages: list[str]) -> None:
@@ -104,32 +103,32 @@ class TestReaders:
 
         assert [page.native_text.strip() for page in pages] == ["second page text"]
 
-    def test_pdf_reader_extracts_native_text_without_any_ocr(self):
-        pages = list(PdfReader().read(FIXTURES_DIR / "03_Digital Formal Letter.pdf"))
+    def test_pdf_reader_extracts_native_text_without_any_ocr(self, tmp_path):
+        pages = list(PdfReader().read(pdf_factory.native(tmp_path / "doc.pdf")))
 
         assert pages
         assert all(len(page.native_text.split()) > 3 for page in pages)
         assert all(page.image_regions == () for page in pages)
 
-    def test_pdf_reader_renders_a_page_to_a_pixel_array(self):
+    def test_pdf_reader_renders_a_page_to_a_pixel_array(self, tmp_path):
         # Pages are only valid while their iterator is alive (it owns the open file).
-        pages = PdfReader().read(FIXTURES_DIR / "01_Digital Invoice.pdf")
+        pages = PdfReader().read(pdf_factory.native(tmp_path / "doc.pdf"))
 
         rendered = next(pages).render(None)
 
         assert rendered.ndim == 3 and rendered.shape[2] == 3
 
-    def test_pdf_reader_reports_embedded_images_on_a_scanned_page(self):
-        pages = list(PdfReader().read(FIXTURES_DIR / "05_Scanned Document.pdf"))
+    def test_pdf_reader_reports_embedded_images_on_a_scanned_page(self, tmp_path):
+        pages = list(PdfReader().read(pdf_factory.scanned(tmp_path / "doc.pdf")))
 
         assert any(page.image_regions for page in pages)
 
 
 class TestReaderIsolation:
-    def test_reading_does_not_import_ocr_or_engines(self):
+    def test_reading_does_not_import_ocr_or_engines(self, tmp_path):
         # `readers` must be usable on its own - importing it and reading a PDF may not
         # drag in the OCR pipeline or any engine.
-        pdf = FIXTURES_DIR / "03_Digital Formal Letter.pdf"
+        pdf = pdf_factory.native(tmp_path / "doc.pdf")
         code = (
             "import sys\n"
             "from pathlib import Path\n"
