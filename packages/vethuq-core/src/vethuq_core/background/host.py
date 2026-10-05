@@ -16,8 +16,8 @@ import sys
 import threading
 from pathlib import Path
 
-from vethuq_core.background.jobs import IndexJob, IndexJobs
 from vethuq_core.background.service import BackgroundService, BackgroundServiceError
+from vethuq_core.index.jobs import IndexJob, IndexJobs
 from vethuq_core.index.runner import AlreadyRunningError, IndexRunner
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
@@ -96,6 +96,7 @@ class ServiceHost:
                 restart=job.restart,
                 db_path=self._db_path,
                 languages=job.languages,
+                job_id=job.id,
             )
         except AlreadyRunningError:
             IndexJobs.requeue(job.id, self._db_path)
@@ -124,6 +125,7 @@ class ServiceHost:
         self._record_outcome(job)
 
     def _record_outcome(self, job: IndexJob) -> None:
+        """Close the job if its worker did not (it died before it could)."""
         state = IndexRunner.read_state(self._db_path)
         if state is not None and state.status == "completed":
             IndexJobs.finish(job.id, "completed", None, self._db_path)

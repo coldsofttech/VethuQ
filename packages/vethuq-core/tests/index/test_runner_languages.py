@@ -79,6 +79,26 @@ class TestWorkerCommand:
             "run",
         ]
 
+    def test_the_job_follows_everything_else(self, db_path):
+        command = IndexRunner._worker_command(db_path, "3", False, None, 7)
+
+        assert command[-2:] == ["--job", "7"]
+
+    def test_main_takes_the_job_out_of_the_arguments(self, db_path, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(
+            IndexRunner,
+            "_run_worker",
+            staticmethod(lambda path, target, **kwargs: seen.update(kwargs, target=target)),
+        )
+        monkeypatch.setattr(
+            sys, "argv", ["worker", str(db_path), "3", "restart", "te", "--job", "7"]
+        )
+
+        IndexRunner.main()
+
+        assert seen == {"target": "3", "restart": True, "languages": "te", "job_id": 7}
+
     def test_languages_follow_the_mode(self, db_path):
         command = IndexRunner._worker_command(db_path, None, True, "te")
 
@@ -182,7 +202,7 @@ class TestMain:
 
         IndexRunner.main()
 
-        assert seen == {"target": None, "restart": True, "languages": "en,te"}
+        assert seen == {"target": None, "restart": True, "languages": "en,te", "job_id": None}
 
     def test_no_languages_argument_means_none(self, db_path, monkeypatch):
         seen = {}
@@ -195,7 +215,7 @@ class TestMain:
 
         IndexRunner.main()
 
-        assert seen == {"restart": False, "languages": None}
+        assert seen == {"restart": False, "languages": None, "job_id": None}
 
     def test_the_worker_hands_them_to_the_phased_run(self, db_path, conn, tmp_path):
         folder = tmp_path / "docs"

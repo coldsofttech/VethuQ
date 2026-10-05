@@ -1,7 +1,6 @@
 import pytest
-from vethuq_core.background import IndexJobs
 from vethuq_core.background.host import ServiceHost
-from vethuq_core.index import AlreadyRunningError, IndexRunner, IndexState
+from vethuq_core.index import AlreadyRunningError, IndexJobs, IndexRunner, IndexState
 
 
 @pytest.fixture

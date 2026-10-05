@@ -54,25 +54,61 @@ class IndexJobs:
         return conn.execute("SELECT * FROM index_jobs WHERE id = ?", (row["id"],)).fetchone()
 
     @staticmethod
+    def get(conn: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
+        return conn.execute("SELECT * FROM index_jobs WHERE id = ?", (job_id,)).fetchone()
+
+    @staticmethod
+    def mark_started(conn: sqlite3.Connection, job_id: int, pid: int, started_at: str) -> None:
+        """A worker was launched for the job: it is running, as `pid`."""
+        conn.execute(
+            "UPDATE index_jobs SET status = 'running', pid = ?, "
+            "started_at = COALESCE(started_at, ?) WHERE id = ? AND status IN ('queued', 'running')",
+            (pid, started_at, job_id),
+        )
+
+    @staticmethod
+    def attach_run(conn: sqlite3.Connection, job_id: int, run_id: int, pid: int) -> None:
+        """The worker began run `run_id`."""
+        conn.execute(
+            "UPDATE index_jobs SET run_id = ?, pid = ? WHERE id = ? AND status = 'running'",
+            (run_id, pid, job_id),
+        )
+
+    @staticmethod
     def finish(
         conn: sqlite3.Connection, job_id: int, status: str, finished_at: str, error: str | None
     ) -> None:
+        """Close a job that is still open; one that already ended is left as it is."""
         conn.execute(
-            "UPDATE index_jobs SET status = ?, finished_at = ?, error = ? WHERE id = ?",
+            "UPDATE index_jobs SET status = ?, finished_at = ?, error = ? "
+            "WHERE id = ? AND status IN ('queued', 'running')",
             (status, finished_at, error, job_id),
+        )
+
+    @staticmethod
+    def finish_for_run(
+        conn: sqlite3.Connection, run_id: int, status: str, finished_at: str, error: str | None
+    ) -> None:
+        conn.execute(
+            "UPDATE index_jobs SET status = ?, finished_at = ?, error = ? "
+            "WHERE run_id = ? AND status = 'running'",
+            (status, finished_at, error, run_id),
         )
 
     @staticmethod
     def requeue(conn: sqlite3.Connection, job_id: int) -> None:
         conn.execute(
-            "UPDATE index_jobs SET status = 'queued', started_at = NULL WHERE id = ?", (job_id,)
+            "UPDATE index_jobs SET status = 'queued', started_at = NULL, pid = NULL, run_id = NULL "
+            "WHERE id = ?",
+            (job_id,),
         )
 
     @staticmethod
     def requeue_running(conn: sqlite3.Connection) -> int:
         """Put jobs a dead service left 'running' back in the queue; returns how many."""
         cursor = conn.execute(
-            "UPDATE index_jobs SET status = 'queued', started_at = NULL WHERE status = 'running'"
+            "UPDATE index_jobs SET status = 'queued', started_at = NULL, pid = NULL, run_id = NULL "
+            "WHERE status = 'running'"
         )
         return cursor.rowcount
 

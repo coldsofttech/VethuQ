@@ -31,12 +31,16 @@ from vethuq._core.index import (
     AmbiguousFileError,
     DatabaseIntegrityError,
     FileNotTrackedError,
+    IndexJob,
     IndexRun,
     IndexRunnerError,
     IndexState,
+    IndexSubmission,
     SearchIndexRebuildResult,
     StaleLockError,
 )
+from vethuq._core.index import Indexing as _Indexing
+from vethuq._core.index import IndexJobs as _IndexJobs
 from vethuq._core.index import IndexRunner as _IndexRunner
 from vethuq._core.index import Reindex as _Reindex
 from vethuq._core.index import SearchIndexRebuild as _SearchIndexRebuild
@@ -190,6 +194,7 @@ __all__ = [
     "ExportFormatSettings",
     "GPUSettings",
     "Index",
+    "IndexJob",
     "IndexRun",
     "IndexRunnerError",
     "IndexSettings",
@@ -343,6 +348,17 @@ class Sources:
             storage.close()
 
 
+def _pid(submission: IndexSubmission) -> int:
+    """The worker's pid. This package has no background service, so a request always starts a
+    worker of its own (a one-off), recorded as an `index_jobs` row like every other request."""
+    assert submission.pid is not None
+    return submission.pid
+
+
+def _start(target: str | None, **kwargs: object) -> int:
+    return _pid(_Indexing.submit(target, **kwargs))  # type: ignore[arg-type]
+
+
 class Index:
     """Run and control background OCR indexing over registered sources.
 
@@ -375,7 +391,7 @@ class Index:
         or enabled, and `OcrModelMissingError` if the files would be read in a language
         whose models aren't downloaded (`ocr.models.download`).
         """
-        pid = _IndexRunner.start_run(
+        pid = _start(
             str(target) if target is not None else None,
             force=force,
             restart=False,
@@ -392,7 +408,7 @@ class Index:
         languages: str | Sequence[str] | None = None,
     ) -> int | IndexState | None:
         """Retry only previously-failed files, in the background. See `run`."""
-        pid = _IndexRunner.start_run(
+        pid = _start(
             str(target) if target is not None else None,
             force=force,
             restart=True,
@@ -414,7 +430,9 @@ class Index:
         nothing is duplicated. `languages` reads them in those languages this time; to make
         it lasting use `sources.set_languages`. Same errors and return value as `run`.
         """
-        pid = _Reindex.start_source(target, force=force, languages=_language_value(languages))
+        pid = _pid(
+            _Reindex.submit_source(target, force=force, languages=_language_value(languages))
+        )
         return _IndexRunner.wait(pid) if wait else pid
 
     def reindex_file(
@@ -435,8 +453,10 @@ class Index:
         `AmbiguousFileError` if it sits under more than one source and `source`
         (id or path) isn't given. Otherwise like `run`.
         """
-        pid = _Reindex.start_file(
-            file, source=source, force=force, languages=_language_value(languages)
+        pid = _pid(
+            _Reindex.submit_file(
+                file, source=source, force=force, languages=_language_value(languages)
+            )
         )
         return _IndexRunner.wait(pid) if wait else pid
 
@@ -491,6 +511,17 @@ class Index:
         Raises `IndexRunnerError` if no background index run is currently running.
         """
         _IndexRunner.request_resume()
+
+    def jobs(self, *, all: bool = False, limit: int = 20) -> list[IndexJob]:
+        """Index requests that are waiting or running, oldest first; `all=True` also lists
+        finished ones (newest first)."""
+        if all:
+            return _IndexJobs.list(None, limit=limit)
+        return _IndexJobs.pending(limit=limit)
+
+    def job(self, job_id: int) -> IndexJob | None:
+        """One index request by id (`status`, `error`, timestamps, its run), or None."""
+        return _IndexJobs.get(job_id)
 
     def history(self, target: str | int | None = None, limit: int = 10) -> list[IndexRun]:
         """List past background index runs, most recent first, optionally filtered to one source.

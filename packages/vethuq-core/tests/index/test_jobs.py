@@ -1,5 +1,5 @@
 import pytest
-from vethuq_core.background import IndexJobs
+from vethuq_core.index import IndexJobs
 
 
 @pytest.fixture

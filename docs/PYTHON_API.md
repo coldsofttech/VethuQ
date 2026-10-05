@@ -158,6 +158,10 @@ redo a file whose language was detected wrongly. Raises `FileNotTrackedError` if
 it isn't tracked and `AmbiguousFileError` if it sits under several sources and
 `source` isn't given.
 
+### `jobs(*, all=False, limit=20)` / `job(job_id)`
+
+Every `run`, `restart`, `reindex` and `reindex_file` is recorded as an `IndexJob` (`id`, `status`, `mode`, `target`, `languages`, `error`, `pid`, `run_id` and the requested, started and finished times), closed by the worker when its run ends. `jobs()` lists the waiting and running ones, oldest first; `all=True` also lists finished ones (completed, failed or cancelled), newest first. `job(id)` returns one, or `None`. A job whose worker died reads as failed. The package has no background service, so each job is run by the one-off worker the call started.
+
 ### `rebuild_search(*, on_progress=None)`
 
 Rebuild the full-text search tables from the page text already stored, without

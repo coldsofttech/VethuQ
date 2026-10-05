@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from vethuq_core.index.eta import Eta
+from vethuq_core.index.jobs import IndexJob, IndexJobs
 from vethuq_core.index.rebuild import SearchIndexRebuild, SearchIndexRebuildResult
 from vethuq_core.index.reindex import AmbiguousFileError, FileNotTrackedError, Reindex
 from vethuq_core.index.runner import (
@@ -22,6 +23,8 @@ __all__ = [
     "DatabaseIntegrityError",
     "Eta",
     "FileNotTrackedError",
+    "IndexJob",
+    "IndexJobs",
     "IndexRun",
     "IndexRunner",
     "IndexRunnerError",

@@ -551,6 +551,20 @@ class _IndexJobStoreMixin:
     def list_index_jobs(self, statuses: tuple[str, ...] | None, limit: int) -> list[sqlite3.Row]:
         return IndexJobs.list_jobs(self._conn, statuses, limit)
 
+    def get_index_job(self, job_id: int) -> sqlite3.Row | None:
+        return IndexJobs.get(self._conn, job_id)
+
+    def mark_index_job_started(self, job_id: int, pid: int, started_at: str) -> None:
+        return IndexJobs.mark_started(self._conn, job_id, pid, started_at)
+
+    def attach_index_job_run(self, job_id: int, run_id: int, pid: int) -> None:
+        return IndexJobs.attach_run(self._conn, job_id, run_id, pid)
+
+    def finish_index_jobs_for_run(
+        self, run_id: int, status: str, finished_at: str, error: str | None
+    ) -> None:
+        return IndexJobs.finish_for_run(self._conn, run_id, status, finished_at, error)
+
     def claim_next_index_job(self, started_at: str) -> sqlite3.Row | None:
         return IndexJobs.claim_next(self._conn, started_at)
 

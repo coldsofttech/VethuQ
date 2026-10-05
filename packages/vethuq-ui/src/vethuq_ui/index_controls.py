@@ -7,10 +7,10 @@ import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 
-from vethuq_core.background import Dispatch
 from vethuq_core.index import (
     AlreadyRunningError,
     DatabaseIntegrityError,
+    Indexing,
     IndexRunner,
     IndexRunnerError,
     IndexState,
@@ -59,13 +59,13 @@ class IndexControls:
         """
         if IndexRunner.is_running(self._db_path)[0]:
             return
-        if quiet and Dispatch.service_status() is not None:
+        if quiet and Indexing.service_status(self._db_path) is not None:
             now = time.monotonic()
             if now - self._last_queued < self.SERVICE_RESCAN_SECONDS:
                 return
             self._last_queued = now
         try:
-            Dispatch.submit(db_path=self._db_path)
+            Indexing.submit(db_path=self._db_path)
         except (AlreadyRunningError, StaleLockError, SourceNotFoundError):
             # AlreadyRunningError: lost a race with something else starting a
             # run just now - fine, we'll just poll it. StaleLockError: only
@@ -103,7 +103,7 @@ class IndexControls:
         # index_runs row), so the app doesn't need to stay open to see that
         # happen.
         self._closing = True
-        if Dispatch.service_status() is not None:
+        if Indexing.service_status(self._db_path) is not None:
             # The service keeps indexing after the window closes; that is what it is for.
             return
         try:
@@ -113,7 +113,7 @@ class IndexControls:
 
     def start_targeted_run(self, source_id: str, *, restart: bool) -> None:
         try:
-            Dispatch.submit(source_id, restart=restart, db_path=self._db_path)
+            Indexing.submit(source_id, restart=restart, db_path=self._db_path)
         except (
             AlreadyRunningError,
             StaleLockError,

@@ -7,7 +7,7 @@ import pytest
 import vethuq
 from typer.testing import CliRunner
 from vethuq._cli.main import app
-from vethuq._core.index import Indexing, IndexRunner, Reindex
+from vethuq._core.index import Indexing, IndexRunner, IndexSubmission, Reindex
 
 
 def test_the_service_code_is_not_in_the_package():
@@ -37,8 +37,11 @@ def started(monkeypatch):
     monkeypatch.setattr(
         IndexRunner, "start_run", staticmethod(lambda t=None, **kw: calls.append((t, kw)) or 4321)
     )
+    monkeypatch.setattr(IndexRunner, "validate_request", staticmethod(lambda *args: None))
     monkeypatch.setattr(
-        Reindex, "start_source", staticmethod(lambda t, **kw: calls.append((t, kw)) or 4321)
+        Reindex,
+        "submit_source",
+        staticmethod(lambda t, **kw: calls.append((t, kw)) or IndexSubmission(4321, 1, None)),
     )
     return calls
 
@@ -49,3 +52,32 @@ def test_index_functions_always_start_their_own_worker(started):
     assert client.index.run() == 4321
     assert client.index.reindex(1) == 4321
     assert len(started) == 2
+
+
+def test_every_request_is_a_job_the_package_can_list(tmp_path, monkeypatch):
+    from vethuq._core.paths import Paths
+
+    root = tmp_path / "data"
+    monkeypatch.setattr(Paths, "default_data_root", staticmethod(lambda: root))
+    monkeypatch.setattr(Paths, "platform_data_root", staticmethod(lambda: root))
+    monkeypatch.setattr(
+        Paths, "location_file", staticmethod(lambda: root / "config" / "location.json")
+    )
+    monkeypatch.setattr(IndexRunner, "_is_pid_running", staticmethod(lambda pid: True))
+    monkeypatch.setattr(IndexRunner, "validate_request", staticmethod(lambda *args: None))
+
+    def start_run(target=None, **kwargs):
+        from vethuq._core.index import IndexJobs
+
+        IndexJobs.mark_started(kwargs["job_id"], 4321)
+        return 4321
+
+    monkeypatch.setattr(IndexRunner, "start_run", staticmethod(start_run))
+    client = vethuq.Vethuq()
+
+    pid = client.index.run()
+
+    (job,) = client.index.jobs()
+    assert (pid, job.status, job.pid) == (4321, "running", 4321)
+    assert client.index.job(job.id).id == job.id
+    assert client.index.job(999) is None

@@ -95,14 +95,6 @@ Pause the service: the run in progress pauses (as with `index pause`) and queued
 
 Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, its data folder, the jobs waiting in its queue and the run in progress.
 
-### `queue list [--all] [--limit N] [--json]`
-
-List the pending jobs - waiting and running - oldest first. `--all` adds finished ones (completed, failed, cancelled), newest first; `--limit` caps how many (default 20).
-
-### `queue show <id> [--json]`
-
-Show one job: its kind, target and languages, when it was queued, started and finished, and the error if it failed. For a running job `vethuq index status` shows the progress.
-
 ### Running one command without the service
 
 `index run`, `restart`, `reindex` and `reindex file` accept `--one-off`: start a worker of its own for this command only, even though the service is installed.
@@ -170,6 +162,14 @@ vethuq index reindex file ./docs/invoice.pdf --source 3
 vethuq index reindex 3 --lang te
 vethuq index reindex file ./docs/invoice.pdf --lang te
 ```
+
+### `queue list [--all] [--limit N] [--json]`
+
+Every `index run`, `restart` and `reindex` is recorded as a job, whichever worker runs it: the background service (desktop build), or a worker of its own (a one-off - always so in the `vethuq` pip package). `queue list` shows the pending jobs - waiting and running - oldest first. `--all` adds finished ones (completed, failed, cancelled), newest first; `--limit` caps how many (default 20). A request refused because a run was already in progress is kept as a failed job with that reason; a request for a source or language that does not exist is refused before it becomes a job.
+
+### `queue show <id> [--json]`
+
+Show one job: its kind, target and languages, when it was queued, started and finished, the error if it failed, and for a running one `vethuq index status` shows the progress. A job whose worker died is shown as failed.
 
 ### `rebuild-search [--force]`
 

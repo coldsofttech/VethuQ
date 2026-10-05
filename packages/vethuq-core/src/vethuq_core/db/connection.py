@@ -151,9 +151,9 @@ CREATE TABLE IF NOT EXISTS index_runs (
     completed_at TEXT
 );
 
--- Index runs requested while the background service is enabled. The service claims them in
--- order and runs each one; nothing else deletes rows, so `vethuq background-service status`
--- can show what is waiting and what finished.
+-- Every index request: queued for the background service, or started in a worker of its own.
+-- The worker that runs a job records its pid and its `index_runs` row and closes the job when
+-- the run ends, so one table shows what is waiting, running and finished however it was run.
 CREATE TABLE IF NOT EXISTS index_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target TEXT,
@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS index_jobs (
     status TEXT NOT NULL DEFAULT 'queued'
         CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
     error TEXT,
+    pid INTEGER,
+    run_id INTEGER,
     requested_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT

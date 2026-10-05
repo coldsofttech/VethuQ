@@ -19,6 +19,7 @@ from vethuq_core.index import (
     DatabaseIntegrityError,
     FileNotTrackedError,
     Indexing,
+    IndexJobs,
     IndexRunner,
     IndexRunnerError,
     IndexSubmission,
@@ -32,9 +33,11 @@ from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import IndexPanel, StatePanel
+from vethuq_cli.index.queue import app as queue_app
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
+app.add_typer(queue_app, name="queue")
 
 LANG_HELP = (
     "Read files in this language this time ('te', 'en,te', or 'auto' for every installed "
@@ -199,8 +202,6 @@ def _report_submitted(submission: IndexSubmission, verb: str, *, wait: bool) -> 
 def _wait_for_job(job_id: int) -> bool:
     """Block until the queued job is finished, showing the run once it starts. True if the
     user interrupted (the job stays queued; it is the service's now)."""
-    from vethuq_core.background import IndexJobs
-
     try:
         with console.status("Waiting for the background service...", spinner_style=Theme.PRIMARY):
             while True:

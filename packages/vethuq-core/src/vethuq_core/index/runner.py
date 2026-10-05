@@ -34,6 +34,7 @@ from typing import IO
 
 from vethuq_core.errors import CorruptDatabaseError
 from vethuq_core.errors import StaleLockError as _StaleLockError
+from vethuq_core.index.jobs import IndexJobs
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
 from vethuq_core.paths import Paths
@@ -488,11 +489,17 @@ class IndexRunner:
 
     @staticmethod
     def _worker_command(
-        db_path: Path, target: str | None, restart: bool, languages: str | None = None
+        db_path: Path,
+        target: str | None,
+        restart: bool,
+        languages: str | None = None,
+        job_id: int | None = None,
     ) -> list[str]:
         args = [str(db_path), target or "", "restart" if restart else "run"]
         if languages:
             args.append(languages)
+        if job_id is not None:
+            args += ["--job", str(job_id)]
         if getattr(sys, "frozen", False):
             worker = Path(sys.executable).with_name(IndexRunner._WORKER_EXE_NAME)
             if not worker.exists():
@@ -509,8 +516,12 @@ class IndexRunner:
         db_path: Path | None = None,
         on_recovery: Callable[[list[str]], None] | None = None,
         languages: str | None = None,
+        job_id: int | None = None,
     ) -> int:
         """Launch OCR indexing as a detached background process. Returns its pid.
+
+        `job_id` is the `index_jobs` row this run is for (see `Indexing.submit`): the worker
+        records its run on it and closes it when the run ends.
 
         When `restart` is True, only files that previously failed are retried
         (see `Quick.run`'s `only_failed`); otherwise new and previously-failed
@@ -581,7 +592,7 @@ class IndexRunner:
         # The worker logs to `index.log` itself (see `main`), including a crash's
         # traceback, so its stdout/stderr aren't needed.
         process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell, no user input
-            IndexRunner._worker_command(db_path, target, restart, languages),
+            IndexRunner._worker_command(db_path, target, restart, languages, job_id),
             # Stops a onefile-frozen parent's bundle env from leaking into
             # the (also onefile) worker exe, which must unpack its own.
             env={**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"},
@@ -595,6 +606,8 @@ class IndexRunner:
             "Started index worker pid=%d mode=%s target=%s", process.pid, mode_name, target or "all"
         )
         IndexRunner._atomic_write(lock_path, str(process.pid))
+        if job_id is not None:
+            IndexJobs.mark_started(job_id, process.pid, db_path)
         return process.pid
 
     @staticmethod
@@ -762,6 +775,7 @@ class IndexRunner:
             storage.commit()
         finally:
             storage.close()
+        IndexJobs.finish_for_run(state.run_id, status, state.error, db_path)
 
     @staticmethod
     def signal_stop(db_path: Path | None = None) -> None:
@@ -906,6 +920,7 @@ class IndexRunner:
         *,
         restart: bool = False,
         languages: str | None = None,
+        job_id: int | None = None,
     ) -> None:
         # check_same_thread=False: `Quick.run_batch` below may hand this connection
         # to worker threads when `workers` > 1 - every use of it is already
@@ -938,6 +953,8 @@ class IndexRunner:
 
             run_id = storage.insert_index_run(target, mode, pid, total, workers, started_at)
             storage.commit()
+            if job_id is not None:
+                IndexJobs.attach_run(job_id, run_id, pid, db_path)
 
             IndexRunner._logger.info(
                 "Index run %d started: mode=%s target=%s files=%d workers=%d (thread_workers=%s)",
@@ -1087,6 +1104,10 @@ class IndexRunner:
             if heartbeat is not None:
                 heartbeat.stop()
             IndexRunner._logger.exception("Index run crashed")
+            if job_id is not None:
+                IndexJobs.finish(
+                    job_id, "failed", "The index run crashed; see the index log.", db_path
+                )
             if run_id is not None:
                 storage.fail_index_run(run_id, datetime.now(UTC).isoformat())
             # Whatever file was in flight when this crashed is left claimed
@@ -1127,15 +1148,23 @@ class IndexRunner:
             from vethuq_core.background.host import ServiceHost
 
             sys.exit(ServiceHost.control_main(sys.argv[2:]))
-        db_path = Path(sys.argv[1])
-        target = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
-        mode = sys.argv[3] if len(sys.argv) > 3 else "run"
-        languages = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
+        argv = sys.argv[:]
+        job_id: int | None = None
+        if "--job" in argv:  # `--job <id>`: the index_jobs row this run is for
+            at = argv.index("--job")
+            job_id = int(argv[at + 1])
+            del argv[at : at + 2]
+        db_path = Path(argv[1])
+        target = argv[2] if len(argv) > 2 and argv[2] else None
+        mode = argv[3] if len(argv) > 3 else "run"
+        languages = argv[4] if len(argv) > 4 and argv[4] else None
         Logs.setup("index", db_path)
         IndexRunner._logger.info("Index worker pid=%d started", os.getpid())
         crash_trace = IndexRunner._enable_crash_trace(db_path)
         try:
-            IndexRunner._run_worker(db_path, target, restart=mode == "restart", languages=languages)
+            IndexRunner._run_worker(
+                db_path, target, restart=mode == "restart", languages=languages, job_id=job_id
+            )
         finally:
             IndexRunner._disable_crash_trace(db_path, crash_trace)
             IndexRunner._logger.info("Index worker pid=%d exiting", os.getpid())

@@ -19,6 +19,12 @@ def _wide(monkeypatch):
     monkeypatch.setattr(console, "width", 200)
 
 
+@pytest.fixture(autouse=True)
+def _requests_are_valid(monkeypatch):
+    """`start_run` is mocked here, and with it the language checks the request goes through."""
+    monkeypatch.setattr(IndexRunner, "validate_request", staticmethod(lambda *args: None))
+
+
 @pytest.fixture
 def folder(tmp_path):
     path = tmp_path / "docs"

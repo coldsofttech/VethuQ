@@ -1,14 +1,14 @@
 import pytest
-from vethuq_core.background import (
-    BackgroundService,
-    Dispatch,
-    IndexJobs,
-    ServiceState,
-    ServiceStatus,
-)
-from vethuq_core.index import IndexRunner, IndexRunnerError
+from vethuq_core.background import BackgroundService, ServiceState, ServiceStatus
+from vethuq_core.index import Indexing, IndexJobs, IndexRunner, IndexRunnerError
 from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import open_storage
+
+
+@pytest.fixture(autouse=True)
+def _workers_are_alive(monkeypatch):
+    """The pids these tests use belong to no process; count them as running workers."""
+    monkeypatch.setattr(IndexRunner, "_is_pid_running", staticmethod(lambda pid: True))
 
 
 @pytest.fixture
@@ -51,6 +51,8 @@ def started(monkeypatch):
 
     def fake_start_run(target=None, **kwargs):
         calls.append((target, kwargs))
+        # what the real one does once it has launched the worker
+        IndexJobs.mark_started(kwargs["job_id"], 4321, kwargs["db_path"])
         return 4321
 
     monkeypatch.setattr(IndexRunner, "start_run", staticmethod(fake_start_run))
@@ -60,18 +62,66 @@ def started(monkeypatch):
 def test_without_the_service_the_run_starts_directly(db_path, started, monkeypatch):
     _service(monkeypatch, None)
 
-    result = Dispatch.submit(None, restart=True, languages="te", db_path=db_path)
+    result = Indexing.submit(None, restart=True, languages="en", db_path=db_path)
 
     assert (result.pid, result.queued) == (4321, False)
     assert started[0][1]["restart"] is True
-    assert started[0][1]["languages"] == "te"
+    assert started[0][1]["languages"] == "en"
     assert IndexJobs.queued(db_path) == []
+
+
+def test_a_one_off_request_is_recorded_as_a_running_job(db_path, started, monkeypatch):
+    _service(monkeypatch, None)
+
+    result = Indexing.submit(None, db_path=db_path)
+
+    job = IndexJobs.get(result.job_id, db_path)
+    assert (job.status, job.pid, job.mode) == ("running", 4321, "run")
+    assert started[0][1]["job_id"] == result.job_id
+    assert result.queued is False
+
+
+def test_a_one_off_that_cannot_start_leaves_a_failed_job_with_the_reason(db_path, monkeypatch):
+    from vethuq_core.index import AlreadyRunningError
+
+    _service(monkeypatch, None)
+
+    def refuse(target=None, **kwargs):
+        raise AlreadyRunningError("An index run is already in progress (pid 99).")
+
+    monkeypatch.setattr(IndexRunner, "start_run", staticmethod(refuse))
+
+    with pytest.raises(AlreadyRunningError):
+        Indexing.submit(None, db_path=db_path)
+
+    (job,) = IndexJobs.list(None, db_path=db_path)
+    assert job.status == "failed"
+    assert "already in progress" in job.error
+
+
+def test_a_build_without_the_service_package_always_runs_a_one_off(db_path, started, monkeypatch):
+    monkeypatch.setattr(Indexing, "has_service", staticmethod(lambda: False))
+    _service(monkeypatch, ServiceState.RUNNING)
+
+    result = Indexing.submit(None, db_path=db_path)
+
+    assert result.pid == 4321 and not result.queued
+    assert IndexJobs.get(result.job_id, db_path).status == "running"
+
+
+def test_a_bad_request_leaves_no_job_behind(db_path, started, monkeypatch):
+    _service(monkeypatch, None)
+
+    with pytest.raises(SourceNotFoundError):
+        Indexing.submit("999", db_path=db_path)
+
+    assert IndexJobs.list(None, db_path=db_path) == []
 
 
 def test_with_the_service_the_run_is_queued_not_started(db_path, source_id, started, monkeypatch):
     _service(monkeypatch, ServiceState.RUNNING)
 
-    result = Dispatch.submit(str(source_id), languages="en", db_path=db_path)
+    result = Indexing.submit(str(source_id), languages="en", db_path=db_path)
 
     assert result.queued and result.pid is None
     assert started == []
@@ -86,7 +136,7 @@ def test_a_queued_job_notes_when_the_service_is_not_taking_jobs(
 ):
     _service(monkeypatch, state)
 
-    result = Dispatch.submit(None, db_path=db_path)
+    result = Indexing.submit(None, db_path=db_path)
 
     assert result.queued and result.service_idle
 
@@ -94,7 +144,7 @@ def test_a_queued_job_notes_when_the_service_is_not_taking_jobs(
 def test_one_off_ignores_the_service(db_path, started, monkeypatch):
     _service(monkeypatch, ServiceState.RUNNING)
 
-    result = Dispatch.submit(None, via=Dispatch.VIA_ONE_OFF, db_path=db_path)
+    result = Indexing.submit(None, via=Indexing.VIA_ONE_OFF, db_path=db_path)
 
     assert result.pid == 4321 and not result.queued
     assert IndexJobs.queued(db_path) == []
@@ -104,7 +154,7 @@ def test_a_bad_source_is_refused_before_it_is_queued(db_path, started, monkeypat
     _service(monkeypatch, ServiceState.RUNNING)
 
     with pytest.raises(SourceNotFoundError):
-        Dispatch.submit("999", db_path=db_path)
+        Indexing.submit("999", db_path=db_path)
 
     assert IndexJobs.queued(db_path) == []
 
@@ -113,14 +163,14 @@ def test_asking_for_the_service_when_it_is_not_installed_is_an_error(db_path, st
     _service(monkeypatch, None)
 
     with pytest.raises(IndexRunnerError, match="isn't installed"):
-        Dispatch.submit(None, via=Dispatch.VIA_SERVICE, db_path=db_path)
+        Indexing.submit(None, via=Indexing.VIA_SERVICE, db_path=db_path)
 
 
 def test_repeated_requests_share_one_queued_job(db_path, started, monkeypatch):
     _service(monkeypatch, ServiceState.RUNNING)
 
-    first = Dispatch.submit(None, db_path=db_path)
-    second = Dispatch.submit(None, db_path=db_path)
+    first = Indexing.submit(None, db_path=db_path)
+    second = Indexing.submit(None, db_path=db_path)
 
     assert first.job_id == second.job_id
 
@@ -128,7 +178,7 @@ def test_repeated_requests_share_one_queued_job(db_path, started, monkeypatch):
 def test_a_service_for_another_data_folder_is_not_used(db_path, started, tmp_path, monkeypatch):
     _service(monkeypatch, ServiceState.RUNNING, home=tmp_path / "someone-else")
 
-    result = Dispatch.submit(None, db_path=db_path)
+    result = Indexing.submit(None, db_path=db_path)
 
     assert result.pid == 4321 and not result.queued
     assert IndexJobs.queued(db_path) == []
@@ -137,6 +187,6 @@ def test_a_service_for_another_data_folder_is_not_used(db_path, started, tmp_pat
 def test_a_service_for_this_data_folder_is_used(db_path, started, monkeypatch):
     _service(monkeypatch, ServiceState.RUNNING, home=db_path.parent)
 
-    result = Dispatch.submit(None, db_path=db_path)
+    result = Indexing.submit(None, db_path=db_path)
 
     assert result.queued
