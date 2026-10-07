@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from vethuq_core.hints import Hints
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
 
@@ -155,7 +156,7 @@ class SemanticModel:
             _logger.error("Downloading the semantic model failed: %s: %s", type(exc).__name__, exc)
             raise SemanticModelError(
                 f"Could not download the semantic search model ({exc}). "
-                "Check the connection and try again with: vethuq semantic download"
+                f"Check the connection and try again with: {Hints.command('semantic download')}"
             ) from exc
         path = SemanticModel.onnx_path()
         if path is None:  # pragma: no cover - the files were just written

@@ -30,6 +30,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from vethuq_core.hints import Hints
 from vethuq_core.paths import Paths
 from vethuq_core.storage import default_db_path
 
@@ -195,7 +196,7 @@ class BackgroundService:
         if action != "install" and not current.installed:
             raise BackgroundServiceError(
                 "The background service isn't installed. "
-                "Install it with 'vethuq background-service install'."
+                f"Install it with '{Hints.command('background-service install')}'."
             )
         if action == "pause" and current.state == ServiceState.PAUSED:
             raise BackgroundServiceError("The background service is already paused.")

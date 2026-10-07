@@ -9,6 +9,7 @@ import typer
 from rich.panel import Panel
 from rich.text import Text
 from vethuq_core.db.backup import Backup, BackupError
+from vethuq_core.hints import Hints
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.languages import Languages
 from vethuq_core.paths import Paths
@@ -1662,7 +1663,7 @@ def location_show() -> None:
     if Paths.env_location():
         source = f"set by the {Paths.ENV_VAR} environment variable"
     elif Paths.configured_location():
-        source = "set by 'vethuq settings location set'"
+        source = f"set by '{Hints.command('settings location set')}'"
     else:
         source = "the platform default"
     console.print(
@@ -1743,7 +1744,7 @@ def backups_location_show() -> None:
     """Show where database backups are kept."""
     folder = Paths.backups_dir(default_db_path(), create=False)
     source = (
-        "set by 'vethuq settings location backups set'"
+        f"set by '{Hints.command('settings location backups set')}'"
         if Paths.configured_backups_location()
         else "the default, next to the database"
     )

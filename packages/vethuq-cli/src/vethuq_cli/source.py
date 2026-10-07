@@ -13,6 +13,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.formatting import Formatting
+from vethuq_core.hints import Hints
 from vethuq_core.languages import UnknownLanguageError
 from vethuq_core.ocr import Deepening
 from vethuq_core.search import Export
@@ -99,7 +100,7 @@ def add(
                     (source.path, "white"),
                     language_note,
                     ("\n\nRun '", "white"),
-                    ("vethuq index run", Theme.COMMAND),
+                    (Hints.command("vethuq index run"), Theme.COMMAND),
                     ("' to process pending sources.", "white"),
                 ),
                 Theme.OK,

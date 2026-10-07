@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vethuq_core.hints import Hints
 from vethuq_core.index.runner import AlreadyRunningError, IndexRunner, IndexRunnerError
 from vethuq_core.logs import Logs
 from vethuq_core.sources import Source, Sources
@@ -181,7 +182,7 @@ class Reindex:
             if row is None:
                 raise FileNotTrackedError(
                     f"{path} isn't tracked under any source. "
-                    "Register its folder with 'vethuq source add <path>' first."
+                    f"Register its folder with '{Hints.command('source add <path>')}' first."
                 )
             Reindex._check_ambiguity(storage, Path(path), source)
 
@@ -207,5 +208,9 @@ class Reindex:
             listing = ", ".join(f"{s.id} ({s.path})" for s in covering)
             raise AmbiguousFileError(
                 f"{path} is under more than one source: {listing}. "
-                "Pass --source <id or path> to choose one."
+                + (
+                    "Give the source when asked."
+                    if Hints.interactive
+                    else "Pass --source <id or path> to choose one."
+                )
             )

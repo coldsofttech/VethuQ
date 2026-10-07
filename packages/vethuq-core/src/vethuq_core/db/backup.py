@@ -28,6 +28,7 @@ from pathlib import Path
 from vethuq_core.db.connection import Db
 from vethuq_core.db.integrity import IntegrityCheckResult
 from vethuq_core.db.queries.semantic import Semantic
+from vethuq_core.hints import Hints
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
 from vethuq_core.settings import DbSettings, Settings
@@ -206,13 +207,17 @@ class Backup:
         by_name = Backup.directory(db_path) / f"{name_or_path}{Backup.SUFFIX}"
         if by_name.is_file():
             return by_name
-        raise BackupError(f"No backup named '{name_or_path}' (see 'vethuq db backup list').")
+        raise BackupError(
+            f"No backup named '{name_or_path}' (see '{Hints.command('db backup list')}')."
+        )
 
     @staticmethod
     def delete(db_path: Path, name: str) -> None:
         path = Backup.directory(db_path) / f"{name}{Backup.SUFFIX}"
         if not path.is_file():
-            raise BackupError(f"No backup named '{name}' (see 'vethuq db backup list').")
+            raise BackupError(
+                f"No backup named '{name}' (see '{Hints.command('db backup list')}')."
+            )
         path.unlink()
         _logger.info("Deleted database backup %s", path)
 

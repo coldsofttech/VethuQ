@@ -9,6 +9,7 @@ from vethuq_core.db.migration import Migration
 from vethuq_core.db.queries.documents import Document
 from vethuq_core.db.queries.semantic import Semantic
 from vethuq_core.errors import CorruptDatabaseError, SchemaVersionError
+from vethuq_core.hints import Hints
 from vethuq_core.logs import Logs
 from vethuq_core.paths import Paths
 
@@ -354,7 +355,8 @@ END;
         _logger.error("Database file is corrupt or not a database: path=%s (%s)", db_path, exc)
         return CorruptDatabaseError(
             f"The VethuQ database at {db_path} is damaged or isn't a database ({exc}).",
-            "Restore a backup with 'vethuq db restore <name>' (see 'vethuq db backup list'), "
+            f"Restore a backup with '{Hints.command('db restore <name>')}' "
+            f"(see '{Hints.command('db backup list')}'), "
             "or move the file aside to start fresh.",
         )
 

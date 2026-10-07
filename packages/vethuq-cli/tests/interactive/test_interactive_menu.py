@@ -601,3 +601,78 @@ class TestFileTypesMenu:
         result = runner.invoke(app, [], input="8\n1\n2\n0\n0\n10\n")
 
         assert "not installed" in result.stdout
+
+
+class TestMenuDescriptions:
+    def test_the_main_menu_explains_each_name(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="10\n")
+
+        assert "Index - OCR & Indexing" in result.stdout
+        assert "Sources - The files and folders VethuQ indexes" in result.stdout
+        assert "Db - Database backup, repair and restore" in result.stdout
+        assert "Exit" in result.stdout
+
+    def test_sub_menus_explain_their_items(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="4\n2\n0\n0\n10\n")
+
+        assert "Snippet - How much text shows around a match" in result.stdout
+        assert "Noise Level - Stray characters allowed inside a match" in result.stdout
+
+    def test_picking_by_number_still_works_with_descriptions(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="3\n0\n10\n")
+
+        assert "Run - Index sources that are waiting" in result.stdout
+        assert "Goodbye." in result.stdout
+
+
+class TestNoVethuqCommandInTheShell:
+    def test_index_run_points_at_the_menu_not_a_command(self, use_temp_db, tmp_path):
+        use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+
+        result = runner.invoke(app, [], input=f"2\n3\n{folder}\n0\n10\n")
+
+        assert "Added folder" in result.stdout
+        assert "Index > Run" in result.stdout
+        assert "vethuq index run" not in result.stdout
+
+    def test_an_empty_index_run_names_the_sources_menu(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="3\n1\n\nn\n0\n10\n")
+
+        assert "Sources > Add" in result.stdout
+        assert "vethuq source add" not in result.stdout
+
+    def test_a_database_error_names_menu_paths(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, [], input="6\n3\nno-such-backup\ny\n0\n10\n")
+
+        assert "Db > Backup > List" in result.output
+        assert "vethuq db" not in result.output
+
+    def test_the_terminal_is_unchanged(self, use_temp_db, tmp_path):
+        use_temp_db()
+        folder = tmp_path / "docs"
+        folder.mkdir()
+
+        result = runner.invoke(app, ["source", "add", str(folder)])
+
+        assert "vethuq index run" in result.stdout
+
+    def test_the_shell_does_not_leave_hints_on(self, use_temp_db):
+        from vethuq_core.hints import Hints
+
+        use_temp_db()
+
+        runner.invoke(app, [], input="10\n")
+
+        assert Hints.interactive is False

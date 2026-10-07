@@ -9,6 +9,7 @@ from rich.console import RenderableType
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
+from vethuq_core.hints import Hints
 from vethuq_core.search import (
     Export,
     PageResult,
@@ -44,6 +45,24 @@ _NO_MATCH_HINTS = {
     "semantic": "`semantic` only finds passages whose meaning is close enough to yours. Try "
     "`--fuzziness loose` (or a lower --threshold), more words describing what you mean, or "
     "`vethuq settings search semantic combine full-text` to also match your exact words.",
+}
+
+# The interactive search asks for these as prompts, so its hints point at the prompt, not a flag.
+_NO_MATCH_HINTS_INTERACTIVE = {
+    "exact": "`exact` only finds the text as typed, as a whole word. "
+    "Try the `like` engine to match part of a word or ignore case.",
+    "full-text": "`full-text` only finds whole words (add `*` for a prefix, e.g. `mus*`). "
+    "Try the `like` engine to match part of a word.",
+    "fuzzy": "`fuzzy` only finds whole words close to yours (words under 4 letters and "
+    "numbers must match exactly). Try a looser fuzziness or the `like` engine.",
+    "proximity": "`proximity` needs every word within the distance of the others, as whole "
+    "words. Try a looser distance or the `full-text` engine.",
+    "noise-fuzzy": "`noise-fuzzy` finds your characters hidden by a little stray punctuation or "
+    "whitespace, look-alike symbols and a typo or two - not letters in between. Try "
+    "a higher noise, a looser fuzziness or an extended leet level.",
+    "semantic": "`semantic` only finds passages whose meaning is close enough to yours. Try "
+    "a looser closeness, more words describing what you mean, or set "
+    "Settings > Search > Semantic > Combine to also match your exact words.",
 }
 
 
@@ -378,8 +397,9 @@ def search(
             raise typer.Exit(code=1) from exc
         if not matches:
             message = Text("No matches found.", style=Theme.NOTICE)
-            if options.engine in _NO_MATCH_HINTS:
-                message.append(f"\n\n{_NO_MATCH_HINTS[options.engine]}", style="bright_black")
+            hints = _NO_MATCH_HINTS_INTERACTIVE if Hints.interactive else _NO_MATCH_HINTS
+            if options.engine in hints:
+                message.append(f"\n\n{hints[options.engine]}", style="bright_black")
             console.print(ResultRenderer.message_panel(message, Theme.NOTICE))
             return
 

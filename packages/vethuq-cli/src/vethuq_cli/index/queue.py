@@ -6,6 +6,7 @@ import json
 
 import typer
 from rich.text import Text
+from vethuq_core.hints import Hints
 from vethuq_core.index import IndexJob, IndexJobs
 
 from vethuq_cli.console import console, error_console
@@ -132,7 +133,7 @@ def queue_show(
             IndexPanel.message(
                 Text.assemble(
                     ("Progress: '", "white"),
-                    ("vethuq index status", Theme.COMMAND),
+                    (Hints.command("vethuq index status"), Theme.COMMAND),
                     ("'.", "white"),
                 ),
                 "bright_black",

@@ -14,6 +14,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from vethuq_core.hints import Hints
 from vethuq_core.logs import LogNotFoundError, Logs
 from vethuq_core.search import Export
 from vethuq_core.storage import default_db_path
@@ -131,7 +132,7 @@ class LogsCommand:
             table.add_row(component, str(Logs.log_file(component, db_path)))
         hint = Text.assemble(
             ("Read one with ", "white"),
-            ("vethuq logs <component> --tail 40", Theme.COMMAND),
+            (Hints.command("vethuq logs <component> --tail 40"), Theme.COMMAND),
             (".", "white"),
         )
         console.print(

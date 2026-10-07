@@ -29,6 +29,7 @@ from pathlib import Path
 from platformdirs import user_config_dir, user_data_dir
 
 from vethuq_core.errors import DataFolderNotWritableError, InvalidConfigError
+from vethuq_core.hints import Hints
 
 
 class Paths:
@@ -109,7 +110,7 @@ class Paths:
             raise DataFolderNotWritableError(
                 f"VethuQ can't write to its data folder {folder} ({exc.strerror or exc}).",
                 f"Check the folder's permissions and free space, or choose another with "
-                f"'vethuq settings location set' or the {Paths.ENV_VAR} setting.",
+                f"'{Hints.command('settings location set')}' or the {Paths.ENV_VAR} setting.",
             ) from exc
 
     @staticmethod

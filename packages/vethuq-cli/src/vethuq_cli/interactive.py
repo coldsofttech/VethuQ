@@ -15,6 +15,7 @@ from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.branding import APP_NAME, APP_TAGLINE
+from vethuq_core.hints import Hints
 from vethuq_core.settings import (
     DbSettings,
     IndexSettings,
@@ -174,17 +175,22 @@ class InteractiveMenu:
         )
 
     @staticmethod
-    def _menu_panel(title: str, items: list[tuple[str, str]]) -> Panel:
+    def _menu_panel(title: str, items: list[tuple[str, ...]]) -> Panel:
         """A menu as a full-width panel: its title, then one numbered row per item.
 
-        Back (`0`) and Exit read dimmer than the real choices.
+        An item is `(key, label)` or `(key, label, description)`; the description follows the
+        label in a dimmer colour, so a name like `Index` also says what it is for (`OCR &
+        Indexing`). Back (`0`) and Exit read dimmer than the real choices.
         """
         table = Table.grid(padding=(0, 2))
         table.add_column(justify="right", style="bright_black", no_wrap=True)
         table.add_column(no_wrap=False, overflow="fold")
-        for key, label in items:
+        for key, label, *description in items:
             leaves = key == "0" or label == "Exit"
-            table.add_row(key, Text(label, style="bright_black" if leaves else "white"))
+            text = Text(label, style="bright_black" if leaves else "white")
+            if description:
+                text.append(f" - {description[0]}", style="bright_black")
+            table.add_row(key, text)
         return Panel(
             table,
             title=Text(title, style="bold"),
@@ -196,10 +202,10 @@ class InteractiveMenu:
         )
 
     @staticmethod
-    def _select(title: str, items: list[tuple[str, str]]) -> str:
+    def _select(title: str, items: list[tuple[str, ...]]) -> str:
         """Show a menu and return the chosen key; `q` leaves the whole shell."""
         console.print(InteractiveMenu._menu_panel(title, items))
-        keys = [key for key, _ in items]
+        keys = [item[0] for item in items]
         while True:
             raw = Prompt.ask("Select", console=console).strip().lower()
             if raw in ("q", "quit"):
@@ -350,10 +356,10 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Sources",
                 [
-                    ("1", "List"),
-                    ("2", "List Files"),
-                    ("3", "Add"),
-                    ("4", "Remove"),
+                    ("1", "List", "All registered sources"),
+                    ("2", "List Files", "The files under one source"),
+                    ("3", "Add", "Register a file or folder"),
+                    ("4", "Remove", "Stop indexing a source"),
                     ("0", "Back"),
                 ],
             )
@@ -398,16 +404,20 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Index",
                 [
-                    ("1", "Run"),
-                    ("2", "Restart"),
-                    ("3", "Status"),
-                    ("4", "Stop"),
-                    ("5", "Pause"),
-                    ("6", "Resume"),
-                    ("7", "History"),
-                    ("8", "Reindex source"),
-                    ("9", "Reindex file"),
-                    ("10", "Rebuild search index"),
+                    ("1", "Run", "Index sources that are waiting"),
+                    ("2", "Restart", "Retry files that failed"),
+                    ("3", "Status", "Progress, or per-file results for a source"),
+                    ("4", "Stop", "Stop the running index"),
+                    ("5", "Pause", "Pause the running index"),
+                    ("6", "Resume", "Continue a paused index"),
+                    ("7", "History", "Past index runs"),
+                    ("8", "Reindex source", "Redo every file of one source"),
+                    ("9", "Reindex file", "Redo a single file"),
+                    (
+                        "10",
+                        "Rebuild search index",
+                        "Rebuild the search tables (fixes missing results)",
+                    ),
                     ("0", "Back"),
                 ],
             )
@@ -499,7 +509,13 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > GPU",
-                [("1", "Enable"), ("2", "Disable"), ("3", "Status"), ("4", "Reset"), ("0", "Back")],
+                [
+                    ("1", "Enable", "Use the GPU for OCR"),
+                    ("2", "Disable", "Use the CPU only"),
+                    ("3", "Status", "Whether the GPU is in use"),
+                    ("4", "Reset"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -636,7 +652,12 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Normalize",
-                [("1", "Case"), ("2", "Leetspeak"), ("3", "Unicode"), ("0", "Back")],
+                [
+                    ("1", "Case", "Match upper and lower case"),
+                    ("2", "Leetspeak", "Read look-alikes (1 for l, 0 for o)"),
+                    ("3", "Unicode", "Compose characters and fold accents"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -691,7 +712,12 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Search > Semantic",
-                [("1", "Threshold"), ("2", "Limit"), ("3", "Combine"), ("0", "Back")],
+                [
+                    ("1", "Threshold", "How close in meaning a passage must be"),
+                    ("2", "Limit", "How many pages come back"),
+                    ("3", "Combine", "Rank with full-text or lexical results"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -733,14 +759,14 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Settings > Search",
                 [
-                    ("1", "Snippet"),
-                    ("2", "Export Format"),
-                    ("3", "Engine"),
-                    ("4", "Fuzzy Threshold"),
-                    ("5", "Proximity Distance"),
-                    ("6", "Normalize"),
-                    ("7", "Noise Level"),
-                    ("8", "Semantic"),
+                    ("1", "Snippet", "How much text shows around a match"),
+                    ("2", "Export Format", "Default format for exports (json or html)"),
+                    ("3", "Engine", "Default search engine"),
+                    ("4", "Fuzzy Threshold", "How close a fuzzy match must be"),
+                    ("5", "Proximity Distance", "How near words must be to each other"),
+                    ("6", "Normalize", "Case, accent and look-alike handling"),
+                    ("7", "Noise Level", "Stray characters allowed inside a match"),
+                    ("8", "Semantic", "Searching by meaning"),
                     ("0", "Back"),
                 ],
             )
@@ -871,7 +897,13 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Settings > Db > Integrity Check",
-                [("1", "Show"), ("2", "Set"), ("3", "Interval"), ("4", "Reset"), ("0", "Back")],
+                [
+                    ("1", "Show"),
+                    ("2", "Set"),
+                    ("3", "Interval", "How often the check runs"),
+                    ("4", "Reset"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -931,8 +963,8 @@ class InteractiveMenu:
                 [
                     ("1", "Show"),
                     ("2", "Set"),
-                    ("3", "Interval"),
-                    ("4", "Retention"),
+                    ("3", "Interval", "How often a backup is made"),
+                    ("4", "Retention", "How long backups are kept"),
                     ("5", "Reset"),
                     ("0", "Back"),
                 ],
@@ -1002,10 +1034,10 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Settings > Index",
                 [
-                    ("1", "Removed Retention"),
-                    ("2", "Thread Workers"),
-                    ("3", "Stale Lock"),
-                    ("4", "Stability Check"),
+                    ("1", "Removed Retention", "How long removed files are remembered"),
+                    ("2", "Thread Workers", "How many files are processed at once"),
+                    ("3", "Stale Lock", "Clear a lock a crashed run left behind"),
+                    ("4", "Stability Check", "Wait for a file to finish being written"),
                     ("0", "Back"),
                 ],
             )
@@ -1024,7 +1056,12 @@ class InteractiveMenu:
     def _settings_ocr_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Ocr", [("1", "Retry"), ("2", "Engine"), ("0", "Back")]
+                "Settings > Ocr",
+                [
+                    ("1", "Retry", "Retries for pages that fail"),
+                    ("2", "Engine", "Which OCR engine reads pages"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1037,7 +1074,12 @@ class InteractiveMenu:
     def _stats_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Stats", [("1", "Show"), ("2", "Reset"), ("0", "Back")]
+                "Stats",
+                [
+                    ("1", "Show", "Current OCR statistics"),
+                    ("2", "Reset", "Clear the statistics"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1051,7 +1093,11 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "File types",
-                [("1", "List installed"), ("2", "List all"), ("0", "Back")],
+                [
+                    ("1", "List installed", "Types this install reads"),
+                    ("2", "List all", "Every type, with how to add the missing ones"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1062,7 +1108,11 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Search engines",
-                [("1", "List installed"), ("2", "List all"), ("0", "Back")],
+                [
+                    ("1", "List installed", "Engines this install has"),
+                    ("2", "List all", "Every engine, with how to add the missing ones"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1073,7 +1123,11 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "File types & search engines",
-                [("1", "File types"), ("2", "Search engines"), ("0", "Back")],
+                [
+                    ("1", "File types", "Which kinds of file can be read"),
+                    ("2", "Search engines", "Which ways of searching are installed"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1086,7 +1140,12 @@ class InteractiveMenu:
     def _settings_db_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Db", [("1", "Integrity Check"), ("2", "Backup"), ("0", "Back")]
+                "Settings > Db",
+                [
+                    ("1", "Integrity Check", "Automatic database checks"),
+                    ("2", "Backup", "Automatic database backups"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1137,7 +1196,12 @@ class InteractiveMenu:
     def _settings_logs_menu() -> None:
         while True:
             choice = InteractiveMenu._select(
-                "Settings > Logs", [("1", "Level"), ("2", "Retention"), ("0", "Back")]
+                "Settings > Logs",
+                [
+                    ("1", "Level", "How much is recorded"),
+                    ("2", "Retention", "How many days of logs are kept"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1188,13 +1252,13 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Settings",
                 [
-                    ("1", "GPU"),
-                    ("2", "Search"),
-                    ("3", "Index"),
-                    ("4", "Ocr"),
-                    ("5", "Db"),
-                    ("6", "Logs"),
-                    ("7", "Location"),
+                    ("1", "GPU", "Use the graphics card for OCR"),
+                    ("2", "Search", "How searching behaves"),
+                    ("3", "Index", "Indexing behaviour and clean-up"),
+                    ("4", "Ocr", "OCR retries and engine"),
+                    ("5", "Db", "Database checks and backups"),
+                    ("6", "Logs", "Log level and how long logs are kept"),
+                    ("7", "Location", "Where VethuQ keeps its data"),
                     ("0", "Back"),
                 ],
             )
@@ -1220,7 +1284,12 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Db > Backup",
-                [("1", "Create"), ("2", "List"), ("3", "Delete"), ("0", "Back")],
+                [
+                    ("1", "Create", "Take a backup now"),
+                    ("2", "List", "Existing backups"),
+                    ("3", "Delete", "Remove a backup"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1239,11 +1308,11 @@ class InteractiveMenu:
             choice = InteractiveMenu._select(
                 "Db",
                 [
-                    ("1", "Integrity Check"),
-                    ("2", "Backup"),
-                    ("3", "Restore"),
-                    ("4", "Repair"),
-                    ("5", "Reset"),
+                    ("1", "Integrity Check", "Check the database for damage"),
+                    ("2", "Backup", "Create, list and delete backups"),
+                    ("3", "Restore", "Replace the database with a backup"),
+                    ("4", "Repair", "Fix a damaged database"),
+                    ("5", "Reset", "Clear everything and start fresh"),
                     ("0", "Back"),
                 ],
             )
@@ -1266,7 +1335,13 @@ class InteractiveMenu:
         while True:
             choice = InteractiveMenu._select(
                 "Logs",
-                [("1", "Database"), ("2", "Index"), ("3", "Ui"), ("4", "Cli"), ("0", "Back")],
+                [
+                    ("1", "Database", "Database activity"),
+                    ("2", "Index", "Indexing runs"),
+                    ("3", "Ui", "The desktop app"),
+                    ("4", "Cli", "Commands that were run"),
+                    ("0", "Back"),
+                ],
             )
             if choice == "0":
                 return
@@ -1291,20 +1366,25 @@ class InteractiveMenu:
     def run() -> None:
         """Show the interactive shell used when `vethuq` is invoked with no subcommand."""
         InteractiveMenu._print_banner()
+        Hints.interactive = True
         try:
             while True:
                 choice = InteractiveMenu._select(
                     "Main Menu",
                     [
-                        ("1", "Search"),
-                        ("2", "Sources"),
-                        ("3", "Index"),
-                        ("4", "Settings"),
-                        ("5", "Stats"),
-                        ("6", "Db"),
-                        ("7", "Logs"),
-                        ("8", "File types & search engines"),
-                        ("9", "Version"),
+                        ("1", "Search", "Find text in your indexed files"),
+                        ("2", "Sources", "The files and folders VethuQ indexes"),
+                        ("3", "Index", "OCR & Indexing"),
+                        ("4", "Settings", "Configure how VethuQ behaves"),
+                        ("5", "Stats", "OCR speed and confidence statistics"),
+                        ("6", "Db", "Database backup, repair and restore"),
+                        ("7", "Logs", "Read VethuQ's log files"),
+                        (
+                            "8",
+                            "File types & search engines",
+                            "What this install can read and search with",
+                        ),
+                        ("9", "Version", "VethuQ and component versions"),
                         ("10", "Exit"),
                     ],
                 )
@@ -1330,5 +1410,7 @@ class InteractiveMenu:
                     InteractiveMenu._run_safely(VersionCommand.show)
         except _Quit:
             pass
+        finally:
+            Hints.interactive = False
         console.print()
         console.print("Goodbye.", style="bright_black")

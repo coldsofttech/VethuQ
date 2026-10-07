@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from vethuq_core.hints import Hints
 from vethuq_core.index.jobs import IndexJobs
 from vethuq_core.index.runner import IndexRunner, IndexRunnerError
 from vethuq_core.storage import default_db_path, open_storage
@@ -86,7 +87,7 @@ class Indexing:
         if via == Indexing.VIA_SERVICE and service is None:
             raise IndexRunnerError(
                 "The background service isn't installed. "
-                "Install it with 'vethuq background-service install'."
+                f"Install it with '{Hints.command('background-service install')}'."
             )
         db = db_path or default_db_path()
         IndexJobs.prune(db)  # a periodic caller (the app's rescan) would otherwise grow the table

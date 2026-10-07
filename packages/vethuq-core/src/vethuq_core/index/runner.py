@@ -34,6 +34,7 @@ from typing import IO
 
 from vethuq_core.errors import CorruptDatabaseError
 from vethuq_core.errors import StaleLockError as _StaleLockError
+from vethuq_core.hints import Hints
 from vethuq_core.index.jobs import IndexJobs
 from vethuq_core.logs import Logs
 from vethuq_core.ocr import Ocr, Pending, Scheduler
@@ -557,8 +558,12 @@ class IndexRunner:
                 if not auto_clear:
                     raise StaleLockError(
                         "Found a lock left behind by a run that didn't exit cleanly. "
-                        "Use --force to clear it and start a new run, or "
-                        "`vethuq settings index stale-lock set enable` to clear it "
+                        + (
+                            ""
+                            if Hints.interactive
+                            else "Use --force to clear it and start a new run, or "
+                        )
+                        + f"`{Hints.command('settings index stale-lock set enable')}` to clear it "
                         "automatically next time."
                     )
             lock_path.unlink(missing_ok=True)
@@ -652,7 +657,7 @@ class IndexRunner:
                     raise OcrModelMissingError(
                         f"The {language.label} OCR models are not downloaded "
                         f"({len(missing)} missing).",
-                        f"Run: vethuq ocr models download --lang {language_id}",
+                        f"Run: {Hints.command(f'ocr models download --lang {language_id}')}",
                     )
                 IndexRunner._logger.warning(
                     "The %s OCR models are not downloaded (%d missing); files that need that "
@@ -752,8 +757,9 @@ class IndexRunner:
         )
         raise DatabaseIntegrityError(
             f"The database failed its integrity check after recovering because {reason}. "
-            "Run 'vethuq db integrity-check' for details, then 'vethuq db repair', or "
-            "'vethuq db restore <name>' (see 'vethuq db backup list'). 'vethuq db reset' "
+            f"Run '{Hints.command('db integrity-check')}' for details, then "
+            f"'{Hints.command('db repair')}', or '{Hints.command('db restore <name>')}' "
+            f"(see '{Hints.command('db backup list')}'). '{Hints.command('db reset')}' "
             "clears everything as a last resort.",
             messages,
         )

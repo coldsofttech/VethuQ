@@ -14,6 +14,7 @@ from rich.text import Text
 from vethuq_core.db.backup import Backup, BackupError, BackupInfo
 from vethuq_core.db.integrity import IntegrityCheck
 from vethuq_core.formatting import Formatting
+from vethuq_core.hints import Hints
 from vethuq_core.index.runner import IndexRunner
 from vethuq_core.storage import default_db_path, open_storage
 
@@ -53,10 +54,15 @@ class DbPanel:
         """Where the database that was just replaced went, and how to get it back."""
         if safety is None:
             return Text()
+        saved = ("\n\nThe previous database was saved as ", "white"), (safety.name, Theme.VALUE)
+        if Hints.interactive:
+            return Text.assemble(
+                *saved,
+                (f". Undo with '{Hints.command('db restore')}' and that name.", "white"),
+            )
         return Text.assemble(
-            ("\n\nThe previous database was saved as ", "white"),
-            (safety.name, Theme.VALUE),
-            (". Undo with 'vethuq db restore ", "white"),
+            *saved,
+            (f". Undo with '{Hints.command('db restore')} ", "white"),
             (safety.name, Theme.VALUE),
             ("'.", "white"),
         )
@@ -75,7 +81,7 @@ class DbCommands:
         """Refuse to touch the database files while an index run could be writing to them."""
         if IndexRunner.is_running(db_path)[0]:
             raise DbCommands.fail(
-                "An index run is in progress. Stop it first with 'vethuq index stop'."
+                f"An index run is in progress. Stop it first with '{Hints.command('index stop')}'."
             )
 
     @staticmethod
@@ -307,8 +313,9 @@ def repair(
     for line in result.errors:
         error_console.print(f"  {line}", style=Theme.ERROR)
     error_console.print(
-        "Restore a backup with 'vethuq db restore <name>' (see 'vethuq db backup list'), "
-        "or clear everything with 'vethuq db reset'.",
+        f"Restore a backup with '{Hints.command('db restore <name>')}' "
+        f"(see '{Hints.command('db backup list')}'), "
+        f"or clear everything with '{Hints.command('db reset')}'.",
         style=Theme.ERROR,
     )
     raise typer.Exit(code=1)

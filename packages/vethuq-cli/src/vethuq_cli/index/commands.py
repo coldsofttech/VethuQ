@@ -13,6 +13,7 @@ from rich.prompt import Confirm, Prompt
 from rich.text import Text
 from typer._click.core import Context
 from typer.core import TyperGroup
+from vethuq_core.hints import Hints
 from vethuq_core.index import (
     AlreadyRunningError,
     AmbiguousFileError,
@@ -120,7 +121,7 @@ def _start_and_report(
                 IndexPanel.message(
                     Text.assemble(
                         ("No sources registered yet. Register one with '", "white"),
-                        ("vethuq source add <path>", Theme.COMMAND),
+                        (Hints.command("vethuq source add <path>"), Theme.COMMAND),
                         ("'.", "white"),
                     ),
                     "bright_black",
@@ -155,7 +156,7 @@ def _report_started(pid: int, verb: str, *, wait: bool) -> None:
     started = Text.assemble((f"Started background {verb} (pid {pid}).", Theme.OK))
     if not wait:
         started.append("\n\nCheck progress with '", style="white")
-        started.append("vethuq index status", style=Theme.COMMAND)
+        started.append(Hints.command("vethuq index status"), style=Theme.COMMAND)
         started.append("'.", style="white")
         console.print(IndexPanel.message(started, Theme.OK))
         return
@@ -185,13 +186,13 @@ def _report_submitted(submission: IndexSubmission, verb: str, *, wait: bool) -> 
             "until it is running. Use '",
             style="white",
         )
-        text.append("vethuq background-service resume", style=Theme.COMMAND)
+        text.append(Hints.command("vethuq background-service resume"), style=Theme.COMMAND)
         text.append("' or '", style="white")
-        text.append("vethuq background-service start", style=Theme.COMMAND)
+        text.append(Hints.command("vethuq background-service start"), style=Theme.COMMAND)
         text.append("'.", style="white")
     if not wait:
         text.append("\n\nCheck progress with '", style="white")
-        text.append("vethuq index status", style=Theme.COMMAND)
+        text.append(Hints.command("vethuq index status"), style=Theme.COMMAND)
         text.append("'.", style="white")
         console.print(IndexPanel.message(text, Theme.OK))
         return

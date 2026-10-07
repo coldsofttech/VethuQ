@@ -9,6 +9,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.formatting import Formatting
+from vethuq_core.hints import Hints
 from vethuq_core.search.engines.catalog import SearchEngineCatalog
 from vethuq_core.semantic import (
     Embedders,
@@ -118,7 +119,7 @@ def status() -> None:
             "Out of date",
             Text(
                 f"{index.stale} pages were embedded another way and are embedded again "
-                "by the next search or `vethuq semantic index`",
+                f"by the next search or `{Hints.command('semantic index')}`",
                 style=Theme.WARNING,
             ),
         )

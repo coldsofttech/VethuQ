@@ -17,6 +17,7 @@ from vethuq_core.background import (
     ServiceState,
     ServiceStatus,
 )
+from vethuq_core.hints import Hints
 from vethuq_core.index import IndexRunner
 
 from vethuq_cli.console import console, error_console
@@ -163,7 +164,7 @@ def _status_text(status: ServiceStatus) -> Text:
             text.append(f"\nData folder: {status.home}", style="white")
     elif status.supported:
         text.append("\n\nInstall it with '", style="white")
-        text.append("vethuq background-service install", style=Theme.COMMAND)
+        text.append(Hints.command("vethuq background-service install"), style=Theme.COMMAND)
         text.append("'.", style="white")
     else:
         text.append("\n\nThis system has neither Windows services nor systemd.", style="white")
@@ -205,7 +206,7 @@ def status(
                 style="white",
             )
             text.append("\n\nDetails: '", style="white")
-            text.append("vethuq index status", style=Theme.COMMAND)
+            text.append(Hints.command("vethuq index status"), style=Theme.COMMAND)
             text.append("'.", style="white")
     console.print(IndexPanel.message(text, STATE_STYLES.get(service.state, Theme.PRIMARY), TITLE))
     if queued:
