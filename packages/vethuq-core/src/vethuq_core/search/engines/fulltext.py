@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from vethuq_core.languages import Scripts
 from vethuq_core.search.engines.base import SearchEngineUnavailable, SearchMatch
@@ -124,9 +125,12 @@ class FullTextSearchEngine:
         punctuation and FTS5 operators (`AND`, `NEAR`, `-`, `:` ...) in the query
         are searched as plain text and never interpreted. Terms with no word
         characters are dropped.
+
+        The query is composed (NFC) first: an accent typed as a separate combining mark is not a
+        word character and would otherwise cut the word in two.
         """
         terms = []
-        for phrase, bare in FullTextSearchEngine._TERM.findall(query):
+        for phrase, bare in FullTextSearchEngine._TERM.findall(unicodedata.normalize("NFC", query)):
             words = FullTextSearchEngine._WORDS.findall(phrase or bare)
             if not words:
                 continue
@@ -140,10 +144,20 @@ class FullTextSearchEngine:
     def build_match_expression(query: str) -> str | None:
         """Turn a user's `query` into a safe FTS5 `MATCH` expression, or None if it has no words.
 
-        Every term (see `parse_terms`) must appear on the page (AND).
+        Every term (see `parse_terms`) must appear on the page (AND). A term whose decomposed
+        (NFD) spelling differs from the composed one is looked up in both, as the word index holds
+        text as it was written: Hangul as syllables or as jamo, `й` as one character or as `и`
+        plus a breve.
         """
         terms = FullTextSearchEngine.parse_terms(query)
-        return " ".join(terms) if terms else None
+        if not terms:
+            return None
+        return " ".join(FullTextSearchEngine._either_form(term) for term in terms)
+
+    @staticmethod
+    def _either_form(term: str) -> str:
+        decomposed = unicodedata.normalize("NFD", term)
+        return term if decomposed == term else f"({term} OR {decomposed})"
 
     @staticmethod
     def _highlighted_spans(highlighted: str) -> tuple[str, list[tuple[int, int]]]:

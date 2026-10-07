@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import unicodedata
+
 from vethuq_core.search.engines.base import SearchMatch, SearchQueryError
 from vethuq_core.search.engines.common import SearchEngineHelpers
 from vethuq_core.search.engines.like import LikeSearchEngine
+from vethuq_core.search.normalizers import Normalizers
 from vethuq_core.storage import Storage
 
 
@@ -16,6 +19,9 @@ class LexicalSearchEngine:
     `MATCH` and are ordered by BM25 relevance (`SearchMatch.score`) rather than by
     file path. Case-insensitive unless `case_sensitive` is set. The trigram index
     needs at least three characters, so a shorter query is rejected.
+
+    A query finds text written the other way (an `é` as one character or as `e` plus an accent):
+    the index is searched for both spellings and the hits are compared composed (NFC).
     """
 
     name = "lexical"
@@ -42,12 +48,21 @@ class LexicalSearchEngine:
         SearchEngineHelpers.require_no_distance(self.name, distance)
         if not query:
             return []
-        expression = SearchEngineHelpers.trigram_match(query)
+        composed = unicodedata.normalize("NFC", query)
+        expression = SearchEngineHelpers.trigram_match(composed)
         if expression is None:
             raise SearchQueryError(
                 f"The lexical engine needs at least {SearchEngineHelpers.TRIGRAM_MIN_CHARS} "
                 "characters; use the like engine for shorter queries."
             )
+
+        decomposed = unicodedata.normalize("NFD", composed)
+        if decomposed != composed:
+            expression = f"{expression} OR {SearchEngineHelpers.trigram_match(decomposed)}"
+        pipeline = Normalizers.pipeline(
+            {"unicode": "basic", "case": "match" if case_sensitive else "ignore"}
+        )
+        needle = pipeline.fold(composed).text
 
         chars = SearchEngineHelpers.resolve_context_chars(self._storage, context_chars)
         page_counts = SearchEngineHelpers.pdf_page_counts(self._storage)
@@ -60,9 +75,11 @@ class LexicalSearchEngine:
             page_number = row["page_number"]
             text = row["ocr_text"].replace("\n", " ")
             total_pages = page_counts.get(row["canonical_id"]) if page_number is not None else None
+            folded = pipeline.fold(text)
             for start, end in LikeSearchEngine._occurrences(
-                text, query, case_sensitive=case_sensitive
+                folded.text, needle, case_sensitive=True
             ):
+                start, end = folded.original(start, end)
                 matches.append(
                     SearchEngineHelpers.build_match(
                         document_id=row["document_id"],

@@ -10,6 +10,7 @@ from vethuq_core.search import Search
 ENGINES = ["exact", "fuzzy", "full-text", "like", "lexical"]
 WORD_ENGINES = ["exact", "fuzzy", "full-text", "like"]
 
+FORMS = [("NFC", "NFC"), ("NFC", "NFD"), ("NFD", "NFC"), ("NFD", "NFD")]
 COMPOSED = "café"
 DECOMPOSED = unicodedata.normalize("NFD", COMPOSED)
 
@@ -133,19 +134,19 @@ class TestComposedAndDecomposed:
         assert _found(storage, "café", "like") == [DECOMPOSED, COMPOSED]
         assert _found(storage, DECOMPOSED, "like") == [DECOMPOSED, COMPOSED]
 
-    def test_lexical_matches_the_form_as_stored(self, conn, storage):
+    def test_lexical_finds_the_other_form(self, conn, storage):
         SearchData.seed_page(conn, f"x {DECOMPOSED}s and {COMPOSED}s")
 
-        assert _found(storage, COMPOSED, "lexical") == [COMPOSED]
-        assert _found(storage, DECOMPOSED, "lexical") == [DECOMPOSED]
+        assert _found(storage, COMPOSED, "lexical") == [DECOMPOSED, COMPOSED]
+        assert _found(storage, DECOMPOSED, "lexical") == [DECOMPOSED, COMPOSED]
 
-    @pytest.mark.xfail(
-        strict=True, reason="the trigram index compares code points, so the forms do not meet"
-    )
-    def test_lexical_finds_the_other_form(self, conn, storage):
-        SearchData.seed_page(conn, f"x {DECOMPOSED}s")
+    def test_lexical_reports_where_the_decomposed_match_is(self, conn, storage):
+        SearchData.seed_page(conn, f"eat at the {DECOMPOSED} today")
 
-        assert _found(storage, COMPOSED, "lexical") == [DECOMPOSED]
+        (match,) = Search.indexed_content(storage, COMPOSED, engine="lexical")
+
+        assert match.matched == DECOMPOSED
+        assert match.before.endswith("the ") and match.after.startswith(" today")
 
     @pytest.mark.parametrize("engine", ["like", "exact"])
     def test_the_accent_is_not_dropped_by_composing(self, conn, storage, engine):
@@ -161,10 +162,7 @@ class TestComposedAndDecomposed:
 
         assert Search.indexed_content(storage, "café école", engine="proximity", distance=8)
 
-    @pytest.mark.xfail(
-        strict=True, reason="an accent written as a separate mark ends the word for proximity"
-    )
-    @pytest.mark.parametrize(("query_form", "text_form"), [("NFD", "NFC"), ("NFD", "NFD")])
+    @pytest.mark.parametrize(("query_form", "text_form"), FORMS)
     def test_proximity_across_forms(self, conn, storage, query_form, text_form):
         SearchData.seed_page(conn, unicodedata.normalize(text_form, "Le café est près de l'école"))
         query = unicodedata.normalize(query_form, "café école")
@@ -180,13 +178,15 @@ class TestComposedAndDecomposed:
         assert _found(storage, "한국어", engine) == [decomposed_hangul]
         assert _found(storage, "Йод", engine) == [decomposed_cyrillic]
 
-    @pytest.mark.xfail(
-        strict=True, reason="the word index splits decomposed Hangul and Cyrillic marks"
-    )
-    def test_full_text_finds_decomposed_hangul(self, conn, storage):
-        SearchData.seed_page(conn, unicodedata.normalize("NFD", "한국어 Йод"))
+    @pytest.mark.parametrize("word", ["한국어", "Йод"])
+    @pytest.mark.parametrize(("query_form", "text_form"), FORMS)
+    def test_full_text_finds_hangul_and_cyrillic_in_either_form(
+        self, conn, storage, word, query_form, text_form
+    ):
+        written = unicodedata.normalize(text_form, word)
+        SearchData.seed_page(conn, f"a {written} b")
 
-        assert _found(storage, "한국어", "full-text")
+        assert _found(storage, unicodedata.normalize(query_form, word), "full-text") == [written]
 
 
 class TestProximityScripts:
