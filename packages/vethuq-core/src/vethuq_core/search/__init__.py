@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from vethuq_core.search.engines import PageResult, SearchEngineUnavailable, SearchQueryError
-    from vethuq_core.search.export import Export
+    from vethuq_core.search.export import Export, ExportSection
     from vethuq_core.search.languages import SearchLanguageError
     from vethuq_core.search.search import (
         FileMatch,
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 _EXPORTS = {
     "Export": "vethuq_core.search.export",
+    "ExportSection": "vethuq_core.search.export",
     "FileMatch": "vethuq_core.search.search",
     "PageResult": "vethuq_core.search.engines",
     "Search": "vethuq_core.search.search",
@@ -37,6 +38,7 @@ _EXPORTS = {
 
 __all__ = [
     "Export",
+    "ExportSection",
     "FileMatch",
     "PageResult",
     "Search",

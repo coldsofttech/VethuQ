@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from collections import deque
 from collections.abc import Iterable
 from pathlib import Path
@@ -14,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from vethuq_core.logs import LogNotFoundError, Logs
+from vethuq_core.search import Export
 from vethuq_core.storage import default_db_path
 
 from vethuq_cli.console import console, error_console
@@ -21,6 +23,8 @@ from vethuq_cli.theme import Theme
 
 
 class LogsCommand:
+    EXPORT_FORMATS = ("text", "json", "html")
+
     DEFAULT_TAIL = 40
 
     class _FollowView:
@@ -91,7 +95,8 @@ class LogsCommand:
         "A level can only show what was recorded, so entries below the level set with `vethuq "
         "settings logs level` are never in the file.\n\n"
         "--export FILE - write the selected entries to FILE as plain text, one entry per line "
-        "(a traceback stays with the entry that raised it), instead of printing them. "
+        "(a traceback stays with the entry that raised it), instead of printing them; "
+        "--format json or html writes them as a table instead. "
         "It uses the same selection as printing - the component, --tail, --level and --date - "
         "so `--level error --export errors.txt` saves just the errors. An existing FILE is "
         "overwritten, and --export can't be combined with --follow.\n\n"
@@ -174,8 +179,22 @@ class LogsCommand:
         export: str | None = typer.Option(
             None, "--export", help="Write the selected entries to this file instead of printing."
         ),
+        format_: str | None = typer.Option(
+            None,
+            "--format",
+            help=(
+                "Export format: 'text' (one entry per line, the default), 'json' or 'html' "
+                "(a table of time, level, thread, logger and message). Only used with --export."
+            ),
+        ),
     ) -> None:
         """Show the most recent entries of VethuQ's log files (database, index, ui, cli)."""
+        if format_ is not None and export is None:
+            raise LogsCommand._fail("--format needs --export.")
+        if format_ is not None and format_ not in LogsCommand.EXPORT_FORMATS:
+            raise LogsCommand._fail(
+                f"--format must be one of: {', '.join(LogsCommand.EXPORT_FORMATS)}."
+            )
         db_path = default_db_path()
         if component is None:
             LogsCommand._list_components(db_path)
@@ -195,7 +214,30 @@ class LogsCommand:
             records = []
 
         if export is not None:
-            written = Logs.export(records, export)
+            if format_ in ("json", "html"):
+                parsed = [Logs.parse(record) for record in records]
+                Export.records(
+                    parsed,
+                    [
+                        ("time", "Time"),
+                        ("level", "Level"),
+                        ("thread", "Thread"),
+                        ("logger", "Logger"),
+                        ("message", "Message"),
+                    ],
+                    Path(export),
+                    format_,
+                    title=f"{component.title()} log",
+                    key="entries",
+                    statuses=("level",),
+                    facets=("level", "logger"),
+                    formats={
+                        "message": lambda v: f'<span class="msg">{html.escape(str(v))}</span>'
+                    },
+                )
+                written = len(parsed)
+            else:
+                written = Logs.export(records, export)
             console.print(
                 LogsCommand._panel(
                     Text.assemble(

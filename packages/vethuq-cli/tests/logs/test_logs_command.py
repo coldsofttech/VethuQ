@@ -132,3 +132,66 @@ class TestFollowView:
 
         assert "Waiting for new log entries" in output
         assert "Index Log" in output
+
+
+class TestStructuredExport:
+    def _log(self, use_temp_db):
+        db_path = use_temp_db()
+        _write_log(
+            db_path,
+            _entry("INFO", "scan done: été 日本")
+            + "\n"
+            + _entry("ERROR", "boom")
+            + "\nTraceback (most recent call last):\n  File x\nValueError: bad\n",
+        )
+
+    def test_json_splits_each_entry_into_fields(self, use_temp_db, tmp_path):
+        import json
+
+        self._log(use_temp_db)
+        out = tmp_path / "out.json"
+
+        result = runner.invoke(app, ["logs", "index", "--export", str(out), "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["count"] == 2
+        first, second = data["entries"]
+        assert first["level"] == "info" and "été 日本" in first["message"]
+        assert second["level"] == "error" and "Traceback" in second["message"]
+        assert first["time"] and first["logger"]
+
+    def test_html_is_a_table_with_level_pills(self, use_temp_db, tmp_path):
+        self._log(use_temp_db)
+        out = tmp_path / "out.html"
+
+        result = runner.invoke(app, ["logs", "index", "--export", str(out), "--format", "html"])
+
+        assert result.exit_code == 0
+        text = out.read_text(encoding="utf-8")
+        assert 'class="pill bad"' in text and 'class="msg"' in text
+        assert "été 日本" in text and "ValueError: bad" in text
+
+    def test_text_stays_the_default(self, use_temp_db, tmp_path):
+        self._log(use_temp_db)
+        out = tmp_path / "out.log"
+
+        runner.invoke(app, ["logs", "index", "--export", str(out), "--format", "text"])
+
+        assert out.read_text(encoding="utf-8").startswith("20")
+
+    def test_an_unknown_format_is_refused(self, use_temp_db, tmp_path):
+        self._log(use_temp_db)
+
+        result = runner.invoke(
+            app, ["logs", "index", "--export", str(tmp_path / "x"), "--format", "csv"]
+        )
+
+        assert result.exit_code == 1
+
+    def test_format_needs_export(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["logs", "index", "--format", "json"])
+
+        assert result.exit_code == 1

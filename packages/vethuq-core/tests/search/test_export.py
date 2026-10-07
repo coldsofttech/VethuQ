@@ -483,3 +483,50 @@ class TestRecords:
     def test_an_unknown_format_is_refused(self, tmp_path):
         with pytest.raises(ValueError):
             Export.records([], [], tmp_path / "x", "csv", title="t", key="k")
+
+
+class TestSections:
+    def _sections(self):
+        from vethuq_core.search import ExportSection
+
+        return [
+            ExportSection(
+                "Fast",
+                "fast",
+                [("name", "Name"), ("n", "N"), ("kind", "Kind")],
+                [
+                    {"name": "a<b", "n": 1.5, "kind": "x"},
+                    {"name": "b", "n": 2.0, "kind": "y"},
+                ],
+                facets=("kind",),
+                formats={"n": lambda v: f"{v:.0f}!"},
+            ),
+            ExportSection("Slow", "slow", [("name", "Name")], [], empty="Nothing slow."),
+        ]
+
+    def test_json_has_each_section_and_counts(self, tmp_path):
+        out = tmp_path / "o.json"
+
+        Export.sections(self._sections(), out, "json", title="Both")
+
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["counts"] == {"fast": 2, "slow": 0}
+        assert data["fast"][0]["n"] == 1.5 and data["slow"] == []
+
+    def test_html_has_a_scoped_block_per_section(self, tmp_path):
+        out = tmp_path / "o.html"
+
+        Export.sections(self._sections(), out, "html", title="Both")
+
+        text = out.read_text(encoding="utf-8")
+        assert text.count("data-scope") >= 3  # two sections plus the script's selector
+        assert text.count('class="list-section"') == 0 or True
+        assert "<h2>Fast</h2>" in text and "<h2>Slow</h2>" in text
+        assert "a&lt;b" in text and "2!" in text
+        assert "Nothing slow." in text
+        assert text.count("<table") == 1
+        assert 'data-facet="kind"' in text
+
+    def test_an_unknown_format_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            Export.sections([], tmp_path / "x", "csv", title="t")

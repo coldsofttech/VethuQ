@@ -73,6 +73,11 @@
   .toolbar button:hover { background: var(--vq-primary-soft); border-color: var(--vq-primary); }
   .cards + .results, .chips + .results { margin-top: 1rem; }
 
+  .list-section { margin-top: 1.75rem; }
+  .list-section h2 { font-size: 1.1rem; margin: 0 0 0.6rem; }
+  .list-section .empty { color: var(--vq-text-muted); margin: 0; }
+  .msg { white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 0.82rem; }
+
   [hidden] { display: none !important; }
 
   /* Filters: one checkbox dropdown per facet, combined with AND across and OR within. */

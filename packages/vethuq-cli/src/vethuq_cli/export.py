@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 from rich.text import Text
-from vethuq_core.search import Export
+from vethuq_core.search import Export, ExportSection
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_core.storage import Storage, open_storage
 
@@ -77,3 +77,12 @@ class ListExport:
         output, format_ = target
         Export.records(records, columns, output, format_, title=title, key=key, **options)
         ListExport.report(len(records), noun, output, format_)
+
+    @staticmethod
+    def write_sections(
+        target: tuple[Path, str], sections: list[ExportSection], *, title: str
+    ) -> None:
+        """Write several tables to `target` (from `resolve`) as one file and say so."""
+        output, format_ = target
+        Export.sections(sections, output, format_, title=title)
+        ListExport.report(sum(len(s.records) for s in sections), "row(s)", output, format_)
