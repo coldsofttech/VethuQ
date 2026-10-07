@@ -11,6 +11,7 @@ from vethuq_core.settings.filetypes import FileTypeSettings
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console
+from vethuq_cli.export import ListExport
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Show which file types are installed.")
@@ -54,12 +55,15 @@ def list_types(
         "--all",
         help="Also list file types that are not installed, with the command to install each.",
     ),
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
     """List the installed file types.
 
     Installing or removing a type is done with pip (`pip install vethuq[type-eml]`) or by
     re-running the installer - there is no enable/disable switch here.
     """
+    export_target = ListExport.resolve(export, format_)
     file_types = list(FileTypes.all() if all_types else FileTypes.installed())
     # Keep the database's record of installed types current.
     storage = open_storage()
@@ -67,6 +71,34 @@ def list_types(
         FileTypeSettings.record_installed(storage)
     finally:
         storage.close()
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [
+                {
+                    "id": t.id,
+                    "type": t.label,
+                    "extensions": ", ".join(t.extensions),
+                    "package": t.extra,
+                    "status": TypesTable.status(t).plain,
+                    "install": "" if t.is_installed() else t.install_hint,
+                }
+                for t in file_types
+            ],
+            [
+                ("type", "Type"),
+                ("extensions", "Extensions"),
+                ("package", "Package"),
+                ("status", "Status"),
+                ("install", "Install"),
+            ],
+            title="File types",
+            key="file_types",
+            noun="file type(s)",
+            statuses=("status",),
+            facets=("status",),
+        )
+        return
     if not file_types:
         console.print(Text("No file types are installed.", style=Theme.NOTICE))
         return

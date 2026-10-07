@@ -45,6 +45,10 @@ class Logs:
     # A record starts with `YYYY-MM-DD HH:MM:SS,mmm LEVEL`; lines without it (a
     # traceback) belong to the record above.
     _RECORD_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} (\w+) ")
+    _RECORD_FIELDS = re.compile(
+        r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) (\w+) \[([^\]]*)\] ([^:\n]*): (.*)$",
+        re.DOTALL,
+    )
     _FOLLOW_POLL_SECONDS = 0.5
 
     class _SafeRotatingFileHandler(TimedRotatingFileHandler):
@@ -165,6 +169,22 @@ class Logs:
         """The lowercase level of a record (`"error"`, ...), or `""` if its format is unknown."""
         match = Logs._RECORD_START.match(record)
         return match.group(1).lower() if match else ""
+
+    @staticmethod
+    def parse(record: str) -> dict[str, str]:
+        """A record split into `time`, `level`, `thread`, `logger` and `message` (a traceback stays
+        in the message). A record of unknown format is all `message`, with the rest empty."""
+        match = Logs._RECORD_FIELDS.match(record)
+        if match is None:
+            return {"time": "", "level": "", "thread": "", "logger": "", "message": record}
+        time, level, thread, logger, message = match.groups()
+        return {
+            "time": time,
+            "level": level.lower(),
+            "thread": thread,
+            "logger": logger,
+            "message": message,
+        }
 
     @staticmethod
     def loggable_command(argv: list[str]) -> str:

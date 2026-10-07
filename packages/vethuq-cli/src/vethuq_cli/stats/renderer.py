@@ -9,6 +9,7 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.languages import Languages
 from vethuq_core.ocr import Deepening
+from vethuq_core.search import ExportSection
 from vethuq_core.stats import ConfidenceMetric, ProcessingMetric
 
 from vethuq_cli.theme import Theme
@@ -84,6 +85,78 @@ class StatsRenderer:
         return Panel(
             body, title="Confidence", title_align="left", border_style=Theme.ACCENT, expand=True
         )
+
+    @staticmethod
+    def export_sections(
+        processing: list[ProcessingMetric], confidence: list[ConfidenceMetric]
+    ) -> list[ExportSection]:
+        """The two statistics tables for `Export.sections`. Figures are raw numbers in JSON and
+        formatted as on screen in HTML; the language is a column only when it filters."""
+        label = StatsRenderer._language_label
+        show_language = len({m.language for m in [*processing, *confidence]}) > 1
+        language = [("language", "Language")] if show_language else []
+        processing_rows = [
+            {
+                "language": label(m.language),
+                "phase": Deepening.PHASE_NAMES.get(m.phase, str(m.phase)),
+                "extension": m.extension,
+                "size": m.size_bucket,
+                "documents": m.document_count,
+                "avg_duration_seconds": round(m.avg_duration_seconds, 3),
+                "avg_peak_memory_mb": round(m.avg_peak_memory_mb, 1),
+                "avg_cpu_percent": round(m.avg_machine_cpu_percent, 1),
+            }
+            for m in processing
+        ]
+        confidence_rows = [
+            {
+                "language": label(m.language),
+                "extension": m.extension,
+                "process_type": m.process_type,
+                "pages": m.page_count,
+                "avg_confidence": round(m.avg_confidence, 4),
+            }
+            for m in confidence
+        ]
+        return [
+            ExportSection(
+                "Processing",
+                "processing",
+                [
+                    *language,
+                    ("phase", "Phase"),
+                    ("extension", "Extension"),
+                    ("size", "Size"),
+                    ("documents", "Documents"),
+                    ("avg_duration_seconds", "Avg duration"),
+                    ("avg_peak_memory_mb", "Avg peak memory"),
+                    ("avg_cpu_percent", "Avg CPU"),
+                ],
+                processing_rows,
+                facets=(*(["language"] if show_language else []), "phase", "extension"),
+                formats={
+                    "avg_duration_seconds": lambda v: f"{v:.1f}s",
+                    "avg_peak_memory_mb": lambda v: f"{v:.0f} MB",
+                    "avg_cpu_percent": lambda v: f"{v:.0f}%",
+                },
+                empty="No processing statistics recorded yet.",
+            ),
+            ExportSection(
+                "Confidence",
+                "confidence",
+                [
+                    *language,
+                    ("extension", "Extension"),
+                    ("process_type", "Process type"),
+                    ("pages", "Pages"),
+                    ("avg_confidence", "Avg confidence"),
+                ],
+                confidence_rows,
+                facets=(*(["language"] if show_language else []), "extension", "process_type"),
+                formats={"avg_confidence": lambda v: f"{v:.0%}"},
+                empty="No confidence statistics recorded yet.",
+            ),
+        ]
 
     @staticmethod
     def reset_panel(message: str, border_style: str) -> Panel:

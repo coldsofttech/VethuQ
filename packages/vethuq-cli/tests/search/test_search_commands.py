@@ -780,7 +780,7 @@ class TestSearchLookalikes:
         runner.invoke(app, [*base, "--export", str(as_html), "--format", "html"])
 
         assert json.loads(as_json.read_text())["leet_level"] == "standard"
-        assert "leet level standard" in as_html.read_text()
+        assert '<span class="k">Leet level</span>standard' in as_html.read_text()
 
     def test_leetspeak_is_no_longer_an_engine(self, use_temp_db):
         use_temp_db()
@@ -939,7 +939,7 @@ class TestSearchNormalize:
         runner.invoke(app, [*base, "--export", str(as_html), "--format", "html"])
 
         assert json.loads(as_json.read_text())["unicode"] == "full"
-        assert "unicode full" in as_html.read_text()
+        assert '<span class="k">Unicode</span>full' in as_html.read_text()
 
 
 class TestSearchNoiseFuzzy:
@@ -1084,7 +1084,7 @@ class TestSearchNoiseFuzzy:
             "basic",
             "medium",
         )
-        assert "noise medium" in as_html.read_text()
+        assert '<span class="k">Noise</span>medium' in as_html.read_text()
 
 
 class TestSearchAll:
@@ -1205,7 +1205,7 @@ class TestSearchAll:
             "noise-fuzzy",
         ]
         html_text = as_html.read_text()
-        assert "engine: all" in html_text
+        assert '<span class="k">Engine</span>all' in html_text
         assert ">Exact<" in html_text and ">Similar 83%<" in html_text
 
     def test_single_engine_keeps_the_flat_per_match_output(self, use_temp_db):

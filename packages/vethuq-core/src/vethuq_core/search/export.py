@@ -8,6 +8,8 @@ import html
 import json
 import locale
 import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import resources
 from pathlib import Path
@@ -21,6 +23,26 @@ from vethuq_core.search.engines import Ranking
 from vethuq_core.search.search import SearchMatch
 from vethuq_core.settings import SearchSettings
 from vethuq_core.sources import Source, SourceFile
+
+
+@dataclass
+class ExportSection:
+    """One table of a multi-table export (`Export.sections`).
+
+    `columns` are `(field, header)` in display order. In HTML a field in `statuses` is a colored
+    pill, one in `paths` a link to the file, one in `facets` a filter, and `formats` maps a field
+    to a function giving its cell's HTML (it must escape); JSON keeps the raw `records`.
+    """
+
+    title: str
+    key: str
+    columns: list[tuple[str, str]]
+    records: list[dict[str, object]]
+    statuses: tuple[str, ...] = ()
+    paths: tuple[str, ...] = ()
+    facets: tuple[str, ...] = ()
+    formats: dict[str, Callable[[object], str]] = field(default_factory=dict)
+    empty: str = "Nothing to show."
 
 
 class Export:
@@ -68,6 +90,7 @@ class Export:
             .replace("{{APP_NAME}}", html.escape(APP_NAME))
             .replace("{{APP_TAGLINE}}", html.escape(APP_TAGLINE))
             .replace("{{GENERATED_AT}}", html.escape(generated_at))
+            .replace("{{SCRIPT}}", f"<script>\n{Export.template('export.js').rstrip()}\n</script>")
         )
 
     @staticmethod
@@ -77,6 +100,48 @@ class Export:
             f'<div class="{css}"><div class="label">{html.escape(label)}</div>'
             f'<div class="value">{html.escape(value)}</div></div>'
         )
+
+    @staticmethod
+    def _facets(
+        definitions: list[tuple[str, str]], rows: list[dict[str, list[str]]]
+    ) -> tuple[str, list[str]]:
+        """The filter bar and each row's `data-facets` attribute.
+
+        `definitions` are `(key, label)` in display order; `rows[i]` maps a key to the values row
+        `i` has. A facet that fewer than two distinct values would split is left out (it filters
+        nothing). Returns the bar's HTML (empty if there is no facet) and one attribute per row.
+        """
+        dropdowns = []
+        for key, label in definitions:
+            counts: dict[str, int] = {}
+            for row in rows:
+                for value in dict.fromkeys(row.get(key, [])):
+                    counts[value] = counts.get(value, 0) + 1
+            if len(counts) < 2:
+                continue
+            options = "".join(
+                f'<label><input type="checkbox" data-facet="{html.escape(key)}" '
+                f'value="{html.escape(value)}"><span class="v">{Export._tagged(html.escape(value))}'
+                f'</span><span class="count">{count}</span></label>'
+                for value, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            )
+            dropdowns.append(
+                f'<details class="facet"><summary>{html.escape(label)}<span class="n"></span>'
+                f'</summary><div class="menu">{options}</div></details>'
+            )
+        attrs = [
+            f'data-facets="{html.escape(json.dumps(row, ensure_ascii=False), quote=True)}"'
+            for row in rows
+        ]
+        if not dropdowns:
+            return "", attrs
+        bar = (
+            '<div class="filters" aria-label="Filters">'
+            + "".join(dropdowns)
+            + '<button type="button" data-clear hidden>Clear filters</button>'
+            + '<span class="facet-status" aria-live="polite"></span></div>'
+        )
+        return bar, attrs
 
     @staticmethod
     def _chip(label: str, value: str) -> str:
@@ -90,14 +155,26 @@ class Export:
             "indexed": "ok",
             "ready": "ok",
             "active": "ok",
+            "completed": "ok",
+            "installed": "ok",
+            "installed (default)": "ok",
+            "downloaded": "ok",
             "pending": "warn",
+            "queued": "warn",
+            "installed, not enabled": "warn",
+            "not installed": "warn",
+            "not downloaded": "warn",
             "processing": "warn",
             "running": "warn",
             "paused": "warn",
             "failed": "bad",
             "error": "bad",
+            "warning": "warn",
+            "critical": "bad",
             "missing": "bad",
             "removed": "muted",
+            "stopped": "muted",
+            "cancelled": "muted",
         }.get(status, "muted")
         return f'<span class="pill {kind}">{html.escape(status)}</span>'
 
@@ -146,6 +223,27 @@ class Export:
     def _match_type(match: SearchMatch) -> str:
         """How the match was found, as the CLI and UI name it (`Exact`, `Similar 83%`), or ''."""
         return Ranking.hit_badge(match) if match.engine in Ranking.BADGES else ""
+
+    @staticmethod
+    def _match_facets(match: SearchMatch) -> dict[str, list[str]]:
+        """The values `match` is filtered by in the HTML export."""
+        path = Path(match.file_path)
+        facets = {
+            "type": [path.suffix.lstrip(".").upper() or "(none)"],
+            "folder": [path.parent.as_posix()],
+            "origin": [
+                {"native": "Native text", "ocr": "OCR", "mixed": "Native + OCR"}.get(
+                    match.source, match.source
+                )
+            ],
+            "language": [
+                Export._language_names([lang_id])
+                for lang_id in Export.languages_in(Export._matched_text(match))
+            ],
+        }
+        if match.engine in Ranking.BADGES:
+            facets["engine"] = [Ranking.BADGES[match.engine]]
+        return facets
 
     @staticmethod
     def _match_pill(match: SearchMatch) -> str:
@@ -326,8 +424,18 @@ class Export:
             Export._card("Matches", str(len(matches))),
             Export._card("Files", str(len({m.file_path for m in matches})), accent=True),
         ]
+        facet_bar, facet_attrs = Export._facets(
+            [
+                ("engine", "Match type"),
+                ("type", "File type"),
+                ("language", "Language"),
+                ("origin", "Text from"),
+                ("folder", "Folder"),
+            ],
+            [Export._match_facets(match) for match in matches],
+        )
         rows = []
-        for match in matches:
+        for match, facet_attr in zip(matches, facet_attrs, strict=True):
             page = str(match.page_number) if match.page_number is not None else "-"
             total_pages = str(match.total_pages) if match.total_pages is not None else "-"
             snippet = Export._tagged(
@@ -337,6 +445,7 @@ class Export:
             )
             row = (
                 Export.template("export_row.html")
+                .replace("{{FACETS}}", facet_attr)
                 .replace("{{FILE_URI}}", html.escape(Export._file_uri(match.file_path)))
                 .replace("{{FILE_NAME}}", Export._tagged(html.escape(match.file_name)))
                 .replace("{{FILE_PATH}}", Export._tagged(html.escape(match.file_path)))
@@ -353,7 +462,7 @@ class Export:
             .replace("{{QUERY}}", Export._tagged(html.escape(query)))
             .replace("{{CARDS}}", "\n".join(cards))
             .replace("{{CHIPS}}", "".join(chips))
-            .replace("{{SCRIPT}}", f"<script>\n{Export.template('export.js').rstrip()}\n</script>")
+            .replace("{{FACETS}}", facet_bar)
             .replace("{{ROWS}}", "\n".join(rows))
         )
         document = Export._fill_page(
@@ -376,14 +485,20 @@ class Export:
         headers: list[str],
         rows: list[list[str]],
         cards: list[str],
+        facets: tuple[list[tuple[str, str]], list[dict[str, list[str]]]] = ([], []),
     ) -> None:
         """Write an HTML table under summary `cards`; each `rows` cell is escaped HTML."""
         head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-        body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
+        facet_bar, facet_attrs = Export._facets(*facets)
+        body = "\n".join(
+            f"<tr {attr}>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>"
+            for row, attr in zip(rows, facet_attrs or [""] * len(rows), strict=True)
+        )
         document = (
             Export.template("list_export.html")
             .replace("{{TITLE}}", html.escape(title))
             .replace("{{CARDS}}", "\n".join(cards))
+            .replace("{{FACETS}}", facet_bar)
             .replace("{{HEADERS}}", head)
             .replace("{{ROWS}}", body)
         )
@@ -427,7 +542,22 @@ class Export:
                     "Folders", str(sum(s.source_type == "folder" for s in sources)), accent=True
                 ),
             ],
+            (
+                [("type", "Type"), ("status", "Status")],
+                [{"type": [x.source_type], "status": [x.status]} for x in sources],
+            ),
         )
+
+    @staticmethod
+    def _file_facets(
+        file: SourceFile, detail: bool, phase_name: dict[int, str]
+    ) -> dict[str, list[str]]:
+        facets = {"status": [file.status], "type": [file.file_type.upper()]}
+        if detail:
+            if file.ocr_phase is not None:
+                facets["phase"] = [phase_name.get(file.ocr_phase, str(file.ocr_phase))]
+            facets["duplicate"] = ["Duplicate" if file.duplicate_of_path else "Unique"]
+        return facets
 
     @staticmethod
     def _file_name(source: Source, file: SourceFile) -> str:
@@ -538,4 +668,173 @@ class Export:
                 ),
                 Export._card("Failed", str(sum(f.status in ("failed", "error") for f in files))),
             ],
+            (
+                [
+                    ("status", "Status"),
+                    ("type", "File type"),
+                    ("phase", "OCR phase"),
+                    ("duplicate", "Duplicates"),
+                ],
+                [Export._file_facets(f, detail, phase_name) for f in files],
+            ),
         )
+
+    @staticmethod
+    def records(
+        records: list[dict[str, object]],
+        columns: list[tuple[str, str]],
+        output: Path,
+        format_: str,
+        *,
+        title: str,
+        key: str,
+        statuses: tuple[str, ...] = (),
+        paths: tuple[str, ...] = (),
+        facets: tuple[str, ...] = (),
+        cards: list[tuple[str, str]] | None = None,
+        formats: dict[str, Callable[[object], str]] | None = None,
+    ) -> None:
+        """Write any listing - `records` shown under `columns` - to `output`, as JSON or HTML.
+
+        `columns` are `(field, header)` in display order. JSON holds the records as they are under
+        `key`. In HTML a field in `statuses` is a colored pill, one in `paths` a link to the file,
+        and a field in `facets` a filter (left out when it has fewer than two values). A `None`
+        shows as `-`; `formats` maps a field to a function giving its cell's HTML. `cards` are extra
+        `(label, value)` summary cards after the row count.
+        """
+        Export._check_format(format_)
+        if format_ == "json":
+            payload = {
+                "generated_at": Export._generated_at(),
+                "title": title,
+                "count": len(records),
+                key: records,
+            }
+            output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            return
+
+        headers = dict(columns)
+        rows = [
+            [Export._cell(f, record, statuses, paths, formats or {}) for f, _ in columns]
+            for record in records
+        ]
+        Export._write_table(
+            output,
+            title,
+            [header for _, header in columns],
+            rows,
+            [
+                Export._card(title, str(len(records))),
+                *(Export._card(label, value) for label, value in cards or []),
+            ],
+            (
+                [(field, headers[field]) for field in facets],
+                [
+                    {
+                        field: [str(record[field])]
+                        for field in facets
+                        if record.get(field) not in (None, "")
+                    }
+                    for record in records
+                ],
+            ),
+        )
+
+    @staticmethod
+    def _cell(
+        name: str,
+        record: dict[str, object],
+        statuses: tuple[str, ...],
+        paths: tuple[str, ...],
+        formats: dict[str, Callable[[object], str]],
+    ) -> str:
+        value = record.get(name)
+        if name in formats and value is not None:
+            return formats[name](value)
+        text = "-" if value is None or value == "" else str(value)
+        if name in statuses and value:
+            return Export._status_pill(text)
+        if name in paths and value:
+            return (
+                f'<a href="{html.escape(Export._file_uri(text))}">'
+                f"{Export._tagged(html.escape(text))}</a>"
+            )
+        return Export._tagged(html.escape(text))
+
+    @staticmethod
+    def sections(
+        sections: list[ExportSection],
+        output: Path,
+        format_: str,
+        *,
+        title: str,
+        cards: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """Write several listings - one table each - to one JSON or HTML file.
+
+        JSON has each section's records under its `key`, plus a `counts` object. HTML has a
+        summary card per section (and any extra `cards`), then each table under its own heading
+        with its own filters; a section with no records says so instead of showing a table.
+        """
+        Export._check_format(format_)
+        if format_ == "json":
+            payload: dict[str, object] = {
+                "generated_at": Export._generated_at(),
+                "title": title,
+                "counts": {s.key: len(s.records) for s in sections},
+            }
+            payload.update({s.key: s.records for s in sections})
+            output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            return
+
+        blocks = []
+        for section in sections:
+            if not section.records:
+                body = f'<p class="empty">{html.escape(section.empty)}</p>'
+            else:
+                headers = dict(section.columns)
+                facet_bar, attrs = Export._facets(
+                    [(f, headers[f]) for f in section.facets],
+                    [
+                        {f: [str(r[f])] for f in section.facets if r.get(f) not in (None, "")}
+                        for r in section.records
+                    ],
+                )
+                head = "".join(f"<th>{html.escape(h)}</th>" for _, h in section.columns)
+                rows = "\n".join(
+                    f"<tr {attr}>"
+                    + "".join(
+                        "<td>"
+                        + Export._cell(f, record, section.statuses, section.paths, section.formats)
+                        + "</td>"
+                        for f, _ in section.columns
+                    )
+                    + "</tr>"
+                    for record, attr in zip(section.records, attrs, strict=True)
+                )
+                body = (
+                    f"{facet_bar}\n"
+                    '<div class="results table-wrap"><table class="list">'
+                    f"<thead><tr>{head}</tr></thead>\n<tbody>\n{rows}\n</tbody></table></div>"
+                )
+            blocks.append(
+                Export.template("section.html")
+                .replace("{{SECTION_TITLE}}", html.escape(section.title))
+                .replace("{{BODY}}", body)
+            )
+        document = (
+            Export.template("sections_export.html")
+            .replace("{{TITLE}}", html.escape(title))
+            .replace(
+                "{{CARDS}}",
+                "\n".join(
+                    [Export._card(s.title, str(len(s.records))) for s in sections]
+                    + [Export._card(label, value) for label, value in cards or []]
+                ),
+            )
+            .replace("{{SECTIONS}}", "\n".join(blocks))
+        )
+        document = Export._fill_page(
+            document, kind="List export", lang="en", generated_at=Export._generated_at()
+        )
+        output.write_text(document, encoding="utf-8")

@@ -11,6 +11,7 @@ from vethuq_core.settings.filetypes import FileTypeSettings
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console
+from vethuq_cli.export import ListExport
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Show which search engines are installed.")
@@ -54,18 +55,48 @@ def list_engines(
         "--all",
         help="Also list search engines that are not installed, with the command to install each.",
     ),
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
     """List the installed search engines.
 
     The default engine is `like`; add others with pip (`pip install vethuq[search-exact]`) or
     by re-running the installer - there is no enable/disable switch here.
     """
+    export_target = ListExport.resolve(export, format_)
     engines = list(SearchEngineCatalog.all() if all_engines else SearchEngineCatalog.installed())
     storage = open_storage()
     try:
         FileTypeSettings.record_installed_engines(storage)
     finally:
         storage.close()
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [
+                {
+                    "id": e.id,
+                    "name": e.label,
+                    "package": e.extra,
+                    "status": EnginesTable.status(e).plain,
+                    "install": "" if e.is_installed() else e.install_hint,
+                }
+                for e in engines
+            ],
+            [
+                ("id", "Engine"),
+                ("name", "Name"),
+                ("package", "Package"),
+                ("status", "Status"),
+                ("install", "Install"),
+            ],
+            title="Search engines",
+            key="search_engines",
+            noun="search engine(s)",
+            statuses=("status",),
+            facets=("status",),
+        )
+        return
     console.print(
         Panel(
             EnginesTable.build(engines, show_hints=all_engines),

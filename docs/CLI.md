@@ -112,6 +112,7 @@ many are shown (default 10).
 ```bash
 vethuq index history
 vethuq index history --limit 25 --json
+vethuq index history --export history.html --format html
 ```
 
 ### `pause` / `resume`
@@ -1182,6 +1183,7 @@ List the installed file types with their extensions and package name. `--all` al
 ```bash
 vethuq file-types list
 vethuq file-types list --all
+vethuq file-types list --export types.json --format json
 ```
 
 ## `ocr models`

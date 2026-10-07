@@ -164,3 +164,52 @@ class TestShowLanguages:
         result = runner.invoke(app, ["stats", "show", "--lang", "xx"])
 
         assert result.exit_code == 2
+
+
+class TestExport:
+    def test_json_has_both_tables_with_raw_figures(self, use_temp_db, tmp_path):
+        import json
+
+        _seed_metrics(use_temp_db())
+        out = tmp_path / "stats.json"
+
+        result = runner.invoke(app, ["stats", "show", "--export", str(out), "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["counts"] == {"processing": 3, "confidence": 3}
+        assert {r["extension"] for r in data["processing"]} == {"pdf", "png", "jpg"}
+        assert {r["avg_confidence"] for r in data["confidence"]} == {1.0, 0.8, 0.6}
+
+    def test_html_has_a_table_and_filters_for_each(self, use_temp_db, tmp_path):
+        _seed_metrics(use_temp_db())
+        out = tmp_path / "stats.html"
+
+        result = runner.invoke(app, ["stats", "show", "--export", str(out), "--format", "html"])
+
+        assert result.exit_code == 0
+        text = out.read_text(encoding="utf-8")
+        assert text.count('class="list-section"') == 2
+        assert text.count("<table") == 2
+        assert "<h2>Processing</h2>" in text and "<h2>Confidence</h2>" in text
+        assert "80%" in text and "5.0s" in text  # shown as on screen
+        assert text.count('data-facet="extension"') > 3  # a filter in each section
+        assert "{{" not in text
+
+    def test_empty_statistics_say_so_in_html(self, use_temp_db, tmp_path):
+        use_temp_db()
+        out = tmp_path / "stats.html"
+
+        result = runner.invoke(app, ["stats", "show", "--export", str(out), "--format", "html"])
+
+        assert result.exit_code == 0
+        text = out.read_text(encoding="utf-8")
+        assert "No processing statistics recorded yet." in text
+        assert "<table" not in text
+
+    def test_format_needs_export(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["stats", "show", "--format", "json"])
+
+        assert result.exit_code == 1

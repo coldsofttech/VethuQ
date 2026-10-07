@@ -16,7 +16,6 @@ from vethuq_core.formatting import Formatting
 from vethuq_core.languages import UnknownLanguageError
 from vethuq_core.ocr import Deepening
 from vethuq_core.search import Export
-from vethuq_core.settings import InvalidSettingValueError, SearchSettings
 from vethuq_core.sources import (
     Source,
     SourceAlreadyExistsError,
@@ -30,6 +29,7 @@ from vethuq_core.sources import (
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.export import ListExport
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Manage files and folders registered as VethuQ sources.")
@@ -213,23 +213,10 @@ class SourceFiles:
 
 
 def _resolve_export(storage, export: str | None, format_: str | None) -> tuple[Path, str] | None:
-    """The `(output path, format)` to export to, or None if `--export` wasn't given."""
-    if export is None:
-        if format_ is not None:
-            error_console.print("--format needs --export.", style=Theme.ERROR)
-            raise typer.Exit(code=1)
-        return None
-    try:
-        return Path(export), SearchSettings.resolve_export_format(storage, format_)
-    except InvalidSettingValueError as exc:
-        error_console.print(f"Error: {exc}", style=Theme.ERROR)
-        raise typer.Exit(code=1) from exc
+    return ListExport.resolve(export, format_, storage)
 
 
-def _report_export(count: int, noun: str, output: Path, format_: str) -> None:
-    console.print(
-        Text.assemble("Exported ", (str(count), Theme.VALUE), f" {noun} to {output} ({format_}).")
-    )
+_report_export = ListExport.report
 
 
 @app.command("list")
