@@ -1284,6 +1284,7 @@ class InteractiveMenu:
                 level=None,
                 day=None,
                 export=None,
+                format_=None,
             )
 
     @staticmethod

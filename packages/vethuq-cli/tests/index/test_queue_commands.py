@@ -90,3 +90,61 @@ class TestQueue:
 
         assert result.exit_code == 1
         assert "No queued job has id 99" in result.output
+
+
+class TestQueueExport:
+    def _jobs(self):
+        first = IndexJobs.enqueue("1")
+        IndexJobs.claim_next()
+        second = IndexJobs.enqueue(None, restart=True, languages="en")
+        IndexJobs.finish(first.id, "failed", "boom")
+        return first, second
+
+    def test_json(self, use_temp_db, tmp_path):
+        use_temp_db()
+        first, second = self._jobs()
+        out = tmp_path / "q.json"
+
+        result = runner.invoke(
+            app, ["index", "queue", "list", "--all", "--export", str(out), "--format", "json"]
+        )
+
+        assert result.exit_code == 0
+        assert "Exported 2 job(s)" in result.output
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["count"] == 2
+        assert {j["id"] for j in data["jobs"]} == {first.id, second.id}
+        assert {j["target"] for j in data["jobs"]} == {"1", "all sources"}
+
+    def test_html_shows_status_pills_and_filters(self, use_temp_db, tmp_path):
+        use_temp_db()
+        self._jobs()
+        out = tmp_path / "q.html"
+
+        result = runner.invoke(
+            app, ["index", "queue", "list", "--all", "--export", str(out), "--format", "html"]
+        )
+
+        assert result.exit_code == 0
+        text = out.read_text(encoding="utf-8")
+        assert "Index queue" in text and "boom" in text
+        assert 'class="pill bad"' in text and 'class="pill warn"' in text
+        assert 'data-facet="status"' in text
+
+    def test_an_empty_queue_still_exports(self, use_temp_db, tmp_path):
+        use_temp_db()
+        out = tmp_path / "q.json"
+
+        result = runner.invoke(
+            app, ["index", "queue", "list", "--export", str(out), "--format", "json"]
+        )
+
+        assert result.exit_code == 0
+        assert json.loads(out.read_text(encoding="utf-8"))["jobs"] == []
+
+    def test_format_needs_export(self, use_temp_db):
+        use_temp_db()
+
+        result = runner.invoke(app, ["index", "queue", "list", "--format", "json"])
+
+        assert result.exit_code == 1

@@ -9,6 +9,7 @@ from rich.text import Text
 from vethuq_core.index import IndexJob, IndexJobs
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.export import ListExport
 from vethuq_cli.index.panel import IndexPanel
 from vethuq_cli.theme import Theme
 
@@ -36,12 +37,37 @@ def queue_list(
     ),
     limit: int = typer.Option(20, "--limit", min=1, help="Show at most this many jobs."),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
     """List the pending jobs (waiting and running), oldest first; `--all` adds finished ones."""
+    export_target = ListExport.resolve(export, format_)
     statuses = None if all_jobs else ("queued", "running")
     jobs = IndexJobs.list(statuses, limit=limit)
     if not all_jobs:
         jobs.sort(key=lambda job: job.id)
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [{**job.to_dict(), "target": job.target or "all sources"} for job in jobs],
+            [
+                ("id", "Job"),
+                ("status", "Status"),
+                ("mode", "Kind"),
+                ("target", "Target"),
+                ("languages", "Languages"),
+                ("requested_at", "Queued"),
+                ("started_at", "Started"),
+                ("finished_at", "Finished"),
+                ("error", "Error"),
+            ],
+            title="Index queue",
+            key="jobs",
+            noun="job(s)",
+            statuses=("status",),
+            facets=("status", "mode"),
+        )
+        return
     if as_json:
         console.print(json.dumps([job.to_dict() for job in jobs]))
         return
