@@ -437,3 +437,49 @@ class TestListExport:
         assert '<span class="pill ok">indexed</span>' in text
         assert '<div class="label">Sources</div><div class="value">1</div>' in text
         assert '<table class="list">' in text
+
+
+class TestRecords:
+    COLUMNS = [("name", "Name"), ("status", "Status"), ("path", "Path"), ("size", "Size")]
+    RECORDS = [
+        {"name": "été", "status": "indexed", "path": "/docs/été.pdf", "size": 3},
+        {"name": "<b>x</b>", "status": "failed", "path": "/docs/b.pdf", "size": None},
+    ]
+
+    def _write(self, tmp_path, format_, **options):
+        out = tmp_path / f"out.{format_}"
+        Export.records(
+            self.RECORDS, self.COLUMNS, out, format_, title="Things", key="things", **options
+        )
+        return out.read_text(encoding="utf-8")
+
+    def test_json_keeps_the_records_as_they_are(self, tmp_path):
+        payload = json.loads(self._write(tmp_path, "json"))
+
+        assert payload["count"] == 2 and payload["title"] == "Things"
+        assert payload["things"] == self.RECORDS
+
+    def test_html_escapes_and_marks_up_cells(self, tmp_path):
+        text = self._write(
+            tmp_path, "html", statuses=("status",), paths=("path",), facets=("status",)
+        )
+
+        assert "&lt;b&gt;x&lt;/b&gt;" in text and "<b>x</b>" not in text
+        assert 'class="pill ok"' in text and 'class="pill bad"' in text
+        assert 'href="file://' in text
+        assert 'data-facet="status"' in text
+        assert "<td>-</td>" in text  # the missing size
+
+    def test_a_facet_with_one_value_is_left_out(self, tmp_path):
+        text = self._write(tmp_path, "html", facets=("size",))
+
+        assert 'data-facet="size"' not in text
+
+    def test_extra_cards(self, tmp_path):
+        text = self._write(tmp_path, "html", cards=[("Failed", "1")])
+
+        assert "Failed" in text
+
+    def test_an_unknown_format_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            Export.records([], [], tmp_path / "x", "csv", title="t", key="k")

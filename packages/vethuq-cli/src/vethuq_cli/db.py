@@ -18,6 +18,7 @@ from vethuq_core.index.runner import IndexRunner
 from vethuq_core.storage import default_db_path, open_storage
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.export import ListExport
 from vethuq_cli.index.panel import IndexPanel
 from vethuq_cli.theme import Theme
 
@@ -150,9 +151,33 @@ def backup_create(
 
 
 @backup_app.command("list")
-def backup_list() -> None:
+def backup_list(
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
+) -> None:
     """List the database backups, newest first."""
+    export_target = ListExport.resolve(export, format_)
     infos = Backup.entries(default_db_path())
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [
+                {
+                    "name": i.name,
+                    "kind": i.kind,
+                    "created_at": i.created_at.isoformat(),
+                    "size_bytes": i.size,
+                    "size": Formatting.size(i.size),
+                }
+                for i in infos
+            ],
+            [("name", "Name"), ("kind", "Kind"), ("created_at", "Created"), ("size", "Size")],
+            title="Database backups",
+            key="backups",
+            noun="backup(s)",
+            facets=("kind",),
+        )
+        return
     if not infos:
         console.print(DbPanel.build("No backups yet.", "bright_black", "Backups"))
         return

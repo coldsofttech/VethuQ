@@ -27,6 +27,7 @@ from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.export import ListExport
 from vethuq_cli.index.panel import IndexPanel, StatePanel
 from vethuq_cli.theme import Theme
 
@@ -352,9 +353,19 @@ def status(
     wait: bool = typer.Option(
         False, "--wait", help="Live-refresh progress until the run finishes."
     ),
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
-    """Show background index run progress, or per-file detail for one source."""
+    """Show background index run progress, or per-file detail for one source.
+
+    --export and --format write the per-file detail to a JSON or HTML file (they need a source)."""
     if target is None:
+        if export is not None or format_ is not None:
+            error_console.print(
+                "--export and --format need a source id or path to export the files of.",
+                style=Theme.ERROR,
+            )
+            raise typer.Exit(code=1)
         state = IndexRunner.read_state()
         if as_json:
             console.print(state.to_json() if state is not None else "null")
@@ -378,6 +389,7 @@ def status(
 
     storage = open_storage()
     try:
+        export_target = ListExport.resolve(export, format_, storage)
         try:
             source = Sources.get(storage, Sources.coerce(target))
         except SourceNotFoundError as exc:
@@ -386,6 +398,37 @@ def status(
         results = Document.get_results(storage, source.id)
     finally:
         storage.close()
+
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [
+                {
+                    "file": r.file_path,
+                    "status": r.status,
+                    "confidence": r.confidence,
+                    "duration": r.duration,
+                    "error": r.error_message,
+                    "duplicate_of": r.duplicate_of_path,
+                }
+                for r in results
+            ],
+            [
+                ("file", "File"),
+                ("status", "Status"),
+                ("confidence", "Confidence"),
+                ("duration", "Duration (s)"),
+                ("duplicate_of", "Duplicate Of"),
+                ("error", "Error"),
+            ],
+            title=f"Index status of {source.path}",
+            key="files",
+            noun="file(s)",
+            statuses=("status",),
+            paths=("file", "duplicate_of"),
+            facets=("status",),
+        )
+        return
 
     if as_json:
         console.print(
@@ -499,10 +542,13 @@ def history(
     ),
     limit: int = typer.Option(10, "--limit", help="Number of past runs to show."),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
     """List past background index runs, optionally filtered to one source."""
     storage = open_storage()
     try:
+        export_target = ListExport.resolve(export, format_, storage)
         if target is not None:
             try:
                 Sources.get(storage, Sources.coerce(target))
@@ -515,6 +561,30 @@ def history(
         runs = IndexRunner.list_runs(storage, target, limit)
     finally:
         storage.close()
+
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [run.to_dict() for run in runs],
+            [
+                ("id", "ID"),
+                ("started_at", "Started"),
+                ("completed_at", "Completed"),
+                ("mode", "Mode"),
+                ("target", "Target"),
+                ("status", "Status"),
+                ("processed_files", "Processed"),
+                ("total_files", "Total"),
+                ("failed_files", "Failed"),
+                ("workers", "Workers"),
+            ],
+            title="Index history",
+            key="runs",
+            noun="run(s)",
+            statuses=("status",),
+            facets=("status", "mode"),
+        )
+        return
 
     if as_json:
         console.print(json.dumps([run.to_dict() for run in runs]))

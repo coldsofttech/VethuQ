@@ -133,7 +133,15 @@ class Export:
             "indexed": "ok",
             "ready": "ok",
             "active": "ok",
+            "completed": "ok",
+            "installed": "ok",
+            "installed (default)": "ok",
+            "downloaded": "ok",
             "pending": "warn",
+            "queued": "warn",
+            "installed, not enabled": "warn",
+            "not installed": "warn",
+            "not downloaded": "warn",
             "processing": "warn",
             "running": "warn",
             "paused": "warn",
@@ -141,6 +149,8 @@ class Export:
             "error": "bad",
             "missing": "bad",
             "removed": "muted",
+            "stopped": "muted",
+            "cancelled": "muted",
         }.get(status, "muted")
         return f'<span class="pill {kind}">{html.escape(status)}</span>'
 
@@ -642,5 +652,73 @@ class Export:
                     ("duplicate", "Duplicates"),
                 ],
                 [Export._file_facets(f, detail, phase_name) for f in files],
+            ),
+        )
+
+    @staticmethod
+    def records(
+        records: list[dict[str, object]],
+        columns: list[tuple[str, str]],
+        output: Path,
+        format_: str,
+        *,
+        title: str,
+        key: str,
+        statuses: tuple[str, ...] = (),
+        paths: tuple[str, ...] = (),
+        facets: tuple[str, ...] = (),
+        cards: list[tuple[str, str]] | None = None,
+    ) -> None:
+        """Write any listing - `records` shown under `columns` - to `output`, as JSON or HTML.
+
+        `columns` are `(field, header)` in display order. JSON holds the records as they are under
+        `key`. In HTML a field in `statuses` is a colored pill, one in `paths` a link to the file,
+        and a field in `facets` a filter (left out when it has fewer than two values). A `None`
+        shows as `-`. `cards` are extra `(label, value)` summary cards after the row count.
+        """
+        Export._check_format(format_)
+        if format_ == "json":
+            payload = {
+                "generated_at": Export._generated_at(),
+                "title": title,
+                "count": len(records),
+                key: records,
+            }
+            output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            return
+
+        def cell(field: str, record: dict[str, object]) -> str:
+            value = record.get(field)
+            text = "-" if value is None or value == "" else str(value)
+            if field in statuses and value:
+                return Export._status_pill(text)
+            if field in paths and value:
+                return (
+                    f'<a href="{html.escape(Export._file_uri(text))}">'
+                    f"{Export._tagged(html.escape(text))}</a>"
+                )
+            return Export._tagged(html.escape(text))
+
+        headers = dict(columns)
+        rows = [[cell(field, record) for field, _ in columns] for record in records]
+        Export._write_table(
+            output,
+            title,
+            [header for _, header in columns],
+            rows,
+            [
+                Export._card(title, str(len(records))),
+                *(Export._card(label, value) for label, value in cards or []),
+            ],
+            (
+                [(field, headers[field]) for field in facets],
+                [
+                    {
+                        field: [str(record[field])]
+                        for field in facets
+                        if record.get(field) not in (None, "")
+                    }
+                    for record in records
+                ],
             ),
         )

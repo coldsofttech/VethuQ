@@ -13,6 +13,7 @@ from vethuq_core.ocr.catalog import OcrCatalog
 from vethuq_core.ocr.models import ModelStatus, OcrModels
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.export import ListExport
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="OCR commands.")
@@ -136,10 +137,39 @@ def known_ids() -> list[str]:
 @models_app.command("status")
 def status(
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    export: ListExport.EXPORT = None,
+    format_: ListExport.FORMAT = None,
 ) -> None:
     """Show which OCR models are downloaded, for every enabled language or the ones named."""
+    export_target = ListExport.resolve(export, format_)
     language_ids = ModelsCommand.languages(lang, required=False)
     statuses = OcrModels.status(language_ids)
+    if export_target is not None:
+        ListExport.write(
+            export_target,
+            [
+                {
+                    "model": m.name,
+                    "used_by": "all languages" if m.shared else ", ".join(m.languages),
+                    "size_bytes": m.size_bytes if m.present else None,
+                    "size": Formatting.size(m.size_bytes) if m.present else None,
+                    "status": "downloaded" if m.present else "not downloaded",
+                }
+                for m in statuses
+            ],
+            [
+                ("model", "Model"),
+                ("used_by", "Used by"),
+                ("size", "Size"),
+                ("status", "Status"),
+            ],
+            title="OCR models",
+            key="models",
+            noun="model(s)",
+            statuses=("status",),
+            facets=("status",),
+        )
+        return
     body = Table.grid(padding=(0, 0))
     body.add_row(ModelsCommand.table(statuses))
     body.add_row(Text(f"\nFolder: {OcrModels.cache_dir()}", style="bright_black"))
