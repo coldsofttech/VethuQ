@@ -11,8 +11,10 @@ from vethuq_core.formatting import Formatting
 from vethuq_core.languages import Languages
 from vethuq_core.ocr.catalog import OcrCatalog
 from vethuq_core.ocr.models import ModelStatus, OcrModels
+from vethuq_core.sorting import Sorting
 
 from vethuq_cli.console import console, error_console
+from vethuq_cli.sorting import SortOptions
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="OCR commands.")
@@ -136,10 +138,12 @@ def known_ids() -> list[str]:
 @models_app.command("status")
 def status(
     lang: list[str] | None = typer.Option(None, "--lang", help=LANG_HELP),  # noqa: B008
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.MODELS = None,
 ) -> None:
     """Show which OCR models are downloaded, for every enabled language or the ones named."""
     language_ids = ModelsCommand.languages(lang, required=False)
-    statuses = OcrModels.status(language_ids)
+    statuses = Sorting.models(OcrModels.status(language_ids), sort_by, sort)
     body = Table.grid(padding=(0, 0))
     body.add_row(ModelsCommand.table(statuses))
     body.add_row(Text(f"\nFolder: {OcrModels.cache_dir()}", style="bright_black"))

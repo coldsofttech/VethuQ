@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import RenderableType
@@ -22,6 +23,7 @@ from vethuq_core.search import (
 )
 from vethuq_core.search.engines import Ranking
 from vethuq_core.settings import InvalidSettingValueError, SearchSettings
+from vethuq_core.sorting import Sorting
 from vethuq_core.storage import Storage, open_storage
 
 from vethuq_cli.console import console, error_console
@@ -322,6 +324,27 @@ def search(
         "--format",
         help="Export format: 'json' or 'html'. Only used with --export.",
     ),
+    sort: Annotated[
+        Sorting.Order | None,
+        typer.Option(
+            "--sort",
+            help=(
+                "Sort order, asc or desc. Without --sort and --sort-by, results come best "
+                "first; --sort alone sorts by file."
+            ),
+        ),
+    ] = None,
+    sort_by: Annotated[
+        Sorting.SearchBy | None,
+        typer.Option(
+            "--sort-by",
+            "--sort_by",
+            help=(
+                "Sort results by file (then page), page, score (relevance, where the engine "
+                "gives one) or engine. Applies to the export too."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Search indexed content for CONTENT and print matching pages."""
     storage = open_storage()
@@ -355,6 +378,7 @@ def search(
                     unicode=options.unicode,
                     languages=languages,
                 )
+                pages = Sorting.search_results(pages, sort_by, sort)
                 matches = Ranking.flatten(pages)
             else:
                 matches = Search.indexed_content(
@@ -369,6 +393,7 @@ def search(
                     unicode=options.unicode,
                     languages=languages,
                 )
+                matches = Sorting.search_results(matches, sort_by, sort)
         except SearchLanguageError as exc:
             raise typer.BadParameter(str(exc), param_hint="--lang") from exc
         except SearchQueryError as exc:

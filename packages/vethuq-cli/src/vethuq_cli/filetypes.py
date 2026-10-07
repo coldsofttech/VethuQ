@@ -8,9 +8,11 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.filetypes import FileType, FileTypes
 from vethuq_core.settings.filetypes import FileTypeSettings
+from vethuq_core.sorting import Sorting
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console
+from vethuq_cli.sorting import SortOptions
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Show which file types are installed.")
@@ -54,13 +56,20 @@ def list_types(
         "--all",
         help="Also list file types that are not installed, with the command to install each.",
     ),
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.CATALOG = None,
 ) -> None:
     """List the installed file types.
 
     Installing or removing a type is done with pip (`pip install vethuq[type-eml]`) or by
     re-running the installer - there is no enable/disable switch here.
     """
-    file_types = list(FileTypes.all() if all_types else FileTypes.installed())
+    file_types = Sorting.catalog(
+        FileTypes.all() if all_types else FileTypes.installed(),
+        lambda file_type: TypesTable.status(file_type).plain,
+        sort_by,
+        sort,
+    )
     # Keep the database's record of installed types current.
     storage = open_storage()
     try:

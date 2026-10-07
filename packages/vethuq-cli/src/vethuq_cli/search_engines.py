@@ -8,9 +8,11 @@ from rich.table import Table
 from rich.text import Text
 from vethuq_core.search.engines.catalog import SearchEngineCatalog, SearchEngineInfo
 from vethuq_core.settings.filetypes import FileTypeSettings
+from vethuq_core.sorting import Sorting
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console
+from vethuq_cli.sorting import SortOptions
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Show which search engines are installed.")
@@ -54,13 +56,20 @@ def list_engines(
         "--all",
         help="Also list search engines that are not installed, with the command to install each.",
     ),
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.CATALOG = None,
 ) -> None:
     """List the installed search engines.
 
     The default engine is `like`; add others with pip (`pip install vethuq[search-exact]`) or
     by re-running the installer - there is no enable/disable switch here.
     """
-    engines = list(SearchEngineCatalog.all() if all_engines else SearchEngineCatalog.installed())
+    engines = Sorting.catalog(
+        SearchEngineCatalog.all() if all_engines else SearchEngineCatalog.installed(),
+        lambda engine: EnginesTable.status(engine).plain,
+        sort_by,
+        sort,
+    )
     storage = open_storage()
     try:
         FileTypeSettings.record_installed_engines(storage)

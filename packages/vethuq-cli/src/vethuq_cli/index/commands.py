@@ -28,12 +28,14 @@ from vethuq_core.index import (
     StaleLockError,
 )
 from vethuq_core.ocr import Document
+from vethuq_core.sorting import Sorting
 from vethuq_core.sources import SourceNotFoundError, Sources
 from vethuq_core.storage import open_storage
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import IndexPanel, StatePanel
 from vethuq_cli.index.queue import app as queue_app
+from vethuq_cli.sorting import SortOptions
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(help="Run OCR indexing on registered sources.")
@@ -489,8 +491,12 @@ def status(
     wait: bool = typer.Option(
         False, "--wait", help="Live-refresh progress until the run finishes."
     ),
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.FILES = None,
 ) -> None:
-    """Show background index run progress, or per-file detail for one source."""
+    """Show background index run progress, or per-file detail for one source.
+
+    --sort and --sort-by order the per-file detail (they need a source)."""
     if target is None:
         state = IndexRunner.read_state()
         if as_json:
@@ -520,7 +526,7 @@ def status(
         except SourceNotFoundError as exc:
             error_console.print(str(exc), style=Theme.ERROR)
             raise typer.Exit(code=1) from exc
-        results = Document.get_results(storage, source.id)
+        results = Sorting.files(Document.get_results(storage, source.id), sort_by, sort)
     finally:
         storage.close()
 
@@ -636,8 +642,12 @@ def history(
     ),
     limit: int = typer.Option(10, "--limit", help="Number of past runs to show."),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.RUNS = None,
 ) -> None:
-    """List past background index runs, optionally filtered to one source."""
+    """List past background index runs, optionally filtered to one source.
+
+    --sort and --sort-by reorder the runs shown (up to --limit)."""
     storage = open_storage()
     try:
         if target is not None:
@@ -649,7 +659,7 @@ def history(
         # A run over "all sources" (target IS NULL) would have covered a
         # specific `target` source too, so it's included alongside runs
         # targeted at just that source.
-        runs = IndexRunner.list_runs(storage, target, limit)
+        runs = Sorting.runs(IndexRunner.list_runs(storage, target, limit), sort_by, sort)
     finally:
         storage.close()
 

@@ -7,9 +7,11 @@ import json
 import typer
 from rich.text import Text
 from vethuq_core.index import IndexJob, IndexJobs
+from vethuq_core.sorting import Sorting
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import IndexPanel
+from vethuq_cli.sorting import SortOptions
 from vethuq_cli.theme import Theme
 
 app = typer.Typer(
@@ -36,12 +38,17 @@ def queue_list(
     ),
     limit: int = typer.Option(20, "--limit", min=1, help="Show at most this many jobs."),
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    sort: SortOptions.ORDER = None,
+    sort_by: SortOptions.JOBS = None,
 ) -> None:
-    """List the pending jobs (waiting and running), oldest first; `--all` adds finished ones."""
+    """List the pending jobs (waiting and running), oldest first; `--all` adds finished ones.
+
+    --sort and --sort-by reorder the jobs shown (up to --limit)."""
     statuses = None if all_jobs else ("queued", "running")
     jobs = IndexJobs.list(statuses, limit=limit)
     if not all_jobs:
         jobs.sort(key=lambda job: job.id)
+    jobs = Sorting.jobs(jobs, sort_by, sort)
     if as_json:
         console.print(json.dumps([job.to_dict() for job in jobs]))
         return

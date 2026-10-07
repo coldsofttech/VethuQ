@@ -112,6 +112,7 @@ many are shown (default 10).
 ```bash
 vethuq index history
 vethuq index history --limit 25 --json
+vethuq index history --sort-by started --sort desc
 ```
 
 ### `pause` / `resume`
@@ -163,9 +164,9 @@ vethuq index reindex 3 --lang te
 vethuq index reindex file ./docs/invoice.pdf --lang te
 ```
 
-### `queue list [--all] [--limit N] [--json]`
+### `queue list [--all] [--limit N] [--json] [--sort asc|desc] [--sort-by id|status|kind|target|queued]`
 
-Every `index run`, `restart` and `reindex` is recorded as a job, whichever worker runs it: the background service (desktop build), or a worker of its own (a one-off - always so in the `vethuq` pip package). `queue list` shows the pending jobs - waiting and running - oldest first. `--all` adds finished ones (completed, failed, cancelled), newest first; `--limit` caps how many (default 20). A request refused because a run was already in progress is kept as a failed job with that reason; a request for a source or language that does not exist is refused before it becomes a job.
+Every `index run`, `restart` and `reindex` is recorded as a job, whichever worker runs it: the background service (desktop build), or a worker of its own (a one-off - always so in the `vethuq` pip package). `queue list` shows the pending jobs - waiting and running - oldest first. `--all` adds finished ones (completed, failed, cancelled), newest first; `--limit` caps how many (default 20). `--sort` and `--sort-by` reorder the jobs shown. A request refused because a run was already in progress is kept as a failed job with that reason; a request for a source or language that does not exist is refused before it becomes a job.
 
 ### `queue show <id> [--json]`
 
@@ -601,6 +602,7 @@ a time on Enter and doesn't render colors.
 
 ```bash
 vethuq search "invoice total"
+vethuq search "invoice total" --sort-by file --sort desc    # sort by file (also page, score, engine)
 ```
 
 Examples, assuming a page that reads "Learn English at the English Institute":
@@ -1182,6 +1184,7 @@ List the installed file types with their extensions and package name. `--all` al
 ```bash
 vethuq file-types list
 vethuq file-types list --all
+vethuq file-types list --sort-by name --sort desc
 ```
 
 ## `ocr models`
