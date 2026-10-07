@@ -1268,6 +1268,7 @@ class InteractiveMenu:
                 level=None,
                 day=None,
                 export=None,
+                format_=None,
             )
 
     @staticmethod
@@ -1283,8 +1284,7 @@ class InteractiveMenu:
                         ("2", "Sources"),
                         ("3", "Index"),
                         ("4", "Settings"),
-                export=None,
-                format_=None,
+                        ("5", "Stats"),
                         ("6", "Db"),
                         ("7", "Logs"),
                         ("8", "File types & search engines"),
