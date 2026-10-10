@@ -10,6 +10,7 @@ from vethuq_core.branding import APP_NAME, APP_TAGLINE
 from vethuq_core.errors import StartupError
 from vethuq_core.index import Indexing
 from vethuq_core.logs import Logs
+from vethuq_core.policy import PolicyService
 from vethuq_core.storage import default_db_path
 
 from vethuq_cli.console import error_console
@@ -19,6 +20,7 @@ from vethuq_cli.index import app as index_app
 from vethuq_cli.interactive import InteractiveMenu
 from vethuq_cli.logs import LogsCommand
 from vethuq_cli.ocr import app as ocr_app
+from vethuq_cli.policy import app as policy_app
 from vethuq_cli.search import SearchHelp
 from vethuq_cli.search import search as search_command
 from vethuq_cli.search_engines import app as search_engines_app
@@ -44,6 +46,7 @@ app.add_typer(types_app, name="file-types")
 app.add_typer(search_engines_app, name="search-engines")
 app.add_typer(ocr_app, name="ocr")
 app.add_typer(semantic_app, name="semantic")
+app.add_typer(policy_app, name="policy")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
@@ -68,6 +71,7 @@ def main(
     """Run a subcommand, or launch the interactive console when none is given."""
     Logs.setup("cli", default_db_path())
     _logger.info("Started: vethuq %s", Logs.loggable_command(sys.argv[1:]))
+    PolicyService.start(_logger)  # in the background: never delays or fails a command
     if ctx.invoked_subcommand is None:
         InteractiveMenu.run()
 

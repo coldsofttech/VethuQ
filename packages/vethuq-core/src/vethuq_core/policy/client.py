@@ -25,7 +25,8 @@ from vethuq_core.policy.model import Policy
 from vethuq_core.policy.rules import SequenceRules
 from vethuq_core.policy.state import PolicyState, PolicyStore
 
-logger = logging.getLogger("vethuq.policy")
+_default_logger = logging.getLogger("vethuq.policy")
+_default_logger.addHandler(logging.NullHandler())  # never print to stderr when nobody listens
 
 
 class PolicySource(StrEnum):
@@ -68,7 +69,9 @@ class PolicyClient:
         cache_dir: Path | None = None,
         fetcher: PolicyFetcher | None = None,
         clock: Callable[[], float] = time.time,
+        logger: logging.Logger | None = None,
     ) -> None:
+        self._logger = logger or _default_logger
         self._keys = keys or PolicyKeys.embedded()
         self._verifier = EnvelopeVerifier(self._keys)
         self._rules = SequenceRules(self._keys)
@@ -79,8 +82,8 @@ class PolicyClient:
 
     def current(self) -> PolicyResult:
         """The policy to use now: the cached one, else the baseline. No network."""
-        with self._lock:
-            return self._describe(PolicyStatus.CURRENT, self._store.read_state())
+        # No lock: a refresh can be mid-request, and files are replaced atomically.
+        return self._describe(PolicyStatus.CURRENT, self._store.read_state())
 
     def refresh(self, force: bool = False) -> PolicyResult:
         """Check for a newer policy (at most about once a day unless `force`). Never raises."""
@@ -88,7 +91,7 @@ class PolicyClient:
             try:
                 return self._refresh(force)
             except Exception:  # a policy problem must never reach the caller
-                logger.exception("policy refresh failed")
+                self._logger.exception("policy refresh failed")
                 return self._describe(
                     PolicyStatus.OFFLINE, self._store.read_state(), "unexpected error"
                 )
@@ -103,6 +106,9 @@ class PolicyClient:
 
     def _refresh(self, force: bool) -> PolicyResult:
         state = self._store.read_state()
+        if not self._keys.kids:
+            # Nothing could be verified, so there is no point in a request.
+            return self._describe(PolicyStatus.SKIPPED, state, "no policy keys are embedded yet")
         now = self._clock()
         if not force and self._recently_checked(state, now):
             return self._describe(PolicyStatus.SKIPPED, state)
@@ -168,7 +174,7 @@ class PolicyClient:
             self._store.write_envelope(raw)
             self._store.write_state(state)
         except OSError as exc:
-            logger.warning("could not save the policy cache: %s", exc)
+            self._logger.warning("could not save the policy cache: %s", exc)
             detail = f"policy not cached: {exc}"
         return PolicyResult(verified.policy, PolicySource.FETCHED, PolicyStatus.UPDATED, detail)
 
@@ -185,7 +191,7 @@ class PolicyClient:
         try:
             return self._verifier.verify(raw, state.revoked)
         except PolicyError as exc:
-            logger.warning("ignoring the cached policy: %s", exc)
+            self._logger.warning("ignoring the cached policy: %s", exc)
             return None
 
     def _describe(self, status: PolicyStatus, state: PolicyState, detail: str = "") -> PolicyResult:
@@ -202,4 +208,4 @@ class PolicyClient:
         try:
             self._store.write_state(state)
         except OSError as exc:
-            logger.warning("could not save the policy state: %s", exc)
+            self._logger.warning("could not save the policy state: %s", exc)

@@ -8,6 +8,7 @@ from typing import Any
 
 import sv_ttk
 from vethuq_core.errors import StartupError
+from vethuq_core.policy import PolicyService
 from vethuq_core.storage import Storage, open_storage
 
 from vethuq_ui.dialogs import show_error
@@ -47,6 +48,7 @@ class MainWindow(tk.Tk):
             raise
         self._db_path = db_path
         _logger.info("VethuQ UI started")
+        PolicyService.start(_logger)  # in the background: never delays or fails startup
 
         self.title("VethuQ")
         Brand.apply_window_icon(self)

@@ -1255,6 +1255,23 @@ vethuq semantic index
 vethuq semantic clear --model
 ```
 
+## `policy`
+
+VethuQ follows a signed policy (latest and minimum versions, notices, feature flags) that it can pick up without a reinstall; see [docs/policy-client.md](policy-client.md). Every command starts a check for a newer policy in the background — at most about once a day, with a short timeout — so it never delays or fails a command, and it keeps working offline using the saved policy (or a built-in baseline: versions `0.0.0`, no notices) when none can be fetched or verified.
+
+### `show`
+
+Show the policy in use: where it came from (fetched, saved from an earlier check, or the built-in baseline), its sequence, issue time, signing key, latest and minimum versions, active notices, and "Update VethuQ to receive new policy." when a newer policy needs a newer VethuQ. Makes no network request.
+
+### `refresh`
+
+Check for a newer policy now, ignoring the once-a-day limit, and show the result and how the check went (`a newer policy was accepted`, `nothing newer`, `could not reach the policy servers`, ...).
+
+```bash
+vethuq policy show
+vethuq policy refresh
+```
+
 ## `search-engines`
 
 Search engines are installed as extras too: `pip install vethuq[search-exact]`, `search-lexical`, `search-full-text`, `search-fuzzy`, `search-noise-fuzzy`, `search-proximity`, `search-semantic`. `search-like` is the default and is always available. As with file types, there is no enable/disable switch in the CLI: add an engine with pip or by re-running the installer (`/ENGINES=exact,fuzzy` for silent installs). An engine that is not installed or enabled is skipped by `--engine all` and refused by name; a saved default engine that is no longer enabled falls back to `all`.

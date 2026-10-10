@@ -253,3 +253,12 @@ def test_importing_the_package_makes_no_network_call():
     )
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert done.stdout.strip() == "ok", done.stderr
+
+
+def test_without_embedded_keys_refresh_makes_no_request(tmp_path, server):
+    fetcher = PolicyFetcher([server.url()], schemes=("http", "https"))
+    client = PolicyClient(keys=PolicyKeys([]), cache_dir=tmp_path, fetcher=fetcher)
+    result = client.refresh(force=True)
+    assert result.status is PolicyStatus.SKIPPED and "no policy keys" in result.detail
+    assert result.source is PolicySource.BASELINE
+    assert server.requests == []

@@ -21,6 +21,7 @@ from vethuq_core.policy.model import (
     Notice,
     Policy,
 )
+from vethuq_core.policy.service import PolicyService
 
 __all__ = [
     "Baseline",
@@ -34,6 +35,7 @@ __all__ = [
     "PolicyKey",
     "PolicyKeys",
     "PolicyResult",
+    "PolicyService",
     "PolicySource",
     "PolicyStatus",
     "PolicyUrls",

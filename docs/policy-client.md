@@ -49,6 +49,18 @@ if result.update_required:
 | `detail` | Why a fetch failed or was refused, for logs; the update message when `update_required` |
 | `update_required` | The latest policy needs a newer VethuQ than this one |
 
+## Where it runs
+
+| Distribution | What it does |
+|---|---|
+| CLI (`vethuq`) | Every command starts `PolicyService.start()` after logging is set up (background thread). `vethuq policy show` / `refresh` show the policy and force a check. |
+| Desktop app | `MainWindow` starts the same background refresh once the database is open. Settings > About lists the policy in use (sequence, baseline, or the update message). |
+| `vethuq` package (library) | Nothing runs on `import vethuq` or `Vethuq()`. `client.policy.current()` reads the saved policy; `client.policy.refresh()` is the only call that uses the network. The pip CLI is the CLI above. |
+
+`PolicyService` (in `service.py`) holds the one shared client per process and passes the CLI's or
+the app's logger to it, so policy messages land in `cli.log` / `ui.log`. While no production keys
+are embedded, `refresh()` returns `skipped` without any request.
+
 ## Baseline
 
 Until a policy is accepted, and when none can be used, the client uses a built-in policy:
@@ -135,4 +147,5 @@ envelope is rejected as unknown and the baseline stays in use. Tests build their
 | `state.py` | `PolicyState`, `PolicyStore` | Persisted state, atomic writes |
 | `fetch.py` | `PolicyFetcher` | HTTPS fetch: timeout, size cap, ETag, URL fall-through |
 | `client.py` | `PolicyClient`, `PolicyResult` | Ties it together; the public entry point |
+| `service.py` | `PolicyService` | The shared client and how the front ends start it |
 | `errors.py` | `PolicyError` and subclasses | Why a policy was refused |

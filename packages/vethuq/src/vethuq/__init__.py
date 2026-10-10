@@ -52,6 +52,9 @@ from vethuq._core.ocr import Document as _Document
 from vethuq._core.ocr import DocumentResult
 from vethuq._core.ocr.models import CleanResult, ClearResult, DownloadResult, ModelStatus
 from vethuq._core.ocr.models import OcrModels as _OcrModels
+from vethuq._core.policy import Policy as PolicyDetails
+from vethuq._core.policy import PolicyResult, PolicySource, PolicyStatus
+from vethuq._core.policy import PolicyService as _PolicyService
 from vethuq._core.search import Export as _Export
 from vethuq._core.search import (
     PageResult,
@@ -149,6 +152,10 @@ __all__ = [
     "SearchEngineUnavailable",
     "UnknownLanguageError",
     "VersionDetails",
+    "PolicyDetails",
+    "PolicyResult",
+    "PolicySource",
+    "PolicyStatus",
     "FileTypeInfo",
     "BACKUP_VALUES",
     "ENGINE_BADGES",
@@ -1957,6 +1964,29 @@ class FileTypes:
         return _FileTypes.infos(include_missing=include_missing)
 
 
+class PolicyApi:
+    """The signed policy VethuQ follows (`client.policy`): latest and minimum versions, notices
+    and feature flags, delivered without a reinstall.
+
+    Nothing is fetched on `import vethuq` or `Vethuq()`; the network is used only when you call
+    `refresh()`.
+    """
+
+    def current(self) -> PolicyResult:
+        """The policy to use now: the saved one, else the built-in baseline. No network.
+
+        `PolicyResult.policy` is a `PolicyDetails`; `source` says where it came from, and
+        `update_required` is true when a newer policy needs a newer VethuQ.
+        """
+        return _PolicyService.current()
+
+    def refresh(self, force: bool = False) -> PolicyResult:
+        """Check for a newer policy (at most about once a day unless `force`) and return the
+        policy to use. Verifies the signature, keeps the last good policy on any failure and
+        never raises. Takes a few seconds at most when offline."""
+        return _PolicyService.client().refresh(force=force)
+
+
 def _language_value(languages: str | Sequence[str] | None) -> str | None:
     """A language choice as the comma-separated string the runner takes, or None."""
     if languages is None or isinstance(languages, str):
@@ -2105,6 +2135,7 @@ class Vethuq:
     client.stats.processing()
     client.search.run("invoice")
     client.file_types.list()
+    client.policy.current()
     client.ocr.models.download("te")
     client.semantic.index()
     client.version.python
@@ -2122,6 +2153,7 @@ class Vethuq:
         self.logs = Logs()
         self.db = Db()
         self.file_types = FileTypes()
+        self.policy = PolicyApi()
 
     @property
     def version(self) -> VersionDetails:

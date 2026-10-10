@@ -1037,3 +1037,37 @@ def test_semantic_model_status_and_download(client: vethuq.Vethuq, monkeypatch: 
     assert messages
     assert client.semantic.clear(model=True) == 0
     assert not client.semantic.model().present
+
+
+# --- policy ------------------------------------------------------------------------------------
+
+
+def test_policy_current_is_the_baseline_before_anything_is_fetched(client: vethuq.Vethuq):
+    result = client.policy.current()
+
+    assert result.source is vethuq.PolicySource.BASELINE
+    assert isinstance(result.policy, vethuq.PolicyDetails)
+    assert result.policy.versions["pip"].latest == "0.0.0"
+    assert not result.update_required
+
+
+def test_creating_a_client_and_current_make_no_network_call(
+    client: vethuq.Vethuq, monkeypatch: pytest.MonkeyPatch
+):
+    import socket
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("network used")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+
+    vethuq.Vethuq().policy.current()
+
+
+def test_policy_refresh_never_raises_and_reports_the_outcome(client: vethuq.Vethuq):
+    result = client.policy.refresh(force=True)
+
+    # No production keys are embedded yet, so there is nothing to verify and no request is made.
+    assert result.status is vethuq.PolicyStatus.SKIPPED
+    assert result.source is vethuq.PolicySource.BASELINE
