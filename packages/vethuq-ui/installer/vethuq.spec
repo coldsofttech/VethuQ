@@ -123,6 +123,11 @@ def _analysis(entry, *, datas=(), binaries=(), hiddenimports=(), excludes=()):
     )
 
 
+# The installer's version, written by scripts/dev/release.py just before this runs: the update check
+# compares it with the policy's `desktop` entry. The UI and the CLI run the check; the worker never does.
+_stamp = CORE_SRC / "updates" / "desktop_version.txt"
+DESKTOP_VERSION_DATAS = [(str(_stamp), "vethuq_core/updates")] if _stamp.is_file() else []
+
 ui_a = _analysis(
     UI_SRC / "app.py",
     datas=[
@@ -131,6 +136,7 @@ ui_a = _analysis(
         (str(UI_SRC / "assets" / "brand"), "vethuq_ui/assets/brand"),
         (str(UI_SRC / "assets" / "icons"), "vethuq_ui/assets/icons"),
         *sv_ttk_datas,
+        *DESKTOP_VERSION_DATAS,
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
         *OCR_MANIFEST_DATAS,
@@ -148,6 +154,7 @@ cli_a = _analysis(
         # The CLI's styles are built from the palette at import time.
         (str(CORE_SRC / "branding" / "palette.json"), "vethuq_core/branding"),
         *rich_datas,
+        *DESKTOP_VERSION_DATAS,
         *FILETYPE_DATAS,
         *SEARCH_ENGINE_DATAS,
         *OCR_MANIFEST_DATAS,

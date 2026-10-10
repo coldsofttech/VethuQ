@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -20,6 +21,7 @@ from vethuq_core.settings import (
     OcrSettings,
     SearchSettings,
     SourceSettings,
+    UpdateSettings,
 )
 from vethuq_core.storage import Storage, default_db_path, open_storage
 
@@ -106,6 +108,14 @@ languages_app = typer.Typer(
 logs_app = typer.Typer(help="Configure logging.")
 log_level_app = typer.Typer(help="Configure how verbose VethuQ's log files are.")
 log_retention_app = typer.Typer(help="Configure how many days of daily log files are kept.")
+updates_app = typer.Typer(help="Configure the update check.")
+update_check_app = typer.Typer(
+    help="Configure whether VethuQ checks for updates: on, notify-only or off."
+)
+update_snooze_app = typer.Typer(
+    help='Configure "remind me later": hide the update notice for a while.'
+)
+update_skip_app = typer.Typer(help="Configure which version's update notice is skipped.")
 location_app = typer.Typer(help="Configure where VethuQ keeps its database, logs and run files.")
 backups_location_app = typer.Typer(help="Configure where database backups are kept.")
 app.add_typer(gpu_app, name="gpu")
@@ -147,6 +157,10 @@ backup_app.add_typer(backup_retention_app, name="retention")
 app.add_typer(logs_app, name="logs")
 logs_app.add_typer(log_level_app, name="level")
 logs_app.add_typer(log_retention_app, name="retention")
+app.add_typer(updates_app, name="updates")
+updates_app.add_typer(update_check_app, name="check")
+updates_app.add_typer(update_snooze_app, name="snooze")
+updates_app.add_typer(update_skip_app, name="skip")
 
 
 class SettingsPanel:
@@ -2318,3 +2332,179 @@ def semantic_combine_reset() -> None:
         "Semantic combine",
         SearchSettings.DEFAULT_SEMANTIC_COMBINE,
     )
+
+
+class UpdatesSettingsPanel:
+    TITLE = "Updates"
+
+    @staticmethod
+    def ok(*parts: tuple[str, str]) -> None:
+        console.print(
+            SettingsPanel.build(Text.assemble(*parts), UpdatesSettingsPanel.TITLE, Theme.OK)
+        )
+
+    @staticmethod
+    def info(*parts: tuple[str, str]) -> None:
+        console.print(
+            SettingsPanel.build(Text.assemble(*parts), UpdatesSettingsPanel.TITLE, Theme.PRIMARY)
+        )
+
+
+@update_check_app.command("show")
+def update_check_show() -> None:
+    """Show whether VethuQ checks for updates."""
+    storage = open_storage()
+    try:
+        parts = [("Update check: ", "white"), (UpdateSettings.get_check(storage), Theme.VALUE)]
+        if UpdateSettings.disabled_by_environment():
+            parts.append((f" (switched off by {UpdateSettings.ENV_VAR})", Theme.NOTICE))
+        UpdatesSettingsPanel.info(*parts)
+    finally:
+        storage.close()
+
+
+@update_check_app.command(
+    "set",
+    help=(
+        "Set whether VethuQ checks for updates.\n\n"
+        "Values:\n\n"
+        "on (the default) - check, tell you when a newer version exists, and offer to update "
+        "where the app can.\n\n"
+        "notify-only - check and tell you, but never offer to install.\n\n"
+        "off - never check.\n\n"
+        f"Setting the environment variable {UpdateSettings.ENV_VAR}=off turns the check off "
+        "whatever this says (for CI and locked-down machines). The check only reads VethuQ's "
+        "signed policy file, which exposes your IP address to its host (the request names "
+        "only the client 'VethuQ-policy/1', not your version); nothing else is sent."
+    ),
+)
+def update_check_set(
+    value: str = typer.Argument(
+        ..., metavar="VALUE", help=f"One of: {', '.join(UpdateSettings.CHECK_VALUES)}."
+    ),
+) -> None:
+    """Set whether VethuQ checks for updates."""
+    storage = open_storage()
+    try:
+        try:
+            UpdateSettings.set_check(storage, value)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        UpdatesSettingsPanel.ok(
+            ("Update check set to ", "white"), (value, Theme.VALUE), (".", "white")
+        )
+    finally:
+        storage.close()
+
+
+@update_check_app.command("reset")
+def update_check_reset() -> None:
+    """Reset the update check to the default."""
+    ResetPanel.run(
+        UpdateSettings.reset_check, "Updates", "Update check", UpdateSettings.DEFAULT_CHECK
+    )
+
+
+@update_snooze_app.command("show")
+def update_snooze_show() -> None:
+    """Show whether the update notice is snoozed, and until when."""
+    storage = open_storage()
+    try:
+        if UpdateSettings.is_snoozed(storage):
+            until = datetime.fromtimestamp(UpdateSettings.get_snoozed_until(storage) or 0)
+            UpdatesSettingsPanel.info(
+                ("Update notices are snoozed until ", "white"),
+                (until.strftime("%Y-%m-%d %H:%M"), Theme.VALUE),
+                (".", "white"),
+            )
+        else:
+            UpdatesSettingsPanel.info(("Update notices are not snoozed.", "white"))
+    finally:
+        storage.close()
+
+
+@update_snooze_app.command("set")
+def update_snooze_set(
+    days: float = typer.Argument(
+        UpdateSettings.DEFAULT_SNOOZE_DAYS,
+        metavar="DAYS",
+        help="How many days to hide the update notice (default 1).",
+    ),
+) -> None:
+    """Remind me later: hide the update notice for DAYS days.
+
+    A version below the minimum supported is still mentioned, because it explains why some
+    features are held back.
+    """
+    storage = open_storage()
+    try:
+        try:
+            UpdateSettings.snooze(storage, days)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        UpdatesSettingsPanel.ok(
+            ("Update notices snoozed for ", "white"),
+            (f"{days:g} day(s)", Theme.VALUE),
+            (".", "white"),
+        )
+    finally:
+        storage.close()
+
+
+@update_snooze_app.command("clear")
+def update_snooze_clear() -> None:
+    """Show update notices again."""
+    storage = open_storage()
+    try:
+        UpdateSettings.clear_snooze(storage)
+        UpdatesSettingsPanel.ok(("Update notices are no longer snoozed.", "white"))
+    finally:
+        storage.close()
+
+
+@update_skip_app.command("show")
+def update_skip_show() -> None:
+    """Show which version's update notice is skipped."""
+    storage = open_storage()
+    try:
+        version = UpdateSettings.get_skipped_version(storage)
+        if version:
+            UpdatesSettingsPanel.info(
+                ("Skipping the update notice for ", "white"), (version, Theme.VALUE), (".", "white")
+            )
+        else:
+            UpdatesSettingsPanel.info(("No version is skipped.", "white"))
+    finally:
+        storage.close()
+
+
+@update_skip_app.command("set")
+def update_skip_set(
+    version: str = typer.Argument(..., metavar="VERSION", help="The version to stop announcing."),
+) -> None:
+    """Skip this version: stop announcing it. A newer version is announced again."""
+    storage = open_storage()
+    try:
+        try:
+            UpdateSettings.skip_version(storage, version)
+        except ValueError as exc:
+            error_console.print(f"Error: {exc}", style=Theme.ERROR)
+            raise typer.Exit(code=1) from exc
+        UpdatesSettingsPanel.ok(
+            ("Update notice skipped for ", "white"), (version.strip(), Theme.VALUE), (".", "white")
+        )
+    finally:
+        storage.close()
+
+
+@update_skip_app.command("clear")
+def update_skip_clear() -> None:
+    """Announce every new version again."""
+    storage = open_storage()
+    try:
+        UpdateSettings.clear_skip(storage)
+        UpdatesSettingsPanel.ok(("No version is skipped any more.", "white"))
+    finally:
+        storage.close()

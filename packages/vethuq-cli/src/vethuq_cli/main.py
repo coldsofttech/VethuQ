@@ -28,6 +28,8 @@ from vethuq_cli.semantic import app as semantic_app
 from vethuq_cli.settings import app as settings_app
 from vethuq_cli.source import app as source_app
 from vethuq_cli.stats import app as stats_app
+from vethuq_cli.updates import UpdateNotice
+from vethuq_cli.updates import app as updates_app
 from vethuq_cli.version import VersionCommand
 
 _logger = Logs.get_logger("cli")
@@ -47,6 +49,7 @@ app.add_typer(search_engines_app, name="search-engines")
 app.add_typer(ocr_app, name="ocr")
 app.add_typer(semantic_app, name="semantic")
 app.add_typer(policy_app, name="policy")
+app.add_typer(updates_app, name="updates")
 app.command("search", help=SearchHelp.TEXT)(search_command)
 app.command("logs", help=LogsCommand.HELP)(LogsCommand.run)
 
@@ -84,6 +87,7 @@ class Cli:
         code: int | str | None = 0
         try:
             app()
+            UpdateNotice.show(sys.argv[1:])
         except StartupError as exc:
             _logger.error("%s", exc)
             error_console.print(f"Error: {exc.message}", style="bold red")
@@ -93,6 +97,8 @@ class Cli:
             raise SystemExit(exc.exit_code) from None
         except SystemExit as exc:  # typer/click exit through SystemExit, even on success
             code = exc.code
+            if code in (0, None):
+                UpdateNotice.show(sys.argv[1:])
             raise
         except BaseException:
             code = 1

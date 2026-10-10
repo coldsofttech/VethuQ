@@ -19,6 +19,7 @@ from vethuq_ui.ribbon import Ribbon, RibbonActions
 from vethuq_ui.search_view import SearchView
 from vethuq_ui.source_list import SourceListView
 from vethuq_ui.status_bar import StatusBar
+from vethuq_ui.update_prompt import UpdatePrompt
 from vethuq_ui.windows.settings.about import AboutWindow
 from vethuq_ui.windows.settings.database.field_window import DatabaseFieldWindow
 from vethuq_ui.windows.settings.index.background_service import BackgroundServiceWindow
@@ -33,6 +34,7 @@ from vethuq_ui.windows.settings.ocr.gpu import GpuWindow
 from vethuq_ui.windows.settings.ocr.languages import OcrLanguagesWindow
 from vethuq_ui.windows.settings.ocr.retry import OcrRetryWindow
 from vethuq_ui.windows.settings.search.field_window import SearchFieldWindow
+from vethuq_ui.windows.settings.updates import UpdatesWindow
 
 _logger = UiLogging.logger
 
@@ -48,7 +50,7 @@ class MainWindow(tk.Tk):
             raise
         self._db_path = db_path
         _logger.info("VethuQ UI started")
-        PolicyService.start(_logger)  # in the background: never delays or fails startup
+        policy_refresh = PolicyService.start(_logger)  # in the background: never delays startup
 
         self.title("VethuQ")
         Brand.apply_window_icon(self)
@@ -74,6 +76,9 @@ class MainWindow(tk.Tk):
                 stop=lambda: self.index_controls.stop(),
                 delete_source=lambda: self.sources.delete_selected(),
                 show_about=lambda: AboutWindow.show(self),
+                show_updates=lambda: UpdatesWindow.show(
+                    self, self.storage, self.status_bar.show_message
+                ),
                 show_gpu=lambda: GpuWindow.show(
                     self,
                     self.storage,
@@ -172,6 +177,7 @@ class MainWindow(tk.Tk):
         self.on_show_search()
         self.index_controls.launch_or_attach()
         self.index_controls.start_polling()
+        UpdatePrompt.start(self, self.storage, self.status_bar.show_message, policy_refresh)
 
     def report_callback_exception(self, exc: type, val: BaseException, tb: Any) -> None:
         # Tk's default just prints to stderr, invisible once the app is

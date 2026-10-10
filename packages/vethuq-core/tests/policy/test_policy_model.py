@@ -44,3 +44,16 @@ def test_feature_flags_default_and_min_client():
 
 def test_revoked_ids_are_deduplicated_and_typed():
     assert parse(revoked_key_ids=["a", "a", 5, "b"]).revoked_key_ids == ("a", "b")
+
+
+def test_feature_message_is_kept_when_it_is_text():
+    policy = parse(
+        features={
+            "a": {"enabled": True, "min_client": "1.2.0", "message": "Needs 1.2.0."},
+            "b": {"enabled": True, "message": 5},
+            "c": {"enabled": True},
+        }
+    )
+    assert policy.features["a"].message == "Needs 1.2.0."
+    assert policy.features["b"].message is None
+    assert policy.features["c"].message is None

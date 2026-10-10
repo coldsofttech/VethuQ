@@ -10,6 +10,7 @@ from vethuq_core.settings.ocr import OcrSettings
 from vethuq_core.settings.search import SearchSettings
 from vethuq_core.settings.settings import InvalidSettingValueError, Settings, SettingsError
 from vethuq_core.settings.source import SourceSettings
+from vethuq_core.settings.updates import UpdateSettings
 
 __all__ = [
     "DbSettings",
@@ -22,4 +23,5 @@ __all__ = [
     "Settings",
     "SettingsError",
     "SourceSettings",
+    "UpdateSettings",
 ]

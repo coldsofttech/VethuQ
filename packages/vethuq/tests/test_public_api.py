@@ -1070,3 +1070,150 @@ def test_policy_refresh_never_raises_and_reports_the_outcome(client: vethuq.Veth
     # No production keys are embedded yet, so there is nothing to verify and no request is made.
     assert result.status is vethuq.PolicyStatus.SKIPPED
     assert result.source is vethuq.PolicySource.BASELINE
+
+
+# --- updates -----------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def newer_policy(monkeypatch: pytest.MonkeyPatch):
+    """The saved policy says 1.2.0 is out and this install is 1.0.0."""
+    from vethuq._core.policy import Policy, PolicyResult, PolicyService
+    from vethuq._core.policy import PolicySource as Source
+    from vethuq._core.policy import PolicyStatus as Status
+
+    payload = {
+        "schema_version": 1,
+        "sequence": 1,
+        "issued_at": "2026-10-08T12:00:00Z",
+        "kid": "k",
+        "versions": {
+            "desktop": {"latest": "1.2.0", "minimum_supported": "1.0.0"},
+            "pip": {
+                "latest": "1.2.0",
+                "minimum_supported": "1.0.0",
+                "release_notes_url": "https://example.com/notes",
+            },
+        },
+        "features": {
+            "github_tier": {"enabled": True, "min_client": "1.2.0", "message": "Needs 1.2.0."}
+        },
+    }
+    result = PolicyResult(Policy.from_payload(payload), Source.CACHE, Status.CURRENT)
+    monkeypatch.setattr(PolicyService, "current", staticmethod(lambda *a, **k: result))
+    monkeypatch.setattr("vethuq._core.updates.versions.Versions.installed", lambda: "1.0.0")
+    monkeypatch.delenv(vethuq.UPDATE_CHECK_ENV_VAR, raising=False)
+    return result
+
+
+def test_updates_status_is_unknown_before_a_policy_is_fetched(client: vethuq.Vethuq):
+    result = client.updates.status()
+
+    assert result.status is vethuq.UpdateStatus.UNKNOWN
+    assert not result.notify and result.message == ""
+
+
+def test_updates_status_reports_a_newer_version(client: vethuq.Vethuq, newer_policy):
+    result = client.updates.status()
+
+    assert result.status is vethuq.UpdateStatus.AVAILABLE
+    assert (result.current, result.latest) == ("1.0.0", "1.2.0")
+    assert result.release_notes_url == "https://example.com/notes"
+    assert result.notify and result.offer_install
+
+
+def test_updates_check_never_raises_and_makes_no_request_without_keys(client: vethuq.Vethuq):
+    # No production keys are embedded yet, so the refresh is skipped and the baseline stays.
+    assert client.updates.check(force=True).status is vethuq.UpdateStatus.UNKNOWN
+
+
+def test_creating_a_client_and_status_make_no_network_call(
+    client: vethuq.Vethuq, monkeypatch: pytest.MonkeyPatch
+):
+    import socket
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("network used")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+
+    vethuq.Vethuq().updates.status()
+    vethuq.Vethuq().updates.feature("github_tier")
+
+
+def test_update_check_setting_round_trip(client: vethuq.Vethuq):
+    check = client.settings.updates.check
+    assert check.get() == "on"
+
+    check.set("notify-only")
+    assert check.get() == "notify-only"
+
+    check.reset()
+    assert check.get() == "on"
+
+
+def test_update_check_setting_rejects_other_values(client: vethuq.Vethuq):
+    with pytest.raises(vethuq.InvalidSettingValueError):
+        client.settings.updates.check.set("sometimes")
+    assert set(vethuq.UPDATE_CHECK_VALUES) == {"on", "notify-only", "off"}
+
+
+def test_off_setting_disables_the_check(client: vethuq.Vethuq, newer_policy):
+    client.settings.updates.check.set("off")
+
+    result = client.updates.status()
+
+    assert result.status is vethuq.UpdateStatus.DISABLED and not result.notify
+
+
+def test_environment_variable_disables_the_check(
+    client: vethuq.Vethuq, newer_policy, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(vethuq.UPDATE_CHECK_ENV_VAR, "off")
+
+    assert client.updates.status().status is vethuq.UpdateStatus.DISABLED
+    assert client.settings.updates.check.disabled_by_environment()
+
+
+def test_snooze_hides_the_notice_and_clear_shows_it_again(client: vethuq.Vethuq, newer_policy):
+    snooze = client.settings.updates.snooze
+    assert not snooze.is_snoozed()
+
+    snooze.set(3)
+    assert snooze.is_snoozed()
+    hidden = client.updates.status()
+    assert hidden.status is vethuq.UpdateStatus.AVAILABLE and not hidden.notify
+
+    snooze.clear()
+    assert client.updates.status().notify
+
+
+def test_snooze_needs_a_positive_number_of_days(client: vethuq.Vethuq):
+    with pytest.raises(vethuq.InvalidSettingValueError):
+        client.settings.updates.snooze.set(0)
+
+
+def test_skip_hides_that_version_only(client: vethuq.Vethuq, newer_policy):
+    skip = client.settings.updates.skip
+    assert skip.get() is None
+
+    skip.set("1.2.0")
+    assert skip.get() == "1.2.0"
+    assert not client.updates.status().notify
+
+    skip.clear()
+    assert client.updates.status().notify
+
+
+def test_a_feature_that_needs_a_newer_version_is_held_back_with_a_message(
+    client: vethuq.Vethuq, newer_policy
+):
+    access = client.updates.feature("github_tier", default=False)
+
+    assert isinstance(access, vethuq.FeatureAccess)
+    assert (access.allowed, access.requires_update, access.message) == (False, True, "Needs 1.2.0.")
+
+
+def test_an_unlisted_feature_keeps_its_default(client: vethuq.Vethuq, newer_policy):
+    assert client.updates.feature("local_search", default=True).allowed is True

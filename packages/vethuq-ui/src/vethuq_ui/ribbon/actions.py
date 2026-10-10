@@ -18,6 +18,7 @@ class RibbonActions:
     stop: Callable[[], None]
     delete_source: Callable[[], None]
     show_about: Callable[[], None]
+    show_updates: Callable[[], None]
     show_gpu: Callable[[], None]
     show_ocr_retry: Callable[[], None]
     show_ocr_engine: Callable[[], None]

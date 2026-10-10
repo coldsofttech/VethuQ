@@ -1,4 +1,4 @@
-"""The ribbon's Settings tab: Help."""
+"""The ribbon's Settings tab: Updates and Help."""
 
 from __future__ import annotations
 
@@ -13,6 +13,12 @@ from vethuq_ui.widgets import Widgets
 class SettingsTab(ttk.Frame):
     def __init__(self, parent: tk.Misc, actions: RibbonActions) -> None:
         super().__init__(parent)
+        updates_group = RibbonGroup.build(self, "Updates")
+        ttk.Button(
+            updates_group,
+            command=actions.show_updates,
+            **Widgets.icon_button_kwargs("updates", "\N{CLOCKWISE OPEN CIRCLE ARROW}", "Updates"),
+        ).pack(side=tk.LEFT, padx=2)
         help_group = RibbonGroup.build(self, "Help")
         ttk.Button(
             help_group,

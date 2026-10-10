@@ -18,6 +18,8 @@ from vethuq_core.background import (
     ServiceStatus,
 )
 from vethuq_core.index import IndexRunner
+from vethuq_core.storage import open_storage
+from vethuq_core.updates import UpdateChecker, UpdateResult, UpdateStatus
 
 from vethuq_cli.console import console, error_console
 from vethuq_cli.index.panel import IndexPanel
@@ -170,6 +172,18 @@ def _status_text(status: ServiceStatus) -> Text:
     return text
 
 
+def _update_status() -> UpdateResult | None:
+    """What the saved policy says about this version, or None. Never prompts and never updates."""
+    try:
+        storage = open_storage()
+        try:
+            return UpdateChecker.status(storage)
+        finally:
+            storage.close()
+    except Exception:  # noqa: BLE001 - status must work even when the update check can't
+        return None
+
+
 @app.command("status")
 def status(
     as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
@@ -178,6 +192,7 @@ def status(
     service = BackgroundService.status()
     queued = IndexJobs.queued() if service.installed else []
     state = IndexRunner.read_state()
+    update = _update_status()
     if as_json:
         console.print(
             json.dumps(
@@ -185,6 +200,7 @@ def status(
                     "service": service.to_dict(),
                     "queued": [job.to_dict() for job in queued],
                     "run": json.loads(state.to_json()) if state is not None else None,
+                    "update": update.to_dict() if update is not None else None,
                 }
             )
         )
@@ -207,6 +223,9 @@ def status(
             text.append("\n\nDetails: '", style="white")
             text.append("vethuq index status", style=Theme.COMMAND)
             text.append("'.", style="white")
+    if update is not None and update.status in (UpdateStatus.AVAILABLE, UpdateStatus.BELOW_MINIMUM):
+        # Shown whatever the notice settings say; the service itself never updates.
+        text.append(f"\n\nUpdate: {update.message}", style=Theme.NOTICE)
     console.print(IndexPanel.message(text, STATE_STYLES.get(service.state, Theme.PRIMARY), TITLE))
     if queued:
         table = IndexPanel.new_table()
