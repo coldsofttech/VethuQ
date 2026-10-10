@@ -1,0 +1,25 @@
+[project]
+name = "VethuQ"
+dynamic = ["version"]
+description = "VethuQ — open-source document intelligence and evidence infrastructure for search, retrieval, structure, metadata, relationships, and AI-ready document access."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/core"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# This package lives in a subdirectory of the repo, not at its root.
+root = "../.."
+# Versions come from git tags `vethuq-vX.Y.Z`; with no tag yet the version is 0.1.0.
+fallback_version = "0.1.0"
+tag_regex = "^vethuq-v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "vethuq-v*"]
