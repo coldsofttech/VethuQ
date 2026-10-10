@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Iterable
+import os
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from vethuq_core.policy.errors import PolicyFormatError
 
@@ -68,3 +71,22 @@ class PolicyUrls:
         "https://cdn.jsdelivr.net/gh/coldsofttech/vethuq-policy@main/v1/policy.json",
         "https://raw.githubusercontent.com/coldsofttech/vethuq-policy/main/v1/policy.json",
     )
+
+    ENV_VAR = "VETHUQ_POLICY_URLS"
+
+    @staticmethod
+    def resolve(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
+        """The URLs to try, in order.
+
+        `VETHUQ_POLICY_URLS` (comma- or whitespace-separated) replaces `DEFAULT` for staging,
+        tests, or a company mirror. Only well-formed `https` URLs count; if none do, or the
+        variable is unset or empty, `DEFAULT` is used. The signature, not the host, is what is
+        trusted, so a wrong value can only make a fetch fail.
+        """
+        value = (environ if environ is not None else os.environ).get(PolicyUrls.ENV_VAR, "")
+        urls: list[str] = []
+        for part in re.split(r"[,\s]+", value.strip()):
+            parsed = urlparse(part)
+            if parsed.scheme == "https" and parsed.netloc and part not in urls:
+                urls.append(part)
+        return tuple(urls) or PolicyUrls.DEFAULT

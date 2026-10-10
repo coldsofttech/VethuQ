@@ -75,7 +75,7 @@ class PolicyClient:
         self._keys = keys or PolicyKeys.embedded()
         self._verifier = EnvelopeVerifier(self._keys)
         self._rules = SequenceRules(self._keys)
-        self._fetcher = fetcher or PolicyFetcher(urls or PolicyUrls.DEFAULT)
+        self._fetcher = fetcher or PolicyFetcher(urls or PolicyUrls.resolve())
         self._store = PolicyStore(cache_dir or Paths.default_data_root() / self.CACHE_DIRNAME)
         self._clock = clock
         self._lock = threading.RLock()

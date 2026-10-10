@@ -69,8 +69,9 @@ Any signed policy (sequence 1 or higher) supersedes it.
 
 ## Fetching
 
-- URLs come from `PolicyUrls.DEFAULT`, tried in order: GitHub Pages, then the jsDelivr and raw
-  GitHub mirrors. Trust comes from the signature, not the host.
+- URLs come from `PolicyUrls.resolve()`, tried in order. By default (`PolicyUrls.DEFAULT`, in
+  `keys.py`) that is GitHub Pages, then the jsDelivr and raw GitHub mirrors. Trust comes from the
+  signature, not the host. See [Overriding the URLs](#overriding-the-urls).
 - Each request has a 2.5 s timeout, a 5 s total limit and a 256 KiB size cap. Only `https` URLs
   are used.
 - Conditional requests: the ETag of the last accepted response is sent as `If-None-Match`, only to
@@ -78,6 +79,29 @@ Any signed policy (sequence 1 or higher) supersedes it.
 - The first URL that returns a verified, acceptable policy wins. Network errors, non-200
   responses and rejected policies fall through to the next URL.
 - At most one check a day. After a failed check the client retries after an hour.
+
+## Overriding the URLs
+
+The default list is compiled in, so a release can always reach the policy. For staging, tests, or
+a company mirror, set **`VETHUQ_POLICY_URLS`** to a comma- or whitespace-separated list. It
+**replaces** the defaults for that process (CLI, desktop app and library alike):
+
+```bash
+# Staging only
+export VETHUQ_POLICY_URLS="https://staging.example.com/v1/policy.json"
+
+# A company mirror first, the public URLs still as fallbacks
+export VETHUQ_POLICY_URLS="https://mirror.corp/vethuq/v1/policy.json,https://coldsofttech.github.io/vethuq-policy/v1/policy.json"
+```
+
+- Only well-formed `https` URLs count. Other entries are dropped; if none are left, or the
+  variable is unset or empty, the defaults are used.
+- Whatever the host, every response must still verify against the embedded keys, so a wrong or
+  hostile value can only make a fetch fail (the last good policy is kept).
+- In GitHub Actions, set it per job from a repository or environment variable, for example
+  `VETHUQ_POLICY_URLS: ${{ vars.VETHUQ_POLICY_URLS }}` on a staging test job. GitHub variables
+  exist only in workflow runs, so they can't configure an installed app.
+- `PolicyClient(urls=(...))` takes precedence over the variable.
 
 ## Verification
 
