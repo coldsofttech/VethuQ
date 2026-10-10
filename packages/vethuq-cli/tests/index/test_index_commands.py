@@ -1,15 +1,23 @@
 import re
 from datetime import UTC, datetime
 
+import pytest
 import vethuq_core.db as db_module
 from typer.testing import CliRunner
 from vethuq_cli.main import app
-from vethuq_core.index import IndexRunner
+from vethuq_core.index import Indexing, IndexRunner
 from vethuq_core.index import runner as index_runner_module
 from vethuq_core.sources import Sources
 from vethuq_core.storage.sqlite import SqliteStorage
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _no_background_service(monkeypatch):
+    """These tests fake the worker's Popen; on Windows the real service lookup (`sc.exe`, run
+    through subprocess.run) would use that fake too. Index as if no service is installed."""
+    monkeypatch.setattr(Indexing, "service_status", staticmethod(lambda db_path=None: None))
 
 
 def _flatten(output: str) -> str:
