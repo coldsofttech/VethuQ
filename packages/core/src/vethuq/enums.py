@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 __all__ = [
+    "FileStatus",
     "AddonStatus",
     "IntegrityCheckMode",
     "LogComponent",
@@ -28,12 +29,25 @@ class SourceType(StrEnum):
 
 
 class SourceStatus(StrEnum):
-    """Where a source is in its life."""
+    """Where a source is overall, worked out from the state of its files."""
 
-    PENDING = "pending"
+    PENDING = "pending"  # nothing has been processed yet
+    IN_PROGRESS = "in_progress"  # some files are processed and others are still waiting
+    COMPLETED = "completed"  # every file is processed
+    ERROR = "error"  # everything is processed, but some files failed
+    REMOVED = "removed"
+
+
+class FileStatus(StrEnum):
+    """Where one file of a source is in indexing."""
+
+    PENDING = "pending"  # not processed yet
+    PROCESSING = "processing"
     INDEXED = "indexed"
     ERROR = "error"
-    REMOVED = "removed"
+    MODIFIED = "modified"  # changed since it was indexed; it will be processed again
+    REMOVED = "removed"  # no longer on disk (kept until the source is purged)
+    UNSUPPORTED = "unsupported"  # VethuQ can't read this kind of file (yet)
 
 
 class SortOrder(StrEnum):

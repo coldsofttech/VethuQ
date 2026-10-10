@@ -18,9 +18,21 @@ class TestEnums:
     def test_source_status_values(self):
         assert [s.value for s in enums.SourceStatus] == [
             "pending",
-            "indexed",
+            "in_progress",
+            "completed",
             "error",
             "removed",
+        ]
+
+    def test_file_status_values(self):
+        assert [s.value for s in enums.FileStatus] == [
+            "pending",
+            "processing",
+            "indexed",
+            "error",
+            "modified",
+            "removed",
+            "unsupported",
         ]
 
     def test_sort_order_values(self):
@@ -47,6 +59,7 @@ class TestEnums:
         [
             *enums.SourceType,
             *enums.SourceStatus,
+            *enums.FileStatus,
             *enums.SortOrder,
             *enums.SourceSortBy,
             *enums.LogComponent,

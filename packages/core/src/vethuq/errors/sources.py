@@ -21,5 +21,9 @@ class SourceNotFoundError(SourceError):
     """No registered source matches the given id or path."""
 
 
+class SourceOverlapError(SourceError):
+    """The path lies inside an existing source, or contains one."""
+
+
 class SourceNotRemovedError(SourceError):
     """The source is still active, so it can't be purged."""

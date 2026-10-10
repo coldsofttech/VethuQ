@@ -137,13 +137,13 @@ class TestSourcesList:
         assert [s.id for s in client.sources.list(sort_by=sort_by, order=order)] == expected
 
     def test_sorting_by_status_and_last_scanned_at(self, client, three):
-        _set(client, 2, status=vethuq.sources.SourceStatus.INDEXED, last_scanned_at="2026-01-02")
+        _set(client, 2, status=vethuq.sources.SourceStatus.COMPLETED, last_scanned_at="2026-01-02")
         _set(client, 3, last_scanned_at="2026-01-01")
 
         by_status = client.sources.list(sort_by="status", order="desc")
         by_scan = client.sources.list(sort_by="last_scanned_at", order="desc")
 
-        assert [s.id for s in by_status] == [1, 3, 2]  # pending, pending, indexed; ties by id
+        assert [s.id for s in by_status] == [1, 3, 2]  # pending, pending, completed; ties by id
         assert [s.id for s in by_scan] == [2, 3, 1]
 
     def test_ties_are_broken_by_id(self, client, three):
@@ -163,11 +163,11 @@ class TestSourcesList:
         assert [s.id for s in client.sources.list(source_type=types.FOLDER)] == [1, 2]
 
     def test_filter_by_status(self, client, three):
-        _set(client, 2, status=vethuq.sources.SourceStatus.INDEXED)
+        _set(client, 2, status=vethuq.sources.SourceStatus.COMPLETED)
 
-        indexed = client.sources.list(status=vethuq.sources.SourceStatus.INDEXED)
+        completed = client.sources.list(status=vethuq.sources.SourceStatus.COMPLETED)
 
-        assert [s.id for s in indexed] == [2]
+        assert [s.id for s in completed] == [2]
         assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.ERROR)] == []
 
     def test_filter_by_language(self, client, three):

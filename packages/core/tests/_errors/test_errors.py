@@ -20,6 +20,7 @@ from vethuq._errors import (
     _SourceError,
     _SourceNotFoundError,
     _SourceNotRemovedError,
+    _SourceOverlapError,
     _SourcePathError,
     _StaleLockError,
     _StartupError,
@@ -41,6 +42,7 @@ _PAIRS = [
     (_SourceAlreadyExistsError, errors.SourceAlreadyExistsError, 22),
     (_SourceNotFoundError, errors.SourceNotFoundError, 23),
     (_SourceNotRemovedError, errors.SourceNotRemovedError, 24),
+    (_SourceOverlapError, errors.SourceOverlapError, 25),
     (_LogError, errors.LogError, 40),
     (_LogNotFoundError, errors.LogNotFoundError, 41),
     (_InvalidLogRequestError, errors.InvalidLogRequestError, 42),
@@ -67,6 +69,7 @@ _SOURCE = (
     errors.SourceAlreadyExistsError,
     errors.SourceNotFoundError,
     errors.SourceNotRemovedError,
+    errors.SourceOverlapError,
 )
 _SETTINGS = (errors.SettingsError, errors.InvalidSettingValueError)
 _LOG = (errors.LogError, errors.LogNotFoundError, errors.InvalidLogRequestError)

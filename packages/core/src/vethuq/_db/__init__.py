@@ -7,6 +7,8 @@ from vethuq._db.integrity import IntegrityCheckResult, _IntegrityCheck
 from vethuq._db.migration import _Migration
 from vethuq._db.models import (
     _Base,
+    _Document,
+    _DocumentIndex,
     _Language,
     _SchemaVersion,
     _Setting,
@@ -19,6 +21,8 @@ __all__ = [
     "IntegrityCheckResult",
     "_Base",
     "_Database",
+    "_Document",
+    "_DocumentIndex",
     "_IntegrityCheck",
     "_Language",
     "_Migration",

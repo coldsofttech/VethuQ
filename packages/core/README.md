@@ -61,6 +61,7 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `SourceAlreadyExistsError` | 22 | Sources | The path is already registered as an active source |
 | `SourceNotFoundError` | 23 | Sources | No source matches the id or path (or it is removed, when only active ones are searched) |
 | `SourceNotRemovedError` | 24 | Sources | The source is still active, so it can't be purged |
+| `SourceOverlapError` | 25 | Sources | The path lies inside an active source, or contains one |
 | `LogError` | 40 | Logs | Root of the log errors below |
 | `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
 | `InvalidLogRequestError` | 42 | Logs | A log request had a bad `lines`, `day`, `level`, `order` or component |
@@ -183,13 +184,16 @@ A source is identified by its **id** (an `int`) or its **path** (a `str` or `pat
 | `languages` | The languages it is read in, for example `["en"]`; `None` means the global language setting applies |
 | `id` | The source's id |
 | `source_type` | A `SourceType`: `FILE` or `FOLDER` |
-| `status` | A `SourceStatus`: `PENDING`, `INDEXED`, `ERROR` or `REMOVED` |
+| `status` | The overall `SourceStatus`, worked out from its files: `PENDING`, `IN_PROGRESS`, `COMPLETED`, `ERROR` or `REMOVED` (see [Source progress](#source-progress)) |
+| `files_total` | How many files count towards its progress (not unsupported or removed ones) |
+| `files_processed` | How many of them are processed (indexed, or failed) |
+| `progress` | The same in words, for example `"3 of 10 files processed"` (a property, not part of `to_dict()`) |
 | `added_at` | When it was registered (UTC, ISO 8601) |
 | `last_scanned_at` | When it was last scanned, or `None` |
 | `is_active` | `True` unless it has been removed |
 | `removed_at` | When it was removed, or `None` |
 
-`id`, `source_type`, `status`, `added_at`, `last_scanned_at`, `is_active` and `removed_at` are set by VethuQ, so they are `None` on a `Source` you describe yourself.
+`id`, `source_type`, `status`, `files_total`, `files_processed`, `added_at`, `last_scanned_at`, `is_active` and `removed_at` are set by VethuQ, so they are `None` on a `Source` you describe yourself.
 
 Every method that returns a source returns a `Source`, and it can be turned into a dict or JSON:
 
@@ -203,6 +207,8 @@ source.to_json(indent=2)
   "path": "/home/you/docs",
   "type": "folder",
   "status": "pending",
+  "files_processed": 0,
+  "files_total": 0,
   "added_at": "2026-10-10T12:23:42.600727+00:00",
   "last_scanned_at": null,
   "languages": ["en"]
@@ -217,7 +223,8 @@ The fixed choices are enums, available from `vethuq.sources` (`vethuq.sources.So
 | Enum | Members |
 |---|---|
 | `SourceType` | `FILE`, `FOLDER` |
-| `SourceStatus` | `PENDING`, `INDEXED`, `ERROR`, `REMOVED` |
+| `SourceStatus` | `PENDING`, `IN_PROGRESS`, `COMPLETED`, `ERROR`, `REMOVED` |
+| `FileStatus` | `PENDING`, `PROCESSING`, `INDEXED`, `ERROR`, `MODIFIED`, `REMOVED`, `UNSUPPORTED` |
 | `SortOrder` | `ASC`, `DESC` |
 | `SourceSortBy` | `ID`, `PATH`, `STATUS`, `SOURCE_TYPE`, `ADDED_AT`, `LAST_SCANNED_AT` |
 
@@ -305,6 +312,52 @@ Each item is a `SourceFile`:
 
 It has `to_dict()` and `to_json(indent=None)` like the other results. It raises `SourceNotFoundError` if no active source matches, and `SourcePathError` if the source's folder or file is no longer on disk.
 
+#### Where each file is in indexing
+
+`detailed=True` adds an `index` (a `FileIndex`) to every file:
+
+```python
+for file in client.sources.list_files(1, detailed=True):
+    print(file.relative_path, file.index.status)
+# a.pdf FileStatus.INDEXED
+# b.pdf FileStatus.PENDING
+# notes.txt FileStatus.UNSUPPORTED
+# old.pdf FileStatus.REMOVED
+
+errors = client.sources.list_files(1, detailed=True, status="error")  # only the failures
+```
+
+| `FileStatus` | Meaning |
+|---|---|
+| `PENDING` | Not processed yet (including a file VethuQ hasn't seen) |
+| `PROCESSING` | Being processed now |
+| `INDEXED` | Processed |
+| `ERROR` | Processing failed; see `error` |
+| `MODIFIED` | Changed on disk since it was indexed. It will be processed again |
+| `REMOVED` | Indexed once and no longer on disk. It stays listed (with `on_disk` false) until the source is purged |
+| `UNSUPPORTED` | A kind of file VethuQ can't read yet. Only PDF is supported for now |
+
+A `FileIndex` has `status`, `on_disk`, `error`, `sha256` (known once the file has been read), `indexed_at`, `retry_count` and `duplicate_of` (for a file with the same content as an earlier one: the path of that original), plus `to_dict()` and `to_json()`. `status` (a `FileStatus` or its string) keeps only the files in that state and needs `detailed=True`. Reading never changes anything; the index is written as files are processed. The documents behind it are internal.
+
+### Source progress
+
+A source's `status` follows its files, and `files_processed` of `files_total` tells how far it is:
+
+| `status` | When |
+|---|---|
+| `PENDING` | Nothing is processed or processing yet |
+| `IN_PROGRESS` | Some files are done and others still wait, or one is being processed |
+| `COMPLETED` | Every file is processed |
+| `ERROR` | Every file is processed, but some failed |
+| `REMOVED` | The source was removed |
+
+```python
+source = client.sources.get(1)
+print(source.status, source.progress)  # SourceStatus.IN_PROGRESS 3 of 10 files processed
+```
+
+Unsupported and removed files don't count towards the total.
+
 ### Changing the languages
 
 ```python
@@ -319,14 +372,14 @@ Removing a source is reversible; purging is not.
 
 ```python
 removed = client.sources.remove(1)  # kept, but marked REMOVED and no longer active
-client.sources.create("~/docs")  # registering it again brings it back
+client.sources.create("~/docs")  # registering it again brings it back, with the files it knew
 
 result = client.sources.purge(1)  # permanently deleted
 print(result.to_json())  # {"id": 1, "path": "/home/you/docs", "type": "folder"}
 ```
 
 - `remove` works on active sources and returns the removed `Source`. Removing one that is already removed raises `SourceNotFoundError`.
-- `purge` works only on removed sources and returns a `PurgeResult` (`id`, `path`, `source_type`, with `to_dict()` and `to_json()`). An active source raises `SourceNotRemovedError`; an unknown one raises `SourceNotFoundError`. A purged source's language choices go with it.
+- `purge` works only on removed sources and returns a `PurgeResult` (`id`, `path`, `source_type`, with `to_dict()` and `to_json()`). An active source raises `SourceNotRemovedError`; an unknown one raises `SourceNotFoundError`. A purged source's language choices and the record of its files go with it.
 - `purge_expired()` purges every source that has been removed for longer than the retention, and returns the list of `PurgeResult`s. The retention is 7 days unless you change it in the [settings](#settings). Pass `retention_minutes=` to use another value for one call.
 
 ```python
@@ -359,9 +412,10 @@ A plain string such as `"en,te"` isn't accepted; pass a list.
 | `SourceAlreadyExistsError` | The path is already an active source, or the `Source` given was already created |
 | `SourceNotFoundError` | No source matches the id or path |
 | `SourceNotRemovedError` | `purge` was called on a source that is still active |
+| `SourceOverlapError` | `create` was given a path inside an active source, or one that contains an active source. Sources can't overlap, so a file never belongs to two |
 | `LanguageUnavailableError` | A language isn't one VethuQ knows |
 
-All of them are `VethuQError`s; the first four are also `SourceError`s.
+All of them are `VethuQError`s; the first five are also `SourceError`s.
 
 ## Languages
 
@@ -809,7 +863,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

@@ -25,6 +25,7 @@ from vethuq.errors.sources import (
     SourceError,
     SourceNotFoundError,
     SourceNotRemovedError,
+    SourceOverlapError,
     SourcePathError,
 )
 
@@ -44,6 +45,7 @@ __all__ = [
     "SourceError",
     "SourceNotFoundError",
     "SourceNotRemovedError",
+    "SourceOverlapError",
     "SourcePathError",
     "StaleLockError",
     "StartupError",

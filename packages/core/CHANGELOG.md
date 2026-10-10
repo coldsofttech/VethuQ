@@ -16,6 +16,16 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   `set_languages`, `remove`, `purge` and `purge_expired`. Results are `Source`, `SourceFile` and
   `PurgeResult`, with `to_dict()` and `to_json()`. `SourceType`, `SourceStatus`, `SourceSortBy` and
   `SortOrder` enums.
+- **Document index** (internal `documents` and `document_index` tables): which files a source
+  holds and where each is in indexing, by absolute path. `sources.list_files(id, detailed=True)`
+  adds a `FileIndex` to each file (`FileStatus`: pending, processing, indexed, error, modified,
+  removed, unsupported; sha256; the original of a duplicate) and also lists indexed files that
+  have gone from disk until the source is purged. `status=` filters. Only PDF is supported for
+  now. Reading never changes anything.
+- **Source progress**: a source's `status` is now overall (`SourceStatus`: pending, in_progress,
+  completed, error, removed), with `files_processed`, `files_total` and a `progress` text.
+- Sources can't overlap: `create` raises `SourceOverlapError` for a path inside an active source or
+  one that contains it. Purging a source deletes the record of its files.
 - **Languages** (`client.languages.list_all()`): a `languages` table seeded with English, and a
   `source_languages` table linking sources to the languages they are read in. An unknown language
   raises `LanguageUnavailableError`.

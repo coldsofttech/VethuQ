@@ -37,7 +37,16 @@ class TestSource:
         data = vethuq.sources.Source("x").to_dict()
 
         assert "languages" not in data
-        assert set(data) == {"id", "path", "type", "status", "added_at", "last_scanned_at"}
+        assert set(data) == {
+            "id",
+            "path",
+            "type",
+            "status",
+            "files_processed",
+            "files_total",
+            "added_at",
+            "last_scanned_at",
+        }
 
     def test_to_json_matches_to_dict(self):
         source = vethuq.sources.Source("x", languages=["en"])

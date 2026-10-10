@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vethuq._db import _Database, _Source
+from sqlalchemy.orm import Session
+
+from vethuq._db import _Database, _DocumentIndex, _Source
+from vethuq._documents import _Documents
 from vethuq._errors import _SourceAlreadyExistsError
 from vethuq._settings import _SourceSettings
 from vethuq._sources import _FileEntry, _Files, _Sources
-from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
+from vethuq.enums import FileStatus, SortOrder, SourceSortBy, SourceStatus, SourceType
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 __all__ = [
+    "FileIndex",
+    "FileStatus",
     "PurgeResult",
     "SortOrder",
     "Source",
@@ -47,6 +53,9 @@ class Source:
     last_scanned_at: str | None = None
     is_active: bool | None = None
     removed_at: str | None = None
+    # Progress: the files that count (not unsupported or removed) and how many are processed.
+    files_total: int | None = None
+    files_processed: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", str(self.path))
@@ -65,7 +74,17 @@ class Source:
             last_scanned_at=model.last_scanned_at,
             is_active=model.is_active,
             removed_at=model.removed_at,
+            files_total=model.files_total,
+            files_processed=model.files_processed,
         )
+
+    @property
+    def progress(self) -> str | None:
+        """Where indexing is, in words: `"3 of 10 files processed"`; None until the source is
+        created."""
+        if self.files_total is None or self.files_processed is None:
+            return None
+        return f"{self.files_processed} of {self.files_total} files processed"
 
     def to_dict(self) -> dict[str, object]:
         data: dict[str, object] = {
@@ -73,6 +92,8 @@ class Source:
             "path": self.path,
             "type": self.source_type.value if self.source_type else None,
             "status": self.status.value if self.status else None,
+            "files_processed": self.files_processed,
+            "files_total": self.files_total,
             "added_at": self.added_at,
             "last_scanned_at": self.last_scanned_at,
         }
@@ -106,14 +127,47 @@ class PurgeResult:
 
 
 @dataclass(frozen=True)
+class FileIndex:
+    """Where one file is in indexing (`list_files(..., detailed=True)`)."""
+
+    status: FileStatus
+    on_disk: bool = True  # False for a file that was indexed and has since gone
+    error: str | None = None  # why it failed, when its status is ERROR
+    sha256: str | None = None  # known once the file has been read
+    indexed_at: str | None = None  # UTC, ISO 8601
+    retry_count: int = 0
+    # For a file whose content is the same as an earlier file's: that original's path.
+    duplicate_of: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status.value,
+            "on_disk": self.on_disk,
+            "error": self.error,
+            "sha256": self.sha256,
+            "indexed_at": self.indexed_at,
+            "retry_count": self.retry_count,
+            "duplicate_of": self.duplicate_of,
+        }
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
 class SourceFile:
-    """A file that belongs to a source."""
+    """A file that belongs to a source.
+
+    `index` is filled in by `list_files(..., detailed=True)`.
+    """
 
     path: str  # the absolute path
     relative_path: str  # relative to the source folder (just the name, for a file source)
     name: str
     size_bytes: int
     modified_at: str  # UTC, ISO 8601
+    index: FileIndex | None = None
 
     @classmethod
     def _from_entry(cls, entry: _FileEntry) -> SourceFile:
@@ -126,13 +180,16 @@ class SourceFile:
         )
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        data: dict[str, object] = {
             "path": self.path,
             "relative_path": self.relative_path,
             "name": self.name,
             "size_bytes": self.size_bytes,
             "modified_at": self.modified_at,
         }
+        if self.index is not None:
+            data["index"] = self.index.to_dict()
+        return data
 
     def to_json(self, indent: int | None = None) -> str:
         """The same details as `to_dict()`, as a JSON string."""
@@ -220,18 +277,100 @@ class Sources:
                 )
             ]
 
-    def list_files(self, id_or_path: int | str | Path) -> list[SourceFile]:
+    def list_files(
+        self,
+        id_or_path: int | str | Path,
+        detailed: bool = False,
+        status: FileStatus | str | None = None,
+    ) -> list[SourceFile]:
         """The files that belong to an active source, as they are on disk now.
 
         For a folder, every file under it, however deep, sorted by path relative to the
         folder; for a file, that same file. Links to folders are not followed.
 
+        With `detailed=True` each file also has an `index` (a `FileIndex`) saying where it is in
+        indexing: `PENDING` (not processed yet), `PROCESSING`, `INDEXED`, `ERROR`, `MODIFIED`
+        (changed since it was indexed, so it will be processed again) or `UNSUPPORTED` (not a
+        kind VethuQ reads; only PDF is, for now). Files that were indexed and have since gone
+        from disk are listed too, as `REMOVED`, until the source is purged. `status` keeps only
+        the files with that `FileStatus` and needs `detailed=True`. Reading never changes
+        anything.
+
         Raises `SourceNotFoundError` if no active source matches and `SourcePathError` if
         the source's path is no longer on disk.
         """
+        if status is not None and not detailed:
+            raise ValueError("status needs detailed=True.")
+        wanted = None if status is None else _Sources._coerce(FileStatus, status, "status")
         with self._database.session() as session:
-            path = _Sources.get(session, id_or_path).path
-        return [SourceFile._from_entry(entry) for entry in _Files.list(path)]
+            source = _Sources.get(session, id_or_path)
+            path, source_id = source.path, source.id
+            entries = _Files.list(path)
+            if not detailed:
+                return [SourceFile._from_entry(entry) for entry in entries]
+            files = self._with_index(session, path, source_id, entries)
+        return [f for f in files if wanted is None or (f.index and f.index.status is wanted)]
+
+    @staticmethod
+    def _with_index(
+        session: Session, source_path: str, source_id: int, entries: list[_FileEntry]
+    ) -> list[SourceFile]:
+        """The files on disk joined with the document index, plus the indexed files now gone."""
+        rows = {row.file_path: row for row in _Documents.rows(session, source_id)}
+        originals = _Documents.original_paths(
+            session, {r.document_id for r in rows.values() if r.document_id is not None}
+        )
+        files: list[SourceFile] = []
+
+        def index_for(row: _DocumentIndex | None, status: FileStatus, on_disk: bool) -> FileIndex:
+            duplicate_of = None
+            if row is not None and row.document_id is not None:
+                original_id, original_path = originals[row.document_id]
+                duplicate_of = original_path if original_id != row.id else None
+            return FileIndex(
+                status=status,
+                on_disk=on_disk,
+                error=row.error_message if row else None,
+                sha256=row.sha256 if row else None,
+                indexed_at=row.indexed_at if row else None,
+                retry_count=row.retry_count if row else 0,
+                duplicate_of=duplicate_of,
+            )
+
+        for entry in entries:
+            row = rows.pop(entry.path, None)
+            status = _Sources.file_status(row, entry)
+            files.append(
+                SourceFile(
+                    path=entry.path,
+                    relative_path=entry.relative_path,
+                    name=entry.name,
+                    size_bytes=entry.size_bytes,
+                    modified_at=entry.modified_at,
+                    index=index_for(row, status, True),
+                )
+            )
+        root = Path(source_path)
+        for gone in rows.values():  # indexed files no longer on disk
+            if gone.status is FileStatus.UNSUPPORTED:
+                continue
+            relative = (
+                Path(gone.file_path).name
+                if root.is_file() or Path(gone.file_path) == root
+                else os.path.relpath(gone.file_path, root).replace(os.sep, "/")
+            )
+            files.append(
+                SourceFile(
+                    path=gone.file_path,
+                    relative_path=relative,
+                    name=Path(gone.file_path).name,
+                    size_bytes=gone.size_bytes,
+                    modified_at=gone.modified_at,
+                    index=index_for(gone, FileStatus.REMOVED, False),
+                )
+            )
+        files.sort(key=lambda f: (f.relative_path.casefold(), f.relative_path))
+        return files
 
     def remove(self, id_or_path: int | str | Path) -> Source:
         """Remove an active source and return it, marked removed.

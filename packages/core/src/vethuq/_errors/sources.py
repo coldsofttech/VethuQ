@@ -24,3 +24,7 @@ class _SourceNotFoundError(_SourceError, errors.SourceNotFoundError):
 
 class _SourceNotRemovedError(_SourceError, errors.SourceNotRemovedError):
     exit_code = 24
+
+
+class _SourceOverlapError(_SourceError, errors.SourceOverlapError):
+    exit_code = 25

@@ -17,15 +17,18 @@ from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vethuq._db import _Language, _Source, _SourceLanguage
+from vethuq._db import _DocumentIndex, _Language, _Source, _SourceLanguage
+from vethuq._documents import _Documents, _FileTypes
 from vethuq._errors import (
     _LanguageUnavailableError,
     _SourceAlreadyExistsError,
     _SourceNotFoundError,
     _SourceNotRemovedError,
+    _SourceOverlapError,
     _SourcePathError,
 )
-from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
+from vethuq._sources.files import _FileEntry
+from vethuq.enums import FileStatus, SortOrder, SourceSortBy, SourceStatus, SourceType
 
 _E = TypeVar("_E", SourceStatus, SourceType, SortOrder, SourceSortBy)
 
@@ -90,6 +93,25 @@ class _Sources:
         )
 
     @staticmethod
+    def check_no_overlap(session: Session, resolved: Path) -> None:
+        """Refuse a path that lies inside an active source or contains one, so no file belongs to
+        two sources. Raises `SourceOverlapError` naming the source in the way."""
+        for other in session.scalars(select(_Source).where(_Source.is_active.is_(True))):
+            existing = Path(other.path)
+            if existing == resolved:
+                continue  # the same path is reported as already registered
+            if resolved.is_relative_to(existing):
+                raise _SourceOverlapError(
+                    f"{resolved} is inside source {other.id} ({existing}).",
+                    "Sources can't overlap: use that source, or remove it first.",
+                )
+            if existing.is_relative_to(resolved):
+                raise _SourceOverlapError(
+                    f"{resolved} contains source {other.id} ({existing}).",
+                    "Sources can't overlap: remove that source first.",
+                )
+
+    @staticmethod
     def find_by_path(session: Session, path: str) -> _Source | None:
         return session.scalars(select(_Source).where(_Source.path == path)).first()
 
@@ -99,10 +121,11 @@ class _Sources:
     ) -> _Source:
         """Register a file or folder as a source. Folders are indexed recursively.
 
-        Re-adding a path that was previously removed reactivates that source (reset to
-        'pending') instead of failing. Raises `SourcePathError` if the path does not exist or
+        Re-adding a path that was previously removed reactivates that source, with the files it
+        already knows, instead of failing. Raises `SourcePathError` if the path does not exist or
         is neither a file nor a folder, `SourceAlreadyExistsError` if it is already an active
-        source, and `LanguageUnavailableError` if a language is not a known one.
+        source, `SourceOverlapError` if it lies inside an active source or contains one, and
+        `LanguageUnavailableError` if a language is not a known one.
         """
         codes = _Sources.clean_languages(languages)
         chosen = _Sources.find_languages(session, codes) if codes else None
@@ -111,14 +134,14 @@ class _Sources:
         added_at = datetime.now(UTC).isoformat()
 
         existing = _Sources.find_by_path(session, key)
+        if existing is not None and existing.is_active:
+            raise _SourceAlreadyExistsError(
+                f"Path is already registered: {resolved}",
+                f"It is source {existing.id}.",
+            )
+        _Sources.check_no_overlap(session, resolved)
         if existing is not None:
-            if existing.is_active:
-                raise _SourceAlreadyExistsError(
-                    f"Path is already registered: {resolved}",
-                    f"It is source {existing.id}.",
-                )
             existing.source_type = source_type
-            existing.status = SourceStatus.PENDING
             existing.added_at = added_at
             existing.last_scanned_at = None
             existing.is_active = True
@@ -126,6 +149,7 @@ class _Sources:
             if chosen is not None:
                 existing.language_links = [_SourceLanguage(language=row) for row in chosen]
             session.flush()
+            _Documents.refresh_source(session, existing.id)  # its earlier files are still known
             _Sources._logger.info("Source reactivated: id=%d path=%s", existing.id, key)
             return existing
 
@@ -228,6 +252,23 @@ class _Sources:
         statement = statement.order_by(direction, _Source.id.asc())
         return list(session.scalars(statement))
 
+    @staticmethod
+    def file_status(row: _DocumentIndex | None, entry: _FileEntry) -> FileStatus:
+        """Where a file on disk is in indexing, from its index row (None if it has none)."""
+        if not _FileTypes.is_supported(entry.path):
+            return FileStatus.UNSUPPORTED
+        if row is None or row.status is FileStatus.REMOVED:
+            return FileStatus.PENDING  # not seen yet, or back after it was removed
+        changed = row.size_bytes != entry.size_bytes or row.modified_at != entry.modified_at
+        if changed and row.status in (
+            FileStatus.INDEXED,
+            FileStatus.ERROR,
+            FileStatus.PROCESSING,
+            FileStatus.MODIFIED,
+        ):
+            return FileStatus.MODIFIED
+        return row.status
+
     # ----- changing -------------------------------------------------------------------------
 
     @staticmethod
@@ -258,7 +299,8 @@ class _Sources:
 
     @staticmethod
     def purge(session: Session, id_or_path: int | str | Path) -> _Source:
-        """Permanently delete a source that has been removed, with its language choices.
+        """Permanently delete a source that has been removed, with its language choices and the
+        record of its files.
 
         Raises `SourceNotFoundError` if nothing matches and `SourceNotRemovedError` if the
         source is still active.
@@ -268,6 +310,7 @@ class _Sources:
             raise _SourceNotRemovedError(
                 f"Source is still active: {source.path}", "Remove it before purging."
             )
+        _Documents.purge_source(session, source.id)
         session.delete(source)
         session.flush()
         _Sources._logger.info("Source purged: id=%d path=%s", source.id, source.path)
@@ -291,6 +334,7 @@ class _Sources:
             )
         )
         for source in expired:
+            _Documents.purge_source(session, source.id)
             session.delete(source)
             _Sources._logger.info(
                 "Cleanup (retention): purged source id=%d path=%s", source.id, source.path
