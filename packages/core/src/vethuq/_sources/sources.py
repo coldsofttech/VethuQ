@@ -16,19 +16,21 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vethuq._db import _Source
-from vethuq._errors import _SourceAlreadyExistsError, _SourcePathError
+from vethuq._db import _Language, _Source, _SourceLanguage
+from vethuq._errors import (
+    _LanguageUnavailableError,
+    _SourceAlreadyExistsError,
+    _SourcePathError,
+)
 
 
 class _Sources:
     _logger = logging.getLogger("vethuq.database")
 
     @staticmethod
-    def languages_value(languages: Sequence[str] | None) -> str | None:
-        """The stored form of a language choice (`["en", "te"]` -> `"en,te"`); None for no choice.
-
-        Ids are trimmed and lower-cased, and blanks and repeats dropped, keeping the order.
-        """
+    def clean_languages(languages: Sequence[str] | None) -> list[str] | None:
+        """The language ids asked for, trimmed and lower-cased with blanks and repeats dropped;
+        None for no choice."""
         if languages is None:
             return None
         if isinstance(languages, str):
@@ -38,7 +40,29 @@ class _Sources:
             value = str(language).strip().lower()
             if value and value not in ids:
                 ids.append(value)
-        return ",".join(ids) if ids else None
+        return ids or None
+
+    @staticmethod
+    def find_languages(session: Session, codes: list[str]) -> list[_Language]:
+        """The `languages` rows for `codes`, in language order.
+
+        Raises `LanguageUnavailableError` naming every id that is not a known language.
+        """
+        rows = list(
+            session.scalars(
+                select(_Language).where(_Language.language.in_(codes)).order_by(_Language.id)
+            )
+        )
+        found = {row.language for row in rows}
+        missing = [code for code in codes if code not in found]
+        if missing:
+            available = session.scalars(select(_Language.language).order_by(_Language.id)).all()
+            names = ", ".join(f"'{code}'" for code in missing)
+            noun = "language" if len(missing) == 1 else "languages"
+            raise _LanguageUnavailableError(
+                f"Unknown {noun} {names}.", f"Available languages: {', '.join(available)}."
+            )
+        return rows
 
     @staticmethod
     def resolve(path: str | Path) -> tuple[Path, str]:
@@ -71,10 +95,11 @@ class _Sources:
 
         Re-adding a path that was previously removed reactivates that source (reset to
         'pending') instead of failing. Raises `SourcePathError` if the path does not exist or
-        is neither a file nor a folder, and `SourceAlreadyExistsError` if it is already an
-        active source.
+        is neither a file nor a folder, `SourceAlreadyExistsError` if it is already an active
+        source, and `LanguageUnavailableError` if a language is not a known one.
         """
-        language_value = _Sources.languages_value(languages)
+        codes = _Sources.clean_languages(languages)
+        chosen = _Sources.find_languages(session, codes) if codes else None
         resolved, source_type = _Sources.resolve(path)
         key = str(resolved)
         added_at = datetime.now(UTC).isoformat()
@@ -92,8 +117,8 @@ class _Sources:
             existing.last_scanned_at = None
             existing.is_active = True
             existing.removed_at = None
-            if language_value is not None:
-                existing.languages = language_value
+            if chosen is not None:
+                existing.language_links = [_SourceLanguage(language=row) for row in chosen]
             session.flush()
             _Sources._logger.info("Source reactivated: id=%d path=%s", existing.id, key)
             return existing
@@ -104,7 +129,7 @@ class _Sources:
             status="pending",
             added_at=added_at,
             is_active=True,
-            languages=language_value,
+            language_links=[_SourceLanguage(language=row) for row in chosen or []],
         )
         session.add(source)
         try:

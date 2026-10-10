@@ -66,16 +66,16 @@ class TestVethuQClient:
         assert source.languages is None
 
     def test_create_with_languages(self, client, tmp_path):
-        source = client.sources.create(tmp_path, languages=["en", "te"])
+        source = client.sources.create(tmp_path, languages=["en"])
 
-        assert source.languages == ["en", "te"]
+        assert source.languages == ["en"]
 
     def test_create_from_a_source_object(self, client, tmp_path):
-        described = vethuq.Source(tmp_path, languages=["te"])
+        described = vethuq.Source(tmp_path, languages=["en"])
 
         created = client.sources.create(described)
 
-        assert created.id == 1 and created.languages == ["te"]
+        assert created.id == 1 and created.languages == ["en"]
         assert described.id is None  # the one passed in is left untouched
 
     def test_the_result_has_json(self, client, tmp_path):
@@ -86,6 +86,22 @@ class TestVethuQClient:
     def test_languages_must_be_a_list(self, client, tmp_path):
         with pytest.raises(TypeError):
             client.sources.create(tmp_path, languages="en,te")
+
+    def test_an_unknown_language_is_rejected_with_the_available_ones(self, client, tmp_path):
+        with pytest.raises(errors.LanguageUnavailableError) as excinfo:
+            client.sources.create(tmp_path, languages=["en", "xx"])
+
+        assert "'xx'" in excinfo.value.message
+        assert "en" in excinfo.value.hint
+
+    def test_a_source_with_an_unknown_language_is_not_created(self, client, tmp_path):
+        with pytest.raises(errors.LanguageUnavailableError):
+            client.sources.create(vethuq.Source(tmp_path, languages=["xx"]))
+
+        assert client.sources.create(tmp_path).id == 1
+
+    def test_english_is_available_out_of_the_box(self, client, tmp_path):
+        assert client.sources.create(tmp_path, languages=["EN"]).languages == ["en"]
 
     def test_languages_on_both_the_source_and_the_call_is_ambiguous(self, client, tmp_path):
         with pytest.raises(TypeError, match="not both"):

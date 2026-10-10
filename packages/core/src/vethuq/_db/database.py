@@ -8,15 +8,17 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from vethuq._db.models import _Base
+from vethuq._db.models import _Base, _Language
 from vethuq._paths import _Paths
 
 
 class _Database:
     BUSY_TIMEOUT_MS = 5000
+    # Languages every database starts with; more are added as they become available.
+    DEFAULT_LANGUAGES = ("en",)
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
@@ -46,7 +48,20 @@ class _Database:
                 _Base.metadata.create_all(engine)
                 self._engine = engine
                 self._sessions = sessionmaker(engine, expire_on_commit=False)
+                self._seed(self._sessions)
             return self._sessions
+
+    @staticmethod
+    def _seed(sessions: sessionmaker[Session]) -> None:
+        """Add the default languages that are missing."""
+        with sessions() as session:
+            known = set(session.scalars(select(_Language.language)))
+            session.add_all(
+                _Language(language=code)
+                for code in _Database.DEFAULT_LANGUAGES
+                if code not in known
+            )
+            session.commit()
 
     @contextmanager
     def session(self) -> Iterator[Session]:

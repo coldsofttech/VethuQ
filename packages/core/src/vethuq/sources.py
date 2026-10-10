@@ -46,7 +46,7 @@ class Source:
     def _from_model(cls, model: _Source) -> Source:
         return cls(
             path=model.path,
-            languages=model.languages.split(",") if model.languages else None,
+            languages=model.language_codes or None,
             id=model.id,
             source_type=model.source_type,
             status=model.status,
@@ -93,8 +93,9 @@ class Sources:
         Folders are indexed recursively. Re-creating a source that was removed reactivates it.
 
         Raises `SourcePathError` if the path does not exist or is neither a file nor a
-        folder, and `SourceAlreadyExistsError` if the path is already an active source or
-        the `Source` given was already created.
+        folder, `SourceAlreadyExistsError` if the path is already an active source or the
+        `Source` given was already created, and `LanguageUnavailableError` if a language is
+        not one VethuQ knows (the error lists the ones it does).
         """
         if isinstance(source, Source):
             if languages is not None:
