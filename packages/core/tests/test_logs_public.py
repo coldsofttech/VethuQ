@@ -34,7 +34,12 @@ class TestLogsAccess:
             assert isinstance(log, vethuq.logs.Log)
         assert all(
             issubclass(cls, vethuq.logs.Log)
-            for cls in (vethuq.logs.DatabaseLog, vethuq.logs.IndexLog, vethuq.logs.UiLog, vethuq.logs.CliLog)
+            for cls in (
+                vethuq.logs.DatabaseLog,
+                vethuq.logs.IndexLog,
+                vethuq.logs.UiLog,
+                vethuq.logs.CliLog,
+            )
         )
 
     def test_each_knows_its_component_and_what_it_logs(self, client):

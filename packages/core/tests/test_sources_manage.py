@@ -119,7 +119,9 @@ class TestSourcesList:
     def test_asking_for_removed_status_shows_them_without_the_flag(self, client, three):
         client.sources.remove(2)
 
-        assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.REMOVED)] == [2]
+        removed = client.sources.list(status=vethuq.sources.SourceStatus.REMOVED)
+
+        assert [s.id for s in removed] == [2]
 
     @pytest.mark.parametrize(
         ("sort_by", "order", "expected"),
@@ -156,13 +158,17 @@ class TestSourcesList:
         assert [s.id for s in listed] == [1, 2]
 
     def test_filter_by_source_type(self, client, three):
-        assert [s.id for s in client.sources.list(source_type=vethuq.sources.SourceType.FILE)] == [3]
-        assert [s.id for s in client.sources.list(source_type=vethuq.sources.SourceType.FOLDER)] == [1, 2]
+        types = vethuq.sources.SourceType
+
+        assert [s.id for s in client.sources.list(source_type=types.FILE)] == [3]
+        assert [s.id for s in client.sources.list(source_type=types.FOLDER)] == [1, 2]
 
     def test_filter_by_status(self, client, three):
         _set(client, 2, status=vethuq.sources.SourceStatus.INDEXED)
 
-        assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.INDEXED)] == [2]
+        indexed = client.sources.list(status=vethuq.sources.SourceStatus.INDEXED)
+
+        assert [s.id for s in indexed] == [2]
         assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.ERROR)] == []
 
     def test_filter_by_language(self, client, three):

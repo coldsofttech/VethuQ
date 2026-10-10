@@ -165,7 +165,9 @@ class TestSourcesListFiles:
     def test_results_are_source_files(self, client, tree):
         source = client.sources.create(tree[0])
 
-        assert all(isinstance(f, vethuq.sources.SourceFile) for f in client.sources.list_files(source.id))
+        files = client.sources.list_files(source.id)
+
+        assert all(isinstance(f, vethuq.sources.SourceFile) for f in files)
 
     def test_a_folder_source_whose_path_became_a_file_lists_that_file(self, client, tree):
         root, _ = tree
