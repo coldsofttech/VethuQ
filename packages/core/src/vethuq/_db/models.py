@@ -26,6 +26,14 @@ class _Base(DeclarativeBase):
     pass
 
 
+class _SchemaVersion(_Base):
+    """The version of the database schema; the table holds a single row."""
+
+    __tablename__ = "schema_version"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+
+
 class _Setting(_Base):
     """A named setting and its saved value; a setting with no row uses its default."""
 

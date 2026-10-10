@@ -11,6 +11,7 @@ from vethuq.languages import Languages
 from vethuq.paths import Paths
 from vethuq.settings import Settings
 from vethuq.sources import Sources
+from vethuq.version import VersionDetails
 
 __all__ = ["VethuQ"]
 
@@ -64,6 +65,11 @@ class VethuQ:
         if self._settings is None:
             self._settings = Settings(self._db())
         return self._settings
+
+    @property
+    def version(self) -> VersionDetails:
+        """What this install is running. It doesn't open the database."""
+        return VersionDetails._collect()
 
     def close(self) -> None:
         """Release the database connections. The client reconnects if used again."""

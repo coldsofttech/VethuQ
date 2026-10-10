@@ -140,7 +140,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-`client.sources`, `client.languages` and `client.settings` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources`, `client.languages`, `client.settings` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -408,4 +408,45 @@ client.settings.sources.reset_removed_retention_minutes()
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
 
-Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+## Version
+
+`client.version` tells you what this install is running. It reads only local information, so it never opens or creates the database.
+
+```python
+import vethuq
+
+client = vethuq.VethuQ()
+
+version = client.version
+print(version.vethuq)       # 0.1.0
+print(version.python)       # 3.13.1
+print(version.db_schema)    # 1
+print(version.to_json(indent=2))
+```
+
+It returns a `VersionDetails`:
+
+| Field | Description |
+|---|---|
+| `vethuq` | The installed VethuQ version. It is the same as `vethuq.APP_VERSION` |
+| `python` | The Python version |
+| `platform` | The operating system and platform |
+| `db_schema` | The database schema version this build reads and writes |
+| `file_types` | The file types installed |
+| `search_engines` | The search engines installed |
+| `ocr_engines` | The OCR engines installed |
+| `ocr_languages` | The OCR languages installed |
+| `add_ons` | The add-ons installed |
+| `bundles` | The bundles installed |
+
+The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
+
+### The database schema
+
+The database records its schema version in a one-row `schema_version` table. The version is `1` for now.
+
+- A new database is stamped with the current version, and a database that has no version yet is stamped the first time it is opened.
+- A database written by a **newer** VethuQ is refused before anything in it is touched: opening it raises `vethuq.errors.SchemaVersionError` (exit code 14), and its hint says to upgrade VethuQ.
+- A database from an **older** VethuQ is brought up to date step by step when it is opened, and the new version is recorded. If a step fails, the version stays as it was.
+
+Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `VersionDetails`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.

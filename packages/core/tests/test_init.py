@@ -31,6 +31,7 @@ class TestPublicApi:
             "SourceSortBy",
             "SourceStatus",
             "SourceType",
+            "VersionDetails",
             "VethuQ",
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)

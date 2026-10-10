@@ -11,7 +11,8 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from vethuq._db.models import _Base, _Language
+from vethuq._db.models import _Language
+from vethuq._db.schema import _Schema
 from vethuq._paths import _Paths
 
 
@@ -45,7 +46,11 @@ class _Database:
                 _Paths.ensure_writable(self.db_path.parent)
                 engine = create_engine(f"sqlite:///{self.db_path}")
                 event.listen(engine, "connect", self._configure_connection)
-                _Base.metadata.create_all(engine)
+                try:
+                    _Schema.ensure(engine)
+                except BaseException:
+                    engine.dispose()
+                    raise
                 self._engine = engine
                 self._sessions = sessionmaker(engine, expire_on_commit=False)
                 self._seed(self._sessions)
