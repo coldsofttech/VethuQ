@@ -92,6 +92,7 @@ from vethuq._core.settings import LogSettings as _LogSettings
 from vethuq._core.settings import OcrSettings as _OcrSettings
 from vethuq._core.settings import SearchSettings as _SearchSettings
 from vethuq._core.settings import SourceSettings as _SourceSettings
+from vethuq._core.settings import UpdateSettings as _UpdateSettings
 from vethuq._core.sources import (
     PurgeResult,
     Source,
@@ -109,6 +110,9 @@ from vethuq._core.stats import Processing as _Processing
 from vethuq._core.stats import Stats as _Stats
 from vethuq._core.storage import default_db_path as _default_db_path
 from vethuq._core.storage import open_storage as _open_storage
+from vethuq._core.updates import FeatureAccess, UpdateResult, UpdateStatus
+from vethuq._core.updates import FeatureGate as _FeatureGate
+from vethuq._core.updates import UpdateChecker as _UpdateChecker
 from vethuq._core.version import VersionDetails
 from vethuq._core.version import VersionInfo as _VersionInfo
 
@@ -139,6 +143,8 @@ BACKUP_VALUES = _DbSettings.BACKUP_VALUES
 INTEGRITY_CHECK_VALUES = _DbSettings.INTEGRITY_CHECK_VALUES
 LOG_LEVEL_VALUES = _LogSettings.LEVEL_VALUES
 LOG_COMPONENTS = tuple(_Logs.COMPONENTS)
+UPDATE_CHECK_VALUES = _UpdateSettings.CHECK_VALUES
+UPDATE_CHECK_ENV_VAR = _UpdateSettings.ENV_VAR
 
 engine_badge = _Ranking.engine_badge
 hit_badge = _Ranking.hit_badge
@@ -156,6 +162,9 @@ __all__ = [
     "PolicyResult",
     "PolicySource",
     "PolicyStatus",
+    "FeatureAccess",
+    "UpdateResult",
+    "UpdateStatus",
     "FileTypeInfo",
     "BACKUP_VALUES",
     "ENGINE_BADGES",
@@ -181,6 +190,8 @@ __all__ = [
     "SEARCH_SEMANTIC_MAX_LIMIT",
     "SEARCH_SEMANTIC_PRESETS",
     "STALE_LOCK_VALUES",
+    "UPDATE_CHECK_ENV_VAR",
+    "UPDATE_CHECK_VALUES",
     "AlreadyRunningError",
     "AmbiguousFileError",
     "BackupError",
@@ -265,6 +276,11 @@ __all__ = [
     "StaleLockSettings",
     "Stats",
     "ThreadWorkersSettings",
+    "UpdateCheckSettings",
+    "UpdateSkipSettings",
+    "UpdateSnoozeSettings",
+    "Updates",
+    "UpdatesSettings",
     "Vethuq",
     "engine_badge",
     "hit_badge",
@@ -1585,6 +1601,121 @@ class IndexSettings:
         self.stale_lock = StaleLockSettings()
 
 
+class UpdateCheckSettings:
+    """Whether VethuQ checks for updates. Not instantiated directly — use
+    `Vethuq().settings.updates.check`."""
+
+    def get(self) -> str:
+        """The setting: 'on' (the default), 'notify-only' or 'off'.
+
+        'on' tells you when a newer version exists and offers to update where the app can;
+        'notify-only' only tells you; 'off' never checks. The environment variable
+        `UPDATE_CHECK_ENV_VAR` set to `off` turns the check off whatever this says.
+        """
+        storage = _open_storage()
+        try:
+            return _UpdateSettings.get_check(storage)
+        finally:
+            storage.close()
+
+    def set(self, value: str) -> None:
+        """Set the update check.
+
+        `value` must be one of `UPDATE_CHECK_VALUES`. Raises `InvalidSettingValueError`
+        otherwise.
+        """
+        storage = _open_storage()
+        try:
+            _UpdateSettings.set_check(storage, value)
+        finally:
+            storage.close()
+
+    def reset(self) -> None:
+        """Reset the update check to the default ('on')."""
+        storage = _open_storage()
+        try:
+            _UpdateSettings.reset_check(storage)
+        finally:
+            storage.close()
+
+    def disabled_by_environment(self) -> bool:
+        """Whether the environment variable `UPDATE_CHECK_ENV_VAR` switches the check off."""
+        return _UpdateSettings.disabled_by_environment()
+
+
+class UpdateSnoozeSettings:
+    """ "Remind me later": hide the update notice for a while. Not instantiated directly — use
+    `Vethuq().settings.updates.snooze`."""
+
+    def is_snoozed(self) -> bool:
+        """Whether the update notice is hidden right now."""
+        storage = _open_storage()
+        try:
+            return _UpdateSettings.is_snoozed(storage)
+        finally:
+            storage.close()
+
+    def set(self, days: float = 1) -> None:
+        """Hide the update notice for `days` days (1 by default). Raises
+        `InvalidSettingValueError` unless `days` is greater than 0.
+
+        A version below the minimum supported is still reported, because it explains why some
+        features are held back.
+        """
+        storage = _open_storage()
+        try:
+            _UpdateSettings.snooze(storage, days)
+        finally:
+            storage.close()
+
+    def clear(self) -> None:
+        """Show the update notice again."""
+        storage = _open_storage()
+        try:
+            _UpdateSettings.clear_snooze(storage)
+        finally:
+            storage.close()
+
+
+class UpdateSkipSettings:
+    """Skip one version's update notice. Not instantiated directly — use
+    `Vethuq().settings.updates.skip`."""
+
+    def get(self) -> str | None:
+        """The skipped version, or None. A newer version is announced again."""
+        storage = _open_storage()
+        try:
+            return _UpdateSettings.get_skipped_version(storage)
+        finally:
+            storage.close()
+
+    def set(self, version: str) -> None:
+        """Stop announcing `version`. Raises `InvalidSettingValueError` if it is empty."""
+        storage = _open_storage()
+        try:
+            _UpdateSettings.skip_version(storage, version)
+        finally:
+            storage.close()
+
+    def clear(self) -> None:
+        """Announce every new version again."""
+        storage = _open_storage()
+        try:
+            _UpdateSettings.clear_skip(storage)
+        finally:
+            storage.close()
+
+
+class UpdatesSettings:
+    """Configure the update check. Not instantiated directly — use
+    `Vethuq().settings.updates`."""
+
+    def __init__(self) -> None:
+        self.check = UpdateCheckSettings()
+        self.snooze = UpdateSnoozeSettings()
+        self.skip = UpdateSkipSettings()
+
+
 class Settings:
     """Configure VethuQ. Not instantiated directly — use `Vethuq().settings`."""
 
@@ -1595,6 +1726,7 @@ class Settings:
         self.ocr = OcrSettings()
         self.db = DbSettings()
         self.logs = LogsSettings()
+        self.updates = UpdatesSettings()
 
 
 class Stats:
@@ -1987,6 +2119,45 @@ class PolicyApi:
         return _PolicyService.client().refresh(force=force)
 
 
+class Updates:
+    """Is a newer VethuQ out, and which features need one (`client.updates`).
+
+    The answer comes from the signed policy (`client.policy`); there is no other source. It never
+    blocks local work: below the minimum supported version only the features that need a newer
+    version are held back. Nothing is fetched on `import vethuq` or `Vethuq()`; the network is
+    used only when you call `check()`, and never when the update check is switched off
+    (`client.settings.updates.check` or the `UPDATE_CHECK_ENV_VAR` environment variable).
+    """
+
+    def check(self, force: bool = False) -> UpdateResult:
+        """Refresh the policy (at most about once a day unless `force`) and report whether this
+        version is up to date. Never raises; takes a few seconds at most when offline."""
+        storage = _open_storage()
+        try:
+            return _UpdateChecker.check(storage, force=force)
+        finally:
+            storage.close()
+
+    def status(self) -> UpdateResult:
+        """What the saved policy says about this version, without any network request. Never
+        raises. `UpdateResult.notify` says whether to tell the user now (after their snooze and
+        skip choices); `message` is the sentence to show."""
+        storage = _open_storage()
+        try:
+            return _UpdateChecker.status(storage)
+        finally:
+            storage.close()
+
+    def feature(self, name: str, default: bool = False) -> FeatureAccess:
+        """Whether the feature `name` is available to this version, and why not when it isn't.
+
+        `default` is what the feature does when the policy doesn't cover it. A feature that
+        needs a newer version comes back with `allowed=False`, `requires_update=True` and a
+        message to show. No network request.
+        """
+        return _FeatureGate.check(name, default)
+
+
 def _language_value(languages: str | Sequence[str] | None) -> str | None:
     """A language choice as the comma-separated string the runner takes, or None."""
     if languages is None or isinstance(languages, str):
@@ -2136,6 +2307,7 @@ class Vethuq:
     client.search.run("invoice")
     client.file_types.list()
     client.policy.current()
+    client.updates.check()
     client.ocr.models.download("te")
     client.semantic.index()
     client.version.python
@@ -2154,6 +2326,7 @@ class Vethuq:
         self.db = Db()
         self.file_types = FileTypes()
         self.policy = PolicyApi()
+        self.updates = Updates()
 
     @property
     def version(self) -> VersionDetails:

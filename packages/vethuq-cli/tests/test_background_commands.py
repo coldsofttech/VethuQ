@@ -181,6 +181,63 @@ class TestStatus:
         assert "all sources" in result.output
 
 
+class TestStatusUpdates:
+    @pytest.fixture(autouse=True)
+    def _db(self, use_temp_db):
+        use_temp_db()
+
+    def found(self, monkeypatch, status, message_fields=None):
+        from vethuq_core.updates import UpdateChecker, UpdateResult
+
+        fields = {"latest": "1.2.0", "minimum_supported": "1.0.0", **(message_fields or {})}
+        monkeypatch.setattr(
+            UpdateChecker,
+            "status",
+            staticmethod(lambda *a, **k: UpdateResult(status, "on", "1.0.0", "pip", **fields)),
+        )
+
+    def test_availability_is_shown_in_text(self, monkeypatch):
+        from vethuq_core.updates import UpdateStatus
+
+        _service(monkeypatch, ServiceState.RUNNING)
+        self.found(monkeypatch, UpdateStatus.AVAILABLE)
+
+        out = runner.invoke(app, ["background-service", "status"])
+
+        assert "Update: VethuQ 1.2.0 is available" in out.output
+
+    def test_availability_is_in_json(self, monkeypatch):
+        from vethuq_core.updates import UpdateStatus
+
+        _service(monkeypatch, ServiceState.RUNNING)
+        self.found(monkeypatch, UpdateStatus.AVAILABLE)
+
+        data = json.loads(runner.invoke(app, ["background-service", "status", "--json"]).output)
+
+        assert data["update"]["status"] == "available"
+
+    def test_nothing_extra_when_up_to_date(self, monkeypatch):
+        from vethuq_core.updates import UpdateStatus
+
+        _service(monkeypatch, ServiceState.RUNNING)
+        self.found(monkeypatch, UpdateStatus.UP_TO_DATE)
+
+        assert "Update:" not in runner.invoke(app, ["background-service", "status"]).output
+
+    def test_status_works_when_the_update_check_fails(self, monkeypatch):
+        from vethuq_core.updates import UpdateChecker
+
+        def boom(*a, **k):
+            raise RuntimeError("broken")
+
+        _service(monkeypatch, ServiceState.RUNNING)
+        monkeypatch.setattr(UpdateChecker, "status", staticmethod(boom))
+
+        out = runner.invoke(app, ["background-service", "status", "--json"])
+
+        assert out.exit_code == 0 and json.loads(out.output)["update"] is None
+
+
 class TestIndexCommandsUseTheService:
     @pytest.fixture
     def source(self, use_temp_db, folder):

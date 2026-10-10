@@ -1,5 +1,7 @@
 # Policy client
 
+> The update check built on this client is described in [updates.md](updates.md).
+
 `vethuq_core.policy` lets every distribution (CLI, desktop app, `vethuq` pip package) learn from
 a signed `policy.json` without a reinstall. It fetches the policy, verifies its Ed25519
 signature, caches it, and falls back to a built-in baseline. The policy itself, its schema and

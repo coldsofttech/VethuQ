@@ -665,6 +665,14 @@ retention window. A `removed` document is excluded from search (which
 only matches `status='indexed'` rows) but still shows up in `index
 status`, flagged with that status, until it's purged.
 
+## Update check
+
+`vethuq_core.updates` compares the running version with the signed policy's `latest` and
+`minimum_supported` (the policy is the only source) and gates features that need a newer client;
+the CLI (`vethuq updates`, a one-line notice), the desktop app (a startup prompt) and
+`client.updates` in the `vethuq` package all call it. Settings, snooze and skip are in the
+database (`UpdateSettings`). See [updates.md](updates.md).
+
 ## Conventions per package
 
 - `src/<pkg_name>/` layout (import name uses underscores, distribution

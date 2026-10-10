@@ -59,6 +59,13 @@ The **Settings** menu covers:
 - **Sources** — add, view, and remove registered sources.
 - **GPU** — turn GPU-accelerated OCR on or off (off by default; only
   useful if your machine has a supported GPU).
+- **Updates** — whether VethuQ checks for a newer version: **On** (a dialog at
+  startup with Later / Skip this version), **Notify only** (a message in the status
+  bar) or **Off**; "Show again" clears a snooze or skipped version. The environment
+  variable `VETHUQ_UPDATE_CHECK=off` turns the check off whatever this says. The
+  check reads VethuQ's signed policy file, at most once a day, which exposes your IP
+  address to its host (your version is not sent); there is no telemetry. See [updates.md](updates.md).
+  Installing an update from the app is not available yet.
 - Search snippet length and other preferences shared with the CLI.
 
 ## Relationship to the CLI/library

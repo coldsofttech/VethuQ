@@ -57,10 +57,12 @@ class Notice:
 
 @dataclass(frozen=True)
 class Feature:
-    """A remote feature flag; `min_client` limits it to clients at or above that version."""
+    """A remote feature flag; `min_client` limits it to clients at or above that version, and
+    `message` explains the flag to the user when the feature is not available to them."""
 
     enabled: bool
     min_client: str | None = None
+    message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -177,9 +179,11 @@ class Policy:
         features: dict[str, Feature] = {}
         for name, entry in value.items() if isinstance(value, dict) else []:
             if isinstance(entry, dict) and isinstance(entry.get("enabled"), bool):
-                min_client = entry.get("min_client")
+                min_client, message = entry.get("min_client"), entry.get("message")
                 features[name] = Feature(
-                    entry["enabled"], min_client if isinstance(min_client, str) else None
+                    entry["enabled"],
+                    min_client if isinstance(min_client, str) else None,
+                    message if isinstance(message, str) else None,
                 )
         return features
 

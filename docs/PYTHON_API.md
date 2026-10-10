@@ -141,6 +141,34 @@ if result.update_required:
     print(result.detail)
 ```
 
+## `client.updates`
+
+Is a newer VethuQ out, and which features need one — mirrors `vethuq updates`. The answer comes from the signed policy (`client.policy`) and nothing else; see [docs/updates.md](updates.md). **Nothing is fetched on `import vethuq` or `Vethuq()`; the network is used only when you call `check()`, and never when the update check is off** (`client.settings.updates.check`, or the environment variable `UPDATE_CHECK_ENV_VAR` = `VETHUQ_UPDATE_CHECK` set to `off`). No method raises, and local work is never blocked.
+
+`check()` and `status()` return an `UpdateResult`: `status` (`UpdateStatus.UP_TO_DATE`, `AVAILABLE`, `BELOW_MINIMUM`, `DISABLED` or `UNKNOWN`), `current`, `latest`, `minimum_supported`, `release_notes_url`, `mode`, `snoozed`, `skipped`, `disabled_by_environment`, `notify` (tell the user now, after their snooze and skip choices), `offer_install` (`mode` is `on`) and `message` (the sentence to show, empty when there is nothing to say).
+
+### `check(force=False) -> UpdateResult`
+
+Refresh the policy (at most about once a day unless `force=True`, with a short timeout) and report on it.
+
+### `status() -> UpdateResult`
+
+Report on the saved policy, without any network request.
+
+### `feature(name, default=False) -> FeatureAccess`
+
+Whether the feature is available to this version. `FeatureAccess` has `allowed`, `requires_update` (unavailable only because this VethuQ is too old) and `message` (why not). `default` is what the feature does when the policy doesn't cover it.
+
+```python
+result = client.updates.check()
+if result.notify:
+    print(result.message)
+
+access = client.updates.feature("github_tier")
+if not access.allowed:
+    print(access.message)  # e.g. "Needs VethuQ 1.2.0 or newer."
+```
+
 ## `client.index`
 
 Indexing runs in the background, the same way as `vethuq index run`. See
@@ -555,6 +583,25 @@ Invalid values raise `InvalidSettingValueError`.
 
 - `get()` — days of daily log files kept (`15` by default)
 - `set(days)` — `days` must be at least 1; raises `InvalidSettingValueError` otherwise
+
+### `client.settings.updates.check`
+
+- `get()` — `"on"` (default), `"notify-only"` or `"off"`
+- `set(value)` — `value` must be one of `UPDATE_CHECK_VALUES`; raises `InvalidSettingValueError` otherwise
+- `reset()` — back to `"on"`
+- `disabled_by_environment()` — whether `VETHUQ_UPDATE_CHECK=off` is in force, which wins over the setting
+
+### `client.settings.updates.snooze`
+
+- `is_snoozed()` — whether the update notice is hidden now
+- `set(days=1)` — hide it for `days` days; raises `InvalidSettingValueError` unless `days` is greater than 0
+- `clear()` — show it again
+
+### `client.settings.updates.skip`
+
+- `get()` — the skipped version, or `None`
+- `set(version)` — stop announcing `version` (a newer one is announced again)
+- `clear()` — announce every version again
 
 ### `client.settings.ocr.engine`
 

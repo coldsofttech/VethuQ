@@ -93,7 +93,7 @@ Pause the service: the run in progress pauses (as with `index pause`) and queued
 
 ### `status [--json]`
 
-Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, its data folder, the jobs waiting in its queue and the run in progress.
+Shows whether the service is installed and its state (`running`, `paused`, `stopped`, ...), the account it runs as, its data folder, the jobs waiting in its queue and the run in progress. When a newer VethuQ is available it says so (and `--json` has an `update` object); the service never prompts and never updates itself.
 
 ### Running one command without the service
 
@@ -842,6 +842,27 @@ vethuq settings logs retention set 30
 vethuq settings logs retention show
 ```
 
+### `updates check set <value>|show|reset`
+
+Whether VethuQ checks for updates: `on` (default; tells you and, in the desktop app, offers
+Later / Skip this version), `notify-only` (tells you, never offers) or `off`. The environment
+variable `VETHUQ_UPDATE_CHECK=off` turns the check off whatever this says. See
+[docs/updates.md](updates.md).
+
+```bash
+vethuq settings updates check set notify-only
+vethuq settings updates check show
+```
+
+### `updates snooze set [days]|show|clear`
+
+"Remind me later": hide the update notice for `days` days (default 1). A version below the
+minimum supported is still mentioned.
+
+### `updates skip set <version>|show|clear`
+
+Stop announcing one version; a newer version is announced again.
+
 ### `ocr engine set <mode>|show`
 
 Configure how thoroughly OCR looks for rotated text. One of `quick` (the
@@ -1270,6 +1291,23 @@ Check for a newer policy now, ignoring the once-a-day limit, and show the result
 ```bash
 vethuq policy show
 vethuq policy refresh
+```
+
+## `updates`
+
+Tells you when a newer VethuQ exists, using the signed policy (no other source); see [docs/updates.md](updates.md). After a command's output, when it goes to a terminal, VethuQ prints one line if a newer version is available (never when piped, with `--json` or `--help`, or if the check is `off`); it never prompts. Below the minimum supported version local features keep working and only features that need a newer version are held back.
+
+### `status [--json]`
+
+What the saved policy says about this version: the setting in force, installed, latest and minimum versions, release notes, and whether reminders are snoozed or a version is skipped. Makes no network request.
+
+### `check [--json]`
+
+Check for a newer policy now, ignoring the once-a-day limit, and show the same result.
+
+```bash
+vethuq updates status
+vethuq updates check --json
 ```
 
 ## `search-engines`
