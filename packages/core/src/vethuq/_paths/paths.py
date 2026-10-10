@@ -38,6 +38,7 @@ class _Paths:
     DB_DIRNAME = "db"
     RUN_DIRNAME = "run"
     LOGS_DIRNAME = "logs"
+    POLICY_DIRNAME = "policy"
 
     ENV_VAR = "VETHUQ_HOME"
     LOCATION_FILENAME = "db.json"
@@ -251,6 +252,14 @@ class _Paths:
     def backups_dir(db_path: Path, *, create: bool = True) -> Path:
         """Folder for database backups: the configured one, else `db/backups` next to the db."""
         path = _Paths.configured_backups_location() or db_path.parent / _Paths.BACKUPS_DIRNAME
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def policy_dir(db_path: Path, *, create: bool = True) -> Path:
+        """Folder for the cached policy and its state; created on demand unless not `create`."""
+        path = _Paths.data_root(db_path) / _Paths.POLICY_DIRNAME
         if create:
             path.mkdir(parents=True, exist_ok=True)
         return path

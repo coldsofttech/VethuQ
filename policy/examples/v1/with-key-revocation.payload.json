@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "sequence": 12,
+  "issued_at": "2026-10-09T12:00:00Z",
+  "kid": "pst-standby-example",
+  "versions": {
+    "desktop": { "latest": "1.2.0", "minimum_supported": "1.2.0" },
+    "pip": { "latest": "1.2.0", "minimum_supported": "1.2.0" }
+  },
+  "revoked_key_ids": ["pol-compromised-example", "lic-compromised-example"],
+  "notices": [
+    {
+      "id": "key-rotation",
+      "message": "Signing keys were rotated. Please update to the latest version.",
+      "severity": "critical"
+    }
+  ]
+}

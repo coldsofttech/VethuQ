@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coldsofttech.github.io/vethuq-policy/schema/v1/envelope.schema.json",
+  "title": "VethuQ signed policy envelope (v1)",
+  "description": "What /v1/policy.json contains. The payload is carried as base64url of the exact bytes that were signed, so no JSON re-serialisation is ever needed to verify.",
+  "type": "object",
+  "required": ["alg", "kid", "payload", "sig"],
+  "properties": {
+    "alg": { "const": "Ed25519" },
+    "kid": {
+      "description": "Id of the key that produced sig. Must equal payload.kid.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "payload": {
+      "description": "base64url (RFC 4648 section 5, no padding) of the exact UTF-8 payload bytes that were signed. Decodes to a JSON document valid against policy.schema.json.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "sig": {
+      "description": "base64url (no padding) of the 64-byte Ed25519 signature over the decoded payload bytes.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{86}$"
+    }
+  }
+}

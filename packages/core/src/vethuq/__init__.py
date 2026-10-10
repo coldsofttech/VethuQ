@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq import errors, logs, paths, sources
+from vethuq import errors, logs, paths, policy, sources, updates
 from vethuq._brand import _Brand
 from vethuq._version import _Version
 from vethuq.client import VethuQ
@@ -25,7 +25,9 @@ __all__ = [
     "errors",
     "logs",
     "paths",
+    "policy",
     "sources",
+    "updates",
     "Language",
     "Paths",
     "VersionDetails",

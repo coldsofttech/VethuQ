@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "sequence": 5,
+  "issued_at": "2026-10-09T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": { "latest": "1.1.0", "minimum_supported": "1.0.0" },
+    "pip": { "latest": "1.1.0", "minimum_supported": "1.0.0" }
+  },
+  "effective_from": "2026-10-10",
+  "rate_card": {
+    "version": 3,
+    "page_size": { "tolerance_percent": 5, "step": 0.25, "minimum": 0.25, "per_page_max": 16 },
+    "pixels": { "reference_megapixels": 8.7, "step": 0.25, "minimum": 0.25 },
+    "phases": { "quick": 1.0, "moderate": 2.4, "high": 16.0 },
+    "rotated_factor": 0.8,
+    "language_pass": 1.0,
+    "semantic": 0.5,
+    "device_multiplier": { "cpu": 1.0, "gpu": 1.0 },
+    "model_multiplier": { "fast": 1.0, "advanced": 1.0 }
+  },
+  "wallets": {
+    "local": { "daily": 500, "starter": 2000 },
+    "github": { "daily_private": 20, "daily_public": 200 },
+    "addons": { "semantic": { "local_daily": 250, "github_daily": 100 } }
+  },
+  "promotions": [
+    {
+      "id": "launch-week",
+      "name": "Launch week",
+      "start_date": "2026-11-01",
+      "end_date": "2026-11-07",
+      "uplift": {
+        "local": { "percent": 50 },
+        "github": { "absolute": 10 }
+      },
+      "applies_to": { "client": { "min": "1.0.0" } },
+      "message": "Extra credits all launch week."
+    }
+  ],
+  "caps": {
+    "promotion_uplift_percent": 100,
+    "one_off_max": 10000,
+    "one_off_expiry_days": 365,
+    "device_daily_ceiling": 2000,
+    "metrics_bonus_percent": 15
+  },
+  "grace_percent": 2,
+  "grace_mode": "free",
+  "metrics": {
+    "enabled": true,
+    "endpoint": "https://example.com/metrics",
+    "max_batch_bytes": 65536,
+    "bonus_percent": 10
+  },
+  "ocr": { "profiles": { "quick": "fast", "moderate": "advanced", "high": "advanced" } }
+}

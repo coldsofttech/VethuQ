@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "sequence": 4,
+  "issued_at": "2026-10-08T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": {
+      "latest": "1.1.0",
+      "minimum_supported": "1.0.0",
+      "release_notes_url": "https://example.com/releases/1.1.0",
+      "downloads": [
+        {
+          "platform": "windows-x64",
+          "url": "https://example.com/dl/vethuq-1.1.0-win-x64.exe",
+          "size": 52428800,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "platform": "macos-arm64",
+          "url": "https://example.com/dl/vethuq-1.1.0-mac-arm64.dmg",
+          "size": 61865984,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    "pip": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    }
+  },
+  "compatibility": {
+    "addon_api": {
+      "min": "1.0.0",
+      "max": "1.2.0"
+    }
+  },
+  "limits": [
+    {
+      "id": "launch-promo",
+      "kind": "promotion",
+      "starts_at": "2026-11-01T00:00:00Z",
+      "ends_at": "2026-11-30T23:59:59Z",
+      "min_client": "1.0.0",
+      "adjustments": {
+        "max_vaults": 10
+      }
+    }
+  ]
+}

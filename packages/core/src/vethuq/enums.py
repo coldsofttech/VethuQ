@@ -4,7 +4,18 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-__all__ = ["LogComponent", "LogLevel", "SortOrder", "SourceSortBy", "SourceStatus", "SourceType"]
+__all__ = [
+    "LogComponent",
+    "LogLevel",
+    "PolicySource",
+    "PolicyStatus",
+    "SortOrder",
+    "SourceSortBy",
+    "SourceStatus",
+    "SourceType",
+    "UpdateCheckMode",
+    "UpdateStatus",
+]
 
 
 class SourceType(StrEnum):
@@ -48,6 +59,7 @@ class LogComponent(StrEnum):
     INDEX = "index"
     UI = "ui"
     CLI = "cli"
+    POLICY = "policy"
 
 
 class LogLevel(StrEnum):
@@ -57,3 +69,41 @@ class LogLevel(StrEnum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+
+
+class PolicySource(StrEnum):
+    """Where a policy came from."""
+
+    FETCHED = "fetched"  # accepted by this call
+    CACHE = "cache"  # the last accepted policy, checked again from disk
+    BASELINE = "baseline"  # the built-in policy
+
+
+class PolicyStatus(StrEnum):
+    """What a policy check did."""
+
+    CURRENT = "current"  # `current()`: nothing was fetched
+    UPDATED = "updated"  # a newer policy was accepted
+    UNCHANGED = "unchanged"  # the server has nothing newer
+    SKIPPED = "skipped"  # checked recently, or no keys yet: no request made
+    OFFLINE = "offline"  # every URL failed (network, timeout, size, HTTP error)
+    REJECTED = "rejected"  # every URL answered but nothing was acceptable
+    UPDATE_REQUIRED = "update_required"  # the policy needs a newer VethuQ than this one
+
+
+class UpdateCheckMode(StrEnum):
+    """What the update check does."""
+
+    ON = "on"  # checks, and offers to update
+    NOTIFY_ONLY = "notify-only"  # checks, and only tells you
+    OFF = "off"  # never checks
+
+
+class UpdateStatus(StrEnum):
+    """What the update check found."""
+
+    DISABLED = "disabled"  # the setting or VETHUQ_UPDATE_CHECK turned the check off
+    UP_TO_DATE = "up_to_date"
+    AVAILABLE = "available"  # a newer version exists
+    BELOW_MINIMUM = "below_minimum"  # older than the minimum supported version
+    UNKNOWN = "unknown"  # no usable policy, or a version that can't be compared

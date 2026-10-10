@@ -97,6 +97,7 @@ except vethuq.errors.VethuQError as error:  # any other VethuQ error
     db/backups/     database backups (unless relocated)
     run/            runtime coordination files
     logs/           log files
+    policy/         the cached policy and its state
 ```
 
 | Member | Returns |
@@ -110,6 +111,7 @@ except vethuq.errors.VethuQError as error:  # any other VethuQ error
 | `Paths.backups_dir()` | The folder backups are kept in |
 | `Paths.run_dir()` | The folder for runtime coordination files |
 | `Paths.logs_dir()` | The folder for log files |
+| `Paths.policy_dir()` | The folder for the cached policy and its state |
 | `Paths.config_file()` | The per-user `db.json`, which stores a relocated data root |
 
 All the methods return `pathlib.Path` objects.
@@ -143,7 +145,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-`client.sources`, `client.languages`, `client.settings`, `client.logs` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources`, `client.languages`, `client.settings`, `client.logs`, `client.policy`, `client.updates` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -411,6 +413,27 @@ client.settings.sources.reset_removed_retention_minutes()
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
 
+### Update settings
+
+`client.settings.updates` holds the settings for the [update check](#updates).
+
+| Method | Description |
+|---|---|
+| `get_check()` | What the check does, as an `UpdateCheckMode`. `ON` by default |
+| `set_check(mode)` | `ON` checks and offers to update, `NOTIFY_ONLY` checks and only tells you, `OFF` never checks (`"notify-only"` and the other strings work too) |
+| `reset_check()` | Back to `ON` |
+| `disabled_by_environment()` | Whether `VETHUQ_UPDATE_CHECK` switches the check off |
+| `snooze(days=1)` | Hide the notice for `days` days ("remind me later") |
+| `get_snoozed_until()` | When the snooze ends (UTC), or `None` |
+| `clear_snooze()` | Show the notice again |
+| `skip_version(version)` | Stop announcing this version only; a newer one is announced again |
+| `get_skipped_version()` | The version being skipped, or `None` |
+| `clear_skip()` | Announce every version again |
+
+Set the environment variable **`VETHUQ_UPDATE_CHECK`** to `off` (also `0`, `false`, `no`, `disable` or `disabled`) to switch the check off whatever the setting says, for CI and locked-down machines. It wins over the setting.
+
+A mode that isn't an `UpdateCheckMode`, a snooze that isn't a number of days above 0, or an empty version raises `InvalidSettingValueError` and changes nothing.
+
 ### Log settings
 
 `client.settings.logs` holds the settings for the logs (see [Logs](#logs)).
@@ -443,6 +466,7 @@ VethuQ keeps a log for each of its parts. They are plain text files in the `logs
 | `client.logs.index` | `IndexLog` | `INDEX` | `index.log` | Indexing: the background index runs and every OCR worker thread |
 | `client.logs.ui` | `UiLog` | `UI` | `ui.log` | The desktop app |
 | `client.logs.cli` | `CliLog` | `CLI` | `cli.log` | The command line: each command that ran and how it finished |
+| `client.logs.policy` | `PolicyLog` | `POLICY` | `policy.log` | The policy and update checks: fetching and verifying the signed policy |
 
 All of them extend `Log`. `client.logs.get("cli")` finds one by name or by `LogComponent`. The classes, `LogEntry`, `LogFile` and the enums `LogComponent` and `LogLevel` are all in `vethuq.logs`.
 
@@ -534,6 +558,134 @@ Loggers belong to the process, not to a client. If two clients use different dat
 
 Both are `LogError`s and `VethuQError`s.
 
+## Policy
+
+The policy is a small signed file that tells VethuQ the latest and minimum versions, notices and feature flags, without anyone reinstalling. VethuQ fetches it, checks its Ed25519 signature against keys built into VethuQ, and keeps the last good copy. Until one is accepted, a built-in baseline applies (no notices, no features, every version `0.0.0`).
+
+```python
+client = vethuq.VethuQ()
+
+result = client.policy.current()            # the cached policy or the baseline; no network
+result = client.policy.refresh()            # check for a newer one (about once a day)
+result = client.policy.refresh(force=True)  # ignore the once-a-day limit
+thread = client.policy.refresh_in_background()   # the same, on a daemon thread
+
+policy = result.policy
+policy.versions["pip"].latest               # "2.0.0" (a DistributionVersions)
+policy.active_notices()                     # notices whose time window includes now
+policy.features["some_feature"].enabled
+```
+
+The types are in `vethuq.policy`: `Policy`, `DistributionVersions`, `Notice`, `Feature`, `PolicyResult` and the enums `PolicySource` and `PolicyStatus`.
+
+A `PolicyResult` has:
+
+| Field | Meaning |
+|---|---|
+| `policy` | The `Policy` to use. Sections VethuQ doesn't use yet stay available in `policy.raw` / `policy.to_dict()` |
+| `source` | `FETCHED` (accepted by this call), `CACHE` (the last accepted policy, checked again from disk) or `BASELINE` |
+| `status` | `CURRENT`, `UPDATED`, `UNCHANGED`, `SKIPPED`, `OFFLINE`, `REJECTED` or `UPDATE_REQUIRED` |
+| `detail` | Why a fetch failed or was refused, for logs; the update message when `update_required` |
+| `update_required` | The latest policy needs a newer VethuQ than this one |
+
+It also has `to_dict()` and `to_json()`.
+
+### Guarantees
+
+- **No network unless asked.** Nothing is fetched on `import vethuq`, when a client is created, or by `current()`. Only `refresh()` and `refresh_in_background()` use the network.
+- **Never raises, never blocks.** `current()` and `refresh()` always return a `PolicyResult`: offline, every URL failing, a bad signature, a damaged cache or a read-only data folder just keep the last good policy (or the baseline).
+- **Trust comes from the signature, not the host.** A response is accepted only if it verifies against a built-in key, so a wrong or hostile mirror can make a fetch fail but cannot change the policy.
+- **No rollback.** A policy with a lower `sequence` than one already accepted is refused. A standby key can revoke a compromised signing key.
+- **A newer schema.** A correctly signed policy that needs a newer VethuQ is not applied; the last compatible policy stays and `update_required` is set (`"Update VethuQ to receive new policy."`).
+
+Until the production signing keys are built in, `refresh()` makes no request and returns `SKIPPED`.
+
+### Where it comes from
+
+The policy is published from the `policy/` folder of the VethuQ repository on GitHub Pages. VethuQ tries these in order and uses the first that verifies:
+
+1. `https://coldsofttech.github.io/vethuq/policy/v1/policy.json`
+2. `https://cdn.jsdelivr.net/gh/coldsofttech/vethuq@main/policy/v1/policy.json`
+3. `https://raw.githubusercontent.com/coldsofttech/vethuq/main/policy/v1/policy.json`
+
+Each request has a 2.5 s timeout, a 5 s total limit and a 256 KiB size cap, and only `https` is used. An ETag lets an unchanged policy answer "nothing newer". After a failed check VethuQ waits an hour before trying again.
+
+To use a staging file or a company mirror, set **`VETHUQ_POLICY_URLS`** to a comma- or space-separated list of `https` URLs. It replaces the list above for that process; entries that aren't well-formed `https` URLs are dropped, and if none are left the defaults are used.
+
+### What is stored
+
+In the `policy` folder of the data folder (`Paths.policy_dir()`), as two small files:
+
+| File | Contents |
+|---|---|
+| `policy.json` | The last accepted policy, exactly as served |
+| `state.json` | The highest accepted sequence per key, revoked key ids, the ETag, and the last check and failure times |
+
+They are plain files, not database rows, on purpose: the policy and the update check keep working even when the database can't be opened (for instance when it is newer than this VethuQ supports), and resetting the database does not erase the rollback protection. The folder is disposable: a missing or damaged file means "never fetched". What happens is written to the `policy` log (`client.logs.policy`).
+
+### Privacy
+
+Fetching the policy exposes your IP address to its host. The request identifies itself only as `VethuQ-policy/1`; **your VethuQ version is not sent** (the comparison happens on your machine). Nothing else is sent, and GitHub Pages gives no access logs to us. Turn the update check off and nothing is fetched on its behalf (see [Update settings](#update-settings)).
+
+## Updates
+
+`client.updates` tells you when a newer VethuQ exists and which features need one. The signed policy is the **only** source: there is no fallback to PyPI or GitHub Releases, so an update is announced only when it is published in the policy.
+
+```python
+result = client.updates.check()     # refresh the policy (about once a day) and report on it
+result = client.updates.status()    # use the saved policy only; no network
+if result.notify:
+    print(result.message)           # "VethuQ 2.0.0 is available (you have 1.5.0)."
+
+access = client.updates.feature("some_feature", default=True)
+if not access.allowed:
+    print(access.message)
+```
+
+The types are in `vethuq.updates`: `UpdateResult`, `FeatureAccess` and the enums `UpdateStatus` and `UpdateCheckMode`.
+
+### The result
+
+The check compares the installed `vethuq` version with the policy's `pip` entry (PEP 440, so the policy's `1.2.0-rc.1` reads as `1.2.0rc1`):
+
+| Installed version | `status` |
+|---|---|
+| at or above `latest` | `UP_TO_DATE`, nothing shown |
+| below `latest`, at or above `minimum_supported` | `AVAILABLE` |
+| below `minimum_supported` | `BELOW_MINIMUM`: reported, never snoozed or skipped |
+| no signed policy yet (the baseline), offline, or a version that can't be compared | `UNKNOWN`, nothing shown |
+| the check is switched off | `DISABLED` |
+
+An `UpdateResult` has `status`, `mode`, `current`, `distribution`, `latest`, `minimum_supported`, `release_notes_url`, `snoozed`, `skipped`, `disabled_by_environment` and `policy_update_required`, plus:
+
+| Property | Meaning |
+|---|---|
+| `notify` | Whether to tell the user now (not when disabled, snoozed, or the version is skipped; always when below the minimum) |
+| `offer_install` | Whether a front end that can install updates should offer to: `notify` and the mode is `ON` |
+| `message` | One line for the user; empty when there is nothing to say |
+
+It also has `to_dict()` and `to_json()`.
+
+**Local work is never blocked.** Below the minimum, indexing, search and your data keep working; only features that need a newer VethuQ are held back, each with a clear message.
+
+`status()` and `check()` never raise: a problem means `UNKNOWN`. If the database can't be read (it may be newer than this VethuQ supports, which is exactly when an update is needed), the check still runs with the default settings.
+
+### Features that need a newer version
+
+The policy's `features` can carry a `min_client` and a `message` for each feature. `client.updates.feature(name, default)` returns a `FeatureAccess`:
+
+| Field | Meaning |
+|---|---|
+| `allowed` | Whether the feature is available to this version |
+| `requires_update` | It is unavailable only because this VethuQ is too old |
+| `message` | The policy's message, or a generic one naming the version needed |
+
+`default` is what the feature does when the policy doesn't cover it, so an older VethuQ keeps what already works; a feature whose default is off, and that the policy turns on for newer versions, comes back `allowed=False, requires_update=True`. A flag with `enabled: false` is the remote kill switch and applies to every version at or above its `min_client`. `feature()` makes no request and never raises.
+
+### When it runs
+
+Nothing runs on `import vethuq` or when a client is created. The command line and the desktop app are expected to start `client.policy.refresh_in_background()` at startup; `client.updates.check()` refreshes on request and `client.updates.status()` uses what is saved. Installing an update from VethuQ is not part of this: the check only tells you.
+
 ## Version
 
 `client.version` tells you what this install is running. It reads only local information, so it never opens or creates the database.
@@ -567,4 +719,4 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.

@@ -1,0 +1,55 @@
+name: policy-ci
+
+on:
+  push:
+    paths:
+      - "policy/**"
+      - "tools/policy/**"
+      - ".github/workflows/policy-ci.yml"
+  pull_request:
+    paths:
+      - "policy/**"
+      - "tools/policy/**"
+      - ".github/workflows/policy-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema cryptography pytest
+
+      - name: Unit tests (schema, signature, sequence, windows)
+        run: python -m pytest -q tools/policy/tests
+
+      - name: Validate example payloads
+        run: |
+          for f in policy/examples/v1/*.payload.json; do
+            python tools/policy/validate.py payload "$f"
+          done
+
+      - name: Find previous policy.json
+        id: prev
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          rm -f "$RUNNER_TEMP/previous-policy.json"
+          if [ -n "$base" ] && ! echo "$base" | grep -qE '^0+$' \
+             && git cat-file -e "$base:policy/v1/policy.json" 2>/dev/null; then
+            git show "$base:policy/v1/policy.json" > "$RUNNER_TEMP/previous-policy.json"
+          fi
+          echo "path=$RUNNER_TEMP/previous-policy.json" >> "$GITHUB_OUTPUT"
+
+      - name: Validate policy/v1/policy.json
+        run: python tools/policy/validate.py envelope policy/v1/policy.json --keys-dir policy/keys --previous "${{ steps.prev.outputs.path }}"

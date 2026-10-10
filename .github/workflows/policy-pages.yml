@@ -1,0 +1,43 @@
+name: policy-pages
+
+# Publishes only the policy/ folder to GitHub Pages, so a file's path in the repository is its
+# path on the site: policy/v1/policy.json is served at /policy/v1/policy.json.
+# One-time setup: Settings > Pages > Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "policy/v1/**"
+      - ".github/workflows/policy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/policy
+          cp -r policy/v1 _site/policy/v1
+          touch _site/.nojekyll
+          printf '<!doctype html>\n<meta charset="utf-8">\n<title>VethuQ</title>\n<p>VethuQ policy: <a href="policy/v1/policy.json">policy/v1/policy.json</a>.</p>\n' > _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

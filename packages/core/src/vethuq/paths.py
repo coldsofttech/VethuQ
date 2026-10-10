@@ -5,6 +5,7 @@
         db/backups/     database backups (unless relocated)
         run/            runtime coordination files
         logs/           log files
+        policy/         the cached policy and its state
 
 The data root is the `VETHUQ_HOME` environment variable if set, else the location saved
 in the per-user `db.json`, else the platform default. Everything here is read-only: it
@@ -54,6 +55,11 @@ class Paths:
     def logs_dir() -> Path:
         """The folder for log files."""
         return Paths.data_root() / _Paths.LOGS_DIRNAME
+
+    @staticmethod
+    def policy_dir() -> Path:
+        """The folder for the cached policy and its state."""
+        return Paths.data_root() / _Paths.POLICY_DIRNAME
 
     @staticmethod
     def config_file() -> Path:

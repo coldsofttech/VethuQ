@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "sequence": 2,
+  "issued_at": "2026-10-08T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    },
+    "pip": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    }
+  },
+  "notices": [
+    {
+      "id": "maint-2026-10",
+      "message": "Scheduled maintenance on 2026-10-20. Updates may be briefly unavailable.",
+      "severity": "info",
+      "link": "https://example.com/status",
+      "starts_at": "2026-10-15T00:00:00Z",
+      "ends_at": "2026-10-21T00:00:00Z"
+    }
+  ]
+}

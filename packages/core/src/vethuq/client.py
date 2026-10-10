@@ -10,8 +10,10 @@ from vethuq._db import _Database
 from vethuq.languages import Languages
 from vethuq.logs import Logs
 from vethuq.paths import Paths
+from vethuq.policy import PolicyClient
 from vethuq.settings import Settings
 from vethuq.sources import Sources
+from vethuq.updates import Updates
 from vethuq.version import VersionDetails
 
 __all__ = ["VethuQ"]
@@ -34,6 +36,8 @@ class VethuQ:
         self._languages: Languages | None = None
         self._settings: Settings | None = None
         self._logs: Logs | None = None
+        self._policy: PolicyClient | None = None
+        self._updates: Updates | None = None
         self._lock = threading.Lock()
 
     @property
@@ -76,6 +80,20 @@ class VethuQ:
         return self._logs
 
     @property
+    def policy(self) -> PolicyClient:
+        """The signed policy: versions, notices and feature flags."""
+        if self._policy is None:
+            self._policy = PolicyClient(self._db())
+        return self._policy
+
+    @property
+    def updates(self) -> Updates:
+        """Whether a newer VethuQ exists, and which features need one."""
+        if self._updates is None:
+            self._updates = Updates(self._db(), self.policy)
+        return self._updates
+
+    @property
     def version(self) -> VersionDetails:
         """What this install is running. It doesn't open the database."""
         return VersionDetails._collect()
@@ -90,6 +108,8 @@ class VethuQ:
             self._languages = None
             self._settings = None
             self._logs = None
+            self._policy = None
+            self._updates = None
 
     def __enter__(self) -> VethuQ:
         return self

@@ -375,12 +375,19 @@ class _CliLog(_Log):
     DESCRIPTION = "The `vethuq` command line: each command that ran and how it finished."
 
 
+class _PolicyLog(_Log):
+    COMPONENT = LogComponent.POLICY
+    FILENAME = "policy.log"
+    DESCRIPTION = "The policy and update checks: fetching and verifying the signed policy."
+
+
 class _Logs:
     ALL: dict[LogComponent, type[_Log]] = {
         LogComponent.DATABASE: _DatabaseLog,
         LogComponent.INDEX: _IndexLog,
         LogComponent.UI: _UiLog,
         LogComponent.CLI: _CliLog,
+        LogComponent.POLICY: _PolicyLog,
     }
 
     @staticmethod

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import time
+from dataclasses import dataclass
+
 from sqlalchemy.orm import Session
 
 from vethuq._db import _Setting
 from vethuq._errors import _InvalidSettingValueError
 from vethuq._logs import _Log
-from vethuq.enums import LogLevel
+from vethuq.enums import LogLevel, UpdateCheckMode
 
 
 class _Settings:
@@ -118,3 +122,115 @@ class _LogSettings:
     def reset_retention_days(session: Session) -> None:
         """Back to the default retention (15 days)."""
         _Settings.reset(session, _Log.RETENTION_DAYS_KEY)
+
+
+@dataclass(frozen=True)
+class _UpdateView:
+    """What the update check needs from the settings, read in one go."""
+
+    mode: UpdateCheckMode  # in force: off when the environment says so, else the setting
+    disabled_by_environment: bool = False
+    snoozed: bool = False
+    skipped_version: str | None = None
+
+
+class _UpdateSettings:
+    CHECK_KEY = "update_check"
+    DEFAULT_CHECK = UpdateCheckMode.ON
+    SNOOZE_KEY = "update_snoozed_until"
+    DEFAULT_SNOOZE_DAYS = 1
+    SKIP_KEY = "update_skipped_version"
+
+    # Set to one of ENV_OFF_VALUES to turn the check off whatever the setting says (CI,
+    # locked-down machines). Any other value, or none, leaves the setting in charge.
+    ENV_VAR = "VETHUQ_UPDATE_CHECK"
+    ENV_OFF_VALUES = ("off", "0", "false", "no", "disable", "disabled")
+
+    @staticmethod
+    def disabled_by_environment() -> bool:
+        """Whether `VETHUQ_UPDATE_CHECK` switches the check off."""
+        value = os.environ.get(_UpdateSettings.ENV_VAR, "").strip().lower()
+        return value in _UpdateSettings.ENV_OFF_VALUES
+
+    @staticmethod
+    def get_check(session: Session) -> UpdateCheckMode:
+        """What the update check does: `on` unless changed."""
+        value = _Settings.get(session, _UpdateSettings.CHECK_KEY)
+        try:
+            return UpdateCheckMode(value) if value is not None else _UpdateSettings.DEFAULT_CHECK
+        except ValueError:
+            return _UpdateSettings.DEFAULT_CHECK
+
+    @staticmethod
+    def set_check(session: Session, mode: UpdateCheckMode | str) -> None:
+        try:
+            mode = UpdateCheckMode(mode)
+        except ValueError:
+            options = ", ".join(member.value for member in UpdateCheckMode)
+            raise _InvalidSettingValueError(
+                f"The update check mode {mode!r} isn't one VethuQ has.", f"Use one of: {options}."
+            ) from None
+        _Settings.set(session, _UpdateSettings.CHECK_KEY, mode.value)
+
+    @staticmethod
+    def reset_check(session: Session) -> None:
+        _Settings.reset(session, _UpdateSettings.CHECK_KEY)
+
+    @staticmethod
+    def get_snoozed_until(session: Session) -> float | None:
+        """When "remind me later" ends (seconds since the epoch), or None when not snoozed."""
+        value = _Settings.get(session, _UpdateSettings.SNOOZE_KEY)
+        try:
+            return float(value) if value else None
+        except ValueError:
+            return None
+
+    @staticmethod
+    def snooze(session: Session, days: float, now: float | None = None) -> None:
+        """Hide the update notice for `days` days."""
+        if isinstance(days, bool) or not isinstance(days, int | float) or days <= 0:
+            raise _InvalidSettingValueError(
+                f"The snooze must be a number of days above 0, not {days!r}.",
+                "Use clear_snooze() to show the notice again.",
+            )
+        until = (time.time() if now is None else now) + days * 24 * 60 * 60
+        _Settings.set(session, _UpdateSettings.SNOOZE_KEY, repr(until))
+
+    @staticmethod
+    def clear_snooze(session: Session) -> None:
+        _Settings.reset(session, _UpdateSettings.SNOOZE_KEY)
+
+    @staticmethod
+    def is_snoozed(session: Session, now: float | None = None) -> bool:
+        until = _UpdateSettings.get_snoozed_until(session)
+        return until is not None and (time.time() if now is None else now) < until
+
+    @staticmethod
+    def get_skipped_version(session: Session) -> str | None:
+        """The version the user chose to skip, or None. A newer version is announced again."""
+        return _Settings.get(session, _UpdateSettings.SKIP_KEY) or None
+
+    @staticmethod
+    def skip_version(session: Session, version: str) -> None:
+        if not isinstance(version, str) or not version.strip():
+            raise _InvalidSettingValueError(
+                f"The version to skip must be text, not {version!r}.",
+                "Use clear_skip() to announce every version again.",
+            )
+        _Settings.set(session, _UpdateSettings.SKIP_KEY, version.strip())
+
+    @staticmethod
+    def clear_skip(session: Session) -> None:
+        _Settings.reset(session, _UpdateSettings.SKIP_KEY)
+
+    @staticmethod
+    def read(session: Session, now: float | None = None) -> _UpdateView:
+        """The mode in force, whether the notice is snoozed, and the version skipped."""
+        by_environment = _UpdateSettings.disabled_by_environment()
+        mode = UpdateCheckMode.OFF if by_environment else _UpdateSettings.get_check(session)
+        return _UpdateView(
+            mode=mode,
+            disabled_by_environment=by_environment,
+            snoozed=_UpdateSettings.is_snoozed(session, now),
+            skipped_version=_UpdateSettings.get_skipped_version(session),
+        )

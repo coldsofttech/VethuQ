@@ -15,7 +15,16 @@ from pathlib import Path
 from typing import ClassVar
 
 from vethuq._db import _Database
-from vethuq._logs import _CliLog, _DatabaseLog, _Entry, _IndexLog, _Log, _Logs, _UiLog
+from vethuq._logs import (
+    _CliLog,
+    _DatabaseLog,
+    _Entry,
+    _IndexLog,
+    _Log,
+    _Logs,
+    _PolicyLog,
+    _UiLog,
+)
 from vethuq.enums import LogComponent, LogLevel, SortOrder
 
 __all__ = [
@@ -28,6 +37,7 @@ __all__ = [
     "LogFile",
     "LogLevel",
     "Logs",
+    "PolicyLog",
     "SortOrder",
     "UiLog",
 ]
@@ -238,6 +248,12 @@ class CliLog(Log):
     _log = _CliLog
 
 
+class PolicyLog(Log):
+    """The policy log: fetching, verifying and applying the signed policy, and the update check."""
+
+    _log = _PolicyLog
+
+
 class Logs:
     """VethuQ's logs, one attribute per component.
 
@@ -249,10 +265,11 @@ class Logs:
         self.index = IndexLog(database)
         self.ui = UiLog(database)
         self.cli = CliLog(database)
+        self.policy = PolicyLog(database)
 
     def list(self) -> list[LogFile]:
-        """Today's log file of every component: database, index, ui and cli."""
-        return [log.file() for log in (self.database, self.index, self.ui, self.cli)]
+        """Today's log file of every component: database, index, ui, cli and policy."""
+        return [log.file() for log in (self.database, self.index, self.ui, self.cli, self.policy)]
 
     def get(self, component: LogComponent | str) -> Log:
         """The log of a component given as a `LogComponent` or its name (`"cli"`).

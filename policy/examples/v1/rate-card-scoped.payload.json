@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "sequence": 6,
+  "issued_at": "2026-10-09T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": { "latest": "1.2.0", "minimum_supported": "1.0.0" },
+    "pip": { "latest": "1.2.0", "minimum_supported": "1.0.0" }
+  },
+  "rate_card": {
+    "version": 4,
+    "applies_to": { "client": { "min": "1.2.0" } },
+    "phases": { "quick": 1.0, "moderate": 2.0, "high": 12.0 },
+    "model_multiplier": { "fast": 1.0, "advanced": 1.5 }
+  },
+  "ocr": {
+    "profiles": { "quick": "fast", "moderate": "fast", "high": "fast" }
+  }
+}

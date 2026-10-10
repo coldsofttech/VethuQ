@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coldsofttech.github.io/vethuq-policy/schema/v1/policy.schema.json",
+  "title": "VethuQ policy payload (schema v1)",
+  "description": "The payload carried inside the signed envelope. Changes within schema major 1 are additive only; clients MUST ignore unknown fields, so additionalProperties is intentionally left open everywhere.",
+  "type": "object",
+  "required": ["schema_version", "sequence", "issued_at", "kid", "versions"],
+  "properties": {
+    "schema_version": {
+      "description": "Schema major version. Always 1 for payloads served from /v1/.",
+      "const": 1
+    },
+    "sequence": {
+      "description": "Monotonic sequence number. Clients reject a policy whose sequence is lower than the last one they accepted (rollback protection).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "issued_at": {
+      "description": "UTC time the policy was signed (RFC 3339).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "kid": {
+      "description": "Id of the signing key. Must equal the kid in the envelope.",
+      "$ref": "#/$defs/kid"
+    },
+    "versions": {
+      "description": "Latest and minimum supported versions per distribution.",
+      "type": "object",
+      "required": ["desktop", "pip"],
+      "properties": {
+        "desktop": { "$ref": "#/$defs/distribution" },
+        "pip": { "$ref": "#/$defs/distribution" }
+      }
+    },
+    "compatibility": {
+      "description": "Compatibility constraints.",
+      "type": "object",
+      "properties": {
+        "addon_api": {
+          "description": "Inclusive add-on API version range supported by the latest release.",
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "$ref": "#/$defs/semver" },
+            "max": { "$ref": "#/$defs/semver" }
+          }
+        }
+      }
+    },
+    "notices": {
+      "description": "User-facing notices. A notice is shown only inside its optional starts_at/ends_at window.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/notice" }
+    },
+    "features": {
+      "description": "Feature flags keyed by flag name. Setting enabled=false is also the remote kill switch for a feature.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/feature" }
+    },
+    "limits": {
+      "description": "Time-boxed limit adjustments and promotions. Structure only; empty in the initial v1 policies.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/limit" }
+    },
+    "effective_from": {
+      "description": "Optional UTC date (YYYY-MM-DD). Rate and limit sections in this payload (rate_card, wallets, caps, grace_percent, grace_mode, metrics, ocr) take effect at the later of this date and the next UTC day boundary after the client first saw the policy. Never earlier than the next boundary: the day in progress keeps the rates it started with. Promotions follow their own whole-day windows instead.",
+      "$ref": "#/$defs/utc_date"
+    },
+    "applies_to": {
+      "description": "Optional client-version scope for the whole payload's rate and limit sections. Absent means all client versions. A section may carry its own applies_to, which replaces this one for that section.",
+      "$ref": "#/$defs/applies_to"
+    },
+    "rate_card": {
+      "description": "The credit rate card. Rates are the same for every client version unless applies_to says otherwise. The package keeps a baseline that is used until a policy is available or when this section is absent.",
+      "$ref": "#/$defs/rate_card"
+    },
+    "wallets": {
+      "description": "Daily and starter credits per wallet. Absent values mean the package baseline applies.",
+      "$ref": "#/$defs/wallets"
+    },
+    "promotions": {
+      "description": "Credit promotions over whole UTC days. The highest uplift per wallet applies (non-stacking), capped by caps.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/promotion" }
+    },
+    "caps": {
+      "description": "Upper limits clients enforce on promotions, one-off credits, the daily device ceiling and the metrics bonus.",
+      "$ref": "#/$defs/caps"
+    },
+    "grace_percent": {
+      "description": "Grace allowance as a percentage of a wallet's daily allowance, used only after all other credits are exhausted. Default 2.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "grace_mode": {
+      "description": "free: used grace is not charged back. borrow: used grace is deducted from the next day. Default free. Clients ignore an unknown value and use the default.",
+      "enum": ["free", "borrow"]
+    },
+    "metrics": {
+      "description": "Anonymous usage metrics settings.",
+      "$ref": "#/$defs/metrics"
+    },
+    "ocr": {
+      "description": "OCR engine settings delivered by policy.",
+      "$ref": "#/$defs/ocr"
+    },
+    "revoked_key_ids": {
+      "description": "Signing key ids the client must stop trusting, at once and permanently. Honoured only when the envelope was signed by a key in the client's embedded policy-standby set; the signing key itself and standby keys can never be listed. See docs/schema-v1.md, 'Key revocation'.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kid" }
+    },
+    "revocations": {
+      "description": "Revoked licence ids. Reserved: MUST be empty in v1. Clients ignore it until a later additive change defines its use.",
+      "type": "array",
+      "maxItems": 0,
+      "items": { "$ref": "#/$defs/revocation" }
+    }
+  },
+  "$defs": {
+    "kid": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "distribution": {
+      "type": "object",
+      "required": ["latest", "minimum_supported"],
+      "properties": {
+        "latest": { "$ref": "#/$defs/semver" },
+        "minimum_supported": {
+          "description": "Clients older than this are told they must update.",
+          "$ref": "#/$defs/semver"
+        },
+        "release_notes_url": { "$ref": "#/$defs/url" },
+        "downloads": {
+          "description": "Per-platform download entries. Used by the desktop distribution; pip normally omits it.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/download" }
+        }
+      }
+    },
+    "download": {
+      "type": "object",
+      "required": ["platform", "url", "size", "sha256"],
+      "properties": {
+        "platform": {
+          "description": "Platform identifier, e.g. windows-x64, macos-arm64, linux-x64.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9_]+)*$"
+        },
+        "url": { "$ref": "#/$defs/url" },
+        "size": { "description": "Size in bytes.", "type": "integer", "minimum": 1 },
+        "sha256": { "description": "Lowercase hex SHA-256 of the file.", "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "required": ["id", "message", "severity"],
+      "properties": {
+        "id": { "description": "Stable id so clients can remember a dismissed notice.", "type": "string", "minLength": 1, "maxLength": 64 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "severity": { "enum": ["info", "warning", "critical"] },
+        "link": { "$ref": "#/$defs/url" },
+        "starts_at": { "type": "string", "format": "date-time" },
+        "ends_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "min_client": {
+          "description": "The flag applies only to clients at or above this version.",
+          "$ref": "#/$defs/semver"
+        }
+      }
+    },
+    "limit": {
+      "type": "object",
+      "required": ["id", "kind", "starts_at", "ends_at", "adjustments"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "kind": { "enum": ["limit_adjustment", "promotion"] },
+        "starts_at": { "type": "string", "format": "date-time" },
+        "ends_at": { "type": "string", "format": "date-time" },
+        "min_client": { "$ref": "#/$defs/semver" },
+        "adjustments": {
+          "description": "Named adjustments applied while the window is active, e.g. {\"max_vaults\": 10}.",
+          "type": "object",
+          "additionalProperties": { "type": ["number", "boolean", "string"] }
+        }
+      }
+    },
+    "utc_date": {
+      "description": "A calendar date in UTC, YYYY-MM-DD. Whole UTC days; impossible dates are rejected by validation.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "credits": {
+      "description": "A non-negative number of credits, with at most 3 decimal places (clients convert to integer millicredits).",
+      "type": "number",
+      "minimum": 0
+    },
+    "applies_to": {
+      "description": "Optional scope. client: inclusive client-version range (either bound may be omitted; absent means all versions). tiers and addons: entitlement filters, meaningful on promotions only. Unknown members are ignored.",
+      "type": "object",
+      "properties": {
+        "client": {
+          "type": "object",
+          "properties": {
+            "min": { "$ref": "#/$defs/semver" },
+            "max": { "$ref": "#/$defs/semver" }
+          }
+        },
+        "tiers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "addons": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "rate_card": {
+      "type": "object",
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "description": "Rate card version, stamped on every ledger row. Increases whenever any rate changes.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "applies_to": { "$ref": "#/$defs/applies_to" },
+        "page_size": {
+          "description": "Credits per page = page area / A4 area, rounded up to `step` after `tolerance_percent`, at least `minimum`; pages above `per_page_max` are refused.",
+          "type": "object",
+          "properties": {
+            "tolerance_percent": { "type": "number", "minimum": 0, "maximum": 50 },
+            "step": { "type": "number", "exclusiveMinimum": 0 },
+            "minimum": { "$ref": "#/$defs/credits" },
+            "per_page_max": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "pixels": {
+          "description": "Credits for images = processed pixels / reference megapixels (A4 at 300 dpi), rounded up to `step`, at least `minimum`.",
+          "type": "object",
+          "properties": {
+            "reference_megapixels": { "type": "number", "exclusiveMinimum": 0 },
+            "step": { "type": "number", "exclusiveMinimum": 0 },
+            "minimum": { "$ref": "#/$defs/credits" }
+          }
+        },
+        "phases": {
+          "description": "Credits per A4 page added by each OCR phase (upright, one language). quick is the first pass; moderate and high add rotated passes.",
+          "type": "object",
+          "properties": {
+            "quick": { "$ref": "#/$defs/credits" },
+            "moderate": { "$ref": "#/$defs/credits" },
+            "high": { "$ref": "#/$defs/credits" }
+          }
+        },
+        "rotated_factor": {
+          "description": "Multiplier for each rotated angle pass (a pricing discount, not the compute cost).",
+          "$ref": "#/$defs/credits"
+        },
+        "language_pass": {
+          "description": "Credits per page per additional language (upright).",
+          "$ref": "#/$defs/credits"
+        },
+        "semantic": {
+          "description": "Credits per page for semantic embedding, charged from the semantic sub-wallet.",
+          "$ref": "#/$defs/credits"
+        },
+        "device_multiplier": {
+          "description": "Multiplier by compute device actually used.",
+          "type": "object",
+          "properties": {
+            "cpu": { "$ref": "#/$defs/credits" },
+            "gpu": { "$ref": "#/$defs/credits" }
+          }
+        },
+        "model_multiplier": {
+          "description": "Multiplier by OCR model profile. fast is 1.0; advanced is set when the advanced profile is priced.",
+          "type": "object",
+          "properties": {
+            "fast": { "$ref": "#/$defs/credits" },
+            "advanced": { "$ref": "#/$defs/credits" }
+          }
+        }
+      }
+    },
+    "wallets": {
+      "type": "object",
+      "properties": {
+        "applies_to": { "$ref": "#/$defs/applies_to" },
+        "local": {
+          "type": "object",
+          "properties": {
+            "daily": { "$ref": "#/$defs/credits" },
+            "starter": { "description": "One-off starter credits per device.", "$ref": "#/$defs/credits" }
+          }
+        },
+        "github": {
+          "description": "The client picks daily_private or daily_public from the visibility of the runner repo it checks before each job.",
+          "type": "object",
+          "properties": {
+            "daily_private": { "$ref": "#/$defs/credits" },
+            "daily_public": { "$ref": "#/$defs/credits" },
+            "starter": { "$ref": "#/$defs/credits" }
+          }
+        },
+        "addons": {
+          "description": "Add-on sub-wallets keyed by add-on id (for example semantic). Usable only for that add-on's work.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "local_daily": { "$ref": "#/$defs/credits" },
+              "github_daily": { "$ref": "#/$defs/credits" },
+              "starter": { "$ref": "#/$defs/credits" }
+            }
+          }
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "required": ["id", "name", "start_date", "end_date", "uplift"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "start_date": { "description": "First UTC day of the window (inclusive).", "$ref": "#/$defs/utc_date" },
+        "end_date": { "description": "Last UTC day of the window (inclusive).", "$ref": "#/$defs/utc_date" },
+        "uplift": {
+          "description": "Per wallet, added to that wallet's daily allowance on each day inside the window. Wallet keys: local, github, or addon:<id>. Each value has exactly one of absolute (credits) or percent.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^(local|github|addon:[a-z][a-z0-9-]*)$" },
+          "additionalProperties": {
+            "type": "object",
+            "oneOf": [{ "required": ["absolute"] }, { "required": ["percent"] }],
+            "properties": {
+              "absolute": { "$ref": "#/$defs/credits" },
+              "percent": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        },
+        "applies_to": { "$ref": "#/$defs/applies_to" },
+        "min_client": { "$ref": "#/$defs/semver" },
+        "message": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "caps": {
+      "type": "object",
+      "properties": {
+        "promotion_uplift_percent": {
+          "description": "Maximum percent uplift a promotion may give one wallet.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "one_off_max": { "description": "Maximum one-off credits held at once.", "$ref": "#/$defs/credits" },
+        "one_off_expiry_days": { "type": "integer", "minimum": 1 },
+        "device_daily_ceiling": {
+          "description": "Absolute daily credits one device can receive from all sources.",
+          "$ref": "#/$defs/credits"
+        },
+        "metrics_bonus_percent": {
+          "description": "Maximum metrics bonus percent. Default 15.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "endpoint": { "$ref": "#/$defs/url" },
+        "max_batch_bytes": { "type": "integer", "minimum": 1 },
+        "bonus_percent": {
+          "description": "Percent added to the daily credits of the local and GitHub wallets while sharing is on and the last send was within 7 days. Default 10; capped by caps.metrics_bonus_percent.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "ocr": {
+      "type": "object",
+      "properties": {
+        "applies_to": { "$ref": "#/$defs/applies_to" },
+        "profiles": {
+          "description": "Override of the model profile per phase, for example all fast as a kill switch for the advanced models. Absent phases use the client's default.",
+          "type": "object",
+          "properties": {
+            "quick": { "enum": ["fast", "advanced"] },
+            "moderate": { "enum": ["fast", "advanced"] },
+            "high": { "enum": ["fast", "advanced"] }
+          }
+        }
+      }
+    },
+    "revocation": {
+      "type": "object",
+      "required": ["license_id"],
+      "properties": {
+        "license_id": { "type": "string", "minLength": 1 },
+        "revoked_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

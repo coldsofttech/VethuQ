@@ -9,6 +9,7 @@ from vethuq._logs.log import (
     _IndexLog,
     _Log,
     _Logs,
+    _PolicyLog,
     _SafeRotatingFileHandler,
     _UiLog,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "_IndexLog",
     "_Log",
     "_Logs",
+    "_PolicyLog",
     "_SafeRotatingFileHandler",
     "_UiLog",
 ]

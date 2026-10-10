@@ -142,6 +142,7 @@ class TestComponents:
             "index.log",
             "ui.log",
             "cli.log",
+            "policy.log",
         }
 
     def test_the_components_share_one_base(self):

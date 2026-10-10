@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "sequence": 3,
+  "issued_at": "2026-10-08T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    },
+    "pip": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    }
+  },
+  "features": {
+    "github_tier": {
+      "enabled": false,
+      "min_client": "1.0.0"
+    }
+  }
+}

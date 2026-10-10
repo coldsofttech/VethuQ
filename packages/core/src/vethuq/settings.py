@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from vethuq._db import _Database
 from vethuq._logs import _Log, _Logs
-from vethuq._settings import _LogSettings, _SourceSettings
-from vethuq.enums import LogLevel
+from vethuq._settings import _LogSettings, _SourceSettings, _UpdateSettings
+from vethuq.enums import LogLevel, UpdateCheckMode
 
-__all__ = ["LogSettings", "Settings", "SourceSettings"]
+__all__ = ["LogSettings", "Settings", "SourceSettings", "UpdateSettings"]
 
 
 class SourceSettings:
@@ -93,6 +95,80 @@ class LogSettings:
         self._apply()
 
 
+class UpdateSettings:
+    """Settings for the update check: whether it runs, and what the user chose to ignore.
+
+    Not created directly: use `VethuQ().settings.updates`.
+    """
+
+    ENV_VAR = _UpdateSettings.ENV_VAR
+    DEFAULT_CHECK = _UpdateSettings.DEFAULT_CHECK
+    DEFAULT_SNOOZE_DAYS = _UpdateSettings.DEFAULT_SNOOZE_DAYS
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_check(self) -> UpdateCheckMode:
+        """What the update check does, as an `UpdateCheckMode`: `ON` (the default) checks and
+        offers to update, `NOTIFY_ONLY` checks and only tells you, `OFF` never checks.
+
+        This is the saved setting; `disabled_by_environment()` says whether `VETHUQ_UPDATE_CHECK`
+        overrides it.
+        """
+        with self._database.session() as session:
+            return _UpdateSettings.get_check(session)
+
+    def set_check(self, mode: UpdateCheckMode | str) -> None:
+        """Set what the update check does. Raises `InvalidSettingValueError` for a value that
+        isn't an `UpdateCheckMode`."""
+        with self._database.session() as session:
+            _UpdateSettings.set_check(session, mode)
+
+    def reset_check(self) -> None:
+        """Back to the default (`ON`)."""
+        with self._database.session() as session:
+            _UpdateSettings.reset_check(session)
+
+    @staticmethod
+    def disabled_by_environment() -> bool:
+        """Whether the environment variable `VETHUQ_UPDATE_CHECK` (`off`, `0`, `false`, `no`,
+        `disable` or `disabled`) switches the check off whatever the setting says."""
+        return _UpdateSettings.disabled_by_environment()
+
+    def get_snoozed_until(self) -> datetime | None:
+        """When "remind me later" ends (UTC), or None when the notice isn't snoozed."""
+        with self._database.session() as session:
+            until = _UpdateSettings.get_snoozed_until(session)
+        return datetime.fromtimestamp(until, UTC) if until is not None else None
+
+    def snooze(self, days: float = DEFAULT_SNOOZE_DAYS) -> None:
+        """Hide the update notice for `days` days (1 by default). Raises
+        `InvalidSettingValueError` unless `days` is a number above 0."""
+        with self._database.session() as session:
+            _UpdateSettings.snooze(session, days)
+
+    def clear_snooze(self) -> None:
+        """Show the update notice again."""
+        with self._database.session() as session:
+            _UpdateSettings.clear_snooze(session)
+
+    def get_skipped_version(self) -> str | None:
+        """The version the user chose to skip, or None. A newer version is announced again."""
+        with self._database.session() as session:
+            return _UpdateSettings.get_skipped_version(session)
+
+    def skip_version(self, version: str) -> None:
+        """Stop announcing this version (only this one). Raises `InvalidSettingValueError` for
+        an empty version."""
+        with self._database.session() as session:
+            _UpdateSettings.skip_version(session, version)
+
+    def clear_skip(self) -> None:
+        """Announce every version again."""
+        with self._database.session() as session:
+            _UpdateSettings.clear_skip(session)
+
+
 class Settings:
     """VethuQ's settings, grouped by feature.
 
@@ -102,3 +178,4 @@ class Settings:
     def __init__(self, database: _Database) -> None:
         self.sources = SourceSettings(database)
         self.logs = LogSettings(database)
+        self.updates = UpdateSettings(database)

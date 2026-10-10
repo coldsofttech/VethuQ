@@ -28,9 +28,11 @@ class TestLogsAccess:
         assert isinstance(client.logs.index, vethuq.logs.IndexLog)
         assert isinstance(client.logs.ui, vethuq.logs.UiLog)
         assert isinstance(client.logs.cli, vethuq.logs.CliLog)
+        assert isinstance(client.logs.policy, vethuq.logs.PolicyLog)
 
     def test_the_classes_share_one_base(self, client):
-        for log in (client.logs.database, client.logs.index, client.logs.ui, client.logs.cli):
+        logs = client.logs
+        for log in (logs.database, logs.index, logs.ui, logs.cli, logs.policy):
             assert isinstance(log, vethuq.logs.Log)
         assert all(
             issubclass(cls, vethuq.logs.Log)
@@ -39,6 +41,7 @@ class TestLogsAccess:
                 vethuq.logs.IndexLog,
                 vethuq.logs.UiLog,
                 vethuq.logs.CliLog,
+                vethuq.logs.PolicyLog,
             )
         )
 
@@ -48,6 +51,7 @@ class TestLogsAccess:
             (client.logs.index, vethuq.logs.LogComponent.INDEX),
             (client.logs.ui, vethuq.logs.LogComponent.UI),
             (client.logs.cli, vethuq.logs.LogComponent.CLI),
+            (client.logs.policy, vethuq.logs.LogComponent.POLICY),
         ]
         for log, component in pairs:
             assert log.component is component
@@ -71,7 +75,7 @@ class TestLogsAccess:
         client.logs
         client.close()
 
-        assert len(client.logs.list()) == 4
+        assert len(client.logs.list()) == 5
         client.close()
 
     def test_reading_logs_does_not_open_or_create_anything(self, tmp_path):
@@ -100,6 +104,7 @@ class TestList:
             "index": False,
             "ui": False,
             "cli": False,
+            "policy": False,
         }
 
     def test_paths_are_in_the_logs_folder(self, client, tmp_path):

@@ -34,7 +34,7 @@ class TestEnums:
         ]
 
     def test_log_component_values(self):
-        assert [c.value for c in enums.LogComponent] == ["database", "index", "ui", "cli"]
+        assert [c.value for c in enums.LogComponent] == ["database", "index", "ui", "cli", "policy"]
 
     def test_log_level_values_run_from_least_to_most_severe(self):
         assert [level.value for level in enums.LogLevel] == ["debug", "info", "warning", "error"]
