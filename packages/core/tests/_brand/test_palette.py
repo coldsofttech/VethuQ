@@ -1,7 +1,7 @@
 import re
 
 import pytest
-from core._brand import _Brand, _Palette
+from vethuq._brand import _Brand, _Palette
 
 _HEX = re.compile(r"^#[0-9A-F]{6}$")
 

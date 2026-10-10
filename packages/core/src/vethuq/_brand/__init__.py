@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core._brand.brand import _Brand
-from core._brand.palette import _Palette
+from vethuq._brand.brand import _Brand
+from vethuq._brand.palette import _Palette
 
 __all__ = ["_Brand", "_Palette"]

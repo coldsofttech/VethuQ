@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-from core._brand import _Brand
+from vethuq._brand import _Brand
 
 APP_NAME = _Brand.NAME
 APP_TAGLINE = _Brand.TAGLINE

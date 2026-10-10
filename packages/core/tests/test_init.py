@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import re
 
-import core
+import vethuq
 
 
 class TestPublicApi:
     def test_app_name_and_tagline_come_from_the_brand(self):
-        assert core.APP_NAME == "VethuQ"
-        assert core.APP_TAGLINE == "Document intelligence and evidence infrastructure."
+        assert vethuq.APP_NAME == "VethuQ"
+        assert vethuq.APP_TAGLINE == "Document intelligence and evidence infrastructure."
 
     def test_app_version_is_a_version_string_and_matches_dunder_version(self):
-        assert re.match(r"^\d+\.\d+\.\d+", core.APP_VERSION)
-        assert core.__version__ == core.APP_VERSION
+        assert re.match(r"^\d+\.\d+\.\d+", vethuq.APP_VERSION)
+        assert vethuq.__version__ == vethuq.APP_VERSION
 
     def test_only_the_public_names_are_exported(self):
-        assert core.__all__ == ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__"]
-        assert not any("alette" in name or "rand" in name for name in core.__all__)
+        assert vethuq.__all__ == ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__"]
+        assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
 
     def test_version_falls_back_when_the_package_is_not_installed(self, monkeypatch):
         import importlib
@@ -27,8 +27,8 @@ class TestPublicApi:
 
         monkeypatch.setattr(metadata, "version", missing)
         try:
-            reloaded = importlib.reload(core)
+            reloaded = importlib.reload(vethuq)
             assert reloaded.APP_VERSION == "0.1.0"
         finally:
             monkeypatch.undo()
-            importlib.reload(core)
+            importlib.reload(vethuq)
