@@ -18,17 +18,28 @@ from vethuq.errors.generic import (
     StartupError,
     VethuQError,
 )
-from vethuq.errors.sources import SourceAlreadyExistsError, SourceError, SourcePathError
+from vethuq.errors.settings import InvalidSettingValueError, SettingsError
+from vethuq.errors.sources import (
+    SourceAlreadyExistsError,
+    SourceError,
+    SourceNotFoundError,
+    SourceNotRemovedError,
+    SourcePathError,
+)
 
 __all__ = [
     "CorruptDatabaseError",
     "DataFolderNotWritableError",
     "InvalidConfigError",
+    "InvalidSettingValueError",
     "LanguageUnavailableError",
     "OcrModelMissingError",
     "SchemaVersionError",
+    "SettingsError",
     "SourceAlreadyExistsError",
     "SourceError",
+    "SourceNotFoundError",
+    "SourceNotRemovedError",
     "SourcePathError",
     "StaleLockError",
     "StartupError",

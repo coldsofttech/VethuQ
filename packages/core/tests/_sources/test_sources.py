@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, StatementError
 
 from vethuq import errors
 from vethuq._db import _Database, _Language, _Source, _SourceLanguage
@@ -323,10 +323,28 @@ class TestDatabase:
             assert session.scalars(select(_Source)).all() == []
         database.dispose()
 
-    def test_schema_rejects_an_invalid_source_type(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("source_type", "status"), [("bogus", "pending"), ("file", "bogus")]
+    )
+    def test_schema_rejects_invalid_enum_values(self, tmp_path, source_type, status):
         database = _Database(tmp_path / "vethuq.db")
 
         with pytest.raises(IntegrityError):
+            with database.session() as session:
+                session.execute(
+                    text(
+                        "INSERT INTO sources (path, source_type, status, added_at) "
+                        "VALUES ('p', :source_type, :status, 't')"
+                    ),
+                    {"source_type": source_type, "status": status},
+                )
+
+        database.dispose()
+
+    def test_model_rejects_a_value_that_is_not_in_the_enum(self, tmp_path):
+        database = _Database(tmp_path / "vethuq.db")
+
+        with pytest.raises(StatementError):
             with database.session() as session:
                 session.add(_Source(path="p", source_type="bogus", added_at="t"))
 

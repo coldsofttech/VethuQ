@@ -16,3 +16,11 @@ class _SourcePathError(_SourceError, errors.SourcePathError):
 
 class _SourceAlreadyExistsError(_SourceError, errors.SourceAlreadyExistsError):
     exit_code = 22
+
+
+class _SourceNotFoundError(_SourceError, errors.SourceNotFoundError):
+    exit_code = 23
+
+
+class _SourceNotRemovedError(_SourceError, errors.SourceNotRemovedError):
+    exit_code = 24

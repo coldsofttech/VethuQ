@@ -15,3 +15,11 @@ class SourcePathError(SourceError):
 
 class SourceAlreadyExistsError(SourceError):
     """The given path is already registered as a source."""
+
+
+class SourceNotFoundError(SourceError):
+    """No registered source matches the given id or path."""
+
+
+class SourceNotRemovedError(SourceError):
+    """The source is still active, so it can't be purged."""

@@ -7,9 +7,10 @@ from importlib.metadata import PackageNotFoundError, version
 from vethuq import errors, paths
 from vethuq._brand import _Brand
 from vethuq.client import VethuQ
+from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
 from vethuq.languages import Language
 from vethuq.paths import Paths
-from vethuq.sources import Source
+from vethuq.sources import PurgeResult, Source
 
 APP_NAME = _Brand.NAME
 APP_TAGLINE = _Brand.TAGLINE
@@ -30,6 +31,11 @@ __all__ = [
     "paths",
     "Paths",
     "Language",
+    "PurgeResult",
+    "SortOrder",
     "Source",
+    "SourceSortBy",
+    "SourceStatus",
+    "SourceType",
     "VethuQ",
 ]

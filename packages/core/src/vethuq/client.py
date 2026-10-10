@@ -9,6 +9,7 @@ from types import TracebackType
 from vethuq._db import _Database
 from vethuq.languages import Languages
 from vethuq.paths import Paths
+from vethuq.settings import Settings
 from vethuq.sources import Sources
 
 __all__ = ["VethuQ"]
@@ -29,6 +30,7 @@ class VethuQ:
         self._database: _Database | None = None
         self._sources: Sources | None = None
         self._languages: Languages | None = None
+        self._settings: Settings | None = None
         self._lock = threading.Lock()
 
     @property
@@ -56,6 +58,13 @@ class VethuQ:
             self._languages = Languages(self._db())
         return self._languages
 
+    @property
+    def settings(self) -> Settings:
+        """VethuQ's settings."""
+        if self._settings is None:
+            self._settings = Settings(self._db())
+        return self._settings
+
     def close(self) -> None:
         """Release the database connections. The client reconnects if used again."""
         with self._lock:
@@ -64,6 +73,7 @@ class VethuQ:
             self._database = None
             self._sources = None
             self._languages = None
+            self._settings = None
 
     def __enter__(self) -> VethuQ:
         return self

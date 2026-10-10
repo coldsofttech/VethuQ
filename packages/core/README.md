@@ -40,7 +40,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -56,6 +56,10 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `SourceError` | 20 | Sources | Root of the source errors below |
 | `SourcePathError` | 21 | Sources | A source path doesn't exist, or is neither a file nor a folder |
 | `SourceAlreadyExistsError` | 22 | Sources | The path is already registered as an active source |
+| `SourceNotFoundError` | 23 | Sources | No source matches the id or path (or it is removed, when only active ones are searched) |
+| `SourceNotRemovedError` | 24 | Sources | The source is still active, so it can't be purged |
+| `SettingsError` | 30 | Settings | Root of the settings errors below |
+| `InvalidSettingValueError` | 31 | Settings | A setting was given a value it doesn't accept |
 
 Every error has three attributes:
 
@@ -136,7 +140,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-`client.sources` and `client.languages` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources`, `client.languages` and `client.settings` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -147,33 +151,20 @@ with vethuq.VethuQ() as client:
 
 A source is a file or folder you register for OCR and indexing. Folders are read recursively.
 
-### Creating a source
-
-`client.sources.create()` registers a source and returns its details as a `Source`.
-
 ```python
 import vethuq
 
 client = vethuq.VethuQ()
 
-# from a path
-source = client.sources.create("~/docs")
-
-# with the languages it is read in
-source = client.sources.create("~/docs", languages=["en"])
-
-# or describe it with a Source object
-described = vethuq.Source("~/docs", languages=["en"])
-source = client.sources.create(described)
-
-print(source.id, source.path, source.source_type, source.status)
-# 1 /home/you/docs folder pending
+source = client.sources.create("~/docs", languages=["en"])   # register it
+source = client.sources.get(source.id)                        # look one up
+sources = client.sources.list()                               # list them
+source = client.sources.set_languages(source.id, ["en"])      # change its languages
+source = client.sources.remove(source.id)                     # remove it
+result = client.sources.purge(source.id)                      # delete it for good
 ```
 
-- The path can be a `str` or a `pathlib.Path`. `~` and relative paths are resolved, so the same folder written two ways is the same source.
-- `languages` is a list of language ids. Give it on the call or on the `Source`, not both.
-- Re-creating a source that was removed brings it back, reset to `pending`.
-- The `Source` you pass in is left untouched; `create` returns a new, filled-in one. A `Source` that was already created can't be passed again.
+A source is identified by its **id** (an `int`) or its **path** (a `str` or `pathlib.Path`). `~` and relative paths are resolved, so the same folder written two ways is the same source. A string of digits such as `"2024"` is a path, never an id.
 
 ### The `Source` details
 
@@ -182,8 +173,8 @@ print(source.id, source.path, source.source_type, source.status)
 | `path` | The absolute path (required when you create a `Source`) |
 | `languages` | The languages it is read in, for example `["en"]`; `None` means the global language setting applies |
 | `id` | The source's id |
-| `source_type` | `"file"` or `"folder"` |
-| `status` | `"pending"`, `"indexed"`, `"error"` or `"removed"` |
+| `source_type` | A `SourceType`: `FILE` or `FOLDER` |
+| `status` | A `SourceStatus`: `PENDING`, `INDEXED`, `ERROR` or `REMOVED` |
 | `added_at` | When it was registered (UTC, ISO 8601) |
 | `last_scanned_at` | When it was last scanned, or `None` |
 | `is_active` | `True` unless it has been removed |
@@ -191,11 +182,9 @@ print(source.id, source.path, source.source_type, source.status)
 
 `id`, `source_type`, `status`, `added_at`, `last_scanned_at`, `is_active` and `removed_at` are set by VethuQ, so they are `None` on a `Source` you describe yourself.
 
-### As JSON
+Every method that returns a source returns a `Source`, and it can be turned into a dict or JSON:
 
 ```python
-source = client.sources.create("~/docs", languages=["en"])
-
 source.to_dict()
 source.to_json(indent=2)
 ```
@@ -212,13 +201,110 @@ source.to_json(indent=2)
 ```
 `languages` appears only when the source has some.
 
-### Languages
+### Enums
 
-VethuQ keeps a list of the languages it can read (see [Languages](#languages-1) for how to list them). English (`en`) is there from the start, and others are added as they become available. A source stores the languages it is read in, and a source with none uses the global language setting.
+The fixed choices are enums, exported from `vethuq`. They are strings too: `SourceStatus.PENDING == "pending"`, they print and serialise as their value, and anywhere a method takes one you may pass the plain string instead.
+
+| Enum | Members |
+|---|---|
+| `SourceType` | `FILE`, `FOLDER` |
+| `SourceStatus` | `PENDING`, `INDEXED`, `ERROR`, `REMOVED` |
+| `SortOrder` | `ASC`, `DESC` |
+| `SourceSortBy` | `ID`, `PATH`, `STATUS`, `SOURCE_TYPE`, `ADDED_AT`, `LAST_SCANNED_AT` |
+
+### Creating a source
+
+`client.sources.create()` registers a source and returns its details.
+
+```python
+# from a path
+source = client.sources.create("~/docs")
+
+# with the languages it is read in
+source = client.sources.create("~/docs", languages=["en"])
+
+# or describe it with a Source object
+described = vethuq.Source("~/docs", languages=["en"])
+source = client.sources.create(described)
+
+print(source.id, source.path, source.source_type, source.status)
+# 1 /home/you/docs folder pending
+```
+
+- `languages` is a list of language ids. Give it on the call or on the `Source`, not both.
+- Re-creating a source that was removed brings it back, reset to `pending`.
+- The `Source` you pass in is left untouched; `create` returns a new, filled-in one. A `Source` that was already created can't be passed again.
+
+### Getting one source
+
+```python
+client.sources.get(1)
+client.sources.get("~/docs")
+client.sources.get(1, include_removed=True)     # also finds a removed source
+```
+Raises `SourceNotFoundError` if nothing matches. A removed source is found only with `include_removed=True`.
+
+### Listing sources
+
+```python
+client.sources.list()                                        # active sources, by id
+client.sources.list(include_removed=True)                    # and the removed ones
+client.sources.list(
+    status=vethuq.SourceStatus.PENDING,
+    source_type=vethuq.SourceType.FOLDER,
+    language="en",
+    sort_by=vethuq.SourceSortBy.PATH,
+    order=vethuq.SortOrder.DESC,
+)
+```
+
+| Argument | Description |
+|---|---|
+| `include_removed` | Include removed sources. Default `False` |
+| `status` | Only sources with this `SourceStatus`. `REMOVED` shows removed sources whatever `include_removed` says |
+| `source_type` | Only files or only folders |
+| `language` | Only sources read in this language id; an unknown one raises `LanguageUnavailableError` |
+| `sort_by` | A `SourceSortBy`. Default `ID` |
+| `order` | A `SortOrder`. Default `ASC` |
+
+The filters combine. Ties in the sort are broken by id. A value that isn't one of the enums raises `ValueError` listing the options.
+
+### Changing the languages
+
+```python
+client.sources.set_languages(1, ["en"])    # read in English
+client.sources.set_languages(1, None)      # back to the global language setting ([] works too)
+```
+It returns the updated `Source` and affects files indexed from then on. It works on active sources only (a removed one raises `SourceNotFoundError`), and an unknown language raises `LanguageUnavailableError` and changes nothing.
+
+### Removing and purging
+
+Removing a source is reversible; purging is not.
+
+```python
+removed = client.sources.remove(1)          # kept, but marked REMOVED and no longer active
+client.sources.create("~/docs")             # registering it again brings it back
+
+result = client.sources.purge(1)            # permanently deleted
+print(result.to_json())                     # {"id": 1, "path": "/home/you/docs", "type": "folder"}
+```
+
+- `remove` works on active sources and returns the removed `Source`. Removing one that is already removed raises `SourceNotFoundError`.
+- `purge` works only on removed sources and returns a `PurgeResult` (`id`, `path`, `source_type`, with `to_dict()` and `to_json()`). An active source raises `SourceNotRemovedError`; an unknown one raises `SourceNotFoundError`. A purged source's language choices go with it.
+- `purge_expired()` purges every source that has been removed for longer than the retention, and returns the list of `PurgeResult`s. The retention is 7 days unless you change it in the [settings](#settings). Pass `retention_minutes=` to use another value for one call.
+
+```python
+client.sources.purge_expired()                       # uses the setting (7 days by default)
+client.sources.purge_expired(retention_minutes=60)   # removed more than an hour ago
+```
+
+### Languages of a source
+
+VethuQ keeps a list of the languages it can read (see [Languages](#languages) for how to list them). English (`en`) is there from the start, and others are added as they become available. A source stores the languages it is read in, and a source with none uses the global language setting.
 
 - Language ids are case-insensitive and may be repeated; `["EN", "en"]` is stored as `["en"]`.
 - Languages are always returned in VethuQ's own language order, not the order you gave them.
-- A language VethuQ doesn't know raises `vethuq.errors.LanguageUnavailableError`, and nothing is created. The hint lists the available languages, and every unknown id is reported at once:
+- A language VethuQ doesn't know raises `vethuq.errors.LanguageUnavailableError`, and nothing is changed. The hint lists the available languages, and every unknown id is reported at once:
 
 ```python
 try:
@@ -235,9 +321,11 @@ A plain string such as `"en,te"` isn't accepted; pass a list.
 |---|---|
 | `SourcePathError` | The path doesn't exist, or is neither a file nor a folder |
 | `SourceAlreadyExistsError` | The path is already an active source, or the `Source` given was already created |
+| `SourceNotFoundError` | No source matches the id or path |
+| `SourceNotRemovedError` | `purge` was called on a source that is still active |
 | `LanguageUnavailableError` | A language isn't one VethuQ knows |
 
-All of them are `VethuQError`s; the first two are also `SourceError`s.
+All of them are `VethuQError`s; the first four are also `SourceError`s.
 
 ## Languages
 
@@ -270,4 +358,26 @@ language.to_json()        # '{"id": 1, "language": "en"}'
 
 Any id in this list can be used as `languages=[...]` when you create a source. Any other id raises `LanguageUnavailableError`.
 
-Import `Language`, `Paths`, `Source` and `VethuQ` from `vethuq` and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+## Settings
+
+`client.settings` reads and changes VethuQ's settings, grouped by feature. A setting you haven't changed has its default.
+
+### Source settings
+
+`client.settings.sources` holds the settings for sources.
+
+| Method | Description |
+|---|---|
+| `get_removed_retention_minutes()` | How long a removed source is kept before `purge_expired()` deletes it. 10080 minutes (7 days) by default |
+| `set_removed_retention_minutes(minutes)` | Change it. `0` means removed sources are purged at the next `purge_expired()` |
+| `reset_removed_retention_minutes()` | Back to the default |
+
+```python
+client.settings.sources.get_removed_retention_minutes()          # 10080
+client.settings.sources.set_removed_retention_minutes(24 * 60)   # keep for one day
+client.settings.sources.reset_removed_retention_minutes()
+```
+
+A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
+
+Import `Language`, `Paths`, `PurgeResult`, `Source`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.

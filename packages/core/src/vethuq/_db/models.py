@@ -2,12 +2,37 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Text
+from enum import StrEnum
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from vethuq.enums import SourceStatus, SourceType
+
+
+def _enum(enum_class: type[StrEnum], name: str) -> Enum:
+    """A text column holding the enum's values, with a CHECK constraint on them."""
+    return Enum(
+        enum_class,
+        name=name,
+        native_enum=False,
+        create_constraint=True,
+        validate_strings=True,
+        length=16,
+        values_callable=lambda members: [member.value for member in members],
+    )
 
 
 class _Base(DeclarativeBase):
     pass
+
+
+class _Setting(_Base):
+    """A named setting and its saved value; a setting with no row uses its default."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class _Language(_Base):
@@ -36,19 +61,18 @@ class _Source(_Base):
     """A file or folder the user has registered as input for OCR and indexing."""
 
     __tablename__ = "sources"
-    __table_args__ = (
-        CheckConstraint("source_type IN ('file', 'folder')", name="ck_sources_source_type"),
-        CheckConstraint(
-            "status IN ('pending', 'indexed', 'error', 'removed')", name="ck_sources_status"
-        ),
-        {"sqlite_autoincrement": True},
-    )
+    __table_args__ = ({"sqlite_autoincrement": True},)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     path: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    source_type: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(
-        Text, nullable=False, default="pending", server_default="pending"
+    source_type: Mapped[SourceType] = mapped_column(
+        _enum(SourceType, "ck_sources_source_type"), nullable=False
+    )
+    status: Mapped[SourceStatus] = mapped_column(
+        _enum(SourceStatus, "ck_sources_status"),
+        nullable=False,
+        default=SourceStatus.PENDING,
+        server_default=SourceStatus.PENDING.value,
     )
     added_at: Mapped[str] = mapped_column(Text, nullable=False)
     last_scanned_at: Mapped[str | None] = mapped_column(Text, nullable=True)

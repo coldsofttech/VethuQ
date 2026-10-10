@@ -24,7 +24,12 @@ class TestPublicApi:
             "paths",
             "Paths",
             "Language",
+            "PurgeResult",
+            "SortOrder",
             "Source",
+            "SourceSortBy",
+            "SourceStatus",
+            "SourceType",
             "VethuQ",
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
