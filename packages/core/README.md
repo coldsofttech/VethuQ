@@ -136,7 +136,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources` and `client.languages` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -214,7 +214,7 @@ source.to_json(indent=2)
 
 ### Languages
 
-VethuQ keeps a list of the languages it can read. English (`en`) is there from the start, and others are added as they become available. A source stores the languages it is read in, and a source with none uses the global language setting.
+VethuQ keeps a list of the languages it can read (see [Languages](#languages-1) for how to list them). English (`en`) is there from the start, and others are added as they become available. A source stores the languages it is read in, and a source with none uses the global language setting.
 
 - Language ids are case-insensitive and may be repeated; `["EN", "en"]` is stored as `["en"]`.
 - Languages are always returned in VethuQ's own language order, not the order you gave them.
@@ -239,4 +239,35 @@ A plain string such as `"en,te"` isn't accepted; pass a list.
 
 All of them are `VethuQError`s; the first two are also `SourceError`s.
 
-Import `Paths`, `Source` and `VethuQ` from `vethuq` and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+## Languages
+
+`client.languages` lists the languages VethuQ can read documents in. English (`en`) is there from the start.
+
+```python
+import vethuq
+
+client = vethuq.VethuQ()
+
+for language in client.languages.list_all():
+    print(language.id, language.language)
+# 1 en
+```
+
+`list_all()` returns a list of `Language` objects, in VethuQ's language order (English first).
+
+| Field | Description |
+|---|---|
+| `id` | The language's id in the database |
+| `language` | The language id you use when you create a source, for example `"en"` |
+
+Like `Source`, a `Language` has `to_dict()` and `to_json(indent=None)`:
+
+```python
+language = client.languages.list_all()[0]
+language.to_dict()        # {"id": 1, "language": "en"}
+language.to_json()        # '{"id": 1, "language": "en"}'
+```
+
+Any id in this list can be used as `languages=[...]` when you create a source. Any other id raises `LanguageUnavailableError`.
+
+Import `Language`, `Paths`, `Source` and `VethuQ` from `vethuq` and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.

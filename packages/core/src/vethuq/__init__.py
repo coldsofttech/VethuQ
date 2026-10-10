@@ -7,6 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from vethuq import errors, paths
 from vethuq._brand import _Brand
 from vethuq.client import VethuQ
+from vethuq.languages import Language
 from vethuq.paths import Paths
 from vethuq.sources import Source
 
@@ -28,6 +29,7 @@ __all__ = [
     "errors",
     "paths",
     "Paths",
+    "Language",
     "Source",
     "VethuQ",
 ]

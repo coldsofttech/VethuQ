@@ -23,6 +23,7 @@ class TestPublicApi:
             "errors",
             "paths",
             "Paths",
+            "Language",
             "Source",
             "VethuQ",
         ]

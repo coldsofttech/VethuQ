@@ -7,6 +7,7 @@ from pathlib import Path
 from types import TracebackType
 
 from vethuq._db import _Database
+from vethuq.languages import Languages
 from vethuq.paths import Paths
 from vethuq.sources import Sources
 
@@ -27,6 +28,7 @@ class VethuQ:
         self._db_path = Path(db_path).expanduser() if db_path is not None else None
         self._database: _Database | None = None
         self._sources: Sources | None = None
+        self._languages: Languages | None = None
         self._lock = threading.Lock()
 
     @property
@@ -47,6 +49,13 @@ class VethuQ:
             self._sources = Sources(self._db())
         return self._sources
 
+    @property
+    def languages(self) -> Languages:
+        """The languages VethuQ can read documents in."""
+        if self._languages is None:
+            self._languages = Languages(self._db())
+        return self._languages
+
     def close(self) -> None:
         """Release the database connections. The client reconnects if used again."""
         with self._lock:
@@ -54,6 +63,7 @@ class VethuQ:
                 self._database.dispose()
             self._database = None
             self._sources = None
+            self._languages = None
 
     def __enter__(self) -> VethuQ:
         return self
