@@ -7,7 +7,7 @@ fallback to PyPI or GitHub Releases, so we control when an update is announced (
 
 ## What it reads
 
-The policy's `versions` entry for your distribution: `desktop` for the Windows installer build,
+The policy's `versions` entry for your distribution (compared with the `vethuq` package version on pip, and with the installer's version on desktop - `scripts/dev/release.py --desktop` stamps it into the build, because the packages inside the app carry their own versions): `desktop` for the Windows installer build,
 `pip` for the `vethuq` package, each with `latest`, `minimum_supported` and an optional
 `release_notes_url`. Versions are compared as PEP 440 (the policy's `1.2.0-rc.1` spelling reads
 as `1.2.0rc1`); a value that can't be compared means "no information" and nothing is shown.

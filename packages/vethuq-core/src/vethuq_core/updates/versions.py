@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from packaging.version import InvalidVersion, Version
 
+from vethuq_core.updates.distribution import Distribution
+
 
 class Versions:
     @staticmethod
@@ -24,7 +26,10 @@ class Versions:
 
     @staticmethod
     def installed() -> str:
-        """The VethuQ version this program is running ('unknown' when it can't be told)."""
+        """The version of this distribution as the policy names it: the installer's version for
+        the desktop app, the `vethuq` package's for pip ('unknown' when it can't be told)."""
+        if Distribution.current() == Distribution.DESKTOP:
+            return Distribution.desktop_version() or "unknown"
         from vethuq_core.version import VersionInfo  # noqa: PLC0415 - heavy imports, only when asked
 
         return VersionInfo.vethuq_version()

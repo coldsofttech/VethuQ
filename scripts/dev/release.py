@@ -146,6 +146,28 @@ def build_package() -> None:
     print(f"built {wheels[-1]}")
 
 
+class DesktopVersionStamp:
+    """The installer version, written where the frozen app can read it (see `Distribution`)."""
+
+    PATH = (
+        REPO_ROOT
+        / "packages"
+        / "vethuq-core"
+        / "src"
+        / "vethuq_core"
+        / "updates"
+        / "desktop_version.txt"
+    )
+    DEFAULT = "0.1.0"  # the fallback `MyAppVersion` in vethuq.iss
+
+    @staticmethod
+    def write(version: str | None) -> None:
+        DesktopVersionStamp.PATH.write_text(
+            (version or DesktopVersionStamp.DEFAULT) + "\n", encoding="utf-8"
+        )
+        print(f"stamped desktop version {version or DesktopVersionStamp.DEFAULT}")
+
+
 def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool = False) -> None:
     if platform.system() != "Windows":
         print("desktop build is Windows-only - skipping on this platform.")
@@ -160,6 +182,7 @@ def build_desktop(*, version: str | None = None, dev: bool = False, clean: bool 
     # installed anywhere) and produces an exe that fails at runtime with
     # ModuleNotFoundError.
     ExtrasFiles.regenerate()
+    DesktopVersionStamp.write(version)
 
     sync_key = DesktopCache.fingerprint(["uv.lock", "pyproject.toml", "packages/*/pyproject.toml"])
     if dev and not clean and DesktopCache.is_current("sync", sync_key):

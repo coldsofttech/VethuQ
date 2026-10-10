@@ -38,6 +38,9 @@ packages/vethuq/src/vethuq/_cli/
 # ...except the hand-written desktop build spec, which is source, not generated.
 !packages/vethuq-ui/installer/vethuq.spec
 
+# Written by scripts/dev/release.py --desktop: the installer version, bundled for the update check.
+packages/vethuq-core/src/vethuq_core/updates/desktop_version.txt
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
