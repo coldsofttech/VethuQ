@@ -15,8 +15,22 @@ class TestPublicApi:
         assert vethuq.__version__ == vethuq.APP_VERSION
 
     def test_only_the_public_names_are_exported(self):
-        assert vethuq.__all__ == ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__", "errors", "paths"]
+        assert vethuq.__all__ == [
+            "APP_NAME",
+            "APP_TAGLINE",
+            "APP_VERSION",
+            "__version__",
+            "errors",
+            "paths",
+            "Paths",
+        ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
+
+    def test_paths_class_is_importable_from_the_package(self):
+        from vethuq import Paths
+
+        assert Paths is vethuq.paths.Paths
+        assert Paths.DB_NAME == "vethuq.db"
 
     def test_version_falls_back_when_the_package_is_not_installed(self, monkeypatch):
         import importlib

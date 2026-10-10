@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from vethuq import errors, paths
 from vethuq._brand import _Brand
+from vethuq.paths import Paths
 
 APP_NAME = _Brand.NAME
 APP_TAGLINE = _Brand.TAGLINE
@@ -17,4 +18,4 @@ except PackageNotFoundError:  # running from a source tree that isn't installed
 
 __version__ = APP_VERSION
 
-__all__ = ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__", "errors", "paths"]
+__all__ = ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__", "errors", "paths", "Paths"]

@@ -79,7 +79,7 @@ except vethuq.errors.VethuQError as error:  # any other VethuQ error
 
 ## Paths
 
-`vethuq.paths.Paths` reports where VethuQ keeps its data. It is read-only: it returns paths and creates nothing on disk.
+`Paths` reports where VethuQ keeps its data. Import it with `from vethuq import Paths` (it is also available as `vethuq.paths.Paths`). It is read-only: it returns paths and creates nothing on disk.
 
 ```
 <data root>/
@@ -105,11 +105,11 @@ except vethuq.errors.VethuQError as error:  # any other VethuQ error
 All the methods return `pathlib.Path` objects.
 
 ```python
-import vethuq
+from vethuq import Paths
 
-print(vethuq.paths.Paths.db_path())    # e.g. /home/you/.local/share/VethuQ/db/vethuq.db
-print(vethuq.paths.Paths.logs_dir())   # e.g. /home/you/.local/share/VethuQ/logs
-print(vethuq.paths.Paths.DB_NAME)      # vethuq.db
+print(Paths.db_path())    # e.g. /home/you/.local/share/VethuQ/db/vethuq.db
+print(Paths.logs_dir())   # e.g. /home/you/.local/share/VethuQ/logs
+print(Paths.DB_NAME)      # vethuq.db
 ```
 
 ### Where the data root comes from
@@ -122,4 +122,4 @@ The data root is chosen in this order:
 
 The backups folder is `<data root>/db/backups` unless a different one is saved in `db.json`.
 
-Import the classes from `vethuq.errors` and `vethuq.paths`; everything else under `vethuq` is internal and may change without notice.
+Import `Paths` from `vethuq` and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
