@@ -1,4 +1,4 @@
-"""Internal implementations of the errors exposed in `vethuq.errors`.
+"""Internal implementations of the generic errors exposed in `vethuq.errors`.
 
 Each internal class inherits from its public counterpart, so code that raises
 `_InvalidConfigError` is caught by `except vethuq.errors.InvalidConfigError`.

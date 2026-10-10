@@ -23,6 +23,8 @@ class TestPublicApi:
             "errors",
             "paths",
             "Paths",
+            "Source",
+            "VethuQ",
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
 

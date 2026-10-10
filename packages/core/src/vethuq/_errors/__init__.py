@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq._errors.errors import (
+from vethuq._errors.generic import (
     _CorruptDatabaseError,
     _DataFolderNotWritableError,
     _InvalidConfigError,
@@ -13,6 +13,11 @@ from vethuq._errors.errors import (
     _StartupError,
     _VethuQError,
 )
+from vethuq._errors.sources import (
+    _SourceAlreadyExistsError,
+    _SourceError,
+    _SourcePathError,
+)
 
 __all__ = [
     "_CorruptDatabaseError",
@@ -21,6 +26,9 @@ __all__ = [
     "_LanguageUnavailableError",
     "_OcrModelMissingError",
     "_SchemaVersionError",
+    "_SourceAlreadyExistsError",
+    "_SourceError",
+    "_SourcePathError",
     "_StaleLockError",
     "_StartupError",
     "_VethuQError",

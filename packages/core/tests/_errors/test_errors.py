@@ -11,6 +11,9 @@ from vethuq._errors import (
     _LanguageUnavailableError,
     _OcrModelMissingError,
     _SchemaVersionError,
+    _SourceAlreadyExistsError,
+    _SourceError,
+    _SourcePathError,
     _StaleLockError,
     _StartupError,
     _VethuQError,
@@ -26,6 +29,9 @@ _PAIRS = [
     (_SchemaVersionError, errors.SchemaVersionError, 14),
     (_StaleLockError, errors.StaleLockError, 15),
     (_LanguageUnavailableError, errors.LanguageUnavailableError, 16),
+    (_SourceError, errors.SourceError, 20),
+    (_SourcePathError, errors.SourcePathError, 21),
+    (_SourceAlreadyExistsError, errors.SourceAlreadyExistsError, 22),
 ]
 
 
@@ -40,6 +46,11 @@ _RUNTIME = (
     errors.CorruptDatabaseError,
     errors.OcrModelMissingError,
     errors.LanguageUnavailableError,
+)
+_SOURCE = (
+    errors.SourceError,
+    errors.SourcePathError,
+    errors.SourceAlreadyExistsError,
 )
 
 
@@ -116,7 +127,11 @@ class TestPublicErrors:
             issubclass(p, errors.VethuQError) and not issubclass(p, errors.StartupError)
             for p in _RUNTIME
         )
-        assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME}
+        assert all(
+            issubclass(p, errors.SourceError) and not issubclass(p, errors.StartupError)
+            for p in _SOURCE
+        )
+        assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME, *_SOURCE}
 
     def test_public_module_exposes_no_internal_names(self):
         names = [n for n in vars(errors) if not n.startswith("__")]
