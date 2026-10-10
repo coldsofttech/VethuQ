@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-__all__ = ["SortOrder", "SourceSortBy", "SourceStatus", "SourceType"]
+__all__ = ["LogComponent", "LogLevel", "SortOrder", "SourceSortBy", "SourceStatus", "SourceType"]
 
 
 class SourceType(StrEnum):
@@ -39,3 +39,21 @@ class SourceSortBy(StrEnum):
     SOURCE_TYPE = "source_type"
     ADDED_AT = "added_at"
     LAST_SCANNED_AT = "last_scanned_at"
+
+
+class LogComponent(StrEnum):
+    """The parts of VethuQ that keep a log."""
+
+    DATABASE = "database"
+    INDEX = "index"
+    UI = "ui"
+    CLI = "cli"
+
+
+class LogLevel(StrEnum):
+    """How much a log records, least to most severe."""
+
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"

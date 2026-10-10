@@ -6,8 +6,9 @@ from vethuq import errors, paths
 from vethuq._brand import _Brand
 from vethuq._version import _Version
 from vethuq.client import VethuQ
-from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
+from vethuq.enums import LogComponent, LogLevel, SortOrder, SourceSortBy, SourceStatus, SourceType
 from vethuq.languages import Language
+from vethuq.logs import CliLog, DatabaseLog, IndexLog, Log, LogEntry, LogFile, UiLog
 from vethuq.paths import Paths
 from vethuq.sources import PurgeResult, Source, SourceFile
 from vethuq.version import VersionDetails
@@ -27,7 +28,15 @@ __all__ = [
     "errors",
     "paths",
     "Paths",
+    "CliLog",
+    "DatabaseLog",
+    "IndexLog",
     "Language",
+    "Log",
+    "LogComponent",
+    "LogEntry",
+    "LogFile",
+    "LogLevel",
     "PurgeResult",
     "SortOrder",
     "Source",
@@ -35,6 +44,7 @@ __all__ = [
     "SourceSortBy",
     "SourceStatus",
     "SourceType",
+    "UiLog",
     "VersionDetails",
     "VethuQ",
 ]

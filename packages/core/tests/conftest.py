@@ -14,3 +14,18 @@ def _isolated_data_root(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(
         _Paths, "location_file", staticmethod(lambda: root / "config" / "db.json")
     )
+
+
+@pytest.fixture(autouse=True)
+def _release_log_files():
+    """Close the log files a test opened, so loggers don't carry one test into the next."""
+    yield
+    import logging
+
+    from vethuq._logs import _Logs
+
+    _Logs.detach_all()
+    for log in _Logs.ALL.values():
+        logger = log.logger()
+        logger.setLevel(logging.NOTSET)
+        logger.propagate = True

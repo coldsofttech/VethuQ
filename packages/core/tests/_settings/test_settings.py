@@ -4,7 +4,8 @@ import pytest
 
 from vethuq import errors
 from vethuq._db import _Database
-from vethuq._settings import _Settings, _SourceSettings
+from vethuq._settings import _LogSettings, _Settings, _SourceSettings
+from vethuq.enums import LogLevel
 
 
 @pytest.fixture
@@ -99,3 +100,87 @@ class TestSourceSettings:
 
         with database.session() as session:
             assert _SourceSettings.get_removed_retention_minutes(session) == 10080
+
+
+class TestLogSettings:
+    def test_defaults(self, database):
+        with database.session() as session:
+            assert _LogSettings.get_level(session) is LogLevel.INFO
+            assert _LogSettings.get_retention_days(session) == 15
+
+    @pytest.mark.parametrize("level", [LogLevel.DEBUG, LogLevel.ERROR, "warning"])
+    def test_set_level(self, database, level):
+        with database.session() as session:
+            _LogSettings.set_level(session, level)
+
+        with database.session() as session:
+            assert _LogSettings.get_level(session) is LogLevel(level)
+
+    @pytest.mark.parametrize("level", ["loud", "", None, 3])
+    def test_a_bad_level_is_rejected_and_lists_the_options(self, database, level):
+        with pytest.raises(errors.InvalidSettingValueError) as excinfo:
+            with database.session() as session:
+                _LogSettings.set_level(session, level)
+
+        assert "debug, info, warning, error" in excinfo.value.hint
+        assert excinfo.value.exit_code == 31
+
+    def test_reset_level(self, database):
+        with database.session() as session:
+            _LogSettings.set_level(session, "error")
+            _LogSettings.reset_level(session)
+
+        with database.session() as session:
+            assert _LogSettings.get_level(session) is LogLevel.INFO
+
+    def test_level_is_stored_as_its_value(self, database):
+        with database.session() as session:
+            _LogSettings.set_level(session, LogLevel.DEBUG)
+
+        with database.session() as session:
+            assert _Settings.get(session, "log_level") == "debug"
+
+    def test_a_damaged_saved_level_falls_back(self, database):
+        with database.session() as session:
+            _Settings.set(session, "log_level", "loud")
+
+        with database.session() as session:
+            assert _LogSettings.get_level(session) is LogLevel.INFO
+
+    def test_set_retention(self, database):
+        with database.session() as session:
+            _LogSettings.set_retention_days(session, 30)
+
+        with database.session() as session:
+            assert _LogSettings.get_retention_days(session) == 30
+
+    @pytest.mark.parametrize("days", [0, -1, 1.5, "7", None, True])
+    def test_bad_retention_is_rejected(self, database, days):
+        with pytest.raises(errors.InvalidSettingValueError) as excinfo:
+            with database.session() as session:
+                _LogSettings.set_retention_days(session, days)
+
+        assert "retention" in excinfo.value.message
+
+    def test_one_day_is_the_least(self, database):
+        with database.session() as session:
+            _LogSettings.set_retention_days(session, 1)
+
+        with database.session() as session:
+            assert _LogSettings.get_retention_days(session) == 1
+
+    def test_reset_retention(self, database):
+        with database.session() as session:
+            _LogSettings.set_retention_days(session, 2)
+            _LogSettings.reset_retention_days(session)
+
+        with database.session() as session:
+            assert _LogSettings.get_retention_days(session) == 15
+
+    @pytest.mark.parametrize("saved", ["abc", "0", "-4"])
+    def test_a_damaged_saved_retention_falls_back(self, database, saved):
+        with database.session() as session:
+            _Settings.set(session, "log_retention_days", saved)
+
+        with database.session() as session:
+            assert _LogSettings.get_retention_days(session) == 15

@@ -13,6 +13,7 @@ from vethuq._errors.generic import (
     _StartupError,
     _VethuQError,
 )
+from vethuq._errors.logs import _InvalidLogRequestError, _LogError, _LogNotFoundError
 from vethuq._errors.settings import _InvalidSettingValueError, _SettingsError
 from vethuq._errors.sources import (
     _SourceAlreadyExistsError,
@@ -26,8 +27,11 @@ __all__ = [
     "_CorruptDatabaseError",
     "_DataFolderNotWritableError",
     "_InvalidConfigError",
+    "_InvalidLogRequestError",
     "_InvalidSettingValueError",
     "_LanguageUnavailableError",
+    "_LogError",
+    "_LogNotFoundError",
     "_OcrModelMissingError",
     "_SchemaVersionError",
     "_SettingsError",

@@ -9,7 +9,10 @@ from vethuq._errors import (
     _DataFolderNotWritableError,
     _InvalidConfigError,
     _LanguageUnavailableError,
+    _LogError,
+    _LogNotFoundError,
     _OcrModelMissingError,
+    _InvalidLogRequestError,
     _InvalidSettingValueError,
     _SchemaVersionError,
     _SettingsError,
@@ -38,6 +41,9 @@ _PAIRS = [
     (_SourceAlreadyExistsError, errors.SourceAlreadyExistsError, 22),
     (_SourceNotFoundError, errors.SourceNotFoundError, 23),
     (_SourceNotRemovedError, errors.SourceNotRemovedError, 24),
+    (_LogError, errors.LogError, 40),
+    (_LogNotFoundError, errors.LogNotFoundError, 41),
+    (_InvalidLogRequestError, errors.InvalidLogRequestError, 42),
     (_SettingsError, errors.SettingsError, 30),
     (_InvalidSettingValueError, errors.InvalidSettingValueError, 31),
 ]
@@ -63,6 +69,7 @@ _SOURCE = (
     errors.SourceNotRemovedError,
 )
 _SETTINGS = (errors.SettingsError, errors.InvalidSettingValueError)
+_LOG = (errors.LogError, errors.LogNotFoundError, errors.InvalidLogRequestError)
 
 
 class TestVethuQError:
@@ -146,7 +153,11 @@ class TestPublicErrors:
             issubclass(p, errors.SettingsError) and not issubclass(p, errors.StartupError)
             for p in _SETTINGS
         )
-        assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME, *_SOURCE, *_SETTINGS}
+        assert all(
+            issubclass(p, errors.LogError) and not issubclass(p, errors.StartupError)
+            for p in _LOG
+        )
+        assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME, *_SOURCE, *_SETTINGS, *_LOG}
 
     def test_public_module_exposes_no_internal_names(self):
         names = [n for n in vars(errors) if not n.startswith("__")]

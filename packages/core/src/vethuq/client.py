@@ -8,6 +8,7 @@ from types import TracebackType
 
 from vethuq._db import _Database
 from vethuq.languages import Languages
+from vethuq.logs import Logs
 from vethuq.paths import Paths
 from vethuq.settings import Settings
 from vethuq.sources import Sources
@@ -32,6 +33,7 @@ class VethuQ:
         self._sources: Sources | None = None
         self._languages: Languages | None = None
         self._settings: Settings | None = None
+        self._logs: Logs | None = None
         self._lock = threading.Lock()
 
     @property
@@ -67,6 +69,13 @@ class VethuQ:
         return self._settings
 
     @property
+    def logs(self) -> Logs:
+        """VethuQ's logs."""
+        if self._logs is None:
+            self._logs = Logs(self._db())
+        return self._logs
+
+    @property
     def version(self) -> VersionDetails:
         """What this install is running. It doesn't open the database."""
         return VersionDetails._collect()
@@ -80,6 +89,7 @@ class VethuQ:
             self._sources = None
             self._languages = None
             self._settings = None
+            self._logs = None
 
     def __enter__(self) -> VethuQ:
         return self

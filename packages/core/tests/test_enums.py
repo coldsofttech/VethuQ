@@ -33,9 +33,22 @@ class TestEnums:
             "last_scanned_at",
         ]
 
+    def test_log_component_values(self):
+        assert [c.value for c in vethuq.LogComponent] == ["database", "index", "ui", "cli"]
+
+    def test_log_level_values_run_from_least_to_most_severe(self):
+        assert [level.value for level in vethuq.LogLevel] == ["debug", "info", "warning", "error"]
+
     @pytest.mark.parametrize(
         "member",
-        [*vethuq.SourceType, *vethuq.SourceStatus, *vethuq.SortOrder, *vethuq.SourceSortBy],
+        [
+            *vethuq.SourceType,
+            *vethuq.SourceStatus,
+            *vethuq.SortOrder,
+            *vethuq.SourceSortBy,
+            *vethuq.LogComponent,
+            *vethuq.LogLevel,
+        ],
     )
     def test_members_are_strings_equal_to_their_values(self, member):
         assert isinstance(member, str)

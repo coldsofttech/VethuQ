@@ -40,7 +40,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -58,6 +58,9 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `SourceAlreadyExistsError` | 22 | Sources | The path is already registered as an active source |
 | `SourceNotFoundError` | 23 | Sources | No source matches the id or path (or it is removed, when only active ones are searched) |
 | `SourceNotRemovedError` | 24 | Sources | The source is still active, so it can't be purged |
+| `LogError` | 40 | Logs | Root of the log errors below |
+| `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
+| `InvalidLogRequestError` | 42 | Logs | A log request had a bad `lines`, `day`, `level`, `order` or component |
 | `SettingsError` | 30 | Settings | Root of the settings errors below |
 | `InvalidSettingValueError` | 31 | Settings | A setting was given a value it doesn't accept |
 
@@ -140,7 +143,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-`client.sources`, `client.languages`, `client.settings` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources`, `client.languages`, `client.settings`, `client.logs` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -408,6 +411,129 @@ client.settings.sources.reset_removed_retention_minutes()
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
 
+### Log settings
+
+`client.settings.logs` holds the settings for the logs (see [Logs](#logs)).
+
+| Method | Description |
+|---|---|
+| `get_level()` | How much the logs record, as a `LogLevel`. `INFO` by default |
+| `set_level(level)` | Record entries at or above this `LogLevel` (`"warning"` works too) |
+| `reset_level()` | Back to `INFO` |
+| `get_retention_days()` | How many days of daily log files are kept. 15 by default |
+| `set_retention_days(days)` | Keep `days` days of files; at least 1 |
+| `reset_retention_days()` | Back to 15 |
+
+```python
+client.settings.logs.set_level(vethuq.LogLevel.WARNING)
+client.settings.logs.set_retention_days(30)
+```
+
+A level that isn't a `LogLevel`, or a retention that isn't a whole number of at least 1, raises `InvalidSettingValueError` and changes nothing. A change applies at once to logs that are already being written.
+
+## Logs
+
+VethuQ keeps a log for each of its parts. They are plain text files in the `logs` folder of the data folder (`Paths.logs_dir()`), one file per day. Old days are kept for the retention set in the [log settings](#log-settings) (15 days by default).
+
+`client.logs` has one attribute per log, each its own class with the same methods:
+
+| Attribute | Class | `LogComponent` | File | What it logs |
+|---|---|---|---|---|
+| `client.logs.database` | `DatabaseLog` | `DATABASE` | `database.log` | The database: opening it, schema upgrades, sources and settings changes |
+| `client.logs.index` | `IndexLog` | `INDEX` | `index.log` | Indexing: the background index runs and every OCR worker thread |
+| `client.logs.ui` | `UiLog` | `UI` | `ui.log` | The desktop app |
+| `client.logs.cli` | `CliLog` | `CLI` | `cli.log` | The command line: each command that ran and how it finished |
+
+All of them extend `Log`. `client.logs.get("cli")` finds one by name or by `LogComponent`.
+
+### Listing the logs
+
+```python
+for file in client.logs.list():                 # today's file of every log
+    print(file.component, file.exists, file.size_bytes)
+
+file = client.logs.database.file()              # one log's file for today
+file = client.logs.database.file("2026-10-09")  # ... or for a past day (a date works too)
+print(file.path)
+```
+
+A `LogFile` has `component`, `path`, `exists`, `size_bytes` and `modified_at` (UTC; both `None` if the file isn't there) and `days`, every day that has a log, oldest first. Looking never creates a file or folder.
+
+### Reading a log
+
+```python
+log = client.logs.cli
+
+log.tail()                                     # the last 40 entries, oldest first
+log.tail(100, level=vethuq.LogLevel.ERROR)     # the last 100 errors
+log.read(day="2026-10-09")                     # every entry of a past day
+log.read(contains="schema", order=vethuq.SortOrder.DESC)   # newest first, text match
+```
+
+| Argument | Applies to | Description |
+|---|---|---|
+| `lines` | `tail` | How many of the most recent entries. Default 40 |
+| `day` | `tail`, `read` | A `date` or `"YYYY-MM-DD"`. Today by default |
+| `level` | `tail`, `read` | Entries at or above this `LogLevel` |
+| `contains` | `tail`, `read` | Entries whose message contains this text, ignoring case. The level, thread and logger are not searched |
+| `order` | `tail`, `read` | A `SortOrder` by time. `ASC` (oldest first) by default |
+
+The filters combine, and are applied before `tail` counts its `lines`.
+
+Each entry is a `LogEntry`:
+
+| Field | Description |
+|---|---|
+| `timestamp` | When it was logged (local time) |
+| `level` | A `LogLevel` |
+| `thread` | The thread that logged it |
+| `logger` | The logger's name, for example `vethuq.database` |
+| `message` | The message, with its traceback if it has one |
+| `raw` | The entry exactly as it is in the file |
+
+An entry that isn't in the usual format keeps only `message` and `raw`, and always passes a level filter. `to_dict()` and `to_json(indent=None)` give everything except `raw`.
+
+### Following a log
+
+```python
+for entry in client.logs.index.follow(level="warning"):
+    print(entry.message)         # runs until you stop it, like `tail -f`
+```
+
+`follow()` starts from the end of today's file, so it shows only what is written from then on. It takes `level` and `contains`, and a `stop` function that ends it when it returns `True`. It carries on across the daily rollover and waits for a log that doesn't exist yet.
+
+### Exporting a log
+
+```python
+count = client.logs.cli.export("errors.txt", level="error")
+client.logs.cli.export("last.txt", lines=100, order="desc")
+```
+
+This writes the selected entries as plain text, one entry per line (a traceback stays with its entry), overwriting the file, and returns how many were written. It takes `lines` (otherwise every entry), `day`, `level`, `contains` and `order`.
+
+### Writing to a log
+
+The database log is written by VethuQ itself. The other parts write through the standard `logging` module:
+
+```python
+logger = client.logs.cli.logger()
+logger.info("ran: sources list")
+logger.error("failed: %s", "boom")
+```
+
+`logger()` returns the `logging.Logger` for that log (`vethuq.cli`), set up to write to the log file at the level and retention from the settings. Log paths, ids and counts, not document text or what someone searched for: log files outlive the access controls on the documents.
+
+Loggers belong to the process, not to a client. If two clients use different databases in one process, each log is written next to the database that was set up last.
+
+### Log errors
+
+| Raised | When |
+|---|---|
+| `LogNotFoundError` | There is no log for that component and day |
+| `InvalidLogRequestError` | `lines` isn't a whole number of at least 1, or `day`, `level`, `order` or a component name can't be used |
+
+Both are `LogError`s and `VethuQError`s.
+
 ## Version
 
 `client.version` tells you what this install is running. It reads only local information, so it never opens or creates the database.
@@ -441,4 +567,4 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `VersionDetails`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `LogEntry`, `LogFile`, `Log` and its subclasses, `VersionDetails`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`, `LogComponent`, `LogLevel`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.

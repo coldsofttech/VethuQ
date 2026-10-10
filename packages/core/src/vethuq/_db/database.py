@@ -12,6 +12,7 @@ from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from vethuq._db.models import _Language
+from vethuq._logs import _DatabaseLog
 from vethuq._db.schema import _Schema
 from vethuq._paths import _Paths
 
@@ -44,6 +45,7 @@ class _Database:
         with self._lock:
             if self._sessions is None:
                 _Paths.ensure_writable(self.db_path.parent)
+                _DatabaseLog.setup(self.db_path)  # before the schema, so its creation is logged
                 engine = create_engine(f"sqlite:///{self.db_path}")
                 event.listen(engine, "connect", self._configure_connection)
                 try:

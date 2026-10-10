@@ -256,8 +256,9 @@ class _Paths:
         return path
 
     @staticmethod
-    def logs_dir(db_path: Path) -> Path:
-        """Folder for log files; created on demand."""
+    def logs_dir(db_path: Path, *, create: bool = True) -> Path:
+        """Folder for log files; created on demand unless `create` is False."""
         path = _Paths.data_root(db_path) / _Paths.LOGS_DIRNAME
-        path.mkdir(parents=True, exist_ok=True)
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
         return path
