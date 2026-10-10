@@ -3,7 +3,7 @@
 `palette.json` is the single source of truth, with a `light` and a `dark` scheme that
 define the same tokens. The HTML export inlines it as CSS custom properties
 (`--vq-<token>`), the CLI draws its Rich styles from the dark scheme (most terminals are
-dark), and a future web layer can reuse `Palette.css_variables()` as-is.
+dark), and a future web layer can reuse `_Palette.css_variables()` as-is.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 from importlib import resources
 
 
-class Palette:
+class _Palette:
     SCHEMES = ("light", "dark")
     CSS_PREFIX = "--vq-"
 
@@ -29,7 +29,7 @@ class Palette:
     @staticmethod
     def get(token: str, scheme: str = "light") -> str:
         """One token's hex color in `scheme`. Raises `KeyError` for an unknown token."""
-        return Palette.schemes()[scheme][token]
+        return _Palette.schemes()[scheme][token]
 
     @staticmethod
     def css_variables(selector: str = ":root") -> str:
@@ -38,8 +38,8 @@ class Palette:
 
         def block(scheme: str, pad: str) -> str:
             lines = [
-                f"{pad}  {Palette.CSS_PREFIX}{token}: {value};"
-                for token, value in Palette.schemes()[scheme].items()
+                f"{pad}  {_Palette.CSS_PREFIX}{token}: {value};"
+                for token, value in _Palette.schemes()[scheme].items()
             ]
             return f"{pad}{selector} {{\n" + "\n".join(lines) + f"\n{pad}}}"
 

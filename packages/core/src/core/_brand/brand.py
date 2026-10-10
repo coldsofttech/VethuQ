@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 
-class Brand:
+class _Brand:
     NAME = "VethuQ"
     TAGLINE = "Document intelligence and evidence infrastructure."
