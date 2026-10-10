@@ -51,6 +51,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   | 30, 31 | `SettingsError`, `InvalidSettingValueError` |
   | 40 to 42 | `LogError`, `LogNotFoundError`, `InvalidLogRequestError` |
 
+- **Database integrity check** (`client.db`, types in `vethuq.db`): `integrity_check(quick=False)` and
+  `integrity_status()`, with `IntegrityCheckResult` and `IntegrityCheckMode`. The check runs by itself
+  when the database is opened (`AUTO` once per interval, `ENABLE`, or `DISABLE`) and its result is saved
+  and logged. A failed check, or a file SQLite can't read, raises `CorruptDatabaseError`; the check
+  itself works on a database VethuQ refuses to open. Settings in `client.settings.database`.
+- Opening the database permanently deletes the sources removed longer ago than the retention.
 - Dependencies: `platformdirs~=4.0`, `sqlalchemy~=2.0`, `cryptography~=50.0`, `packaging~=26.0`.
 
 ### Notes

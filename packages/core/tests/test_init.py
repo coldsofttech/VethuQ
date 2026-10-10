@@ -22,6 +22,7 @@ class TestPublicApi:
             "APP_TAGLINE",
             "APP_VERSION",
             "__version__",
+            "db",
             "errors",
             "logs",
             "paths",
@@ -35,7 +36,9 @@ class TestPublicApi:
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
 
-    @pytest.mark.parametrize("module", ["errors", "logs", "paths", "policy", "sources", "updates"])
+    @pytest.mark.parametrize(
+        "module", ["db", "errors", "logs", "paths", "policy", "sources", "updates"]
+    )
     def test_areas_are_reached_through_their_module(self, module):
         import importlib
 

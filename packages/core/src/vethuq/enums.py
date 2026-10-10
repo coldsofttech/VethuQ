@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 __all__ = [
+    "IntegrityCheckMode",
     "LogComponent",
     "LogLevel",
     "PolicySource",
@@ -107,3 +108,11 @@ class UpdateStatus(StrEnum):
     AVAILABLE = "available"  # a newer version exists
     BELOW_MINIMUM = "below_minimum"  # older than the minimum supported version
     UNKNOWN = "unknown"  # no usable policy, or a version that can't be compared
+
+
+class IntegrityCheckMode(StrEnum):
+    """When the database's integrity check runs by itself."""
+
+    AUTO = "auto"  # when the database is opened, at most once per interval
+    ENABLE = "enable"  # every time the database is opened
+    DISABLE = "disable"  # never by itself; `client.db.integrity_check()` still works

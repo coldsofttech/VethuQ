@@ -52,7 +52,7 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `DataFolderNotWritableError` | 11 | Startup | VethuQ can't create or write to its data folder |
 | `SchemaVersionError` | 14 | Startup | The database's schema is newer than this build supports |
 | `StaleLockError` | 15 | Startup | A lock file exists but its process is no longer running |
-| `CorruptDatabaseError` | 12 | Run time | The database file is damaged or isn't a VethuQ database |
+| `CorruptDatabaseError` | 12 | Run time | The database file is damaged or isn't a VethuQ database, or it failed its integrity check when opened |
 | `OcrModelMissingError` | 13 | Run time | The OCR engine or its model files aren't available |
 | `LanguageUnavailableError` | 16 | Run time | A language was asked for that isn't installed, enabled or known |
 | `SourceError` | 20 | Sources | Root of the source errors below |
@@ -147,7 +147,7 @@ client = vethuq.VethuQ()                              # the default database: Pa
 client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
 ```
 
-`client.sources`, `client.languages`, `client.settings`, `client.logs`, `client.policy`, `client.updates` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
+`client.sources`, `client.languages`, `client.settings`, `client.logs`, `client.policy`, `client.updates`, `client.db` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
 
 ```python
 with vethuq.VethuQ() as client:
@@ -414,6 +414,26 @@ client.settings.sources.reset_removed_retention_minutes()
 ```
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
+
+### Database settings
+
+`client.settings.database` holds the settings for the database (see [Database](#database)). They are read when the database is opened, so a change applies the next time a client opens it.
+
+| Method | Description |
+|---|---|
+| `get_integrity_check()` | When the integrity check runs by itself, as an `IntegrityCheckMode`. `AUTO` by default |
+| `set_integrity_check(mode)` | `AUTO` checks when the database is opened, at most once per interval; `ENABLE` checks every time it is opened; `DISABLE` never checks by itself (`client.db.integrity_check()` still works). The strings `"auto"`, `"enable"` and `"disable"` work too |
+| `reset_integrity_check()` | Back to `AUTO` |
+| `get_integrity_check_interval_minutes()` | Minutes between automatic checks in `AUTO` mode. 1440 (one day) by default |
+| `set_integrity_check_interval_minutes(minutes)` | Check at most once per `minutes`; at least 1 |
+| `reset_integrity_check_interval_minutes()` | Back to one day |
+
+```python
+client.settings.database.set_integrity_check(vethuq.db.IntegrityCheckMode.ENABLE)
+client.settings.database.set_integrity_check_interval_minutes(60)
+```
+
+A mode that isn't an `IntegrityCheckMode`, or an interval that isn't a whole number of at least 1, raises `InvalidSettingValueError` and changes nothing.
 
 ### Update settings
 
@@ -688,6 +708,69 @@ The policy's `features` can carry a `min_client` and a `message` for each featur
 
 Nothing runs on `import vethuq` or when a client is created. The command line and the desktop app are expected to start `client.policy.refresh_in_background()` at startup; `client.updates.check()` refreshes on request and `client.updates.status()` uses what is saved. Installing an update from VethuQ is not part of this: the check only tells you.
 
+## Database
+
+`client.db` checks the database file for corruption. A database can be damaged by a crash, a full disk or a sync tool, and finding out early beats a confusing failure in the middle of something else.
+
+```python
+result = client.db.integrity_check()        # check now
+if not result.ok:
+    for message in result.errors:
+        print(message)
+
+client.db.integrity_check(quick=True)       # a faster, less thorough check
+status = client.db.integrity_status()       # the last check, automatic or not; no new scan
+```
+
+The types are in `vethuq.db`: `Db`, `IntegrityCheckResult` and the enum `IntegrityCheckMode`.
+
+An `IntegrityCheckResult` has:
+
+| Field | Meaning |
+|---|---|
+| `ok` | The database passed |
+| `errors` | SQLite's own messages when it didn't (a bad page, a broken index, ...); empty when `ok` |
+| `checked_at` | When the check ran (UTC) |
+| `quick` | It was a quick check |
+
+It also has `to_dict()` and `to_json()`.
+
+### Full and quick checks
+
+- A **full** check (the default) runs `PRAGMA integrity_check`: it verifies every page and that every index matches its table. It takes about as long as reading the whole file, which is instant for a small database and noticeable for a large one.
+- A **quick** check (`quick=True`) runs `PRAGMA quick_check`: faster, but it doesn't verify that index contents match their tables, so it can miss damage that only affects an index.
+
+### When it runs by itself
+
+Each time a client opens the database (on first use), the check runs according to the `IntegrityCheckMode` in the [database settings](#database-settings), and **it is always a full check**:
+
+| Mode | At open |
+|---|---|
+| `AUTO` (the default) | Runs unless a full check already passed within the interval (one day by default) |
+| `ENABLE` | Runs every time |
+| `DISABLE` | Doesn't run |
+
+A check that failed is never counted as done: in `AUTO` mode a damaged database is checked again at the next open. The result is saved, logged to the `database` log, and available from `integrity_status()`.
+
+### A damaged database
+
+If the automatic check fails, or SQLite can't read the file at all ("file is not a database", "database disk image is malformed"), opening the database raises `CorruptDatabaseError` (exit code 12) and nothing else touches the file. The message names the first problem and the hint says what to do:
+
+```python
+try:
+    client.sources.list()
+except vethuq.errors.CorruptDatabaseError as error:
+    print(error)    # "...failed its integrity check: ... Run client.db.integrity_check() for the details..."
+```
+
+Once refused, the client keeps refusing (without scanning again) until you call `client.close()` or create a new client. A locked or read-only database is not treated as damaged.
+
+`client.db.integrity_check()` and `integrity_status()` work on the file itself, not through the normal connection, so you can still run them on a database that VethuQ refuses to open. Restore a backup, or move the damaged file aside to start fresh.
+
+### Housekeeping at open
+
+Opening the database also permanently deletes the sources that were removed longer ago than the retention in the [source settings](#source-settings), so they don't pile up.
+
 ## Version
 
 `client.version` tells you what this install is running. It reads only local information, so it never opens or creates the database.
@@ -721,4 +804,4 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.

@@ -8,10 +8,10 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from vethuq._db import _Setting
+from vethuq._db import _IntegrityCheck, _Setting
 from vethuq._errors import _InvalidSettingValueError
 from vethuq._logs import _Log
-from vethuq.enums import LogLevel, UpdateCheckMode
+from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
 
 
 class _Settings:
@@ -234,3 +234,56 @@ class _UpdateSettings:
             snoozed=_UpdateSettings.is_snoozed(session, now),
             skipped_version=_UpdateSettings.get_skipped_version(session),
         )
+
+
+class _DatabaseSettings:
+    @staticmethod
+    def get_integrity_check(session: Session) -> IntegrityCheckMode:
+        """When the integrity check runs by itself. `auto` unless changed."""
+        value = _Settings.get(session, _IntegrityCheck.MODE_KEY)
+        try:
+            return IntegrityCheckMode(value) if value is not None else _IntegrityCheck.DEFAULT_MODE
+        except ValueError:
+            return _IntegrityCheck.DEFAULT_MODE
+
+    @staticmethod
+    def set_integrity_check(session: Session, mode: IntegrityCheckMode | str) -> None:
+        try:
+            mode = IntegrityCheckMode(mode)
+        except ValueError:
+            options = ", ".join(member.value for member in IntegrityCheckMode)
+            raise _InvalidSettingValueError(
+                f"The integrity check mode {mode!r} isn't one VethuQ has.",
+                f"Use one of: {options}.",
+            ) from None
+        _Settings.set(session, _IntegrityCheck.MODE_KEY, mode.value)
+
+    @staticmethod
+    def reset_integrity_check(session: Session) -> None:
+        """Back to the default mode (`auto`)."""
+        _Settings.reset(session, _IntegrityCheck.MODE_KEY)
+
+    @staticmethod
+    def get_integrity_check_interval_minutes(session: Session) -> int:
+        """Minutes between automatic integrity checks in `auto` mode. 1 day unless changed."""
+        value = _Settings.get(session, _IntegrityCheck.INTERVAL_KEY)
+        default = _IntegrityCheck.DEFAULT_INTERVAL_MINUTES
+        try:
+            minutes = int(value) if value is not None else default
+        except ValueError:
+            return default
+        return minutes if minutes >= 1 else default
+
+    @staticmethod
+    def set_integrity_check_interval_minutes(session: Session, minutes: int) -> None:
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or minutes < 1:
+            raise _InvalidSettingValueError(
+                f"The interval must be a whole number of minutes, at least 1, not {minutes!r}.",
+                "Set the mode to ENABLE to check every time the database is opened.",
+            )
+        _Settings.set(session, _IntegrityCheck.INTERVAL_KEY, str(minutes))
+
+    @staticmethod
+    def reset_integrity_check_interval_minutes(session: Session) -> None:
+        """Back to the default interval (1 day)."""
+        _Settings.reset(session, _IntegrityCheck.INTERVAL_KEY)

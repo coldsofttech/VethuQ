@@ -7,6 +7,8 @@ from pathlib import Path
 from types import TracebackType
 
 from vethuq._db import _Database
+from vethuq._maintenance import _Maintenance
+from vethuq.db import Db
 from vethuq.languages import Languages
 from vethuq.logs import Logs
 from vethuq.paths import Paths
@@ -38,6 +40,7 @@ class VethuQ:
         self._logs: Logs | None = None
         self._policy: PolicyClient | None = None
         self._updates: Updates | None = None
+        self._checks: Db | None = None
         self._lock = threading.Lock()
 
     @property
@@ -48,7 +51,7 @@ class VethuQ:
     def _db(self) -> _Database:
         with self._lock:
             if self._database is None:
-                self._database = _Database(self.db_path)
+                self._database = _Database(self.db_path, on_open=_Maintenance.on_open)
             return self._database
 
     @property
@@ -87,6 +90,13 @@ class VethuQ:
         return self._policy
 
     @property
+    def db(self) -> Db:
+        """Checks on the database file, such as the integrity check."""
+        if self._checks is None:
+            self._checks = Db(self._db())
+        return self._checks
+
+    @property
     def updates(self) -> Updates:
         """Whether a newer VethuQ exists, and which features need one."""
         if self._updates is None:
@@ -110,6 +120,7 @@ class VethuQ:
             self._logs = None
             self._policy = None
             self._updates = None
+            self._checks = None
 
     def __enter__(self) -> VethuQ:
         return self

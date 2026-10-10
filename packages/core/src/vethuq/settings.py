@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from vethuq._db import _Database
+from vethuq._db import _Database, _IntegrityCheck
 from vethuq._logs import _Log, _Logs
-from vethuq._settings import _LogSettings, _SourceSettings, _UpdateSettings
-from vethuq.enums import LogLevel, UpdateCheckMode
+from vethuq._settings import _DatabaseSettings, _LogSettings, _SourceSettings, _UpdateSettings
+from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
 
-__all__ = ["LogSettings", "Settings", "SourceSettings", "UpdateSettings"]
+__all__ = ["DatabaseSettings", "LogSettings", "Settings", "SourceSettings", "UpdateSettings"]
 
 
 class SourceSettings:
@@ -169,6 +169,54 @@ class UpdateSettings:
             _UpdateSettings.clear_skip(session)
 
 
+class DatabaseSettings:
+    """Settings for the database.
+
+    Not created directly: use `VethuQ().settings.database`. They are read when the database is
+    opened, so a change applies the next time a client opens it.
+    """
+
+    DEFAULT_INTEGRITY_CHECK = _IntegrityCheck.DEFAULT_MODE
+    DEFAULT_INTEGRITY_CHECK_INTERVAL_MINUTES = _IntegrityCheck.DEFAULT_INTERVAL_MINUTES
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_integrity_check(self) -> IntegrityCheckMode:
+        """When the integrity check runs by itself, as an `IntegrityCheckMode`: `AUTO` (the
+        default) when the database is opened, at most once per interval; `ENABLE` every time it is
+        opened; `DISABLE` never (`client.db.integrity_check()` still works)."""
+        with self._database.session() as session:
+            return _DatabaseSettings.get_integrity_check(session)
+
+    def set_integrity_check(self, mode: IntegrityCheckMode | str) -> None:
+        """Set when the integrity check runs by itself. Raises `InvalidSettingValueError` for a
+        value that isn't an `IntegrityCheckMode`."""
+        with self._database.session() as session:
+            _DatabaseSettings.set_integrity_check(session, mode)
+
+    def reset_integrity_check(self) -> None:
+        """Back to the default (`AUTO`)."""
+        with self._database.session() as session:
+            _DatabaseSettings.reset_integrity_check(session)
+
+    def get_integrity_check_interval_minutes(self) -> int:
+        """Minutes between automatic checks in `AUTO` mode. 1 day unless changed."""
+        with self._database.session() as session:
+            return _DatabaseSettings.get_integrity_check_interval_minutes(session)
+
+    def set_integrity_check_interval_minutes(self, minutes: int) -> None:
+        """Check at most once per `minutes` in `AUTO` mode. Raises `InvalidSettingValueError`
+        unless `minutes` is a whole number of at least 1."""
+        with self._database.session() as session:
+            _DatabaseSettings.set_integrity_check_interval_minutes(session, minutes)
+
+    def reset_integrity_check_interval_minutes(self) -> None:
+        """Back to the default interval (1 day)."""
+        with self._database.session() as session:
+            _DatabaseSettings.reset_integrity_check_interval_minutes(session)
+
+
 class Settings:
     """VethuQ's settings, grouped by feature.
 
@@ -179,3 +227,4 @@ class Settings:
         self.sources = SourceSettings(database)
         self.logs = LogSettings(database)
         self.updates = UpdateSettings(database)
+        self.database = DatabaseSettings(database)
