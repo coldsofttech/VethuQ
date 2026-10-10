@@ -49,6 +49,8 @@ root = "../.."
 # Tags are `vX.Y.Z` (stable) or `vX.Y.Z-dev.N` (prerelease); hatch-vcs/
 # setuptools-scm want dots, not hyphens, before a prerelease segment.
 tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+(-dev\\.\\d+)?)$"
+# Only `v*` tags: the component (`core-v*`, ...) and `desktop-v*` tags are not this package's.
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "v*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vethuq"]
