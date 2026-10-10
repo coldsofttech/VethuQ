@@ -8,6 +8,7 @@ what is waiting, running and finished however each run was started.
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -134,13 +135,13 @@ class IndexJobs:
             storage.close()
 
     @staticmethod
-    def pending(*, limit: int = 100, db_path: Path | None = None) -> list[IndexJob]:
+    def pending(*, limit: int = 100, db_path: Path | None = None) -> builtins.list[IndexJob]:
         """Waiting and running jobs, oldest first."""
         jobs = IndexJobs.list(("queued", "running"), limit=limit, db_path=db_path)
         return sorted(jobs, key=lambda job: job.id)
 
     @staticmethod
-    def queued(db_path: Path | None = None) -> list[IndexJob]:
+    def queued(db_path: Path | None = None) -> builtins.list[IndexJob]:
         return IndexJobs.list(("queued",), limit=500, db_path=db_path)
 
     @staticmethod

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import threading
 import tkinter as tk
 from collections.abc import Callable
@@ -144,7 +145,7 @@ class BackgroundServiceWindow:
             ("resume", "Resume"),
         ]
         for index, (action, label) in enumerate(labels):
-            button = ttk.Button(grid, text=label, width=11, command=lambda a=action: run(a))
+            button = ttk.Button(grid, text=label, width=11, command=functools.partial(run, action))
             button.grid(row=index // 4, column=index % 4, padx=2, pady=2, sticky=tk.W)
             buttons[action] = button
 

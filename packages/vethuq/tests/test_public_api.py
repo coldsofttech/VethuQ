@@ -1026,8 +1026,7 @@ def test_semantic_model_status_and_download(client: vethuq.Vethuq, monkeypatch: 
         (local_dir / filename).parent.mkdir(parents=True, exist_ok=True)
         (local_dir / filename).write_bytes(b"x")
 
-    hub.HfApi = HfApi
-    hub.hf_hub_download = hf_hub_download
+    vars(hub).update(HfApi=HfApi, hf_hub_download=hf_hub_download)
     monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
     messages: list[str] = []
 
