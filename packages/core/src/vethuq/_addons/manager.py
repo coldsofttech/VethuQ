@@ -9,11 +9,10 @@ from dataclasses import dataclass
 from importlib.metadata import EntryPoint, entry_points
 from pathlib import Path
 
-from vethuq_addon_api import API_VERSION, ENTRY_POINT_GROUP, Addon, MigrationInfo
-
 from vethuq._addons.finder import _AddonFinder
 from vethuq._addons.host import _Host
 from vethuq.enums import AddonStatus
+from vethuq_addon_api import API_VERSION, ENTRY_POINT_GROUP, Addon, MigrationInfo
 
 
 @dataclass(frozen=True)
@@ -73,7 +72,9 @@ class _AddonManager:
             addon = cls(_Host(manifest.id, self._db_path, self._release))
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Couldn't start add-on %s", manifest.id, exc_info=True)
-            return _Loaded(manifest.id, manifest.name, manifest.version, AddonStatus.FAILED, f"{exc}")
+            return _Loaded(
+                manifest.id, manifest.name, manifest.version, AddonStatus.FAILED, f"{exc}"
+            )
         return _Loaded(manifest.id, manifest.name, manifest.version, AddonStatus.LOADED, "", addon)
 
     def loaded(self) -> dict[str, _Loaded]:
@@ -100,7 +101,9 @@ class _AddonManager:
             try:
                 addon.on_open()
             except Exception:  # noqa: BLE001 - hooks are best effort
-                self._logger.warning("Add-on %s failed in on_open", addon.manifest.id, exc_info=True)
+                self._logger.warning(
+                    "Add-on %s failed in on_open", addon.manifest.id, exc_info=True
+                )
 
     def before_migration(self, stored: int, target: int) -> None:
         info = MigrationInfo(self._db_path, stored, target)

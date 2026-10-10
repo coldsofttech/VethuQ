@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from tests.policy_factory import PolicySigner, b64url
 
+from tests.policy_factory import PolicySigner, b64url
 from vethuq._policy import (
     _EnvelopeVerifier,
     _PolicyFormatError,

@@ -9,11 +9,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
-API_VERSION = "0.1"
+# The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
+# breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
+API_VERSION = "0.1.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+    """`1.2` and `1.2.0` are the same version."""
+    parts = tuple(int(part) for part in version.split("."))
+    return parts + (0,) * (3 - len(parts))
 
 
 class Hook(StrEnum):
@@ -27,7 +31,7 @@ class Hook(StrEnum):
 @dataclass(frozen=True)
 class Manifest:
     """What an add-on declares about itself. `api_min`/`api_max` are the add-on API versions
-    (`major.minor`) it works with."""
+    (`major.minor.patch`) it works with."""
 
     id: str
     name: str
@@ -112,8 +116,8 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
     def __init__(self, host: Host) -> None:
         self.host = host
 
-    def on_open(self) -> None:
+    def on_open(self) -> None:  # noqa: B027 - optional hook
         """The database has been opened (schema ready, integrity checked)."""
 
-    def before_migration(self, info: MigrationInfo) -> None:
+    def before_migration(self, info: MigrationInfo) -> None:  # noqa: B027 - optional hook
         """The database is about to be migrated to a newer schema."""

@@ -1,7 +1,7 @@
 """VethuQ's logs: `VethuQ().logs`.
 
-    client.logs.cli.tail(lines=20)
-    client.logs.database.read(day="2026-10-09", level="warning")
+client.logs.cli.tail(lines=20)
+client.logs.database.read(day="2026-10-09", level="warning")
 """
 
 from __future__ import annotations

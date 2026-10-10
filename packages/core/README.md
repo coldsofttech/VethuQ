@@ -24,11 +24,12 @@ pip install VethuQ
 ```python
 import vethuq
 
-print(vethuq.APP_NAME)      # VethuQ
-print(vethuq.APP_TAGLINE)   # Document intelligence and evidence infrastructure.
-print(vethuq.APP_VERSION)   # 0.1.0
+print(vethuq.APP_NAME)  # VethuQ
+print(vethuq.APP_TAGLINE)  # Document intelligence and evidence infrastructure.
+print(vethuq.APP_VERSION)  # 0.1.0
 
 from vethuq import APP_NAME, APP_VERSION
+
 print(f"{APP_NAME} {APP_VERSION}")
 ```
 
@@ -121,9 +122,9 @@ All the methods return `pathlib.Path` objects.
 ```python
 from vethuq import Paths
 
-print(Paths.db_path())    # e.g. /home/you/.local/share/VethuQ/db/vethuq.db
-print(Paths.logs_dir())   # e.g. /home/you/.local/share/VethuQ/logs
-print(Paths.DB_NAME)      # vethuq.db
+print(Paths.db_path())  # e.g. /home/you/.local/share/VethuQ/db/vethuq.db
+print(Paths.logs_dir())  # e.g. /home/you/.local/share/VethuQ/logs
+print(Paths.DB_NAME)  # vethuq.db
 ```
 
 ### Where the data root comes from
@@ -143,8 +144,8 @@ The backups folder is `<data root>/db/backups` unless a different one is saved i
 ```python
 import vethuq
 
-client = vethuq.VethuQ()                              # the default database: Paths.db_path()
-client = vethuq.VethuQ(db_path="/data/vethuq.db")     # or another database file
+client = vethuq.VethuQ()  # the default database: Paths.db_path()
+client = vethuq.VethuQ(db_path="/data/vethuq.db")  # or another database file
 ```
 
 `client.sources`, `client.languages`, `client.settings`, `client.logs`, `client.policy`, `client.updates`, `client.db` and `client.version` are the features available so far. The database is created the first time it is used. Use the client as a context manager, or call `close()`, to release it when you are done:
@@ -163,13 +164,13 @@ import vethuq
 
 client = vethuq.VethuQ()
 
-source = client.sources.create("~/docs", languages=["en"])   # register it
-source = client.sources.get(source.id)                        # look one up
-sources = client.sources.list()                               # list them
-files = client.sources.list_files(source.id)                  # the files that belong to it
-source = client.sources.set_languages(source.id, ["en"])      # change its languages
-source = client.sources.remove(source.id)                     # remove it
-result = client.sources.purge(source.id)                      # delete it for good
+source = client.sources.create("~/docs", languages=["en"])  # register it
+source = client.sources.get(source.id)  # look one up
+sources = client.sources.list()  # list them
+files = client.sources.list_files(source.id)  # the files that belong to it
+source = client.sources.set_languages(source.id, ["en"])  # change its languages
+source = client.sources.remove(source.id)  # remove it
+result = client.sources.purge(source.id)  # delete it for good
 ```
 
 A source is identified by its **id** (an `int`) or its **path** (a `str` or `pathlib.Path`). `~` and relative paths are resolved, so the same folder written two ways is the same source. A string of digits such as `"2024"` is a path, never an id.
@@ -248,15 +249,15 @@ print(source.id, source.path, source.source_type, source.status)
 ```python
 client.sources.get(1)
 client.sources.get("~/docs")
-client.sources.get(1, include_removed=True)     # also finds a removed source
+client.sources.get(1, include_removed=True)  # also finds a removed source
 ```
 Raises `SourceNotFoundError` if nothing matches. A removed source is found only with `include_removed=True`.
 
 ### Listing sources
 
 ```python
-client.sources.list()                                        # active sources, by id
-client.sources.list(include_removed=True)                    # and the removed ones
+client.sources.list()  # active sources, by id
+client.sources.list(include_removed=True)  # and the removed ones
 client.sources.list(
     status=vethuq.sources.SourceStatus.PENDING,
     source_type=vethuq.sources.SourceType.FOLDER,
@@ -307,8 +308,8 @@ It has `to_dict()` and `to_json(indent=None)` like the other results. It raises 
 ### Changing the languages
 
 ```python
-client.sources.set_languages(1, ["en"])    # read in English
-client.sources.set_languages(1, None)      # back to the global language setting ([] works too)
+client.sources.set_languages(1, ["en"])  # read in English
+client.sources.set_languages(1, None)  # back to the global language setting ([] works too)
 ```
 It returns the updated `Source` and affects files indexed from then on. It works on active sources only (a removed one raises `SourceNotFoundError`), and an unknown language raises `LanguageUnavailableError` and changes nothing.
 
@@ -317,11 +318,11 @@ It returns the updated `Source` and affects files indexed from then on. It works
 Removing a source is reversible; purging is not.
 
 ```python
-removed = client.sources.remove(1)          # kept, but marked REMOVED and no longer active
-client.sources.create("~/docs")             # registering it again brings it back
+removed = client.sources.remove(1)  # kept, but marked REMOVED and no longer active
+client.sources.create("~/docs")  # registering it again brings it back
 
-result = client.sources.purge(1)            # permanently deleted
-print(result.to_json())                     # {"id": 1, "path": "/home/you/docs", "type": "folder"}
+result = client.sources.purge(1)  # permanently deleted
+print(result.to_json())  # {"id": 1, "path": "/home/you/docs", "type": "folder"}
 ```
 
 - `remove` works on active sources and returns the removed `Source`. Removing one that is already removed raises `SourceNotFoundError`.
@@ -329,8 +330,8 @@ print(result.to_json())                     # {"id": 1, "path": "/home/you/docs"
 - `purge_expired()` purges every source that has been removed for longer than the retention, and returns the list of `PurgeResult`s. The retention is 7 days unless you change it in the [settings](#settings). Pass `retention_minutes=` to use another value for one call.
 
 ```python
-client.sources.purge_expired()                       # uses the setting (7 days by default)
-client.sources.purge_expired(retention_minutes=60)   # removed more than an hour ago
+client.sources.purge_expired()  # uses the setting (7 days by default)
+client.sources.purge_expired(retention_minutes=60)  # removed more than an hour ago
 ```
 
 ### Languages of a source
@@ -345,7 +346,7 @@ VethuQ keeps a list of the languages it can read (see [Languages](#languages) fo
 try:
     client.sources.create("~/docs", languages=["en", "xx"])
 except vethuq.errors.LanguageUnavailableError as error:
-    print(error)    # Unknown language 'xx'. Available languages: en.
+    print(error)  # Unknown language 'xx'. Available languages: en.
 ```
 
 A plain string such as `"en,te"` isn't accepted; pass a list.
@@ -387,8 +388,8 @@ Like `Source`, a `Language` has `to_dict()` and `to_json(indent=None)`:
 
 ```python
 language = client.languages.list_all()[0]
-language.to_dict()        # {"id": 1, "language": "en"}
-language.to_json()        # '{"id": 1, "language": "en"}'
+language.to_dict()  # {"id": 1, "language": "en"}
+language.to_json()  # '{"id": 1, "language": "en"}'
 ```
 
 Any id in this list can be used as `languages=[...]` when you create a source. Any other id raises `LanguageUnavailableError`.
@@ -408,8 +409,8 @@ Any id in this list can be used as `languages=[...]` when you create a source. A
 | `reset_removed_retention_minutes()` | Back to the default |
 
 ```python
-client.settings.sources.get_removed_retention_minutes()          # 10080
-client.settings.sources.set_removed_retention_minutes(24 * 60)   # keep for one day
+client.settings.sources.get_removed_retention_minutes()  # 10080
+client.settings.sources.set_removed_retention_minutes(24 * 60)  # keep for one day
 client.settings.sources.reset_removed_retention_minutes()
 ```
 
@@ -495,10 +496,10 @@ All of them extend `Log`. `client.logs.get("cli")` finds one by name or by `LogC
 ### Listing the logs
 
 ```python
-for file in client.logs.list():                 # today's file of every log
+for file in client.logs.list():  # today's file of every log
     print(file.component, file.exists, file.size_bytes)
 
-file = client.logs.database.file()              # one log's file for today
+file = client.logs.database.file()  # one log's file for today
 file = client.logs.database.file("2026-10-09")  # ... or for a past day (a date works too)
 print(file.path)
 ```
@@ -510,10 +511,10 @@ A `LogFile` has `component`, `path`, `exists`, `size_bytes` and `modified_at` (U
 ```python
 log = client.logs.cli
 
-log.tail()                                     # the last 40 entries, oldest first
-log.tail(100, level=vethuq.logs.LogLevel.ERROR)     # the last 100 errors
-log.read(day="2026-10-09")                     # every entry of a past day
-log.read(contains="schema", order=vethuq.logs.SortOrder.DESC)   # newest first, text match
+log.tail()  # the last 40 entries, oldest first
+log.tail(100, level=vethuq.logs.LogLevel.ERROR)  # the last 100 errors
+log.read(day="2026-10-09")  # every entry of a past day
+log.read(contains="schema", order=vethuq.logs.SortOrder.DESC)  # newest first, text match
 ```
 
 | Argument | Applies to | Description |
@@ -543,7 +544,7 @@ An entry that isn't in the usual format keeps only `message` and `raw`, and alwa
 
 ```python
 for entry in client.logs.index.follow(level="warning"):
-    print(entry.message)         # runs until you stop it, like `tail -f`
+    print(entry.message)  # runs until you stop it, like `tail -f`
 ```
 
 `follow()` starts from the end of today's file, so it shows only what is written from then on. It takes `level` and `contains`, and a `stop` function that ends it when it returns `True`. It carries on across the daily rollover and waits for a log that doesn't exist yet.
@@ -587,14 +588,14 @@ The policy is a small signed file that tells VethuQ the latest and minimum versi
 ```python
 client = vethuq.VethuQ()
 
-result = client.policy.current()            # the cached policy or the baseline; no network
-result = client.policy.refresh()            # check for a newer one (about once a day)
+result = client.policy.current()  # the cached policy or the baseline; no network
+result = client.policy.refresh()  # check for a newer one (about once a day)
 result = client.policy.refresh(force=True)  # ignore the once-a-day limit
-thread = client.policy.refresh_in_background()   # the same, on a daemon thread
+thread = client.policy.refresh_in_background()  # the same, on a daemon thread
 
 policy = result.policy
-policy.versions["pip"].latest               # "2.0.0" (a DistributionVersions)
-policy.active_notices()                     # notices whose time window includes now
+policy.versions["pip"].latest  # "2.0.0" (a DistributionVersions)
+policy.active_notices()  # notices whose time window includes now
 policy.features["some_feature"].enabled
 ```
 
@@ -656,10 +657,10 @@ Fetching the policy exposes your IP address to its host. The request identifies 
 `client.updates` tells you when a newer VethuQ exists and which features need one. The signed policy is the **only** source: there is no fallback to PyPI or GitHub Releases, so an update is announced only when it is published in the policy.
 
 ```python
-result = client.updates.check()     # refresh the policy (about once a day) and report on it
-result = client.updates.status()    # use the saved policy only; no network
+result = client.updates.check()  # refresh the policy (about once a day) and report on it
+result = client.updates.status()  # use the saved policy only; no network
 if result.notify:
-    print(result.message)           # "VethuQ 2.0.0 is available (you have 1.5.0)."
+    print(result.message)  # "VethuQ 2.0.0 is available (you have 1.5.0)."
 
 access = client.updates.feature("some_feature", default=True)
 if not access.allowed:
@@ -715,13 +716,13 @@ Nothing runs on `import vethuq` or when a client is created. The command line an
 `client.db` checks the database file for corruption. A database can be damaged by a crash, a full disk or a sync tool, and finding out early beats a confusing failure in the middle of something else.
 
 ```python
-result = client.db.integrity_check()        # check now
+result = client.db.integrity_check()  # check now
 if not result.ok:
     for message in result.errors:
         print(message)
 
-client.db.integrity_check(quick=True)       # a faster, less thorough check
-status = client.db.integrity_status()       # the last check, automatic or not; no new scan
+client.db.integrity_check(quick=True)  # a faster, less thorough check
+status = client.db.integrity_status()  # the last check, automatic or not; no new scan
 ```
 
 The types are in `vethuq.db`: `Db`, `IntegrityCheckResult` and the enum `IntegrityCheckMode`.
@@ -762,7 +763,9 @@ If the automatic check fails, or SQLite can't read the file at all ("file is not
 try:
     client.sources.list()
 except vethuq.errors.CorruptDatabaseError as error:
-    print(error)    # "...failed its integrity check: ... Run client.db.integrity_check() for the details..."
+    print(
+        error
+    )  # "...failed its integrity check: ... Run client.db.integrity_check() for the details..."
 ```
 
 Once refused, the client keeps refusing (without scanning again) until you call `client.close()` or create a new client. A locked or read-only database is not treated as damaged.
@@ -783,9 +786,9 @@ import vethuq
 client = vethuq.VethuQ()
 
 version = client.version
-print(version.vethuq)       # 0.1.0
-print(version.python)       # 3.13.1
-print(version.db_schema)    # 1
+print(version.vethuq)  # 0.1.0
+print(version.python)  # 3.13.1
+print(version.db_schema)  # 1
 print(version.to_json(indent=2))
 ```
 
@@ -815,12 +818,13 @@ Some features ship as separate, licensed add-ons (for example backups). VethuQ i
 ```python
 client = vethuq.VethuQ()
 
-client.addons.list()                  # [AddonInfo(id="backup", status=AddonStatus.LOADED, ...)]
+client.addons.list()  # [AddonInfo(id="backup", status=AddonStatus.LOADED, ...)]
 client.addons.is_installed("backup")  # False if it isn't installed
-client.addons.get("backup")           # AddonInfo or None
+client.addons.get("backup")  # AddonInfo or None
 
 # An installed add-on's public classes are imported from vethuq.addons:
 from vethuq.addons.backup import Backup
+
 backup = Backup(client)
 ```
 

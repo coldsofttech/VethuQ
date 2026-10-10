@@ -8,12 +8,12 @@ from vethuq._errors import (
     _CorruptDatabaseError,
     _DataFolderNotWritableError,
     _InvalidConfigError,
+    _InvalidLogRequestError,
+    _InvalidSettingValueError,
     _LanguageUnavailableError,
     _LogError,
     _LogNotFoundError,
     _OcrModelMissingError,
-    _InvalidLogRequestError,
-    _InvalidSettingValueError,
     _SchemaVersionError,
     _SettingsError,
     _SourceAlreadyExistsError,
@@ -154,8 +154,7 @@ class TestPublicErrors:
             for p in _SETTINGS
         )
         assert all(
-            issubclass(p, errors.LogError) and not issubclass(p, errors.StartupError)
-            for p in _LOG
+            issubclass(p, errors.LogError) and not issubclass(p, errors.StartupError) for p in _LOG
         )
         assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME, *_SOURCE, *_SETTINGS, *_LOG}
 

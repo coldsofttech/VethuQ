@@ -1,0 +1,47 @@
+# Virtual workspace root: not a distribution, never built or published.
+# The distributions live under packages/ (VethuQ in packages/core, vethuq-addon-api in
+# packages/addon-api).
+[project]
+name = "vethuq-workspace"
+version = "0.1.0"
+description = "uv workspace root for VethuQ — open-source document intelligence and evidence infrastructure (not published)"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+VethuQ = { workspace = true }
+vethuq-addon-api = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "VethuQ",
+    "vethuq-addon-api",
+    "pytest>=8",
+    "ruff>=0.6",
+    "pre-commit>=3.8",
+    "jsonschema>=4.20",
+    "pillow>=10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["packages/core/src", "packages/addon-api/src", "packages/core", "tools", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S603", "S607", "S108", "S105", "S106", "B018"]
+"tools/**" = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/core/tests", "packages/addon-api/tests", "tools/policy/tests", "scripts"]
+addopts = "-ra"

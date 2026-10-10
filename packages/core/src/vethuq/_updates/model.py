@@ -44,8 +44,10 @@ class UpdateResult:
     @property
     def offer_install(self) -> bool:
         """Whether a front end that can install updates should offer to ('on', not notify-only)."""
-        return self.notify and self.mode is UpdateCheckMode.ON and (
-            self.status is not UpdateStatus.UNKNOWN
+        return (
+            self.notify
+            and self.mode is UpdateCheckMode.ON
+            and (self.status is not UpdateStatus.UNKNOWN)
         )
 
     @property

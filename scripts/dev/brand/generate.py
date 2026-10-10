@@ -31,6 +31,7 @@ class BrandGenerator:
         self.installer = ui / "installer"
         self.cli_logo = repo_root / "packages" / "vethuq-cli" / "src" / "vethuq_cli" / "logo.py"
         self.master = Image.open(self.brand / "vethuq.png").convert("RGBA")
+
     def write_icon(self) -> None:
         for target in (self.brand / "vethuq.ico", self.installer / "vethuq.ico"):
             self.master.save(target, format="ICO", sizes=self.ICO_SIZES)
@@ -51,7 +52,9 @@ class BrandGenerator:
 
     def write_console_logo(self) -> None:
         """Half-block truecolor art: every character cell stacks two pixels (▀ / ▄)."""
-        px = self.master.resize((self.CONSOLE_COLUMNS, self.CONSOLE_COLUMNS), Image.Resampling.LANCZOS)
+        px = self.master.resize(
+            (self.CONSOLE_COLUMNS, self.CONSOLE_COLUMNS), Image.Resampling.LANCZOS
+        )
 
         def color(x: int, y: int) -> str | None:
             r, g, b, a = px.getpixel((x, y))

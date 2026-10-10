@@ -11,6 +11,7 @@ under the `vethuq.addons` entry-point group; VethuQ finds installed add-ons by t
 ```python
 from vethuq_addon_api import Addon, Manifest, MigrationInfo
 
+
 class BackupAddon(Addon):
     manifest = Manifest(id="backup", name="vethuq-addon-backup", version="0.1.0")
 
@@ -27,7 +28,7 @@ backup = "vethuq_addon_backup:BackupAddon"
 
 - Hooks are best effort. VethuQ logs a failing hook and carries on.
 - An add-on checks its own licence. VethuQ never tells it that a licence is valid.
-- The API version is `major.minor`. An add-on declares the range it works with; an add-on outside the
+- The API version is `major.minor.patch`, the same form as the policy's `compatibility.addon_api`. An add-on declares the range it works with; an add-on outside the
   range is listed as incompatible and not run.
 
 ## Testing an add-on

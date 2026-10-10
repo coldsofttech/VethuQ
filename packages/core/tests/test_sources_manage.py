@@ -4,11 +4,10 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
 import vethuq
 from vethuq import errors
-from sqlalchemy import select
-
 from vethuq._db import _Language, _Source, _SourceLanguage
 
 

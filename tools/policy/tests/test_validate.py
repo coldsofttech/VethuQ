@@ -29,7 +29,9 @@ class Signer:
 
     def __init__(self, keys_dir):
         self.private_key = Ed25519PrivateKey.generate()
-        pub = self.private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        pub = self.private_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
         self.keys_dir = keys_dir
         keys_dir.mkdir()
         (keys_dir / f"{KID}.pub").write_text(b64(pub))
@@ -110,7 +112,12 @@ class TestSchema(ValidatorTestCase):
         ],
     )
     def test_download_format_checks(self, signer, validator, field, value):
-        download = {"platform": "windows-x64", "url": "https://example.com/a.exe", "size": 10, "sha256": "a" * 64}
+        download = {
+            "platform": "windows-x64",
+            "url": "https://example.com/a.exe",
+            "size": 10,
+            "sha256": "a" * 64,
+        }
         download[field] = value
         p = make_payload()
         p["versions"]["desktop"]["downloads"] = [download]
@@ -171,7 +178,9 @@ class TestWindows(ValidatorTestCase):
         ],
     )
     def test_invalid_notice_window(self, signer, validator, starts, ends):
-        notices = [{"id": "n", "message": "m", "severity": "info", "starts_at": starts, "ends_at": ends}]
+        notices = [
+            {"id": "n", "message": "m", "severity": "info", "starts_at": starts, "ends_at": ends}
+        ]
         assert self.envelope_errors(validator, signer.sign(make_payload(notices=notices)))
 
     def test_limit_window_ordered(self, signer, validator):
@@ -231,7 +240,9 @@ class TestCreditsSections(ValidatorTestCase):
 
     # ---- effective_from -----------------------------------------------------------------
 
-    @pytest.mark.parametrize("value", ["2026-02-30", "2026-13-01", "2026-10-09T00:00:00Z", "20261009", "tomorrow"])
+    @pytest.mark.parametrize(
+        "value", ["2026-02-30", "2026-13-01", "2026-10-09T00:00:00Z", "20261009", "tomorrow"]
+    )
     def test_effective_from_must_be_a_real_utc_date(self, signer, validator, value):
         assert self.errors(signer, validator, effective_from=value)
 
@@ -248,11 +259,17 @@ class TestCreditsSections(ValidatorTestCase):
         assert self.envelope_errors(validator, signer.sign(p)) == []
 
     def test_client_range_must_be_ordered(self, signer, validator):
-        rc = dict(rate_payload()["rate_card"], applies_to={"client": {"min": "2.0.0", "max": "1.0.0"}})
-        assert any("min is greater than max" in e for e in self.errors(signer, validator, rate_card=rc))
+        rc = dict(
+            rate_payload()["rate_card"], applies_to={"client": {"min": "2.0.0", "max": "1.0.0"}}
+        )
+        assert any(
+            "min is greater than max" in e for e in self.errors(signer, validator, rate_card=rc)
+        )
 
     def test_payload_level_applies_to_checked(self, signer, validator):
-        errs = self.errors(signer, validator, applies_to={"client": {"min": "2.0.0", "max": "1.0.0"}})
+        errs = self.errors(
+            signer, validator, applies_to={"client": {"min": "2.0.0", "max": "1.0.0"}}
+        )
         assert any("<payload>.applies_to" in e for e in errs)
 
     def test_open_ended_client_range_ok(self, signer, validator):
@@ -313,7 +330,12 @@ class TestCreditsSections(ValidatorTestCase):
         assert self.errors(signer, validator) == []
 
     @pytest.mark.parametrize(
-        "wallets", [{"local": {"daily": -1}}, {"github": {"daily_public": "many"}}, {"addons": {"Semantic": {}}}]
+        "wallets",
+        [
+            {"local": {"daily": -1}},
+            {"github": {"daily_public": "many"}},
+            {"addons": {"Semantic": {}}},
+        ],
     )
     def test_invalid_wallets(self, signer, validator, wallets):
         assert self.errors(signer, validator, wallets=wallets)
@@ -352,7 +374,9 @@ class TestCreditsSections(ValidatorTestCase):
     def test_uplift_wallet_keys_checked(self, signer, validator):
         ok = {"addon:semantic": {"absolute": 5}}
         assert self.errors(signer, validator, promotions=[self.promo(uplift=ok)]) == []
-        assert self.errors(signer, validator, promotions=[self.promo(uplift={"cloud": {"absolute": 5}})])
+        assert self.errors(
+            signer, validator, promotions=[self.promo(uplift={"cloud": {"absolute": 5}})]
+        )
 
     def test_percent_uplift_cannot_exceed_the_cap(self, signer, validator):
         caps = {"promotion_uplift_percent": 40}
@@ -361,13 +385,16 @@ class TestCreditsSections(ValidatorTestCase):
 
     def test_promotion_scope_filters_accepted(self, signer, validator):
         scoped = self.promo(
-            applies_to={"tiers": ["pro"], "addons": ["semantic"], "client": {"min": "1.1.0"}}, min_client="1.1.0"
+            applies_to={"tiers": ["pro"], "addons": ["semantic"], "client": {"min": "1.1.0"}},
+            min_client="1.1.0",
         )
         assert self.errors(signer, validator, promotions=[scoped]) == []
 
     # ---- grace, caps, metrics, ocr ------------------------------------------------------
 
-    @pytest.mark.parametrize("over", [{"grace_mode": "overdraft"}, {"grace_percent": -1}, {"grace_percent": 101}])
+    @pytest.mark.parametrize(
+        "over", [{"grace_mode": "overdraft"}, {"grace_percent": -1}, {"grace_percent": 101}]
+    )
     def test_invalid_grace(self, signer, validator, over):
         assert self.errors(signer, validator, **over)
 
@@ -393,7 +420,10 @@ class TestCreditsSections(ValidatorTestCase):
         assert self.errors(signer, validator, metrics=metrics)
 
     def test_ocr_profile_override_values(self, signer, validator):
-        assert self.errors(signer, validator, ocr={"profiles": {"quick": "fast", "high": "fast"}}) == []
+        assert (
+            self.errors(signer, validator, ocr={"profiles": {"quick": "fast", "high": "fast"}})
+            == []
+        )
         assert self.errors(signer, validator, ocr={"profiles": {"quick": "ultra"}})
 
     def test_caps_values(self, signer, validator):
@@ -415,7 +445,7 @@ class TestRateCardExamples:
 
 
 class TestKeyRevocation(ValidatorTestCase):
-    """revoked_key_ids: shape and the rules the validator can check (the client enforces the rest)."""
+    """revoked_key_ids: shape and the rules the validator can check (the client does the rest)."""
 
     def errors(self, signer, validator, **sections):
         return self.envelope_errors(validator, signer.sign(make_payload(**sections)))
@@ -431,7 +461,9 @@ class TestKeyRevocation(ValidatorTestCase):
         errs = self.errors(signer, validator, revoked_key_ids=[KID])
         assert any("cannot revoke its own signing key" in e for e in errs)
 
-    @pytest.mark.parametrize("value", ["pol-a", [1], ["a b"], ["x"] * 2, [f"k{i}" for i in range(33)], [""]])
+    @pytest.mark.parametrize(
+        "value", ["pol-a", [1], ["a b"], ["x"] * 2, [f"k{i}" for i in range(33)], [""]]
+    )
     def test_invalid_shapes(self, signer, validator, value):
         assert self.errors(signer, validator, revoked_key_ids=value)
 

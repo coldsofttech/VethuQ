@@ -86,7 +86,9 @@ class PolicyValidator:
         validator = self._schemas[schema_name]
         return [
             f"schema: {'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}"
-            for e in sorted(validator.iter_errors(instance), key=lambda e: list(map(str, e.absolute_path)))
+            for e in sorted(
+                validator.iter_errors(instance), key=lambda e: list(map(str, e.absolute_path))
+            )
         ]
 
     # ---- semantic rules --------------------------------------------------
@@ -183,13 +185,21 @@ class PolicyValidator:
         elif isinstance(node, list):
             for i, value in enumerate(node):
                 self._check_decimals(value, f"{where}[{i}]", errs)
-        elif isinstance(node, (int, float)) and not isinstance(node, bool) and not self._decimal_places_ok(node):
+        elif (
+            isinstance(node, (int, float))
+            and not isinstance(node, bool)
+            and not self._decimal_places_ok(node)
+        ):
             errs.append(f"{where}: more than 3 decimal places: {node!r}")
 
     def _check_scope(self, obj, where, errs):
         client = ((obj or {}).get("applies_to") or {}).get("client") or {}
         try:
-            if "min" in client and "max" in client and self._semver(client["min"]) > self._semver(client["max"]):
+            if (
+                "min" in client
+                and "max" in client
+                and self._semver(client["min"]) > self._semver(client["max"])
+            ):
                 errs.append(f"{where}.applies_to.client: min is greater than max")
         except (AttributeError, TypeError):
             pass  # reported by the schema check
@@ -221,12 +231,15 @@ class PolicyValidator:
                     errs.append(str(e))
             if len(window) == 2 and window["start_date"] > window["end_date"]:
                 errs.append(
-                    f"{where}: start_date must not be after end_date ({promo['start_date']} > {promo['end_date']})"
+                    f"{where}: start_date must not be after end_date "
+                    f"({promo['start_date']} > {promo['end_date']})"
                 )
             self._check_scope(promo, where, errs)
             limit = caps.get("promotion_uplift_percent")
             for wallet, uplift in promo["uplift"].items():
-                self._check_decimals(uplift.get("absolute"), f"{where}.uplift.{wallet}.absolute", errs)
+                self._check_decimals(
+                    uplift.get("absolute"), f"{where}.uplift.{wallet}.absolute", errs
+                )
                 if limit is not None and uplift.get("percent", 0) > limit:
                     errs.append(
                         f"{where}.uplift.{wallet}: percent {uplift['percent']} exceeds "
@@ -246,15 +259,19 @@ class PolicyValidator:
         return errs if errs else self.semantic_errors(payload)
 
     def check_sequence(self, payload, previous_doc):
-        """previous_doc is the previous commit's policy.json (parsed). Skipped if it is a placeholder."""
+        """previous_doc is the previous commit's policy.json (parsed); a placeholder is skipped."""
         if self.is_placeholder(previous_doc):
             return []
         try:
-            prev_seq = json.loads(self.b64url_decode(previous_doc["payload"]).decode("utf-8"))["sequence"]
+            prev_seq = json.loads(self.b64url_decode(previous_doc["payload"]).decode("utf-8"))[
+                "sequence"
+            ]
         except (KeyError, TypeError, ValueError, PolicyError):
             return []  # previous file unreadable: nothing to compare against
         if not payload["sequence"] > prev_seq:
-            return [f"sequence {payload['sequence']} must be strictly greater than previous {prev_seq}"]
+            return [
+                f"sequence {payload['sequence']} must be strictly greater than previous {prev_seq}"
+            ]
         return []
 
     def validate_envelope(self, env, previous=None):
@@ -301,12 +318,17 @@ class PolicyValidator:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = ap.add_subparsers(dest="mode", required=True)
     e = sub.add_parser("envelope")
     e.add_argument("file")
     e.add_argument("--keys-dir", default=str(ROOT / "keys"))
-    e.add_argument("--previous", help="previous commit's policy.json; if given and different, sequence must increase")
+    e.add_argument(
+        "--previous",
+        help="previous commit's policy.json; if given and different, sequence must increase",
+    )
     pl = sub.add_parser("payload")
     pl.add_argument("file")
     a = ap.parse_args(argv)

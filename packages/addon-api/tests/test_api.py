@@ -14,7 +14,13 @@ class TestManifest:
 
     @pytest.mark.parametrize(
         "api_min,api_max,api,expected",
-        [("0.1", "0.3", "0.2", True), ("0.2", "0.3", "0.1", False), ("0.1", "0.1", "0.2", False)],
+        [
+            ("0.1.0", "0.3.0", "0.2.0", True),
+            ("0.2.0", "0.3.0", "0.1.0", False),
+            ("0.1.0", "0.1.0", "0.2.0", False),
+            ("0.1", "0.1", "0.1.0", True),
+            ("0.1.0", "0.1.9", "0.1.5", True),
+        ],
     )
     def test_range(self, api_min, api_max, api, expected):
         assert Manifest("x", "X", "1", api_min, api_max).supports(api) is expected
@@ -24,7 +30,7 @@ class TestManifest:
 
     def test_to_dict_and_json(self):
         manifest = Manifest("backup", "Backup", "0.1.0")
-        assert manifest.to_dict()["addon_api"] == {"min": "0.1", "max": "0.1"}
+        assert manifest.to_dict()["addon_api"] == {"min": "0.1.0", "max": "0.1.0"}
         assert json.loads(manifest.to_json())["id"] == "backup"
 
 

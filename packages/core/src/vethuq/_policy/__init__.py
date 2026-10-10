@@ -18,7 +18,8 @@ from vethuq._policy.fetch import _FetchFailure, _FetchResponse, _PolicyFetcher
 from vethuq._policy.keys import _PolicyKey, _PolicyKeys, _PolicyUrls
 from vethuq._policy.model import (
     AddonPolicy,
-    DistributionVersions,     Feature,
+    DistributionVersions,
+    Feature,
     Notice,
     Policy,
     PolicyResult,

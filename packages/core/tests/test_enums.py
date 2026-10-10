@@ -59,9 +59,7 @@ class TestEnums:
         assert json.dumps(member) == f'"{member.value}"'
         assert type(member)(member.value) is member
 
-    @pytest.mark.parametrize(
-        "name", ["SourceType", "SourceStatus", "SortOrder", "SourceSortBy"]
-    )
+    @pytest.mark.parametrize("name", ["SourceType", "SourceStatus", "SortOrder", "SourceSortBy"])
     def test_source_enums_are_available_from_vethuq_sources(self, name):
         assert getattr(vethuq.sources, name) is getattr(enums, name)
         assert name in vethuq.sources.__all__

@@ -12,7 +12,6 @@ import shutil
 from pathlib import Path
 
 
-
 class Cleanup:
     """Removes local cache/build directories from a repository root."""
 

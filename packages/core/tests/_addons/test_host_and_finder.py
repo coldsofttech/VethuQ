@@ -56,9 +56,7 @@ class TestHost:
         assert calls == [1]
 
     def test_revoked_ids_and_kill_switch_come_from_the_policy(self, db_path):
-        policy = _policy(
-            revoked_licence_ids=["lic-1"], addons={"backup": {"enabled": False}}
-        )
+        policy = _policy(revoked_licence_ids=["lic-1"], addons={"backup": {"enabled": False}})
         host = _Host("backup", db_path, lambda: None, policy=lambda: policy)
         assert host.revoked_licence_ids() == frozenset({"lic-1"})
         assert host.addon_policy_enabled() is False

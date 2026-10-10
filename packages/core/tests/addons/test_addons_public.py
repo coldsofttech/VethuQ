@@ -54,9 +54,9 @@ class TestWithAnAddon:
     def test_its_public_class_imports_from_vethuq_addons(self, folder, client):
         module = AddonFactory.install(folder)
         client.addons.list()
-        from vethuq.addons.dummy import Dummy
-
         import importlib
+
+        from vethuq.addons.dummy import Dummy
 
         assert Dummy is importlib.import_module(module).Dummy
         assert Dummy(client).client is client
@@ -114,10 +114,10 @@ class TestWithAnAddon:
 
 class TestBadAddons:
     def test_an_incompatible_addon_is_listed_and_not_run(self, folder, client):
-        module = AddonFactory.install(folder, api=', api_min="9.0", api_max="9.9"')
+        module = AddonFactory.install(folder, api=', api_min="9.0.0", api_max="9.9.0"')
         info = client.addons.get("dummy")
         assert info.status is AddonStatus.INCOMPATIBLE
-        assert "9.0" in info.detail
+        assert "9.0.0" in info.detail
         client.sources.list()
         assert sys.modules[module].EVENTS == []
 
@@ -157,7 +157,9 @@ class TestSettings:
         import sqlite3
 
         with sqlite3.connect(client.db_path) as conn:
-            row = conn.execute("SELECT value FROM settings WHERE key='addon.backup.mode'").fetchone()
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key='addon.backup.mode'"
+            ).fetchone()
         assert row == ("auto",)
 
     @pytest.mark.parametrize("key", ["", "Mode", "a-b", "1a", "x" * 70])

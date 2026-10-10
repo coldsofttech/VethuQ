@@ -1,8 +1,8 @@
 """The database: `VethuQ().db`.
 
-    result = client.db.integrity_check()
-    if not result.ok:
-        print(result.errors)
+result = client.db.integrity_check()
+if not result.ok:
+    print(result.errors)
 """
 
 from __future__ import annotations

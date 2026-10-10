@@ -95,7 +95,7 @@ class _PolicyClient:
                 state = replace(state, last_check=now, last_failure=0.0)
                 self._save(state)
                 return self._describe(PolicyStatus.UNCHANGED, state)
-            assert attempt.body is not None
+            assert attempt.body is not None  # noqa: S101 - narrows the type; set when not failed
             try:
                 verified = self._verifier.verify(attempt.body, state.revoked)
                 if cached and (cached.kid, cached.payload) == (verified.kid, verified.payload):

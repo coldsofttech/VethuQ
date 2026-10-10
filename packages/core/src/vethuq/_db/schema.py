@@ -42,9 +42,7 @@ class _Schema:
             )
 
     @staticmethod
-    def ensure(
-        engine: Engine, before_migration: Callable[[int, int], None] | None = None
-    ) -> None:
+    def ensure(engine: Engine, before_migration: Callable[[int, int], None] | None = None) -> None:
         """Create the tables, record the schema version, and migrate an older database.
 
         `before_migration(stored, target)`, if given, is called first when the database is about

@@ -6,14 +6,13 @@ import logging
 from collections.abc import Callable
 from pathlib import Path
 
-from vethuq_addon_api import API_VERSION
-
 from vethuq._addons.settings import _AddonSettingsStore
-from vethuq._logs import _DatabaseLog
 from vethuq._db import _Schema
+from vethuq._logs import _DatabaseLog
 from vethuq._paths import _Paths
 from vethuq._policy import Policy, _PolicyClient
 from vethuq._version import _Version
+from vethuq_addon_api import API_VERSION
 
 
 class _Host:
@@ -62,7 +61,9 @@ class _Host:
             return self._policy_source()
         try:
             directory = _Paths.policy_dir(self._db_path, create=False)
-            return _PolicyClient(directory, logger=logging.getLogger("vethuq.policy")).current().policy
+            return (
+                _PolicyClient(directory, logger=logging.getLogger("vethuq.policy")).current().policy
+            )
         except Exception:  # noqa: BLE001 - a policy problem never blocks an add-on
             return None
 

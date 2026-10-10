@@ -21,9 +21,7 @@ class _Palette:
     @functools.cache
     def schemes() -> dict[str, dict[str, str]]:
         """`{scheme: {token: "#RRGGBB"}}`, read once from `palette.json`."""
-        text = (resources.files("vethuq._brand") / "palette.json").read_text(
-            encoding="utf-8"
-        )
+        text = (resources.files("vethuq._brand") / "palette.json").read_text(encoding="utf-8")
         return json.loads(text)
 
     @staticmethod

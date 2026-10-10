@@ -64,5 +64,7 @@ class AddonFactory:
     def forget(module: str) -> None:
         for name in [n for n in sys.modules if n == module or n.startswith(module + ".")]:
             del sys.modules[name]
-        for name in [n for n in sys.modules if n.startswith("vethuq.addons.") and n != "vethuq.addons.manage"]:
+        for name in [
+            n for n in sys.modules if n.startswith("vethuq.addons.") and n != "vethuq.addons.manage"
+        ]:
             del sys.modules[name]

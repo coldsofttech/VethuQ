@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 

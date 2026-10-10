@@ -13,7 +13,6 @@ from vethuq._policy import (
     _PolicyClient,
     _PolicyFetcher,
     _PolicyKeys,
-    _PolicyState,
     _PolicyStore,
 )
 from vethuq.enums import PolicySource, PolicyStatus
@@ -415,4 +414,3 @@ class TestPolicyClient:
 
         assert result.status is PolicyStatus.UPDATED and result.policy.sequence == 2
         assert client.current().source is PolicySource.CACHE
-

@@ -11,9 +11,7 @@ def _isolated_data_root(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("data_root")
     monkeypatch.delenv(_Paths.ENV_VAR, raising=False)
     monkeypatch.setattr(_Paths, "platform_data_root", staticmethod(lambda: root))
-    monkeypatch.setattr(
-        _Paths, "location_file", staticmethod(lambda: root / "config" / "db.json")
-    )
+    monkeypatch.setattr(_Paths, "location_file", staticmethod(lambda: root / "config" / "db.json"))
 
 
 @pytest.fixture(autouse=True)

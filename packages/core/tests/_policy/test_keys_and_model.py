@@ -4,8 +4,8 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from tests.policy_factory import PolicySigner, b64url
 
+from tests.policy_factory import PolicySigner, b64url
 from vethuq._policy import (
     Policy,
     PolicyResult,

@@ -323,9 +323,7 @@ class TestDatabase:
             assert session.scalars(select(_Source)).all() == []
         database.dispose()
 
-    @pytest.mark.parametrize(
-        ("source_type", "status"), [("bogus", "pending"), ("file", "bogus")]
-    )
+    @pytest.mark.parametrize(("source_type", "status"), [("bogus", "pending"), ("file", "bogus")])
     def test_schema_rejects_invalid_enum_values(self, tmp_path, source_type, status):
         database = _Database(tmp_path / "vethuq.db")
 
