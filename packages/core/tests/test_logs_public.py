@@ -24,32 +24,32 @@ def folder(tmp_path):
 
 class TestLogsAccess:
     def test_one_attribute_per_component_each_its_own_class(self, client):
-        assert isinstance(client.logs.database, vethuq.DatabaseLog)
-        assert isinstance(client.logs.index, vethuq.IndexLog)
-        assert isinstance(client.logs.ui, vethuq.UiLog)
-        assert isinstance(client.logs.cli, vethuq.CliLog)
+        assert isinstance(client.logs.database, vethuq.logs.DatabaseLog)
+        assert isinstance(client.logs.index, vethuq.logs.IndexLog)
+        assert isinstance(client.logs.ui, vethuq.logs.UiLog)
+        assert isinstance(client.logs.cli, vethuq.logs.CliLog)
 
     def test_the_classes_share_one_base(self, client):
         for log in (client.logs.database, client.logs.index, client.logs.ui, client.logs.cli):
-            assert isinstance(log, vethuq.Log)
+            assert isinstance(log, vethuq.logs.Log)
         assert all(
-            issubclass(cls, vethuq.Log)
-            for cls in (vethuq.DatabaseLog, vethuq.IndexLog, vethuq.UiLog, vethuq.CliLog)
+            issubclass(cls, vethuq.logs.Log)
+            for cls in (vethuq.logs.DatabaseLog, vethuq.logs.IndexLog, vethuq.logs.UiLog, vethuq.logs.CliLog)
         )
 
     def test_each_knows_its_component_and_what_it_logs(self, client):
         pairs = [
-            (client.logs.database, vethuq.LogComponent.DATABASE),
-            (client.logs.index, vethuq.LogComponent.INDEX),
-            (client.logs.ui, vethuq.LogComponent.UI),
-            (client.logs.cli, vethuq.LogComponent.CLI),
+            (client.logs.database, vethuq.logs.LogComponent.DATABASE),
+            (client.logs.index, vethuq.logs.LogComponent.INDEX),
+            (client.logs.ui, vethuq.logs.LogComponent.UI),
+            (client.logs.cli, vethuq.logs.LogComponent.CLI),
         ]
         for log, component in pairs:
             assert log.component is component
             assert log.description
 
     def test_get_by_enum_or_name(self, client):
-        assert client.logs.get(vethuq.LogComponent.UI) is client.logs.ui
+        assert client.logs.get(vethuq.logs.LogComponent.UI) is client.logs.ui
         assert client.logs.get("cli") is client.logs.cli
 
     def test_get_rejects_an_unknown_component(self, client):
@@ -84,8 +84,8 @@ class TestList:
     def test_lists_every_component(self, client):
         files = client.logs.list()
 
-        assert [f.component for f in files] == list(vethuq.LogComponent)
-        assert all(isinstance(f, vethuq.LogFile) for f in files)
+        assert [f.component for f in files] == list(vethuq.logs.LogComponent)
+        assert all(isinstance(f, vethuq.logs.LogFile) for f in files)
 
     def test_only_components_that_have_logged_exist(self, client, folder):
         client.sources.create(folder)
@@ -177,8 +177,8 @@ class TestWritingAndReading:
 
         (entry,) = client.logs.cli.tail()
 
-        assert isinstance(entry, vethuq.LogEntry)
-        assert entry.level is vethuq.LogLevel.WARNING
+        assert isinstance(entry, vethuq.logs.LogEntry)
+        assert entry.level is vethuq.logs.LogLevel.WARNING
         assert (entry.logger, entry.message) == ("vethuq.cli", "careful")
         assert entry.thread == "MainThread"
         assert isinstance(entry.timestamp, datetime)
@@ -195,7 +195,7 @@ class TestWritingAndReading:
         assert entry.to_dict() == data and "raw" not in data
 
     def test_an_entry_in_an_unknown_format_serialises(self):
-        entry = vethuq.LogEntry(None, None, None, None, "plain", "plain")
+        entry = vethuq.logs.LogEntry(None, None, None, None, "plain", "plain")
 
         assert entry.to_dict()["timestamp"] is None and entry.to_dict()["level"] is None
 
@@ -210,12 +210,12 @@ class TestWritingAndReading:
             "second thing",
             "third thing",
         ]
-        assert [e.message for e in client.logs.cli.read(level=vethuq.LogLevel.WARNING)] == [
+        assert [e.message for e in client.logs.cli.read(level=vethuq.logs.LogLevel.WARNING)] == [
             "second thing",
             "third thing",
         ]
         assert [e.message for e in client.logs.cli.read(contains="SECOND")] == ["second thing"]
-        assert [e.message for e in client.logs.cli.read(order=vethuq.SortOrder.DESC)][0] == (
+        assert [e.message for e in client.logs.cli.read(order=vethuq.logs.SortOrder.DESC)][0] == (
             "third thing"
         )
 
@@ -275,7 +275,7 @@ class TestWritingAndReading:
         seen = list(client.logs.cli.follow(stop=stop))
 
         assert [e.message for e in seen] == ["during one", "during two"]
-        assert all(isinstance(e, vethuq.LogEntry) for e in seen)
+        assert all(isinstance(e, vethuq.logs.LogEntry) for e in seen)
 
     def test_follow_filters(self, client, monkeypatch):
         from vethuq._logs import _Log
@@ -311,7 +311,7 @@ class TestWritingAndReading:
 
 class TestLogSettingsTakeEffect:
     def test_the_level_decides_what_is_recorded(self, client, folder):
-        client.settings.logs.set_level(vethuq.LogLevel.WARNING)
+        client.settings.logs.set_level(vethuq.logs.LogLevel.WARNING)
         client.sources.create(folder)
         logger = client.logs.database.logger()
         logger.warning("kept")

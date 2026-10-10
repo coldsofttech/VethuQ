@@ -165,7 +165,7 @@ class TestSourcesListFiles:
     def test_results_are_source_files(self, client, tree):
         source = client.sources.create(tree[0])
 
-        assert all(isinstance(f, vethuq.SourceFile) for f in client.sources.list_files(source.id))
+        assert all(isinstance(f, vethuq.sources.SourceFile) for f in client.sources.list_files(source.id))
 
     def test_a_folder_source_whose_path_became_a_file_lists_that_file(self, client, tree):
         root, _ = tree
@@ -182,7 +182,7 @@ class TestSourcesListFiles:
 
 class TestSourceFile:
     def test_to_dict_and_json(self):
-        file = vethuq.SourceFile(
+        file = vethuq.sources.SourceFile(
             path="/a/b.pdf",
             relative_path="b.pdf",
             name="b.pdf",
@@ -201,12 +201,12 @@ class TestSourceFile:
         assert "\n" in file.to_json(indent=2)
 
     def test_is_frozen(self):
-        file = vethuq.SourceFile("/a", "a", "a", 1, "t")
+        file = vethuq.sources.SourceFile("/a", "a", "a", 1, "t")
         with pytest.raises(AttributeError):
             file.name = "b"
 
-    def test_is_exported_from_the_package(self):
-        assert vethuq.SourceFile is vethuq.sources.SourceFile
+    def test_is_available_from_vethuq_sources(self):
+        assert "SourceFile" in vethuq.sources.__all__
 
 
 class TestFiles:

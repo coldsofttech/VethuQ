@@ -152,7 +152,7 @@ with vethuq.VethuQ() as client:
 
 ## Sources
 
-A source is a file or folder you register for OCR and indexing. Folders are read recursively.
+A source is a file or folder you register for OCR and indexing. Folders are read recursively. `Source`, `SourceFile`, `PurgeResult` and the enums used with sources are in `vethuq.sources`.
 
 ```python
 import vethuq
@@ -207,7 +207,7 @@ source.to_json(indent=2)
 
 ### Enums
 
-The fixed choices are enums, exported from `vethuq`. They are strings too: `SourceStatus.PENDING == "pending"`, they print and serialise as their value, and anywhere a method takes one you may pass the plain string instead.
+The fixed choices are enums, available from `vethuq.sources` (`vethuq.sources.SourceStatus`, and so on). They are strings too: `SourceStatus.PENDING == "pending"`, they print and serialise as their value, and anywhere a method takes one you may pass the plain string instead.
 
 | Enum | Members |
 |---|---|
@@ -228,7 +228,7 @@ source = client.sources.create("~/docs")
 source = client.sources.create("~/docs", languages=["en"])
 
 # or describe it with a Source object
-described = vethuq.Source("~/docs", languages=["en"])
+described = vethuq.sources.Source("~/docs", languages=["en"])
 source = client.sources.create(described)
 
 print(source.id, source.path, source.source_type, source.status)
@@ -254,11 +254,11 @@ Raises `SourceNotFoundError` if nothing matches. A removed source is found only 
 client.sources.list()                                        # active sources, by id
 client.sources.list(include_removed=True)                    # and the removed ones
 client.sources.list(
-    status=vethuq.SourceStatus.PENDING,
-    source_type=vethuq.SourceType.FOLDER,
+    status=vethuq.sources.SourceStatus.PENDING,
+    source_type=vethuq.sources.SourceType.FOLDER,
     language="en",
-    sort_by=vethuq.SourceSortBy.PATH,
-    order=vethuq.SortOrder.DESC,
+    sort_by=vethuq.sources.SourceSortBy.PATH,
+    order=vethuq.sources.SortOrder.DESC,
 )
 ```
 
@@ -425,7 +425,7 @@ A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSett
 | `reset_retention_days()` | Back to 15 |
 
 ```python
-client.settings.logs.set_level(vethuq.LogLevel.WARNING)
+client.settings.logs.set_level(vethuq.logs.LogLevel.WARNING)
 client.settings.logs.set_retention_days(30)
 ```
 
@@ -444,7 +444,7 @@ VethuQ keeps a log for each of its parts. They are plain text files in the `logs
 | `client.logs.ui` | `UiLog` | `UI` | `ui.log` | The desktop app |
 | `client.logs.cli` | `CliLog` | `CLI` | `cli.log` | The command line: each command that ran and how it finished |
 
-All of them extend `Log`. `client.logs.get("cli")` finds one by name or by `LogComponent`.
+All of them extend `Log`. `client.logs.get("cli")` finds one by name or by `LogComponent`. The classes, `LogEntry`, `LogFile` and the enums `LogComponent` and `LogLevel` are all in `vethuq.logs`.
 
 ### Listing the logs
 
@@ -465,9 +465,9 @@ A `LogFile` has `component`, `path`, `exists`, `size_bytes` and `modified_at` (U
 log = client.logs.cli
 
 log.tail()                                     # the last 40 entries, oldest first
-log.tail(100, level=vethuq.LogLevel.ERROR)     # the last 100 errors
+log.tail(100, level=vethuq.logs.LogLevel.ERROR)     # the last 100 errors
 log.read(day="2026-10-09")                     # every entry of a past day
-log.read(contains="schema", order=vethuq.SortOrder.DESC)   # newest first, text match
+log.read(contains="schema", order=vethuq.logs.SortOrder.DESC)   # newest first, text match
 ```
 
 | Argument | Applies to | Description |
@@ -567,4 +567,4 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `LogEntry`, `LogFile`, `Log` and its subclasses, `VersionDetails`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`, `LogComponent`, `LogLevel`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.

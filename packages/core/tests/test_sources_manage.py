@@ -74,9 +74,9 @@ class TestSourcesGet:
     def test_returns_the_full_details(self, client, three):
         source = client.sources.get(2)
 
-        assert isinstance(source, vethuq.Source)
-        assert source.source_type is vethuq.SourceType.FOLDER
-        assert source.status is vethuq.SourceStatus.PENDING
+        assert isinstance(source, vethuq.sources.Source)
+        assert source.source_type is vethuq.sources.SourceType.FOLDER
+        assert source.status is vethuq.sources.SourceStatus.PENDING
         assert source.languages == ["en"]
 
     def test_unknown_id_or_path_is_not_found(self, client, three, tmp_path):
@@ -92,7 +92,7 @@ class TestSourcesGet:
             client.sources.get(1)
         assert "include_removed" in excinfo.value.hint
         removed = client.sources.get(1, include_removed=True)
-        assert removed.status is vethuq.SourceStatus.REMOVED and removed.is_active is False
+        assert removed.status is vethuq.sources.SourceStatus.REMOVED and removed.is_active is False
 
     def test_include_removed_still_finds_active_sources(self, client, three):
         assert client.sources.get(2, include_removed=True).id == 2
@@ -119,24 +119,24 @@ class TestSourcesList:
     def test_asking_for_removed_status_shows_them_without_the_flag(self, client, three):
         client.sources.remove(2)
 
-        assert [s.id for s in client.sources.list(status=vethuq.SourceStatus.REMOVED)] == [2]
+        assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.REMOVED)] == [2]
 
     @pytest.mark.parametrize(
         ("sort_by", "order", "expected"),
         [
-            (vethuq.SourceSortBy.ID, vethuq.SortOrder.ASC, [1, 2, 3]),
-            (vethuq.SourceSortBy.ID, vethuq.SortOrder.DESC, [3, 2, 1]),
-            (vethuq.SourceSortBy.PATH, vethuq.SortOrder.ASC, [2, 3, 1]),
-            (vethuq.SourceSortBy.PATH, vethuq.SortOrder.DESC, [1, 3, 2]),
-            (vethuq.SourceSortBy.ADDED_AT, vethuq.SortOrder.DESC, [3, 2, 1]),
-            (vethuq.SourceSortBy.SOURCE_TYPE, vethuq.SortOrder.ASC, [3, 1, 2]),
+            (vethuq.sources.SourceSortBy.ID, vethuq.sources.SortOrder.ASC, [1, 2, 3]),
+            (vethuq.sources.SourceSortBy.ID, vethuq.sources.SortOrder.DESC, [3, 2, 1]),
+            (vethuq.sources.SourceSortBy.PATH, vethuq.sources.SortOrder.ASC, [2, 3, 1]),
+            (vethuq.sources.SourceSortBy.PATH, vethuq.sources.SortOrder.DESC, [1, 3, 2]),
+            (vethuq.sources.SourceSortBy.ADDED_AT, vethuq.sources.SortOrder.DESC, [3, 2, 1]),
+            (vethuq.sources.SourceSortBy.SOURCE_TYPE, vethuq.sources.SortOrder.ASC, [3, 1, 2]),
         ],
     )
     def test_sorting(self, client, three, sort_by, order, expected):
         assert [s.id for s in client.sources.list(sort_by=sort_by, order=order)] == expected
 
     def test_sorting_by_status_and_last_scanned_at(self, client, three):
-        _set(client, 2, status=vethuq.SourceStatus.INDEXED, last_scanned_at="2026-01-02")
+        _set(client, 2, status=vethuq.sources.SourceStatus.INDEXED, last_scanned_at="2026-01-02")
         _set(client, 3, last_scanned_at="2026-01-01")
 
         by_status = client.sources.list(sort_by="status", order="desc")
@@ -156,14 +156,14 @@ class TestSourcesList:
         assert [s.id for s in listed] == [1, 2]
 
     def test_filter_by_source_type(self, client, three):
-        assert [s.id for s in client.sources.list(source_type=vethuq.SourceType.FILE)] == [3]
-        assert [s.id for s in client.sources.list(source_type=vethuq.SourceType.FOLDER)] == [1, 2]
+        assert [s.id for s in client.sources.list(source_type=vethuq.sources.SourceType.FILE)] == [3]
+        assert [s.id for s in client.sources.list(source_type=vethuq.sources.SourceType.FOLDER)] == [1, 2]
 
     def test_filter_by_status(self, client, three):
-        _set(client, 2, status=vethuq.SourceStatus.INDEXED)
+        _set(client, 2, status=vethuq.sources.SourceStatus.INDEXED)
 
-        assert [s.id for s in client.sources.list(status=vethuq.SourceStatus.INDEXED)] == [2]
-        assert [s.id for s in client.sources.list(status=vethuq.SourceStatus.ERROR)] == []
+        assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.INDEXED)] == [2]
+        assert [s.id for s in client.sources.list(status=vethuq.sources.SourceStatus.ERROR)] == []
 
     def test_filter_by_language(self, client, three):
         _add_language(client, "te")
@@ -195,7 +195,7 @@ class TestSourcesList:
             client.sources.list(language="  ")
 
     def test_results_are_source_objects(self, client, three):
-        assert all(isinstance(s, vethuq.Source) for s in client.sources.list())
+        assert all(isinstance(s, vethuq.sources.Source) for s in client.sources.list())
 
 
 class TestSourcesRemove:
@@ -203,7 +203,7 @@ class TestSourcesRemove:
         removed = client.sources.remove(2)
 
         assert removed.id == 2
-        assert removed.status is vethuq.SourceStatus.REMOVED
+        assert removed.status is vethuq.sources.SourceStatus.REMOVED
         assert removed.is_active is False
         assert datetime.fromisoformat(removed.removed_at).utcoffset().total_seconds() == 0
 
@@ -239,7 +239,7 @@ class TestSourcesRemove:
 
         again = client.sources.create(three[1].path)
 
-        assert again.id == 2 and again.status is vethuq.SourceStatus.PENDING
+        assert again.id == 2 and again.status is vethuq.sources.SourceStatus.PENDING
         assert again.is_active is True and again.removed_at is None
 
 
@@ -299,8 +299,8 @@ class TestSourcesPurge:
 
         result = client.sources.purge(2)
 
-        assert result == vethuq.PurgeResult(
-            id=2, path=three[1].path, source_type=vethuq.SourceType.FOLDER
+        assert result == vethuq.sources.PurgeResult(
+            id=2, path=three[1].path, source_type=vethuq.sources.SourceType.FOLDER
         )
         assert [s.id for s in client.sources.list(include_removed=True)] == [1, 3]
         with pytest.raises(errors.SourceNotFoundError):
@@ -311,7 +311,7 @@ class TestSourcesPurge:
 
         result = client.sources.purge(three[2].path)
 
-        assert result.id == 3 and result.source_type is vethuq.SourceType.FILE
+        assert result.id == 3 and result.source_type is vethuq.sources.SourceType.FILE
 
     def test_an_active_source_cannot_be_purged(self, client, three):
         with pytest.raises(errors.SourceNotRemovedError) as excinfo:
@@ -346,7 +346,7 @@ class TestSourcesPurge:
 
         again = client.sources.create(three[1].path)
 
-        assert again.status is vethuq.SourceStatus.PENDING and again.languages is None
+        assert again.status is vethuq.sources.SourceStatus.PENDING and again.languages is None
 
     def test_the_result_has_json(self, client, three):
         client.sources.remove(2)
@@ -416,8 +416,8 @@ class TestSourcesPurgeExpired:
 
         (result,) = client.sources.purge_expired()
 
-        assert result == vethuq.PurgeResult(
-            id=3, path=three[2].path, source_type=vethuq.SourceType.FILE
+        assert result == vethuq.sources.PurgeResult(
+            id=3, path=three[2].path, source_type=vethuq.sources.SourceType.FILE
         )
 
 
@@ -425,8 +425,8 @@ class TestSourceEnums:
     def test_created_source_uses_the_enums(self, client, folders):
         source = client.sources.create(folders["alpha"])
 
-        assert source.source_type is vethuq.SourceType.FOLDER
-        assert source.status is vethuq.SourceStatus.PENDING
+        assert source.source_type is vethuq.sources.SourceType.FOLDER
+        assert source.status is vethuq.sources.SourceStatus.PENDING
 
     def test_json_keeps_plain_strings(self, client, folders):
         data = json.loads(client.sources.create(folders["alpha"]).to_json())

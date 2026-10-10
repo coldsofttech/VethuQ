@@ -23,9 +23,12 @@ __all__ = [
     "DatabaseLog",
     "IndexLog",
     "Log",
+    "LogComponent",
     "LogEntry",
     "LogFile",
+    "LogLevel",
     "Logs",
+    "SortOrder",
     "UiLog",
 ]
 

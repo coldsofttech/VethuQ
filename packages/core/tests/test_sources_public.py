@@ -10,37 +10,37 @@ from vethuq import errors
 
 class TestSource:
     def test_an_unsaved_source_only_has_what_was_described(self):
-        source = vethuq.Source("~/docs", languages=["en", "te"])
+        source = vethuq.sources.Source("~/docs", languages=["en", "te"])
 
         assert (source.path, source.languages) == ("~/docs", ["en", "te"])
         assert source.id is None and source.status is None and source.added_at is None
 
     def test_path_is_required(self):
         with pytest.raises(TypeError):
-            vethuq.Source()
+            vethuq.sources.Source()
 
     def test_a_path_object_is_stored_as_text(self, tmp_path):
-        assert vethuq.Source(tmp_path).path == str(tmp_path)
+        assert vethuq.sources.Source(tmp_path).path == str(tmp_path)
 
     def test_is_frozen(self):
         with pytest.raises(AttributeError):
-            vethuq.Source("x").path = "y"
+            vethuq.sources.Source("x").path = "y"
 
     def test_languages_are_copied(self):
         languages = ["en"]
-        source = vethuq.Source("x", languages=languages)
+        source = vethuq.sources.Source("x", languages=languages)
         languages.append("te")
 
         assert source.languages == ["en"]
 
     def test_to_dict_leaves_out_languages_when_there_are_none(self):
-        data = vethuq.Source("x").to_dict()
+        data = vethuq.sources.Source("x").to_dict()
 
         assert "languages" not in data
         assert set(data) == {"id", "path", "type", "status", "added_at", "last_scanned_at"}
 
     def test_to_json_matches_to_dict(self):
-        source = vethuq.Source("x", languages=["en"])
+        source = vethuq.sources.Source("x", languages=["en"])
 
         assert json.loads(source.to_json()) == source.to_dict()
         assert "\n" in source.to_json(indent=2)
@@ -58,7 +58,7 @@ class TestVethuQClient:
 
         source = client.sources.create(folder)
 
-        assert isinstance(source, vethuq.Source)
+        assert isinstance(source, vethuq.sources.Source)
         assert source.id == 1
         assert source.path == str(folder.resolve())
         assert (source.source_type, source.status, source.is_active) == ("folder", "pending", True)
@@ -71,7 +71,7 @@ class TestVethuQClient:
         assert source.languages == ["en"]
 
     def test_create_from_a_source_object(self, client, tmp_path):
-        described = vethuq.Source(tmp_path, languages=["en"])
+        described = vethuq.sources.Source(tmp_path, languages=["en"])
 
         created = client.sources.create(described)
 
@@ -96,7 +96,7 @@ class TestVethuQClient:
 
     def test_a_source_with_an_unknown_language_is_not_created(self, client, tmp_path):
         with pytest.raises(errors.LanguageUnavailableError):
-            client.sources.create(vethuq.Source(tmp_path, languages=["xx"]))
+            client.sources.create(vethuq.sources.Source(tmp_path, languages=["xx"]))
 
         assert client.sources.create(tmp_path).id == 1
 
@@ -105,7 +105,7 @@ class TestVethuQClient:
 
     def test_languages_on_both_the_source_and_the_call_is_ambiguous(self, client, tmp_path):
         with pytest.raises(TypeError, match="not both"):
-            client.sources.create(vethuq.Source(tmp_path, ["en"]), languages=["te"])
+            client.sources.create(vethuq.sources.Source(tmp_path, ["en"]), languages=["te"])
 
     def test_a_created_source_cannot_be_created_again(self, client, tmp_path):
         created = client.sources.create(tmp_path)

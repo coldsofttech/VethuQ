@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 import vethuq
 
 
@@ -21,29 +23,35 @@ class TestPublicApi:
             "APP_VERSION",
             "__version__",
             "errors",
+            "logs",
             "paths",
-            "Paths",
-            "CliLog",
-            "DatabaseLog",
-            "IndexLog",
+            "sources",
             "Language",
-            "Log",
-            "LogComponent",
-            "LogEntry",
-            "LogFile",
-            "LogLevel",
-            "PurgeResult",
-            "SortOrder",
-            "Source",
-            "SourceFile",
-            "SourceSortBy",
-            "SourceStatus",
-            "SourceType",
-            "UiLog",
+            "Paths",
             "VersionDetails",
             "VethuQ",
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
+
+    @pytest.mark.parametrize("module", ["errors", "logs", "paths", "sources"])
+    def test_areas_are_reached_through_their_module(self, module):
+        import importlib
+
+        assert getattr(vethuq, module) is importlib.import_module(f"vethuq.{module}")
+
+    @pytest.mark.parametrize(
+        ("module", "names"),
+        [
+            ("sources", ["Source", "SourceFile", "PurgeResult", "SourceType", "SourceStatus"]),
+            ("sources", ["SourceSortBy", "SortOrder"]),
+            ("logs", ["LogEntry", "LogFile", "Log", "DatabaseLog", "IndexLog", "UiLog", "CliLog"]),
+            ("logs", ["LogLevel", "LogComponent"]),
+        ],
+    )
+    def test_sources_and_logs_names_live_in_their_module_not_at_the_top(self, module, names):
+        for name in names:
+            assert hasattr(getattr(vethuq, module), name)
+            assert not hasattr(vethuq, name)
 
     def test_paths_class_is_importable_from_the_package(self):
         from vethuq import Paths

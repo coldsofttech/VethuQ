@@ -63,23 +63,23 @@ class TestLogSettings:
             yield client
 
     def test_defaults(self, client):
-        assert client.settings.logs.get_level() is vethuq.LogLevel.INFO
+        assert client.settings.logs.get_level() is vethuq.logs.LogLevel.INFO
         assert client.settings.logs.get_retention_days() == 15
-        assert client.settings.logs.DEFAULT_LEVEL is vethuq.LogLevel.INFO
+        assert client.settings.logs.DEFAULT_LEVEL is vethuq.logs.LogLevel.INFO
         assert client.settings.logs.DEFAULT_RETENTION_DAYS == 15
 
     def test_set_and_get_the_level(self, client):
-        client.settings.logs.set_level(vethuq.LogLevel.DEBUG)
-        assert client.settings.logs.get_level() is vethuq.LogLevel.DEBUG
+        client.settings.logs.set_level(vethuq.logs.LogLevel.DEBUG)
+        assert client.settings.logs.get_level() is vethuq.logs.LogLevel.DEBUG
 
         client.settings.logs.set_level("error")
-        assert client.settings.logs.get_level() is vethuq.LogLevel.ERROR
+        assert client.settings.logs.get_level() is vethuq.logs.LogLevel.ERROR
 
     def test_reset_the_level(self, client):
         client.settings.logs.set_level("error")
         client.settings.logs.reset_level()
 
-        assert client.settings.logs.get_level() is vethuq.LogLevel.INFO
+        assert client.settings.logs.get_level() is vethuq.logs.LogLevel.INFO
 
     def test_set_and_get_the_retention(self, client):
         client.settings.logs.set_retention_days(30)
@@ -105,7 +105,7 @@ class TestLogSettings:
         client.settings.logs.set_level("warning")
 
         with vethuq.VethuQ(db_path=client.db_path) as other:
-            assert other.settings.logs.get_level() is vethuq.LogLevel.WARNING
+            assert other.settings.logs.get_level() is vethuq.logs.LogLevel.WARNING
 
     def test_the_logs_settings_object_is_reused(self, client):
         assert client.settings.logs is client.settings.logs
