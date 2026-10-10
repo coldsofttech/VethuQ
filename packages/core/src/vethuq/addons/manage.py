@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,17 +40,21 @@ class AddonInfo:
 class AddonSettings:
     """One add-on's settings, kept in the VethuQ database under `addon.<id>.<name>`."""
 
-    def __init__(self, store: _AddonSettingsStore) -> None:
+    def __init__(self, store: _AddonSettingsStore, open_database: Callable[[], None]) -> None:
         self._store = store
+        self._open_database = open_database
 
     def get(self, key: str, default: str | None = None) -> str | None:
         return self._store.get(key, default)
 
     def set(self, key: str, value: str) -> None:
+        """Save a value. Opens the VethuQ database first if it isn't open yet."""
+        self._open_database()
         self._store.set(key, value)
 
     def reset(self, key: str) -> None:
         """Forget a saved value so the add-on's default applies again."""
+        self._open_database()
         self._store.reset(key)
 
 
@@ -59,8 +64,11 @@ class Addons:
     Not created directly: use `VethuQ().addons`. Nothing is imported until you ask.
     """
 
-    def __init__(self, db_path: Path, manager: _AddonManager) -> None:
+    def __init__(
+        self, db_path: Path, manager: _AddonManager, open_database: Callable[[], None]
+    ) -> None:
         self._db_path = db_path
+        self._open_database = open_database
         self._manager = manager
 
     def list(self) -> list[AddonInfo]:
@@ -79,7 +87,7 @@ class Addons:
 
     def settings(self, addon_id: str) -> AddonSettings:
         """The settings of one add-on."""
-        return AddonSettings(_AddonSettingsStore(self._db_path, addon_id))
+        return AddonSettings(_AddonSettingsStore(self._db_path, addon_id), self._open_database)
 
     def reload(self) -> None:
         """Look for installed add-ons again (after installing one in a running process)."""

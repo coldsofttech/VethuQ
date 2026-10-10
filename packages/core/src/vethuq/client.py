@@ -73,6 +73,11 @@ class VethuQ:
                 )
             return self._database
 
+    def _open_database(self) -> None:
+        """Open the database (create it on first use) if it isn't open yet."""
+        with self._db().session():
+            pass
+
     @property
     def sources(self) -> Sources:
         """Register and manage sources."""
@@ -126,7 +131,7 @@ class VethuQ:
     def addons(self) -> Addons:
         """The add-ons installed next to VethuQ. It doesn't open the database."""
         if self._addons is None:
-            self._addons = Addons(self.db_path, self._manager())
+            self._addons = Addons(self.db_path, self._manager(), self._open_database)
         return self._addons
 
     @property

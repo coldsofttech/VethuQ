@@ -143,6 +143,14 @@ class TestSettings:
         settings.reset("mode")
         assert settings.get("mode") is None
 
+    def test_setting_a_value_creates_the_database_if_needed(self, tmp_path):
+        with vethuq.VethuQ(tmp_path / "fresh" / "vethuq.db") as fresh:
+            assert fresh.addons.settings("backup").get("licence") is None
+            fresh.addons.settings("backup").set("licence", "token")
+            assert fresh.addons.settings("backup").get("licence") == "token"
+            fresh.addons.settings("backup").reset("licence")
+            assert fresh.addons.settings("backup").get("licence") is None
+
     def test_a_setting_is_stored_in_the_settings_table(self, client):
         client.sources.list()
         client.addons.settings("backup").set("mode", "auto")
