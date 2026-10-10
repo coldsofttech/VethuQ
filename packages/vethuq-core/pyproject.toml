@@ -5,6 +5,8 @@ description = "VethuQ core engine — document model, ingest, OCR, indexing, and
 requires-python = ">=3.11"
 dependencies = [
     "platformdirs>=4.0",
+    # Ed25519 verification of the signed policy (vethuq_core.policy).
+    "cryptography>=42",
     # Paddle merged CPU/GPU into a single `paddlepaddle` package from 3.0
     # onward (the separate `paddlepaddle-gpu` PyPI package was never updated
     # past 2.6.2). This PyPI build is CPU-only; a GPU-enabled build has to be

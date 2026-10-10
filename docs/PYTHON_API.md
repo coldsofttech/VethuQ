@@ -120,6 +120,27 @@ for t in client.file_types.list(include_missing=True):
 
 To add or remove a type, install or reinstall the package (`pip install vethuq[type-png]`) or re-run the Windows installer; a type that is installed but not enabled is not scanned or indexed.
 
+## `client.policy`
+
+The signed policy VethuQ follows (latest and minimum versions, notices, feature flags), delivered without a reinstall — mirrors `vethuq policy`. See [docs/policy-client.md](policy-client.md). **Nothing is fetched on `import vethuq` or `Vethuq()`; the network is used only when you call `refresh()`.** Neither method raises.
+
+Both return a `PolicyResult` with `policy` (a `PolicyDetails`: `sequence`, `issued_at`, `kid`, `versions["pip"].latest` / `.minimum_supported`, `notices`, `features`, `active_notices()`, `is_enabled(name, default)`), `source` (`PolicySource.FETCHED`, `CACHE` or `BASELINE`), `status` (`PolicyStatus`), `detail` and `update_required`. Until a signed policy is accepted, and when none can be used, the built-in baseline applies (versions `0.0.0`, no notices or features).
+
+### `current() -> PolicyResult`
+
+The saved policy, or the baseline. No network.
+
+### `refresh(force=False) -> PolicyResult`
+
+Check for a newer policy: at most about once a day unless `force=True`, with a short timeout, and falling back to the saved policy (or the baseline) when offline or when nothing verifies. When a policy needs a newer VethuQ, `update_required` is true and `detail` says "Update VethuQ to receive new policy."
+
+```python
+result = client.policy.refresh()
+print(result.status, result.policy.versions["pip"].latest)
+if result.update_required:
+    print(result.detail)
+```
+
 ## `client.index`
 
 Indexing runs in the background, the same way as `vethuq index run`. See

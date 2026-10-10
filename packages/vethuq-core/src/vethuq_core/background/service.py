@@ -290,7 +290,7 @@ class BackgroundService:
         import ctypes
 
         try:
-            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
         except (AttributeError, OSError):
             return False
 
@@ -333,12 +333,14 @@ class BackgroundService:
         info.lpFile = exe
         info.lpParameters = params
         info.nShow = 1
-        if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)):
+        if not ctypes.windll.shell32.ShellExecuteExW(  # type: ignore[attr-defined]
+            ctypes.byref(info)
+        ):
             raise BackgroundServiceError(
                 "Administrator permission is needed to change the background service, "
                 "and it wasn't granted."
             )
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
         kernel32.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)
         code = wintypes.DWORD()
         kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))

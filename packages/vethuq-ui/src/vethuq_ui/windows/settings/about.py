@@ -7,6 +7,7 @@ import tkinter as tk
 from importlib import metadata
 from tkinter import ttk
 
+from vethuq_core.policy import PolicyResult, PolicyService, PolicySource
 from vethuq_core.version import VersionInfo
 
 from vethuq_ui.icons import Brand
@@ -47,8 +48,26 @@ class AboutWindow:
             ("Search engines", ", ".join(details.search_engines) or "none"),
             ("OCR engines", ", ".join(details.ocr_engines) or "none"),
             ("Languages", ", ".join(details.ocr_languages) or "none"),
+            ("Policy", AboutWindow.policy_summary()),
         ]
         return rows
+
+    @staticmethod
+    def policy_summary() -> str:
+        """Which policy is in use and whether VethuQ needs updating to receive a newer one.
+
+        Reads the saved policy only; opening this window never makes a network request.
+        """
+        try:
+            result = PolicyService.current()
+        except Exception:  # noqa: BLE001 - the About window must open whatever the policy does
+            return "unavailable"
+        text = (
+            "built-in baseline"
+            if result.source is PolicySource.BASELINE
+            else f"sequence {result.policy.sequence}"
+        )
+        return f"{text}. {PolicyResult.UPDATE_MESSAGE}" if result.update_required else text
 
     @staticmethod
     def show(parent: tk.Tk | tk.Toplevel) -> None:

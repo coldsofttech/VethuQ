@@ -90,6 +90,17 @@ warn_redundant_casts = true
 module = ["paddleocr.*", "paddlex.*"]
 ignore_missing_imports = true
 
+# No stubs: onnxruntime ships none, and pywin32 is installed (and only used) on Windows.
+[[tool.mypy.overrides]]
+module = ["onnxruntime.*", "servicemanager", "win32service", "win32serviceutil"]
+ignore_missing_imports = true
+
+# The `vethuq` package vendors core and the CLI without the background service (see
+# packages/vethuq/scripts/merge_sources.py), so these modules don't exist in the copy.
+[[tool.mypy.overrides]]
+module = ["vethuq._core.background.*", "vethuq._cli.background"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["packages"]
 markers = [
