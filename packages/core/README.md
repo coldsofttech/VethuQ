@@ -77,4 +77,49 @@ except vethuq.errors.VethuQError as error:  # any other VethuQ error
     sys.exit(error.exit_code)
 ```
 
-Import the classes from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+## Paths
+
+`vethuq.paths.Paths` reports where VethuQ keeps its data. It is read-only: it returns paths and creates nothing on disk.
+
+```
+<data root>/
+    db/             vethuq.db
+    db/backups/     database backups (unless relocated)
+    run/            runtime coordination files
+    logs/           log files
+```
+
+| Member | Returns |
+|---|---|
+| `Paths.DB_NAME` | `"vethuq.db"`, the database file name |
+| `Paths.CONFIG_FILENAME` | `"db.json"`, the name of the per-user settings file |
+| `Paths.ENV_VAR` | `"VETHUQ_HOME"`, the environment variable that relocates the data |
+| `Paths.data_root()` | The folder all VethuQ data lives under |
+| `Paths.db_dir()` | The folder holding the database (`<data root>/db`) |
+| `Paths.db_path()` | The database file (`<data root>/db/vethuq.db`) |
+| `Paths.backups_dir()` | The folder backups are kept in |
+| `Paths.run_dir()` | The folder for runtime coordination files |
+| `Paths.logs_dir()` | The folder for log files |
+| `Paths.config_file()` | The per-user `db.json`, which stores a relocated data root |
+
+All the methods return `pathlib.Path` objects.
+
+```python
+import vethuq
+
+print(vethuq.paths.Paths.db_path())    # e.g. /home/you/.local/share/VethuQ/db/vethuq.db
+print(vethuq.paths.Paths.logs_dir())   # e.g. /home/you/.local/share/VethuQ/logs
+print(vethuq.paths.Paths.DB_NAME)      # vethuq.db
+```
+
+### Where the data root comes from
+
+The data root is chosen in this order:
+
+1. The `VETHUQ_HOME` environment variable, if set.
+2. The location saved in the per-user `db.json`.
+3. The platform default (for example `%APPDATA%\VethuQ` on Windows, `~/.local/share/VethuQ` on Linux).
+
+The backups folder is `<data root>/db/backups` unless a different one is saved in `db.json`.
+
+Import the classes from `vethuq.errors` and `vethuq.paths`; everything else under `vethuq` is internal and may change without notice.
