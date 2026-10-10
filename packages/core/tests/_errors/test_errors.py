@@ -13,6 +13,7 @@ from vethuq._errors import (
     _SchemaVersionError,
     _StaleLockError,
     _StartupError,
+    _VethuQError,
 )
 
 # (internal class, public counterpart, exit code)
@@ -27,25 +28,45 @@ _PAIRS = [
 ]
 
 
-class TestStartupError:
+# Errors that stop VethuQ from starting; the rest are run-time errors.
+_STARTUP = (
+    errors.InvalidConfigError,
+    errors.DataFolderNotWritableError,
+    errors.SchemaVersionError,
+    errors.StaleLockError,
+)
+_RUNTIME = (
+    errors.CorruptDatabaseError,
+    errors.OcrModelMissingError,
+    errors.LanguageUnavailableError,
+)
+
+
+class TestVethuQError:
     def test_str_joins_message_and_hint(self):
-        err = _StartupError("Something broke.", "Try again.")
+        err = _VethuQError("Something broke.", "Try again.")
 
         assert str(err) == "Something broke. Try again."
 
     def test_str_is_just_the_message_without_a_hint(self):
-        assert str(_StartupError("Something broke.")) == "Something broke."
+        assert str(_VethuQError("Something broke.")) == "Something broke."
 
     def test_exposes_message_hint_and_exit_code(self):
-        err = _StartupError("Broke.", "Fix it.")
+        err = _VethuQError("Broke.", "Fix it.")
 
         assert (err.message, err.hint, err.exit_code) == ("Broke.", "Fix it.", 1)
 
     def test_hint_defaults_to_none(self):
-        assert _StartupError("Broke.").hint is None
+        assert _VethuQError("Broke.").hint is None
 
     def test_args_hold_the_message(self):
-        assert _StartupError("Broke.", "Fix it.").args == ("Broke.",)
+        assert _VethuQError("Broke.", "Fix it.").args == ("Broke.",)
+
+    def test_startup_error_shares_the_behaviour(self):
+        err = _StartupError("Broke.", "Fix it.")
+
+        assert isinstance(err, errors.VethuQError)
+        assert (str(err), err.exit_code) == ("Broke. Fix it.", 1)
 
 
 class TestInternalErrors:
@@ -59,9 +80,13 @@ class TestInternalErrors:
         assert str(excinfo.value) == "Broke. Fix it."
 
     @pytest.mark.parametrize(("internal", "public", "code"), _PAIRS)
-    def test_every_internal_error_is_caught_as_startup_error(self, internal, public, code):
-        with pytest.raises(errors.StartupError):
+    def test_every_internal_error_is_caught_as_vethuq_error(self, internal, public, code):
+        with pytest.raises(errors.VethuQError):
             raise internal("Broke.")
+
+    @pytest.mark.parametrize(("internal", "public", "code"), _PAIRS)
+    def test_only_startup_failures_are_caught_as_startup_error(self, internal, public, code):
+        assert isinstance(internal("Broke."), errors.StartupError) == (public in _STARTUP)
 
     def test_siblings_do_not_catch_each_other(self):
         with pytest.raises(_StaleLockError):
@@ -83,10 +108,14 @@ class TestPublicErrors:
         assert vethuq.errors is errors
 
     def test_public_classes_form_one_hierarchy(self):
-        public = [p for _, p, _ in _PAIRS]
-
-        assert all(issubclass(p, errors.StartupError) for p in public)
-        assert issubclass(errors.StartupError, Exception)
+        assert issubclass(errors.VethuQError, Exception)
+        assert issubclass(errors.StartupError, errors.VethuQError)
+        assert all(issubclass(p, errors.StartupError) for p in _STARTUP)
+        assert all(
+            issubclass(p, errors.VethuQError) and not issubclass(p, errors.StartupError)
+            for p in _RUNTIME
+        )
+        assert {p for _, p, _ in _PAIRS} == {*_STARTUP, *_RUNTIME}
 
     def test_public_module_exposes_no_internal_names(self):
         names = [n for n in vars(errors) if not n.startswith("__")]

@@ -40,18 +40,19 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Failures that stop VethuQ from starting or running are raised as subclasses of `vethuq.errors.StartupError`. Catch the base class for any of them, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, or a specific subclass for one failure.
 
-| Error | Exit code | Raised when |
-|---|---|---|
-| `StartupError` | 1 | Base class of all the errors below |
-| `InvalidConfigError` | 10 | The saved settings file or the `VETHUQ_HOME` setting can't be used |
-| `DataFolderNotWritableError` | 11 | VethuQ can't create or write to its data folder |
-| `CorruptDatabaseError` | 12 | The database file is damaged or isn't a VethuQ database |
-| `OcrModelMissingError` | 13 | The OCR engine or its model files aren't available |
-| `SchemaVersionError` | 14 | The database's schema is newer than this build supports |
-| `StaleLockError` | 15 | A lock file exists but its process is no longer running |
-| `LanguageUnavailableError` | 16 | An OCR language was asked for that isn't installed, enabled or known |
+| Error | Exit code | Category | Raised when |
+|---|---|---|---|
+| `VethuQError` | 1 | Base class | Root of all the errors below |
+| `StartupError` | 1 | Base class | Root of the startup failures below |
+| `InvalidConfigError` | 10 | Startup | The saved settings file or the `VETHUQ_HOME` setting can't be used |
+| `DataFolderNotWritableError` | 11 | Startup | VethuQ can't create or write to its data folder |
+| `SchemaVersionError` | 14 | Startup | The database's schema is newer than this build supports |
+| `StaleLockError` | 15 | Startup | A lock file exists but its process is no longer running |
+| `CorruptDatabaseError` | 12 | Run time | The database file is damaged or isn't a VethuQ database |
+| `OcrModelMissingError` | 13 | Run time | The OCR engine or its model files aren't available |
+| `LanguageUnavailableError` | 16 | Run time | An OCR language was asked for that isn't installed, enabled or known |
 
 Every error has three attributes:
 
@@ -68,10 +69,10 @@ import vethuq
 
 try:
     ...  # start VethuQ
-except vethuq.errors.InvalidConfigError as error:
-    print(f"Configuration problem: {error}")
+except vethuq.errors.StartupError as error:  # config, data folder, schema, lock
+    print(f"Could not start: {error}")
     sys.exit(error.exit_code)
-except vethuq.errors.StartupError as error:  # any other startup failure
+except vethuq.errors.VethuQError as error:  # any other VethuQ error
     print(error)
     sys.exit(error.exit_code)
 ```

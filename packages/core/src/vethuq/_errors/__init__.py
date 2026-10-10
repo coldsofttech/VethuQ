@@ -11,6 +11,7 @@ from vethuq._errors.errors import (
     _SchemaVersionError,
     _StaleLockError,
     _StartupError,
+    _VethuQError,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "_SchemaVersionError",
     "_StaleLockError",
     "_StartupError",
+    "_VethuQError",
 ]
