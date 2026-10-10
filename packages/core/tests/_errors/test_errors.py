@@ -15,6 +15,7 @@ from vethuq._errors import (
     _StartupError,
     _VethuQError,
 )
+from vethuq._paths import _Paths
 
 # (internal class, public counterpart, exit code)
 _PAIRS = [
@@ -122,3 +123,68 @@ class TestPublicErrors:
 
         assert not [n for n in names if n.startswith("_")]
         assert not any(isinstance(getattr(errors, n), type) and n.startswith("_") for n in names)
+
+
+class TestInvalidConfig:
+    @pytest.fixture
+    def config_file(self):
+        file = _Paths.location_file()
+        file.parent.mkdir(parents=True, exist_ok=True)
+        return file
+
+    def test_malformed_settings_file_is_reported(self, config_file):
+        config_file.write_text("{not json", encoding="utf-8")
+
+        with pytest.raises(errors.InvalidConfigError) as excinfo:
+            _Paths.check_config()
+
+        assert str(config_file) in excinfo.value.message
+        assert "delete" in excinfo.value.hint.lower()
+
+    def test_settings_file_that_is_not_an_object_is_reported(self, config_file):
+        config_file.write_text("[1, 2]", encoding="utf-8")
+
+        with pytest.raises(errors.InvalidConfigError):
+            _Paths.check_config()
+
+    def test_env_var_pointing_at_a_file_is_reported(self, config_file, tmp_path, monkeypatch):
+        a_file = tmp_path / "file.txt"
+        a_file.write_text("x")
+        monkeypatch.setenv(_Paths.ENV_VAR, str(a_file))
+
+        with pytest.raises(errors.InvalidConfigError) as excinfo:
+            _Paths.check_config()
+
+        assert _Paths.ENV_VAR in excinfo.value.message
+
+    def test_valid_or_missing_config_passes(self, config_file):
+        _Paths.check_config()
+        config_file.write_text('{"location": "x"}', encoding="utf-8")
+        _Paths.check_config()
+
+
+class TestDataFolderNotWritable:
+    def test_folder_that_cannot_be_created_is_reported(self, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x")
+
+        with pytest.raises(errors.DataFolderNotWritableError) as excinfo:
+            _Paths.ensure_writable(blocker / "db")
+
+        assert str(blocker / "db") in excinfo.value.message
+        assert "permissions" in excinfo.value.hint
+
+    def test_folder_that_rejects_writes_is_reported(self, tmp_path, monkeypatch):
+        def deny(*args, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr("tempfile.TemporaryFile", deny)
+
+        with pytest.raises(errors.DataFolderNotWritableError):
+            _Paths.ensure_writable(tmp_path / "db")
+
+    def test_writable_folder_is_created_and_left_clean(self, tmp_path):
+        _Paths.ensure_writable(tmp_path / "db")
+
+        assert (tmp_path / "db").is_dir()
+        assert list((tmp_path / "db").iterdir()) == []
