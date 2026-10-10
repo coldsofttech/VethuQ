@@ -5,7 +5,7 @@ The public, static home of the signed **`policy.json`** that VethuQ clients fetc
 - latest and minimum supported versions
 - notices
 - feature flags
-- (later) time-boxed limit adjustments and revocations
+- (later) time-boxed limit adjustments, per add-on policy and licence revocations
 
 This lets us change behaviour without every user reinstalling. Hosting is static (GitHub Pages), so
 everything in this folder is world-readable and contains **only signed, non-secret data**.

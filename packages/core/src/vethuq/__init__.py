@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq import db, errors, logs, paths, policy, sources, updates
+from vethuq import addons, db, errors, logs, paths, policy, sources, updates
 from vethuq._brand import _Brand
 from vethuq._version import _Version
 from vethuq.client import VethuQ
@@ -22,6 +22,7 @@ __all__ = [
     "APP_TAGLINE",
     "APP_VERSION",
     "__version__",
+    "addons",
     "db",
     "errors",
     "logs",

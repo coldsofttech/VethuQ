@@ -598,7 +598,7 @@ policy.active_notices()                     # notices whose time window includes
 policy.features["some_feature"].enabled
 ```
 
-The types are in `vethuq.policy`: `Policy`, `DistributionVersions`, `Notice`, `Feature`, `PolicyResult` and the enums `PolicySource` and `PolicyStatus`.
+The types are in `vethuq.policy`: `Policy`, `DistributionVersions`, `Notice`, `Feature`, `AddonPolicy`, `PolicyResult` and the enums `PolicySource` and `PolicyStatus`.
 
 A `PolicyResult` has:
 
@@ -609,6 +609,8 @@ A `PolicyResult` has:
 | `status` | `CURRENT`, `UPDATED`, `UNCHANGED`, `SKIPPED`, `OFFLINE`, `REJECTED` or `UPDATE_REQUIRED` |
 | `detail` | Why a fetch failed or was refused, for logs; the update message when `update_required` |
 | `update_required` | The latest policy needs a newer VethuQ than this one |
+
+A `Policy` also carries `addons` (per add-on `AddonPolicy`: `enabled`, `latest`, `minimum_supported`, `min_client`, `message`) and `revoked_licence_ids`, which licensed add-ons read.
 
 It also has `to_dict()` and `to_json()`.
 
@@ -805,3 +807,40 @@ It returns a `VersionDetails`:
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
 Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `SourceType`, `SourceStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+
+## Add-ons
+
+Some features ship as separate, licensed add-ons (for example backups). VethuQ itself deploys no add-on, needs none and works the same without them. Installed add-ons are found by their entry point; nothing is imported until you ask.
+
+```python
+client = vethuq.VethuQ()
+
+client.addons.list()                  # [AddonInfo(id="backup", status=AddonStatus.LOADED, ...)]
+client.addons.is_installed("backup")  # False if it isn't installed
+client.addons.get("backup")           # AddonInfo or None
+
+# An installed add-on's public classes are imported from vethuq.addons:
+from vethuq.addons.backup import Backup
+backup = Backup(client)
+```
+
+If the add-on isn't installed, the import raises `ModuleNotFoundError`, as for any missing package; check `client.addons.is_installed(...)` first if the add-on is optional. `from vethuq.addons.<id> import ...` and `import vethuq_addon_<id>` give the same classes.
+
+An `AddonInfo` has `id`, `name`, `version`, `status` and `detail` (why it isn't running), plus `to_dict()` and `to_json()`. The `AddonStatus` enum is `LOADED`, `INCOMPATIBLE` (it needs another add-on API version) or `FAILED`. An add-on that fails to load never stops VethuQ.
+
+### Add-on settings
+
+`client.addons.settings("backup")` gives an add-on's settings (`get`, `set`, `reset`), kept in the VethuQ database as `addon.<id>.<name>` and usable on a database VethuQ refuses to open. Names are lowercase letters, digits and underscores.
+
+### Hooks
+
+Add-ons are called at two points, best effort (a failing hook is logged and VethuQ carries on):
+
+- **on open**: the database has been opened (schema ready, integrity checked);
+- **before migration**: the database is about to move to a newer schema, so an add-on can snapshot it first.
+
+Hooks run in the same process, on the thread that opened the database, so an add-on must not call back into the client from a hook. The contract is in the `vethuq-addon-api` package.
+
+### Policy and licences
+
+An add-on checks its own licence; VethuQ never tells it one is valid. The signed policy can switch an add-on off remotely (`addons.<id>.enabled`) and revoke licences (`revoked_licence_ids`); see `client.policy`.

@@ -206,7 +206,30 @@ Rules (client behaviour; the schema only carries the list):
 
 Example: `examples/v1/with-key-revocation.payload.json`.
 
-### `revocations` (reserved)
+### Add-ons (`addons`)
 
-Licence ids to revoke. **Reserved and MUST be empty in v1** (the schema enforces `maxItems: 0`).
-Clients ignore it until a later additive change defines its use.
+Optional object keyed by add-on id (for example `backup`). Each entry may carry `enabled`, `latest`,
+`minimum_supported`, `min_client`, `release_notes_url` and `message`.
+
+- `enabled: false` is the remote kill switch. The add-on stops doing its work; it never deletes data.
+  Absent means enabled.
+- `latest` / `minimum_supported` let VethuQ tell the user an installed add-on is out of date.
+- `min_client` limits the entry to clients at or above that version.
+
+Clients that don't understand the section ignore it. The add-on itself is still gated by its licence:
+the policy can switch an add-on off, never on.
+
+Example: `examples/v1/with-addons.payload.json`.
+
+### Licence revocation (`revoked_licence_ids`)
+
+Optional array (max 5000, unique) of licence ids that must stop unlocking add-ons. A licensed add-on
+checks the cached policy and refuses a licence listed here, even if the licence is otherwise valid.
+
+- Honoured from any trusted policy signature (a licence is revoked per customer, not per key; key
+  compromise uses `revoked_key_ids`).
+- Applies as soon as the policy is accepted; `effective_from` does not apply.
+- The list only needs to hold licences that haven't expired. Ids may be dropped once their licences
+  have expired.
+- Offline installs keep the last policy they accepted, so a revocation reaches them when they next
+  refresh. Short licence validity bounds that window.

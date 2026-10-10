@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "sequence": 4,
+  "issued_at": "2026-10-10T12:00:00Z",
+  "kid": "example-1",
+  "versions": {
+    "desktop": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    },
+    "pip": {
+      "latest": "1.0.0",
+      "minimum_supported": "1.0.0"
+    }
+  },
+  "addons": {
+    "backup": {
+      "enabled": true,
+      "latest": "1.0.0",
+      "minimum_supported": "0.1.0"
+    }
+  },
+  "revoked_licence_ids": [
+    "lic-2026-0007"
+  ]
+}

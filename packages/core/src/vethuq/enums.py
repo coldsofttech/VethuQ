@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 __all__ = [
+    "AddonStatus",
     "IntegrityCheckMode",
     "LogComponent",
     "LogLevel",
@@ -78,6 +79,14 @@ class PolicySource(StrEnum):
     FETCHED = "fetched"  # accepted by this call
     CACHE = "cache"  # the last accepted policy, checked again from disk
     BASELINE = "baseline"  # the built-in policy
+
+
+class AddonStatus(StrEnum):
+    """Whether an installed add-on is running."""
+
+    LOADED = "loaded"
+    INCOMPATIBLE = "incompatible"  # it needs a different add-on API version
+    FAILED = "failed"  # it couldn't be loaded
 
 
 class PolicyStatus(StrEnum):

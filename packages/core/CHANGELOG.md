@@ -57,7 +57,15 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   and logged. A failed check, or a file SQLite can't read, raises `CorruptDatabaseError`; the check
   itself works on a database VethuQ refuses to open. Settings in `client.settings.database`.
 - Opening the database permanently deletes the sources removed longer ago than the retention.
-- Dependencies: `platformdirs~=4.0`, `sqlalchemy~=2.0`, `cryptography~=50.0`, `packaging~=26.0`.
+- **Add-ons** (`client.addons`, types in `vethuq.addons`): finds installed add-ons by their
+  `vethuq.addons` entry point, lists them as `AddonInfo` with an `AddonStatus`, and gives each
+  namespaced settings (`client.addons.settings(id)`). `from vethuq.addons.<id> import ...` reaches an
+  installed add-on's public classes. Two best-effort hooks: after the database opens and before a
+  schema migration. VethuQ deploys no add-on and works unchanged without them.
+- Policy: `Policy.addons` (`AddonPolicy`: `enabled`, `latest`, `minimum_supported`, `min_client`,
+  `message`) and `Policy.revoked_licence_ids`.
+- Dependencies: `platformdirs~=4.0`, `sqlalchemy~=2.0`, `cryptography~=50.0`, `packaging~=26.0`,
+  `vethuq-addon-api~=0.1`.
 
 ### Notes
 - The production policy signing keys are not built in yet, so `client.policy.refresh()` makes no

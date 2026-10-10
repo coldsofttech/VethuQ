@@ -12,6 +12,9 @@ schema major (`/v1/`) and their `sequence` number, not by release tags.
   `https://coldsofttech.github.io/vethuq/policy/v1/policy.json`; the `vethuq-policy` repository is retired.
 
 ### Added
+- Policy schema v1 `addons` (per add-on `enabled` kill switch, `latest`, `minimum_supported`, `min_client`)
+  and `revoked_licence_ids` (additive), replacing the reserved `revocations` field; example
+  `examples/v1/with-addons.payload.json`.
 - Rollback protection rules (`docs/envelope.md`): the client records the highest sequence per signing key
   id and derives the floor from keys that are still trusted and not revoked; standby keys use their own
   counter. A forged high sequence from a compromised key can no longer block legitimate policies (#266).

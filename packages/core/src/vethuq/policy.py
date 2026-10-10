@@ -19,6 +19,7 @@ from vethuq._db import _Database
 from vethuq._logs import _PolicyLog
 from vethuq._paths import _Paths
 from vethuq._policy import (
+    AddonPolicy,
     DistributionVersions,
     Feature,
     Notice,
@@ -29,6 +30,7 @@ from vethuq._policy import (
 from vethuq.enums import PolicySource, PolicyStatus
 
 __all__ = [
+    "AddonPolicy",
     "DistributionVersions",
     "Feature",
     "Notice",

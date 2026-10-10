@@ -53,6 +53,17 @@ class Feature:
 
 
 @dataclass(frozen=True)
+class AddonPolicy:
+    """What the policy says about one add-on. `enabled=False` is the remote kill switch."""
+
+    enabled: bool = True
+    latest: str | None = None
+    minimum_supported: str | None = None
+    min_client: str | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True)
 class Policy:
     schema_version: int
     sequence: int
@@ -62,6 +73,8 @@ class Policy:
     notices: tuple[Notice, ...] = ()
     features: Mapping[str, Feature] = field(default_factory=dict)
     revoked_key_ids: tuple[str, ...] = ()
+    addons: Mapping[str, AddonPolicy] = field(default_factory=dict)
+    revoked_licence_ids: tuple[str, ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict)
 
     def active_notices(self, now: datetime | None = None) -> tuple[Notice, ...]:
@@ -107,6 +120,8 @@ class Policy:
             notices=Policy._parse_notices(payload.get("notices")),
             features=Policy._parse_features(payload.get("features")),
             revoked_key_ids=Policy._parse_revoked(payload.get("revoked_key_ids")),
+            addons=Policy._parse_addons(payload.get("addons")),
+            revoked_licence_ids=Policy._parse_revoked(payload.get("revoked_licence_ids")),
             raw=dict(payload),
         )
 
@@ -168,6 +183,27 @@ class Policy:
                     message if isinstance(message, str) else None,
                 )
         return features
+
+    @staticmethod
+    def _parse_addons(value: Any) -> dict[str, AddonPolicy]:
+        addons: dict[str, AddonPolicy] = {}
+        for name, entry in value.items() if isinstance(value, dict) else []:
+            if not isinstance(entry, dict):
+                continue
+
+            def text(key: str, entry: dict[str, Any] = entry) -> str | None:
+                item = entry.get(key)
+                return item if isinstance(item, str) else None
+
+            enabled = entry.get("enabled")
+            addons[name] = AddonPolicy(
+                enabled=enabled if isinstance(enabled, bool) else True,
+                latest=text("latest"),
+                minimum_supported=text("minimum_supported"),
+                min_client=text("min_client"),
+                message=text("message"),
+            )
+        return addons
 
     @staticmethod
     def _parse_revoked(value: Any) -> tuple[str, ...]:

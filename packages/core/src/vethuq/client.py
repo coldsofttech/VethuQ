@@ -6,8 +6,10 @@ import threading
 from pathlib import Path
 from types import TracebackType
 
+from vethuq._addons import _AddonManager
 from vethuq._db import _Database
 from vethuq._maintenance import _Maintenance
+from vethuq.addons import Addons
 from vethuq.db import Db
 from vethuq.languages import Languages
 from vethuq.logs import Logs
@@ -41,6 +43,8 @@ class VethuQ:
         self._policy: PolicyClient | None = None
         self._updates: Updates | None = None
         self._checks: Db | None = None
+        self._addon_manager: _AddonManager | None = None
+        self._addons: Addons | None = None
         self._lock = threading.Lock()
 
     @property
@@ -48,10 +52,25 @@ class VethuQ:
         """The database file this client uses."""
         return self._db_path or Paths.db_path()
 
+    def _manager(self) -> _AddonManager:
+        with self._lock:
+            if self._addon_manager is None:
+                self._addon_manager = _AddonManager(self.db_path, self._release_database)
+            return self._addon_manager
+
+    def _release_database(self) -> None:
+        """Close the connections (used by add-ons, e.g. before replacing the database file)."""
+        database = self._database
+        if database is not None:
+            database.dispose()
+
     def _db(self) -> _Database:
+        manager = self._manager()
         with self._lock:
             if self._database is None:
-                self._database = _Database(self.db_path, on_open=_Maintenance.on_open)
+                self._database = _Database(
+                    self.db_path, on_open=_Maintenance.on_open, hooks=manager
+                )
             return self._database
 
     @property
@@ -104,6 +123,13 @@ class VethuQ:
         return self._updates
 
     @property
+    def addons(self) -> Addons:
+        """The add-ons installed next to VethuQ. It doesn't open the database."""
+        if self._addons is None:
+            self._addons = Addons(self.db_path, self._manager())
+        return self._addons
+
+    @property
     def version(self) -> VersionDetails:
         """What this install is running. It doesn't open the database."""
         return VersionDetails._collect()
@@ -121,6 +147,7 @@ class VethuQ:
             self._policy = None
             self._updates = None
             self._checks = None
+            self._addons = None
 
     def __enter__(self) -> VethuQ:
         return self

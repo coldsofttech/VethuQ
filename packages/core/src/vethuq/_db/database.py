@@ -8,7 +8,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import Engine, create_engine, event, select
 from sqlalchemy.exc import DatabaseError
@@ -22,6 +22,14 @@ from vethuq._logs import _DatabaseLog
 from vethuq._paths import _Paths
 
 
+class _DatabaseHooks(Protocol):
+    """What the database calls at its key moments (implemented by the add-on manager)."""
+
+    def on_open(self) -> None: ...
+
+    def before_migration(self, stored: int, target: int) -> None: ...
+
+
 class _Database:
     BUSY_TIMEOUT_MS = 5000
     # Languages every database starts with; more are added as they become available.
@@ -30,12 +38,17 @@ class _Database:
     _logger = logging.getLogger("vethuq.database")
 
     def __init__(
-        self, db_path: Path, on_open: Callable[[Session], None] | None = None
+        self,
+        db_path: Path,
+        on_open: Callable[[Session], None] | None = None,
+        hooks: _DatabaseHooks | None = None,
     ) -> None:
         """`on_open`, if given, runs once each time the database is opened, with a session. It is
-        for maintenance: a failure in it is logged, never raised."""
+        for maintenance: a failure in it is logged, never raised. `hooks` are told when the
+        database is about to be migrated and when it has been opened; they never raise either."""
         self.db_path = Path(db_path)
         self._on_open = on_open
+        self._hooks = hooks
         self._engine: Engine | None = None
         self._sessions: sessionmaker[Session] | None = None
         self._open_error: _CorruptDatabaseError | None = None
@@ -96,7 +109,10 @@ class _Database:
                 event.listen(engine, "connect", self._configure_connection)
                 sessions = sessionmaker(engine, expire_on_commit=False)
                 try:
-                    _Schema.ensure(engine)
+                    _Schema.ensure(
+                        engine,
+                        self._hooks.before_migration if self._hooks is not None else None,
+                    )
                     self._seed(sessions)
                     self._check_integrity()
                 except _CorruptDatabaseError as exc:
@@ -119,14 +135,18 @@ class _Database:
             return self._sessions
 
     def _maintain(self, sessions: sessionmaker[Session]) -> None:
-        if self._on_open is None:
-            return
-        try:
-            with sessions() as session:
-                self._on_open(session)
-                session.commit()
-        except Exception:  # noqa: BLE001 - maintenance must never get in the way
-            self._logger.warning("Maintenance on opening the database failed", exc_info=True)
+        if self._on_open is not None:
+            try:
+                with sessions() as session:
+                    self._on_open(session)
+                    session.commit()
+            except Exception:  # noqa: BLE001 - maintenance must never get in the way
+                self._logger.warning("Maintenance on opening the database failed", exc_info=True)
+        if self._hooks is not None:
+            try:
+                self._hooks.on_open()
+            except Exception:  # noqa: BLE001 - hooks are best effort
+                self._logger.warning("Hooks on opening the database failed", exc_info=True)
 
     @staticmethod
     def _seed(sessions: sessionmaker[Session]) -> None:

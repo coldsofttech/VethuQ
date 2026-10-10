@@ -114,11 +114,18 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/kid" }
     },
-    "revocations": {
-      "description": "Revoked licence ids. Reserved: MUST be empty in v1. Clients ignore it until a later additive change defines its use.",
+    "revoked_licence_ids": {
+      "description": "Licence ids that no longer unlock add-ons. A licensed add-on refuses a licence listed here. The list only matters while a licence is unexpired, so ids may be dropped once their licences have expired. Clients that don't understand the field ignore it.",
       "type": "array",
-      "maxItems": 0,
-      "items": { "$ref": "#/$defs/revocation" }
+      "maxItems": 5000,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/licence_id" }
+    },
+    "addons": {
+      "description": "Per add-on policy keyed by add-on id (for example backup): the latest and minimum supported add-on version, and a remote kill switch.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/addon" }
     }
   },
   "$defs": {
@@ -409,12 +416,28 @@
         }
       }
     },
-    "revocation": {
+    "licence_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "addon": {
       "type": "object",
-      "required": ["license_id"],
       "properties": {
-        "license_id": { "type": "string", "minLength": 1 },
-        "revoked_at": { "type": "string", "format": "date-time" }
+        "enabled": {
+          "description": "false is the remote kill switch: the add-on stops doing its work (it never deletes data). Absent means enabled.",
+          "type": "boolean"
+        },
+        "latest": { "$ref": "#/$defs/semver" },
+        "minimum_supported": {
+          "description": "Installed add-on versions older than this are told to update.",
+          "$ref": "#/$defs/semver"
+        },
+        "min_client": {
+          "description": "The entry applies only to clients at or above this version.",
+          "$ref": "#/$defs/semver"
+        },
+        "release_notes_url": { "$ref": "#/$defs/url" },
+        "message": { "type": "string", "maxLength": 500 }
       }
     }
   }

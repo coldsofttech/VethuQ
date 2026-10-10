@@ -79,8 +79,22 @@ class TestSchema(ValidatorTestCase):
         del p["versions"]
         assert any("versions" in e for e in self.envelope_errors(validator, signer.sign(p)))
 
-    def test_non_empty_revocations_rejected(self, signer, validator):
-        env = signer.sign(make_payload(revocations=[{"license_id": "x"}]))
+    def test_revoked_licence_ids_accepted(self, signer, validator):
+        env = signer.sign(make_payload(revoked_licence_ids=["lic-1", "lic-2"]))
+        assert self.envelope_errors(validator, env) == []
+
+    @pytest.mark.parametrize("value", [["a", "a"], ["bad id"], [1], "lic-1"])
+    def test_bad_revoked_licence_ids_rejected(self, signer, validator, value):
+        env = signer.sign(make_payload(revoked_licence_ids=value))
+        assert self.envelope_errors(validator, env)
+
+    def test_addons_section_accepted(self, signer, validator):
+        addons = {"backup": {"enabled": False, "latest": "1.0.0", "minimum_supported": "0.1.0"}}
+        env = signer.sign(make_payload(addons=addons))
+        assert self.envelope_errors(validator, env) == []
+
+    def test_bad_addon_version_rejected(self, signer, validator):
+        env = signer.sign(make_payload(addons={"backup": {"latest": "one"}}))
         assert self.envelope_errors(validator, env)
 
     def test_unknown_fields_ignored(self, signer, validator):

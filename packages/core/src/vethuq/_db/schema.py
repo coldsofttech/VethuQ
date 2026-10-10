@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from sqlalchemy import Connection, Engine, func, inspect, select, update
 
@@ -41,11 +42,23 @@ class _Schema:
             )
 
     @staticmethod
-    def ensure(engine: Engine) -> None:
+    def ensure(
+        engine: Engine, before_migration: Callable[[int, int], None] | None = None
+    ) -> None:
         """Create the tables, record the schema version, and migrate an older database.
 
-        Raises `SchemaVersionError` if the database is newer than this build supports.
+        `before_migration(stored, target)`, if given, is called first when the database is about
+        to be migrated; a failure in it is logged, never raised. Raises `SchemaVersionError` if
+        the database is newer than this build supports.
         """
+        if before_migration is not None:
+            with engine.connect() as connection:
+                stored = _Schema.stored_version(connection)
+            if stored is not None and stored < _Schema.VERSION:
+                try:
+                    before_migration(stored, _Schema.VERSION)
+                except Exception:  # noqa: BLE001 - a hook must never stop the migration
+                    _Schema._logger.warning("Before-migration hook failed", exc_info=True)
         with engine.begin() as connection:
             stored = _Schema.stored_version(connection)
             _Schema.check_not_newer(stored)
