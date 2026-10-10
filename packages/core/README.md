@@ -159,6 +159,7 @@ client = vethuq.VethuQ()
 source = client.sources.create("~/docs", languages=["en"])   # register it
 source = client.sources.get(source.id)                        # look one up
 sources = client.sources.list()                               # list them
+files = client.sources.list_files(source.id)                  # the files that belong to it
 source = client.sources.set_languages(source.id, ["en"])      # change its languages
 source = client.sources.remove(source.id)                     # remove it
 result = client.sources.purge(source.id)                      # delete it for good
@@ -269,6 +270,33 @@ client.sources.list(
 
 The filters combine. Ties in the sort are broken by id. A value that isn't one of the enums raises `ValueError` listing the options.
 
+### Listing the files of a source
+
+`client.sources.list_files()` lists the files that belong to an active source, as they are on disk right now.
+
+```python
+for file in client.sources.list_files(1):
+    print(file.relative_path, file.size_bytes)
+# a.pdf 20480
+# reports/2026.pdf 51200
+```
+
+- A **folder** source gives every file under it, however deep, sorted by path relative to the folder (ignoring case). Links to folders are not followed, and folders that can't be read are skipped.
+- A **file** source gives that same file.
+- A folder with no files gives an empty list.
+
+Each item is a `SourceFile`:
+
+| Field | Description |
+|---|---|
+| `path` | The absolute path |
+| `relative_path` | The path relative to the source folder, with `/` separators (just the name for a file source) |
+| `name` | The file name |
+| `size_bytes` | The size in bytes |
+| `modified_at` | When it was last modified (UTC, ISO 8601) |
+
+It has `to_dict()` and `to_json(indent=None)` like the other results. It raises `SourceNotFoundError` if no active source matches, and `SourcePathError` if the source's folder or file is no longer on disk.
+
 ### Changing the languages
 
 ```python
@@ -319,7 +347,7 @@ A plain string such as `"en,te"` isn't accepted; pass a list.
 
 | Raised | When |
 |---|---|
-| `SourcePathError` | The path doesn't exist, or is neither a file nor a folder |
+| `SourcePathError` | The path doesn't exist (or, for `list_files`, is no longer on disk), or is neither a file nor a folder |
 | `SourceAlreadyExistsError` | The path is already an active source, or the `Source` given was already created |
 | `SourceNotFoundError` | No source matches the id or path |
 | `SourceNotRemovedError` | `purge` was called on a source that is still active |
@@ -380,4 +408,4 @@ client.settings.sources.reset_removed_retention_minutes()
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
 
-Import `Language`, `Paths`, `PurgeResult`, `Source`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
+Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.

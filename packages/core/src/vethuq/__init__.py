@@ -10,7 +10,7 @@ from vethuq.client import VethuQ
 from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
 from vethuq.languages import Language
 from vethuq.paths import Paths
-from vethuq.sources import PurgeResult, Source
+from vethuq.sources import PurgeResult, Source, SourceFile
 
 APP_NAME = _Brand.NAME
 APP_TAGLINE = _Brand.TAGLINE
@@ -34,6 +34,7 @@ __all__ = [
     "PurgeResult",
     "SortOrder",
     "Source",
+    "SourceFile",
     "SourceSortBy",
     "SourceStatus",
     "SourceType",

@@ -27,6 +27,7 @@ class TestPublicApi:
             "PurgeResult",
             "SortOrder",
             "Source",
+            "SourceFile",
             "SourceSortBy",
             "SourceStatus",
             "SourceType",

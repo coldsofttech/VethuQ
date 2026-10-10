@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from vethuq._sources.files import _FileEntry, _Files
 from vethuq._sources.sources import _Sources
 
-__all__ = ["_Sources"]
+__all__ = ["_FileEntry", "_Files", "_Sources"]

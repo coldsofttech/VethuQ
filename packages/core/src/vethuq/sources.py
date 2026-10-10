@@ -10,13 +10,13 @@ from typing import TYPE_CHECKING
 from vethuq._db import _Database, _Source
 from vethuq._errors import _SourceAlreadyExistsError
 from vethuq._settings import _SourceSettings
-from vethuq._sources import _Sources
+from vethuq._sources import _FileEntry, _Files, _Sources
 from vethuq.enums import SortOrder, SourceSortBy, SourceStatus, SourceType
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ["PurgeResult", "Source", "Sources"]
+__all__ = ["PurgeResult", "Source", "SourceFile", "Sources"]
 
 
 @dataclass(frozen=True)
@@ -90,6 +90,40 @@ class PurgeResult:
 
     def to_dict(self) -> dict[str, object]:
         return {"id": self.id, "path": self.path, "type": self.source_type.value}
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
+class SourceFile:
+    """A file that belongs to a source."""
+
+    path: str  # the absolute path
+    relative_path: str  # relative to the source folder (just the name, for a file source)
+    name: str
+    size_bytes: int
+    modified_at: str  # UTC, ISO 8601
+
+    @classmethod
+    def _from_entry(cls, entry: _FileEntry) -> SourceFile:
+        return cls(
+            path=entry.path,
+            relative_path=entry.relative_path,
+            name=entry.name,
+            size_bytes=entry.size_bytes,
+            modified_at=entry.modified_at,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "relative_path": self.relative_path,
+            "name": self.name,
+            "size_bytes": self.size_bytes,
+            "modified_at": self.modified_at,
+        }
 
     def to_json(self, indent: int | None = None) -> str:
         """The same details as `to_dict()`, as a JSON string."""
@@ -176,6 +210,19 @@ class Sources:
                     order=order,
                 )
             ]
+
+    def list_files(self, id_or_path: int | str | Path) -> list[SourceFile]:
+        """The files that belong to an active source, as they are on disk now.
+
+        For a folder, every file under it, however deep, sorted by path relative to the
+        folder; for a file, that same file. Links to folders are not followed.
+
+        Raises `SourceNotFoundError` if no active source matches and `SourcePathError` if
+        the source's path is no longer on disk.
+        """
+        with self._database.session() as session:
+            path = _Sources.get(session, id_or_path).path
+        return [SourceFile._from_entry(entry) for entry in _Files.list(path)]
 
     def remove(self, id_or_path: int | str | Path) -> Source:
         """Remove an active source and return it, marked removed.
