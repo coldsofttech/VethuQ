@@ -3110,6 +3110,7 @@ name = "vethuq-core"
 version = "0.1.0"
 source = { editable = "packages/vethuq-core" }
 dependencies = [
+    { name = "cryptography" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "paddleocr" },
@@ -3162,6 +3163,7 @@ type-png = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=42" },
     { name = "huggingface-hub", marker = "extra == 'search-semantic'", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", marker = "extra == 'search-semantic'", specifier = ">=1.18" },

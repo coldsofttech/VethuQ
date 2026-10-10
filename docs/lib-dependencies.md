@@ -31,7 +31,7 @@ Rows marked 🟨 (amber) can be removed from the frozen build; markdown tables c
 | `bce-python-sdk` | 0.9.79 | Apache-2.0 | 28 KB dist-info, 2.9 MB package (`baidubce`) | `aistudio-sdk`; also `paddlex`'s optional `serving` extra | `vethuq-core`, `vethuq` (through `paddleocr`) | Baidu Cloud (BOS storage and API) client, used by the AI Studio SDK | Only together with `aistudio-sdk`, see below |
 | 🟨 `python-bidi` | 0.6.11 | LGPL-3.0-or-later | 88 KB dist-info, 0.4 MB package (`bidi`) | `paddlex` (its `ocr`, `ocr-core` and `base` extras) | `vethuq-core`, `vethuq` (through `paddleocr`) | Right-to-left text reordering for Arabic OCR results | **Yes for English OCR, see below** |
 | `certifi` | 2026.7.22 | MPL-2.0 | 19 KB dist-info, 0.25 MB package (loose in `lib/`) | `httpx`, `httpcore`, `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | CA certificate bundle for HTTPS | No, HTTPS downloads need it |
-| `cffi` | 2.1.1 | MIT-0 | 20 KB dist-info, 0.6 MB package (`_cffi_backend` is a loose `.pyd` in `lib/`) | `cryptography`, which `modelscope_hub` requires | `vethuq-core`, `vethuq` (through `paddleocr`) | C foreign-function interface used by `cryptography` | With `cryptography`/`modelscope_hub` only |
+| `cffi` | 2.1.1 | MIT-0 | 20 KB dist-info, 0.6 MB package (`_cffi_backend` is a loose `.pyd` in `lib/`) | `cryptography` | `vethuq-core`, `vethuq` (through `paddleocr`) | C foreign-function interface used by `cryptography` | With `cryptography`/`modelscope_hub` only |
 | `chardet` | 7.6.0 | 0BSD | 31 KB dist-info, 2.4 MB package (loose in `lib/`) | `paddlex`, `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | Guesses a text file's encoding | No, `paddlex` imports it |
 | `charset_normalizer` | 3.5.1 | MIT | 64 KB dist-info, 0.7 MB package (loose in `lib/`) | `requests` | `vethuq-core`, `vethuq` (through `paddleocr`) | Encoding detection for HTTP responses | No, `requests` imports it |
 | `click` | 8.5.0 | BSD-3-Clause | 18 KB dist-info, 0.9 MB package | `aistudio-sdk`, `huggingface_hub` 2.0.0 | `vethuq-core`, `vethuq` (through `paddleocr`) | Command-line framework behind those packages' own CLIs | Probably, see below |
@@ -39,7 +39,7 @@ Rows marked 🟨 (amber) can be removed from the frozen build; markdown tables c
 | `colorlog` | 6.12.0 | MIT | 27 KB dist-info, 60 KB package | `paddlex` | `vethuq-core`, `vethuq` (through `paddleocr`) | Coloured log output | No, `paddlex` imports it |
 | 🟨 `crc32c` | 2.9.post0 | LGPL-2.1-or-later | 57 KB dist-info, 0.16 MB package (loose in `lib/`) | `bce-python-sdk` | `vethuq-core`, `vethuq` (through `paddleocr`) | CRC32C checksums for Baidu Cloud uploads | **Yes, see below** |
 | `pycryptodome` (`Crypto`) | 3.23.0 | BSD, Public Domain | 51 KB dist-info, 1.7 MB package (loose in `lib/`) | `bce-python-sdk` | `vethuq-core`, `vethuq` (through `paddleocr`) | AES and RSA for Baidu Cloud requests | Only together with `bce-python-sdk` / `aistudio-sdk`, see below |
-| `cryptography` | 50.0.1 | Apache-2.0 OR BSD-3-Clause | 95 KB dist-info, 9.7 MB package (loose in `lib/`) | `modelscope_hub` | `vethuq-core`, `vethuq` (through `paddleocr`) | TLS and certificate primitives for ModelScope downloads | Only together with `modelscope_hub`, see below |
+| `cryptography` | 50.0.1 | Apache-2.0 OR BSD-3-Clause | 95 KB dist-info, 9.7 MB package (loose in `lib/`) | `vethuq-core` (directly), `modelscope_hub` | `vethuq-core` (`vethuq_core/policy/envelope.py`) | Ed25519 verification of the signed policy, and TLS primitives for ModelScope downloads | No, the policy client needs it, see below |
 | `opencv-contrib-python` (`cv2`) | 4.10.0.84 | Apache-2.0 | 199 KB dist-info, 113.5 MB package (loose in `lib/`) | `paddlex`, which pins this exact version | `vethuq-core`, `vethuq-core/tests` | Image decoding and rotation around OCR | No, VethuQ's own code imports it, see below |
 
 ### aistudio-sdk
@@ -103,9 +103,9 @@ Rows marked 🟨 (amber) can be removed from the frozen build; markdown tables c
 
 ### cffi
 
-- **Not used by VethuQ's own code.** Its only requirer is `cryptography`, which comes from
-  `modelscope_hub` (the ModelScope model hoster, which VethuQ does not use by default).
-- **Removable.** Only along with `cryptography` and `modelscope_hub`; not tried.
+- **Not used by VethuQ's own code.** Its only requirer is `cryptography`, which `vethuq-core`
+  now needs for the policy client (and `modelscope_hub` also requires).
+- **Removable.** Only along with `cryptography`, which is no longer removable.
 
 ### chardet and charset_normalizer
 
@@ -146,9 +146,10 @@ Rows marked 🟨 (amber) can be removed from the frozen build; markdown tables c
 - **`pycryptodome` (`Crypto`).** `baidubce/utils.py` imports `Crypto.Cipher.AES`, and
   `baidubce/services/cloudflow` imports RSA, for Baidu Cloud requests. VethuQ never calls them;
   removable only with `bce-python-sdk` and `aistudio-sdk`.
-- **`cryptography`.** Required by `modelscope_hub` (the ModelScope model hoster, not VethuQ's
-  default). It is already in the installer's licence summary (dual Apache-2.0 / BSD-3-Clause).
-  Removable only with `modelscope_hub`; untested.
+- **`cryptography`.** Declared by `vethuq-core` itself: `vethuq_core/policy/envelope.py` uses it
+  to verify the Ed25519 signature on the policy. `modelscope_hub` (the ModelScope model hoster,
+  not VethuQ's default) also requires it. It was already in the installer's licence summary
+  (dual Apache-2.0 / BSD-3-Clause). Not removable.
 - **`opencv-contrib-python` (`cv2`).** The one of these VethuQ really uses:
   `vethuq_core/filetypes/pdf/reader.py` decodes page images with `cv2.imdecode`, and
   `vethuq_core/ocr/deepening.py` rotates images with `cv2.rotate` and `getRotationMatrix2D`.
