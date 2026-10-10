@@ -441,12 +441,4 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-### The database schema
-
-The database records its schema version in a one-row `schema_version` table. The version is `1` for now.
-
-- A new database is stamped with the current version, and a database that has no version yet is stamped the first time it is opened.
-- A database written by a **newer** VethuQ is refused before anything in it is touched: opening it raises `vethuq.errors.SchemaVersionError` (exit code 14), and its hint says to upgrade VethuQ.
-- A database from an **older** VethuQ is brought up to date step by step when it is opened, and the new version is recorded. If a step fails, the version stays as it was.
-
 Import `Language`, `Paths`, `PurgeResult`, `Source`, `SourceFile`, `VersionDetails`, `VethuQ` and the enums (`SourceType`, `SourceStatus`, `SortOrder`, `SourceSortBy`) from `vethuq`, and the errors from `vethuq.errors`; everything else under `vethuq` is internal and may change without notice.
