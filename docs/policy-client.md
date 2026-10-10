@@ -26,17 +26,17 @@ from vethuq_core.policy import PolicyClient
 
 client = PolicyClient()
 
-result = client.current()            # cached policy or baseline; no network
-result = client.refresh()            # at most about once a day; never raises
-client.refresh_in_background()       # same, on a daemon thread
-client.refresh(force=True)           # ignore the once-a-day gate
+result = client.current()  # cached policy or baseline; no network
+result = client.refresh()  # at most about once a day; never raises
+client.refresh_in_background()  # same, on a daemon thread
+client.refresh(force=True)  # ignore the once-a-day gate
 
 policy = result.policy
-policy.versions["pip"].latest        # "0.0.0" until a signed policy is accepted
+policy.versions["pip"].latest  # "0.0.0" until a signed policy is accepted
 policy.active_notices()
 policy.is_enabled("github_tier", default=True, client_version="1.0.0")
 if result.update_required:
-    print(result.detail)             # "Update VethuQ to receive new policy."
+    print(result.detail)  # "Update VethuQ to receive new policy."
 ```
 
 `PolicyResult` carries:
