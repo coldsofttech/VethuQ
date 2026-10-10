@@ -1,6 +1,6 @@
 [project]
 name = "vethuq-core"
-version = "0.1.0"
+dynamic = ["version"]
 description = "VethuQ core engine — document model, ingest, OCR, indexing, and search (the Free-tier foundation used by every higher tier)"
 requires-python = ">=3.11"
 dependencies = [
@@ -48,8 +48,19 @@ type-png = ["vethuq-type-png"]
 # END generated
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vethuq_core"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# This package lives in a subdirectory of the repo, not at its root.
+root = "../.."
+# Released on its own with tags `core-vX.Y.Z` (or `core-vX.Y.Z-dev.N`), independent of the
+# other packages and of the `v*` / `desktop-v*` tags. Only this package's tags count.
+tag_regex = "^core-v(?P<version>\\d+\\.\\d+\\.\\d+(-dev\\.\\d+)?)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "core-v*"]

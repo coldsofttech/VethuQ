@@ -665,6 +665,12 @@ retention window. A `removed` document is excluded from search (which
 only matches `status='indexed'` rows) but still shows up in `index
 status`, flagged with that status, until it's purged.
 
+## Versions and releases
+
+Core, CLI and UI are versioned and tagged separately from the `vethuq` pip package and the
+desktop installer (`core-v*`, `cli-v*`, `ui-v*`, `v*`, `desktop-v*`); see
+[releasing.md](releasing.md).
+
 ## Update check
 
 `vethuq_core.updates` compares the running version with the signed policy's `latest` and

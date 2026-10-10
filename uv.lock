@@ -3092,7 +3092,6 @@ provides-extras = ["lang-en", "lang-te", "ocr-paddle", "search-exact", "search-f
 
 [[package]]
 name = "vethuq-cli"
-version = "0.1.0"
 source = { editable = "packages/vethuq-cli" }
 dependencies = [
     { name = "rich" },
@@ -3109,7 +3108,6 @@ requires-dist = [
 
 [[package]]
 name = "vethuq-core"
-version = "0.1.0"
 source = { editable = "packages/vethuq-core" }
 dependencies = [
     { name = "cryptography" },
@@ -3244,7 +3242,6 @@ source = { editable = "packages/vethuq-type-png" }
 
 [[package]]
 name = "vethuq-ui"
-version = "0.1.0"
 source = { editable = "packages/vethuq-ui" }
 dependencies = [
     { name = "pillow" },
