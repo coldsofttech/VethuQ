@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
+from vethuq import errors
 from vethuq._brand import _Brand
 
 APP_NAME = _Brand.NAME
@@ -16,4 +17,4 @@ except PackageNotFoundError:  # running from a source tree that isn't installed
 
 __version__ = APP_VERSION
 
-__all__ = ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__"]
+__all__ = ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__", "errors"]

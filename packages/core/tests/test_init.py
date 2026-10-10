@@ -15,7 +15,7 @@ class TestPublicApi:
         assert vethuq.__version__ == vethuq.APP_VERSION
 
     def test_only_the_public_names_are_exported(self):
-        assert vethuq.__all__ == ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__"]
+        assert vethuq.__all__ == ["APP_NAME", "APP_TAGLINE", "APP_VERSION", "__version__", "errors"]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)
 
     def test_version_falls_back_when_the_package_is_not_installed(self, monkeypatch):
