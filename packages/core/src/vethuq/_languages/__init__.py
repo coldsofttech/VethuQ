@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from vethuq._languages.languages import _Languages
+from vethuq._languages.languages import _LanguageCatalog, _Languages, _LanguageView
 
-__all__ = ["_Languages"]
+__all__ = ["_LanguageCatalog", "_LanguageView", "_Languages"]

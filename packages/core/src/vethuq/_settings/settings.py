@@ -73,6 +73,43 @@ class _SourceSettings:
         _Settings.reset(session, _SourceSettings.REMOVED_RETENTION_MINUTES_KEY)
 
 
+class _LanguageSettings:
+    DISABLED_KEY = "languages_disabled"
+    DEFAULT_KEY = "languages_default"
+    SEPARATOR = ","
+
+    @staticmethod
+    def _read(session: Session, key: str) -> list[str]:
+        value = _Settings.get(session, key) or ""
+        return [item for item in value.split(_LanguageSettings.SEPARATOR) if item]
+
+    @staticmethod
+    def _write(session: Session, key: str, ids: list[str]) -> None:
+        if ids:
+            _Settings.set(session, key, _LanguageSettings.SEPARATOR.join(ids))
+        else:
+            _Settings.reset(session, key)
+
+    @staticmethod
+    def get_disabled(session: Session) -> list[str]:
+        """The language ids the user has switched off. Languages not listed here are on."""
+        return _LanguageSettings._read(session, _LanguageSettings.DISABLED_KEY)
+
+    @staticmethod
+    def set_disabled(session: Session, ids: list[str]) -> None:
+        _LanguageSettings._write(session, _LanguageSettings.DISABLED_KEY, ids)
+
+    @staticmethod
+    def get_default(session: Session) -> list[str]:
+        """The language ids saved as the default for sources with none of their own (may be
+        empty: then the system default applies)."""
+        return _LanguageSettings._read(session, _LanguageSettings.DEFAULT_KEY)
+
+    @staticmethod
+    def set_default(session: Session, ids: list[str]) -> None:
+        _LanguageSettings._write(session, _LanguageSettings.DEFAULT_KEY, ids)
+
+
 class _LogSettings:
     @staticmethod
     def get_level(session: Session) -> LogLevel:

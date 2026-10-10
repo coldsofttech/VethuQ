@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from vethuq._db import _Database, _DocumentIndex, _Source
 from vethuq._documents import _Documents
 from vethuq._errors import _SourceAlreadyExistsError
+from vethuq._languages import _LanguageCatalog
 from vethuq._settings import _SourceSettings
 from vethuq._sources import _FileEntry, _Files, _Sources
 from vethuq.enums import FileStatus, SortOrder, SourceSortBy, SourceStatus, SourceType
@@ -203,8 +204,9 @@ class Sources:
     or its path (a `str` or `Path`).
     """
 
-    def __init__(self, database: _Database) -> None:
+    def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
         self._database = database
+        self._catalog = catalog
 
     def create(
         self, source: Source | str | Path, *, languages: Sequence[str] | None = None
@@ -232,7 +234,7 @@ class Sources:
         else:
             path = source
         with self._database.session() as session:
-            return Source._from_model(_Sources.create(session, path, languages))
+            return Source._from_model(_Sources.create(session, path, languages, self._catalog))
 
     def get(self, id_or_path: int | str | Path, *, include_removed: bool = False) -> Source:
         """The source with this id or path.
@@ -274,6 +276,7 @@ class Sources:
                     language=language,
                     sort_by=sort_by,
                     order=order,
+                    catalog=self._catalog,
                 )
             ]
 
@@ -391,7 +394,9 @@ class Sources:
         `LanguageUnavailableError` for a language VethuQ doesn't know.
         """
         with self._database.session() as session:
-            return Source._from_model(_Sources.set_languages(session, id_or_path, languages))
+            return Source._from_model(
+                _Sources.set_languages(session, id_or_path, languages, self._catalog)
+            )
 
     def purge(self, id_or_path: int | str | Path) -> PurgeResult:
         """Permanently delete a removed source.

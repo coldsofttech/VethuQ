@@ -8,6 +8,7 @@ from types import TracebackType
 
 from vethuq._addons import _AddonManager
 from vethuq._db import _Database
+from vethuq._languages import _LanguageCatalog
 from vethuq._maintenance import _Maintenance
 from vethuq.addons import Addons
 from vethuq.db import Db
@@ -58,6 +59,9 @@ class VethuQ:
                 self._addon_manager = _AddonManager(self.db_path, self._release_database)
             return self._addon_manager
 
+    def _catalog(self) -> _LanguageCatalog:
+        return _LanguageCatalog(self._manager().language_specs)
+
     def _release_database(self) -> None:
         """Close the connections (used by add-ons, e.g. before replacing the database file)."""
         database = self._database
@@ -82,21 +86,21 @@ class VethuQ:
     def sources(self) -> Sources:
         """Register and manage sources."""
         if self._sources is None:
-            self._sources = Sources(self._db())
+            self._sources = Sources(self._db(), self._catalog())
         return self._sources
 
     @property
     def languages(self) -> Languages:
         """The languages VethuQ can read documents in."""
         if self._languages is None:
-            self._languages = Languages(self._db())
+            self._languages = Languages(self._db(), self._catalog())
         return self._languages
 
     @property
     def settings(self) -> Settings:
         """VethuQ's settings."""
         if self._settings is None:
-            self._settings = Settings(self._db())
+            self._settings = Settings(self._db(), self._catalog())
         return self._settings
 
     @property

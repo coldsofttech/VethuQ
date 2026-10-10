@@ -12,7 +12,13 @@ from pathlib import Path
 from vethuq._addons.finder import _AddonFinder
 from vethuq._addons.host import _Host
 from vethuq.enums import AddonStatus
-from vethuq_addon_api import API_VERSION, ENTRY_POINT_GROUP, Addon, MigrationInfo
+from vethuq_addon_api import (
+    API_VERSION,
+    ENTRY_POINT_GROUP,
+    Addon,
+    LanguageSpec,
+    MigrationInfo,
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,24 @@ class _AddonManager:
         """Forget what was loaded; the next use looks again."""
         with self._lock:
             self._loaded = None
+
+    def language_specs(self) -> list[LanguageSpec]:
+        """The languages the running add-ons provide, the system default first, then by id.
+
+        An add-on that fails when asked is logged and skipped; the first add-on (by id) to offer a
+        language id wins."""
+        found: dict[str, LanguageSpec] = {}
+        for item in self.loaded().values():
+            if item.addon is None:
+                continue
+            try:
+                specs = list(item.addon.languages())
+            except Exception:  # noqa: BLE001 - a broken add-on must not break VethuQ
+                self._logger.warning("Add-on %s failed in languages", item.id, exc_info=True)
+                continue
+            for spec in specs:
+                found.setdefault(spec.id, spec)
+        return sorted(found.values(), key=lambda spec: (not spec.default, spec.id))
 
     # ----- hooks (the interface `_Database` calls) ------------------------------------------
 

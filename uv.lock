@@ -8,6 +8,7 @@ members = [
     "vethuq-addon-api",
     "vethuq-workspace",
 ]
+overrides = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
 name = "attrs"
@@ -778,6 +779,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "sqlalchemy" },
     { name = "vethuq-addon-api" },
+    { name = "vethuq-addon-english" },
 ]
 
 [package.metadata]
@@ -787,11 +789,23 @@ requires-dist = [
     { name = "platformdirs", specifier = "~=4.0" },
     { name = "sqlalchemy", specifier = "~=2.0" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/english" },
 ]
 
 [[package]]
 name = "vethuq-addon-api"
 source = { editable = "packages/addon-api" }
+
+[[package]]
+name = "vethuq-addon-english"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/english" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", directory = "packages/addon-api" }]
 
 [[package]]
 name = "vethuq-workspace"

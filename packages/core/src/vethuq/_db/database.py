@@ -10,12 +10,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
-from sqlalchemy import Engine, create_engine, event, select
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.orm import Session, sessionmaker
 
 from vethuq._db.integrity import _IntegrityCheck
-from vethuq._db.models import _Language
 from vethuq._db.schema import _Schema
 from vethuq._errors import _CorruptDatabaseError
 from vethuq._logs import _DatabaseLog
@@ -32,8 +31,6 @@ class _DatabaseHooks(Protocol):
 
 class _Database:
     BUSY_TIMEOUT_MS = 5000
-    # Languages every database starts with; more are added as they become available.
-    DEFAULT_LANGUAGES = ("en",)
 
     _logger = logging.getLogger("vethuq.database")
 
@@ -113,7 +110,6 @@ class _Database:
                         engine,
                         self._hooks.before_migration if self._hooks is not None else None,
                     )
-                    self._seed(sessions)
                     self._check_integrity()
                 except _CorruptDatabaseError as exc:
                     engine.dispose()
@@ -147,18 +143,6 @@ class _Database:
                 self._hooks.on_open()
             except Exception:  # noqa: BLE001 - hooks are best effort
                 self._logger.warning("Hooks on opening the database failed", exc_info=True)
-
-    @staticmethod
-    def _seed(sessions: sessionmaker[Session]) -> None:
-        """Add the default languages that are missing."""
-        with sessions() as session:
-            known = set(session.scalars(select(_Language.language)))
-            session.add_all(
-                _Language(language=code)
-                for code in _Database.DEFAULT_LANGUAGES
-                if code not in known
-            )
-            session.commit()
 
     @contextmanager
     def session(self) -> Iterator[Session]:

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
 import vethuq
+from tests.language_addons import TELUGU, LanguageAddonFactory
 from vethuq import errors
-from vethuq._db import _Language, _Source, _SourceLanguage
+from vethuq._db import _Source, _SourceLanguage
 
 
 @pytest.fixture
@@ -40,9 +42,19 @@ def three(client, folders, tmp_path):
     return one, two, three
 
 
+@pytest.fixture(autouse=True)
+def _telugu_addon(tmp_path_factory, monkeypatch):
+    """Telugu is installed in this module's tests (English always is)."""
+    folder = tmp_path_factory.mktemp("telugu_addon")
+    monkeypatch.setattr(sys, "path", [str(folder), *sys.path])
+    module = LanguageAddonFactory.install(folder, "telugu", [TELUGU])
+    yield
+    LanguageAddonFactory.forget(module)
+
+
 def _add_language(client, code):
-    with client._db().session() as session:
-        session.add(_Language(language=code))
+    """Languages come from add-ons now; the Telugu one is installed by `_telugu_addon`."""
+    assert code in {"te"}
 
 
 def _set(client, source_id, **fields):

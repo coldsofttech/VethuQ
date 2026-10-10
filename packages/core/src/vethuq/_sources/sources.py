@@ -27,6 +27,7 @@ from vethuq._errors import (
     _SourceOverlapError,
     _SourcePathError,
 )
+from vethuq._languages import _LanguageCatalog, _Languages
 from vethuq._sources.files import _FileEntry
 from vethuq.enums import FileStatus, SortOrder, SourceSortBy, SourceStatus, SourceType
 
@@ -52,11 +53,17 @@ class _Sources:
         return ids or None
 
     @staticmethod
-    def find_languages(session: Session, codes: list[str]) -> list[_Language]:
+    def find_languages(
+        session: Session, codes: list[str], catalog: _LanguageCatalog | None = None
+    ) -> list[_Language]:
         """The `languages` rows for `codes`, in language order.
 
-        Raises `LanguageUnavailableError` naming every id that is not a known language.
+        With a `catalog` (the languages the installed add-ons provide) every id must be usable:
+        known, available and not switched off. Without one, every id must have a row. Raises
+        `LanguageUnavailableError` naming what is wrong.
         """
+        if catalog is not None:
+            return _Languages.validate(session, catalog.specs(), codes)
         rows = list(
             session.scalars(
                 select(_Language).where(_Language.language.in_(codes)).order_by(_Language.id)
@@ -117,7 +124,10 @@ class _Sources:
 
     @staticmethod
     def create(
-        session: Session, path: str | Path, languages: Sequence[str] | None = None
+        session: Session,
+        path: str | Path,
+        languages: Sequence[str] | None = None,
+        catalog: _LanguageCatalog | None = None,
     ) -> _Source:
         """Register a file or folder as a source. Folders are indexed recursively.
 
@@ -128,7 +138,7 @@ class _Sources:
         `LanguageUnavailableError` if a language is not a known one.
         """
         codes = _Sources.clean_languages(languages)
-        chosen = _Sources.find_languages(session, codes) if codes else None
+        chosen = _Sources.find_languages(session, codes, catalog) if codes else None
         resolved, source_type = _Sources.resolve(path)
         key = str(resolved)
         added_at = datetime.now(UTC).isoformat()
@@ -220,6 +230,7 @@ class _Sources:
         language: str | None = None,
         sort_by: SourceSortBy | str = SourceSortBy.ID,
         order: SortOrder | str = SortOrder.ASC,
+        catalog: _LanguageCatalog | None = None,
     ) -> list[_Source]:
         """The registered sources, filtered and sorted.
 
@@ -243,7 +254,9 @@ class _Sources:
             codes = _Sources.clean_languages([language])
             if codes is None:
                 raise ValueError("language must be a language id, e.g. 'en'.")
-            (row,) = _Sources.find_languages(session, codes)
+            if catalog is not None:
+                _Languages.ensure_rows(session, catalog.specs())
+            (row,) = _Sources.find_languages(session, codes)  # filtering: any known id
             statement = statement.where(
                 _Source.language_links.any(_SourceLanguage.language_id == row.id)
             )
@@ -284,12 +297,15 @@ class _Sources:
 
     @staticmethod
     def set_languages(
-        session: Session, id_or_path: int | str | Path, languages: Sequence[str] | None
+        session: Session,
+        id_or_path: int | str | Path,
+        languages: Sequence[str] | None,
+        catalog: _LanguageCatalog | None = None,
     ) -> _Source:
         """Choose the languages an active source is read in; None or an empty list goes back
         to the global setting. Raises `LanguageUnavailableError` for an unknown language."""
         codes = _Sources.clean_languages(languages)
-        chosen = _Sources.find_languages(session, codes) if codes else []
+        chosen = _Sources.find_languages(session, codes, catalog) if codes else []
         source = _Sources.get(session, id_or_path)
         source.language_links = [_SourceLanguage(language=row) for row in chosen]
         session.flush()

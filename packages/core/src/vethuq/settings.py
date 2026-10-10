@@ -5,11 +5,25 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from vethuq._db import _Database, _IntegrityCheck
+from vethuq._languages import _LanguageCatalog, _Languages
 from vethuq._logs import _Log, _Logs
-from vethuq._settings import _DatabaseSettings, _LogSettings, _SourceSettings, _UpdateSettings
+from vethuq._settings import (
+    _DatabaseSettings,
+    _LanguageSettings,
+    _LogSettings,
+    _SourceSettings,
+    _UpdateSettings,
+)
 from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
 
-__all__ = ["DatabaseSettings", "LogSettings", "Settings", "SourceSettings", "UpdateSettings"]
+__all__ = [
+    "DatabaseSettings",
+    "LanguageSettings",
+    "LogSettings",
+    "Settings",
+    "SourceSettings",
+    "UpdateSettings",
+]
 
 
 class SourceSettings:
@@ -40,6 +54,37 @@ class SourceSettings:
         """Back to the default retention (7 days)."""
         with self._database.session() as session:
             _SourceSettings.reset_removed_retention_minutes(session)
+
+
+class LanguageSettings:
+    """Settings for languages.
+
+    Not created directly: use `VethuQ().settings.languages`.
+    """
+
+    def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
+        self._database = database
+        self._catalog = catalog
+
+    def get_languages(self) -> list[str]:
+        """The language ids a source with none of its own is read in. The system default
+        (English) unless changed; a saved language that is no longer usable is left out."""
+        with self._database.session() as session:
+            return _Languages.default_ids(session, self._catalog.specs())
+
+    def set_languages(self, languages: list[str]) -> list[str]:
+        """Read sources with no languages of their own in `languages`, and return them.
+
+        Raises `InvalidSettingValueError` for an empty list and `LanguageUnavailableError` for a
+        language that is unknown, unavailable or disabled.
+        """
+        with self._database.session() as session:
+            return _Languages.set_default_ids(session, self._catalog.specs(), languages)
+
+    def reset_languages(self) -> None:
+        """Back to the system default (English)."""
+        with self._database.session() as session:
+            _LanguageSettings.set_default(session, [])
 
 
 class LogSettings:
@@ -223,8 +268,9 @@ class Settings:
     Not created directly: use `VethuQ().settings`.
     """
 
-    def __init__(self, database: _Database) -> None:
+    def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
         self.sources = SourceSettings(database)
+        self.languages = LanguageSettings(database, catalog)
         self.logs = LogSettings(database)
         self.updates = UpdateSettings(database)
         self.database = DatabaseSettings(database)

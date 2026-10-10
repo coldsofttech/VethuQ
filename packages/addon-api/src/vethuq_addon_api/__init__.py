@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from vethuq_addon_api.api import API_VERSION, Addon, Hook, Host, Manifest, MigrationInfo
+from vethuq_addon_api.api import (
+    API_VERSION,
+    Addon,
+    Hook,
+    Host,
+    LanguageSpec,
+    Manifest,
+    MigrationInfo,
+)
 from vethuq_addon_api.errors import AddonError, AddonLicenceError
 
 ENTRY_POINT_GROUP = "vethuq.addons"
@@ -15,6 +23,7 @@ __all__ = [
     "AddonLicenceError",
     "Hook",
     "Host",
+    "LanguageSpec",
     "Manifest",
     "MigrationInfo",
 ]

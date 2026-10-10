@@ -4,7 +4,16 @@ import json
 
 import pytest
 
-from vethuq_addon_api import API_VERSION, Addon, AddonError, Hook, Host, Manifest, MigrationInfo
+from vethuq_addon_api import (
+    API_VERSION,
+    Addon,
+    AddonError,
+    Hook,
+    Host,
+    LanguageSpec,
+    Manifest,
+    MigrationInfo,
+)
 from vethuq_addon_api.testing import FakeHost
 
 
@@ -30,7 +39,7 @@ class TestManifest:
 
     def test_to_dict_and_json(self):
         manifest = Manifest("backup", "Backup", "0.1.0")
-        assert manifest.to_dict()["addon_api"] == {"min": "0.1.0", "max": "0.1.0"}
+        assert manifest.to_dict()["addon_api"] == {"min": API_VERSION, "max": API_VERSION}
         assert json.loads(manifest.to_json())["id"] == "backup"
 
 
@@ -72,3 +81,38 @@ class TestErrors:
         error = AddonError("It broke.", "Try again.")
         assert str(error) == "It broke. Try again."
         assert error.hint == "Try again."
+
+
+class TestLanguages:
+    def test_an_addon_provides_no_languages_by_default(self, tmp_path):
+        class Plain(Addon):
+            manifest = Manifest("plain", "Plain", "1.0.0")
+
+        assert Plain(FakeHost(tmp_path / "v.db")).languages() == []
+
+    def test_a_language_addon_returns_specs(self, tmp_path):
+        class English(Addon):
+            manifest = Manifest("english", "English", "1.0.0")
+
+            def languages(self):
+                return [LanguageSpec("en", "English", script="latin", default=True)]
+
+        (spec,) = English(FakeHost(tmp_path / "v.db")).languages()
+        assert spec.id == "en" and spec.default and spec.available
+
+    def test_spec_defaults_and_display_label(self):
+        spec = LanguageSpec("te", "Telugu", native_label="తెలుగు")
+        assert (spec.default, spec.available, spec.reason, dict(spec.ocr)) == (False, True, "", {})
+        assert spec.display_label == "Telugu (తెలుగు)"
+        assert LanguageSpec("en", "English").display_label == "English"
+
+    def test_serialising(self):
+        import json
+
+        spec = LanguageSpec("en", "English", ocr={"engine": {"paddle": {"lang": "en"}}})
+        assert spec.to_dict()["ocr"] == {"engine": {"paddle": {"lang": "en"}}}
+        assert json.loads(spec.to_json())["id"] == "en"
+
+    def test_is_frozen(self):
+        with pytest.raises(AttributeError):
+            LanguageSpec("en", "English").id = "x"

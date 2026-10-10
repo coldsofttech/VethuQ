@@ -11,6 +11,7 @@ from vethuq._errors import (
     _InvalidLogRequestError,
     _InvalidSettingValueError,
     _LanguageUnavailableError,
+    _LastLanguageError,
     _LogError,
     _LogNotFoundError,
     _OcrModelMissingError,
@@ -37,6 +38,7 @@ _PAIRS = [
     (_SchemaVersionError, errors.SchemaVersionError, 14),
     (_StaleLockError, errors.StaleLockError, 15),
     (_LanguageUnavailableError, errors.LanguageUnavailableError, 16),
+    (_LastLanguageError, errors.LastLanguageError, 17),
     (_SourceError, errors.SourceError, 20),
     (_SourcePathError, errors.SourcePathError, 21),
     (_SourceAlreadyExistsError, errors.SourceAlreadyExistsError, 22),
@@ -62,6 +64,7 @@ _RUNTIME = (
     errors.CorruptDatabaseError,
     errors.OcrModelMissingError,
     errors.LanguageUnavailableError,
+    errors.LastLanguageError,
 )
 _SOURCE = (
     errors.SourceError,

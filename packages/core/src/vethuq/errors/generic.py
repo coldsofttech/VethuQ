@@ -47,5 +47,9 @@ class StaleLockError(StartupError):
     """A lock file exists but its process is no longer running."""
 
 
+class LastLanguageError(VethuQError):
+    """The language can't be disabled because it is the last one in use."""
+
+
 class LanguageUnavailableError(VethuQError):
     """An OCR language was asked for that isn't installed, enabled or known."""

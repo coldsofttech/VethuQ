@@ -25,9 +25,9 @@ def client(tmp_path):
 
 
 class TestWithoutAddons:
-    def test_nothing_is_installed(self, client):
+    def test_only_english_is_installed(self, client):
         assert isinstance(client.addons, Addons)
-        assert client.addons.list() == []
+        assert [info.id for info in client.addons.list()] == ["english"]
         assert client.addons.get("backup") is None
         assert not client.addons.is_installed("backup")
 

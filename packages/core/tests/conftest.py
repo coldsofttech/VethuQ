@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sys
+
 import pytest
 
+from tests.language_addons import ENGLISH, LanguageAddonFactory
 from vethuq._paths import _Paths
 
 
@@ -27,3 +30,14 @@ def _release_log_files():
         logger = log.logger()
         logger.setLevel(logging.NOTSET)
         logger.propagate = True
+
+
+@pytest.fixture(autouse=True)
+def _english_addon(tmp_path_factory, monkeypatch):
+    """Install a stand-in for `vethuq-addon-english`, as VethuQ always has it. Tests that want
+    other languages install more with `LanguageAddonFactory`."""
+    folder = tmp_path_factory.mktemp("english_addon")
+    monkeypatch.setattr(sys, "path", [str(folder), *sys.path])
+    module = LanguageAddonFactory.install(folder, "english", [ENGLISH])
+    yield
+    LanguageAddonFactory.forget(module)

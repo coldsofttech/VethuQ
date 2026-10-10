@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 from abc import ABC
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.1.0"
+API_VERSION = "0.2.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -65,6 +66,47 @@ class MigrationInfo:
     db_path: Path
     from_version: int
     to_version: int
+
+
+@dataclass(frozen=True)
+class LanguageSpec:
+    """A language an add-on lets VethuQ read documents in.
+
+    `id` is the short code users pass around (`"en"`). `default` marks the system default
+    language: the one every install has, and the fallback when nothing else is usable. A language
+    that exists but can't be used right now (for instance its licence has lapsed) is returned with
+    `available=False` and a `reason`. `ocr` holds what OCR will need later (engine language codes,
+    model names); VethuQ stores it and doesn't read it yet.
+    """
+
+    id: str
+    label: str
+    native_label: str = ""
+    script: str = ""
+    default: bool = False
+    available: bool = True
+    reason: str = ""
+    ocr: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def display_label(self) -> str:
+        """`Telugu (తెలుగు)`: the label with its native name beside it, when there is one."""
+        return f"{self.label} ({self.native_label})" if self.native_label else self.label
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "native_label": self.native_label,
+            "script": self.script,
+            "default": self.default,
+            "available": self.available,
+            "reason": self.reason,
+            "ocr": dict(self.ocr),
+        }
+
+    def to_json(self, indent: int | None = None) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
 
 
 @runtime_checkable
@@ -121,3 +163,10 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
 
     def before_migration(self, info: MigrationInfo) -> None:  # noqa: B027 - optional hook
         """The database is about to be migrated to a newer schema."""
+
+    def languages(self) -> list[LanguageSpec]:
+        """The languages this add-on provides (none, unless it is a language add-on).
+
+        Called when VethuQ needs to know what it can read; return the same languages each time,
+        marking one `available=False` rather than leaving it out when it can't be used."""
+        return []

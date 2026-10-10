@@ -24,6 +24,18 @@ class BackupAddon(Addon):
 backup = "vethuq_addon_backup:BackupAddon"
 ```
 
+## Language add-ons
+
+An add-on can provide languages. Override `languages()` and return `LanguageSpec`s:
+
+```python
+def languages(self) -> list[LanguageSpec]:
+    return [LanguageSpec(id="en", label="English", script="latin", default=True)]
+```
+
+`default=True` marks the system default language (every install has exactly one). A language that
+exists but can't be used right now (a lapsed licence) is returned with `available=False` and a `reason`.
+
 ## Rules
 
 - Hooks are best effort. VethuQ logs a failing hook and carries on.

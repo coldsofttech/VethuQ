@@ -49,5 +49,9 @@ class _StaleLockError(_StartupError, errors.StaleLockError):
     exit_code = 15
 
 
+class _LastLanguageError(_VethuQError, errors.LastLanguageError):
+    exit_code = 17
+
+
 class _LanguageUnavailableError(_VethuQError, errors.LanguageUnavailableError):
     exit_code = 16

@@ -26,9 +26,15 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   completed, error, removed), with `files_processed`, `files_total` and a `progress` text.
 - Sources can't overlap: `create` raises `SourceOverlapError` for a path inside an active source or
   one that contains it. Purging a source deletes the record of its files.
-- **Languages** (`client.languages.list_all()`): a `languages` table seeded with English, and a
-  `source_languages` table linking sources to the languages they are read in. An unknown language
-  raises `LanguageUnavailableError`.
+- **Languages** (`client.languages`): languages come from language add-ons (add-on API 0.2.0,
+  `Addon.languages()`); English is the free `vethuq-addon-english`, the system default, installed
+  with VethuQ. `list_all`, `list_enabled`, `get`, `default`, `enable` and `disable`. A language is
+  used when it is available (add-on installed and, if licensed, licensed) and enabled; disabling
+  one saves the credits it costs, and at least one must stay in use (`LastLanguageError`). A
+  disabled or unavailable language is refused for sources (`LanguageUnavailableError`). The
+  `source_languages` table links sources to the languages they are read in.
+- **Language settings** (`client.settings.languages`): the languages a source with none of its own
+  is read in; English unless changed.
 - **Settings** (`client.settings`): source retention for removed sources (7 days by default), log
   level and retention (`LogLevel`, 15 days by default), and update-check settings
   (`UpdateCheckMode`, snooze and skip). Changes to the log settings apply at once.
@@ -75,7 +81,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - Policy: `Policy.addons` (`AddonPolicy`: `enabled`, `latest`, `minimum_supported`, `min_client`,
   `message`) and `Policy.revoked_licence_ids`.
 - Dependencies: `platformdirs~=4.0`, `sqlalchemy~=2.0`, `cryptography~=50.0`, `packaging~=26.0`,
-  `vethuq-addon-api~=0.1`.
+  `vethuq-addon-api~=0.1`, `vethuq-addon-english~=0.1`.
 
 ### Notes
 - The production policy signing keys are not built in yet, so `client.policy.refresh()` makes no

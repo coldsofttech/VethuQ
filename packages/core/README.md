@@ -55,7 +55,8 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `StaleLockError` | 15 | Startup | A lock file exists but its process is no longer running |
 | `CorruptDatabaseError` | 12 | Run time | The database file is damaged or isn't a VethuQ database, or it failed its integrity check when opened |
 | `OcrModelMissingError` | 13 | Run time | The OCR engine or its model files aren't available |
-| `LanguageUnavailableError` | 16 | Run time | A language was asked for that isn't installed, enabled or known |
+| `LanguageUnavailableError` | 16 | Run time | A language was asked for that isn't installed, available, enabled or known |
+| `LastLanguageError` | 17 | Run time | The last language in use can't be disabled |
 | `SourceError` | 20 | Sources | Root of the source errors below |
 | `SourcePathError` | 21 | Sources | A source path doesn't exist, or is neither a file nor a folder |
 | `SourceAlreadyExistsError` | 22 | Sources | The path is already registered as an active source |
@@ -413,13 +414,18 @@ A plain string such as `"en,te"` isn't accepted; pass a list.
 | `SourceNotFoundError` | No source matches the id or path |
 | `SourceNotRemovedError` | `purge` was called on a source that is still active |
 | `SourceOverlapError` | `create` was given a path inside an active source, or one that contains an active source. Sources can't overlap, so a file never belongs to two |
-| `LanguageUnavailableError` | A language isn't one VethuQ knows |
+| `LanguageUnavailableError` | A language isn't one VethuQ knows, its add-on is missing or unavailable, or it is disabled |
 
 All of them are `VethuQError`s; the first five are also `SourceError`s.
 
 ## Languages
 
-`client.languages` lists the languages VethuQ can read documents in. English (`en`) is there from the start.
+`client.languages` is about the languages VethuQ can read documents in. Languages come from **language add-ons**; English (`vethuq-addon-english`, free) is installed with VethuQ, so it is always there and enabled. Other languages arrive as add-ons you install (and, if licensed, hold a licence for).
+
+A language is **used** only when it is both:
+
+- **available**: its add-on is installed and usable now (for a licensed one, its licence is valid), and
+- **enabled**: you haven't switched it off. Every language starts enabled; switch one off to stop spending credits on it.
 
 ```python
 import vethuq
@@ -427,26 +433,49 @@ import vethuq
 client = vethuq.VethuQ()
 
 for language in client.languages.list_all():
-    print(language.id, language.language)
-# 1 en
+    print(language.id, language.label, language.enabled)
+# en English True
+# te Telugu True
+
+client.languages.list_enabled()  # only the languages that are used
+client.languages.get("te")  # one Language, or None if VethuQ doesn't know it
+client.languages.default()  # the system default language: English
+client.languages.disable("te")  # stop using Telugu (and the credits it costs)
+client.languages.enable("te")  # use it again
 ```
 
-`list_all()` returns a list of `Language` objects, in VethuQ's language order (English first).
+`list_all()` gives the system default first, then the others by id. It also lists a language a source still refers to whose add-on has since been removed (`installed` is false).
 
-| Field | Description |
+| Field of a `Language` | Description |
 |---|---|
-| `id` | The language's id in the database |
-| `language` | The language id you use when you create a source, for example `"en"` |
+| `id` | The language id used everywhere (creating a source, the settings, `get`), for example `"en"` |
+| `label` | Its name, for example `"English"` |
+| `native_label` | Its name in its own script (`"తెలుగు"`), or empty |
+| `script` | The writing system, for example `"latin"` |
+| `default` | `True` for the system default language |
+| `installed` | Its add-on is installed |
+| `available` | Installed and usable now |
+| `enabled` | Not switched off by you |
+| `reason` | Why it isn't available, when it isn't |
+| `usable` | A property: `available` and `enabled` |
 
-Like `Source`, a `Language` has `to_dict()` and `to_json(indent=None)`:
+A `Language` has `to_dict()` and `to_json(indent=None)`.
 
-```python
-language = client.languages.list_all()[0]
-language.to_dict()  # {"id": 1, "language": "en"}
-language.to_json()  # '{"id": 1, "language": "en"}'
-```
+### The default language
 
-Any id in this list can be used as `languages=[...]` when you create a source. Any other id raises `LanguageUnavailableError`.
+`default()` returns English, the system default. It is the fallback when nothing else is usable, and it describes the system, not your choices: it still returns English if you have disabled it.
+
+### Disabling a language
+
+`disable(id)` switches a language off so nothing uses it, whatever the language costs per page. `enable(id)` switches it back on (it must be available). Both return the updated `Language`.
+
+- At least one language must stay in use: disabling the last usable one raises `LastLanguageError`.
+- A disabled language can't be chosen anywhere: `sources.create`, `sources.set_languages` and `settings.languages.set_languages` raise `LanguageUnavailableError` ("disabled", with a hint to enable it). A source that already uses it keeps its choice, and `sources.list(language=...)` still finds it.
+- Disabling a language also takes it out of the default languages setting.
+- If nothing usable is left because a licence lapsed or an add-on was removed, VethuQ falls back to the system default (English) and logs a warning, rather than failing.
+- An unknown id raises `LanguageUnavailableError`.
+
+Any usable language id can be passed as `languages=[...]` when you create a source; any other raises `LanguageUnavailableError` saying why (unknown, add-on missing or unavailable, or disabled).
 
 ## Settings
 
@@ -469,6 +498,18 @@ client.settings.sources.reset_removed_retention_minutes()
 ```
 
 A value that isn't a whole number of 0 or more raises `vethuq.errors.InvalidSettingValueError`, and the setting is left as it was. Settings are saved in the database, so every client using that database sees the same values.
+
+### Language settings
+
+The languages a source with none of its own is read in.
+
+```python
+client.settings.languages.get_languages()  # ["en"] (the system default) unless changed
+client.settings.languages.set_languages(["en", "te"])  # returns the list saved
+client.settings.languages.reset_languages()  # back to the system default
+```
+
+`set_languages` takes a list of usable language ids (available and enabled) and raises `LanguageUnavailableError` for any other, or `InvalidSettingValueError` for an empty list. A saved language that stops being usable is left out when read; if none are left, the system default applies. Disabling a language also removes it from this setting.
 
 ### Database settings
 
@@ -889,6 +930,10 @@ An `AddonInfo` has `id`, `name`, `version`, `status` and `detail` (why it isn't 
 ### Add-on settings
 
 `client.addons.settings("backup")` gives an add-on's settings (`get`, `set`, `reset`), kept in the VethuQ database as `addon.<id>.<name>` and usable on a database VethuQ refuses to open. Names are lowercase letters, digits and underscores.
+
+### Language add-ons
+
+An add-on can provide languages (add-on API 0.2.0, `Addon.languages()`). They show up in `client.languages` with no further setup; `vethuq-addon-english` is one, and VethuQ depends on it. See [Languages](#languages).
 
 ### Hooks
 

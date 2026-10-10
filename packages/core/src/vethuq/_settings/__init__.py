@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from vethuq._settings.settings import (
     _DatabaseSettings,
+    _LanguageSettings,
     _LogSettings,
     _Settings,
     _SourceSettings,
@@ -13,6 +14,7 @@ from vethuq._settings.settings import (
 
 __all__ = [
     "_DatabaseSettings",
+    "_LanguageSettings",
     "_LogSettings",
     "_Settings",
     "_SourceSettings",

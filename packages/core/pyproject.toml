@@ -10,6 +10,7 @@ dependencies = [
     "packaging~=26.0",
     "sqlalchemy~=2.0",
     "vethuq-addon-api~=0.1",
+    "vethuq-addon-english~=0.1",
 ]
 
 [build-system]

@@ -121,12 +121,12 @@ class TestManager:
     def test_reload_looks_again(self, tmp_path, monkeypatch, db_path):
         monkeypatch.setattr(sys, "path", list(sys.path))
         manager = _AddonManager(db_path, lambda: None)
-        assert manager.loaded() == {}
+        assert set(manager.loaded()) == {"english"}
         folder = tmp_path / "site"
         folder.mkdir()
         try:
             AddonFactory.install(folder)
-            assert manager.loaded() == {}
+            assert set(manager.loaded()) == {"english"}
             manager.reload()
             assert "dummy" in manager.loaded()
         finally:
@@ -151,3 +151,55 @@ class TestManager:
         assert host.get_setting("k", "d") == "d"
         with pytest.raises(sqlite3.DatabaseError):
             host.set_setting("k", "v")
+
+
+class TestLanguageSpecs:
+    @pytest.fixture
+    def folder(self, tmp_path, monkeypatch):
+        path = tmp_path / "langs"
+        path.mkdir()
+        monkeypatch.setattr(sys, "path", [str(path), *sys.path])
+        return path
+
+    def specs(self, db_path):
+        return _AddonManager(db_path, lambda: None).language_specs()
+
+    def test_english_comes_from_its_addon(self, db_path):
+        (english,) = self.specs(db_path)
+        assert (english.id, english.default) == ("en", True)
+
+    def test_other_languages_follow_the_default_by_id(self, folder, db_path):
+        from tests.language_addons import TELUGU, LanguageAddonFactory
+
+        module = LanguageAddonFactory.install(folder, "telugu", [TELUGU])
+        try:
+            assert [s.id for s in self.specs(db_path)] == ["en", "te"]
+        finally:
+            LanguageAddonFactory.forget(module)
+
+    def test_the_first_addon_to_offer_a_language_wins(self, folder, db_path):
+        from tests.language_addons import LanguageAddonFactory
+
+        other = {"id": "en", "label": "Another English"}
+        module = LanguageAddonFactory.install(folder, "zzz", [other])
+        try:
+            (english,) = self.specs(db_path)
+            assert english.label == "English"  # "english" sorts before "zzz"
+        finally:
+            LanguageAddonFactory.forget(module)
+
+    def test_an_addon_that_fails_is_skipped(self, folder, db_path):
+        from tests.language_addons import LanguageAddonFactory
+
+        module = LanguageAddonFactory.install(folder, "broken", [{"bogus_field": 1}])
+        try:
+            assert [s.id for s in self.specs(db_path)] == ["en"]
+        finally:
+            LanguageAddonFactory.forget(module)
+
+    def test_an_incompatible_addon_provides_nothing(self, folder, db_path):
+        AddonFactory.install(folder, "dummy", api=', api_min="9.0.0", api_max="9.9.0"')
+        try:
+            assert [s.id for s in self.specs(db_path)] == ["en"]
+        finally:
+            AddonFactory.forget("vethuq_addon_dummy")

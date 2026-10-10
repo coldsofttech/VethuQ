@@ -15,6 +15,8 @@ class TestSourcesCreate:
     @pytest.fixture
     def database(self, tmp_path):
         database = _Database(tmp_path / "db" / "vethuq.db")
+        with database.session() as session:
+            session.add(_Language(language="en"))
         yield database
         database.dispose()
 
@@ -153,6 +155,8 @@ class TestSourceLanguages:
     @pytest.fixture
     def database(self, tmp_path):
         database = _Database(tmp_path / "db" / "vethuq.db")
+        with database.session() as session:
+            session.add(_Language(language="en"))
         yield database
         database.dispose()
 
@@ -173,21 +177,6 @@ class TestSourceLanguages:
                 (link.source_id, link.language.language)
                 for link in session.scalars(select(_SourceLanguage))
             ]
-
-    def test_english_is_seeded(self, database):
-        with database.session() as session:
-            rows = session.execute(select(_Language.id, _Language.language)).all()
-
-        assert [tuple(row) for row in rows] == [(1, "en")]
-
-    def test_seeding_is_not_repeated(self, database):
-        for _ in range(2):
-            with database.session():
-                pass
-            database.dispose()
-
-        with database.session() as session:
-            assert session.scalars(select(_Language.language)).all() == ["en"]
 
     def test_a_source_without_languages_has_no_links(self, database, tmp_path):
         assert self._create(database, tmp_path) == []
