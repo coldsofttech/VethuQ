@@ -2,6 +2,8 @@
 
 VethuQ — open-source document intelligence and evidence infrastructure for search, retrieval, structure, metadata, relationships, and AI-ready document access.
 
+See the [changelog](CHANGELOG.md) for what each release adds.
+
 ## Installation
 
 ```bash
