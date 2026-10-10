@@ -1,0 +1,4 @@
+# The bundled fonts and their licence are checked by hash (packages/vethuq-ui/tests/test_fonts.py),
+# so they must be checked out byte for byte, with no line-ending conversion on Windows.
+packages/vethuq-ui/src/vethuq_ui/assets/fonts/*.ttf binary
+packages/vethuq-ui/src/vethuq_ui/assets/fonts/OFL.txt -text
