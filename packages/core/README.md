@@ -434,7 +434,7 @@ All of them are `VethuQError`s; the first five are also `SourceError`s.
 
 ## Languages
 
-`client.languages` is about the languages VethuQ can read documents in. Languages come from **language add-ons**; English (`vethuq-addon-english`, free) is installed with VethuQ, so it is always there and enabled. Other languages arrive as add-ons you install (and, if licensed, hold a licence for).
+`client.languages` is about the languages VethuQ can read documents in. Languages come from **language add-ons**; English (`vethuq-addon-english`, free) is installed with VethuQ, so it is always there and enabled. Other languages arrive as add-ons you install (and, if licensed, hold a licence for). Telugu (`vethuq-addon-telugu`) is one: licensed, not installed with VethuQ, listed as unavailable until `Telugu(client).set_licence(token)`. Telugu text is searched by every engine; vowel signs and the virama stay with their letter.
 
 A language is **used** only when it is both:
 
