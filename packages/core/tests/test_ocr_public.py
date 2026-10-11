@@ -62,7 +62,7 @@ class TestEnginesAndPhases:
     def test_engines(self, client):
         assert isinstance(client.ocr, Ocr)
         (engine,) = client.ocr.engines.list()
-        assert engine == OcrEngine("paddle", "Fake OCR", ("mobile",), True, "")
+        assert engine == OcrEngine("paddle", "Fake OCR", ("mobile", "server"), True, "")
         fp.STATE.engine_available = False
         assert client.ocr.engines.list()[0].reason == "the fake engine is off"
         assert json.loads(engine.to_json()) == engine.to_dict()

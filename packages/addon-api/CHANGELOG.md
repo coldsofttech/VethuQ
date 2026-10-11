@@ -5,7 +5,13 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.8.0.
+The add-on API version (`API_VERSION`) is 0.9.0.
+
+### Added (API 0.9.0)
+- Deeper OCR phases (`moderate`, `deep`): `OcrRequest.angle` (the rotation to read an image at; the
+  image is sent as it is and the engine turns it) and `OcrEngine.recognize(image, angle=0)`.
+- `ReadPage.region_phase`: the phase from which a page's `image_regions` are read (a Markdown file's
+  pictures are left to `moderate`).
 
 ### Added (API 0.8.0)
 - `ReadPage.ocr` (default `True`): a reader sets it to `False` for a page whose `native_text` is

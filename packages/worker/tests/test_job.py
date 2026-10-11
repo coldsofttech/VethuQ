@@ -6,6 +6,7 @@ import re
 import pytest
 from worker_helpers import EN, TE, UNAVAILABLE, request
 
+from vethuq_addon_api import OcrRequest
 from vethuq_addon_api.testing import FakeExecutor
 from vethuq_worker import (
     JobBuilder,
@@ -80,6 +81,61 @@ class TestRoundTrip:
         blob = builder.build()
         assert b"secret-token" not in blob and b"a-secret-key" not in blob
         assert b"PNG" not in blob
+
+
+class TestAngles:
+    def test_one_image_is_read_at_several_angles_and_sent_once(self, tmp_path):
+        picture = request("base").image
+        builder = JobBuilder(KEY)
+        for angle in (0, 90, 180):
+            builder.add(
+                OcrRequest(
+                    f"p:{angle}", picture, EN, phase="moderate", size_factor=1.0, angle=angle
+                )
+            )
+        manifest = builder.manifest()
+        assert [(p.file, p.angle, p.phase) for p in manifest.pages] == [
+            ("images/0001.png", 0, "moderate"),
+            ("images/0001.png", 90, "moderate"),
+            ("images/0001.png", 180, "moderate"),
+        ]
+        one = JobBuilder(KEY)
+        one.add(request("single"))
+        assert builder.size == one.size  # the image's bytes are counted once
+
+    def test_the_worker_reads_each_angle_and_decodes_the_image_once(self, tmp_path, monkeypatch):
+        from vethuq_worker.images import Images
+
+        decoded = []
+        original = Images.from_png
+        monkeypatch.setattr(
+            Images, "from_png", staticmethod(lambda data: decoded.append(1) or original(data))
+        )
+        picture = request("base").image
+        builder = JobBuilder(KEY)
+        for angle in (90, 270):
+            builder.add(OcrRequest(f"p:{angle}", picture, EN, phase="moderate", angle=angle))
+        executor = FakeExecutor(default="read")
+        result = worker(executor).run(
+            builder.job_id, send(tmp_path, builder), tmp_path / "out", KEY
+        )
+        assert result.status == "done"
+        assert [(r.phase, r.angle) for r in executor.seen] == [("moderate", 90), ("moderate", 270)]
+        assert len(decoded) == 1
+
+    def test_a_different_image_is_a_different_file(self):
+        builder = JobBuilder(KEY)
+        builder.add(request("a", shade=10))
+        builder.add(request("b", shade=200))
+        assert [p.file for p in builder.manifest().pages] == ["images/0001.png", "images/0002.png"]
+
+    def test_the_angle_is_part_of_the_manifest_and_defaults_to_upright(self):
+        builder = JobBuilder(KEY)
+        builder.add(request("a", angle=450))
+        document = builder.manifest().to_dict()
+        assert document["pages"][0]["angle"] == 90
+        del document["pages"][0]["angle"]
+        assert Manifest.from_dict(document).pages[0].angle == 0
 
 
 class TestPartialAndFailures:

@@ -44,8 +44,9 @@ class OcrEngine(Protocol):
         """The language id the engine reads."""
         ...
 
-    def recognize(self, image: Any) -> OcrResult:
-        """Recognize the text in `image`: an image file path or a BGR pixel array."""
+    def recognize(self, image: Any, angle: int = 0) -> OcrResult:
+        """Recognize the text in `image`: an image file path or a BGR pixel array. `angle` turns
+        the image counter-clockwise by that many degrees first (0 reads it as it is)."""
         ...
 
 

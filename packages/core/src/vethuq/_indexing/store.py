@@ -175,6 +175,7 @@ class _PageStore:
                 source=result.source,
                 image_width=result.image_width,
                 image_height=result.image_height,
+                deepen_from=result.deepen_from or None,
                 status=_PageState.WAITING if result.pending else _PageState.DONE,
             )
             session.add(page)

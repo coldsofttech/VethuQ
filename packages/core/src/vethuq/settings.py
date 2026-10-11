@@ -16,6 +16,7 @@ from vethuq._settings import (
     _LanguageSettings,
     _LogSettings,
     _MetricsSettings,
+    _OcrSettings,
     _SearchSettings,
     _SourceSettings,
     _TierSettings,
@@ -30,6 +31,7 @@ __all__ = [
     "IndexSettings",
     "LanguageSettings",
     "LogSettings",
+    "OcrSettings",
     "SearchSettings",
     "Settings",
     "SourceSettings",
@@ -131,6 +133,37 @@ class IndexSettings:
     def reset_stability_check_seconds(self) -> None:
         with self._database.session() as session:
             _IndexSettings.reset_stability_check_seconds(session)
+
+
+class OcrSettings:
+    """Settings for OCR.
+
+    Not created directly: use `VethuQ().settings.ocr`.
+    """
+
+    ENGINES = _OcrSettings.ENGINES
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_engine(self) -> str:
+        """How far indexing reads: `"quick"` (upright text) unless changed. `"moderate"` also reads
+        every page that needed OCR at 90, 180 and 270 degrees, and `"deep"` also every other
+        multiple of 15 degrees; each needs its add-on (`vethuq-addon-ocr-moderate`, `-deep`). The
+        picture a Markdown file links to are read from `"moderate"`."""
+        with self._database.session() as session:
+            return _OcrSettings.get_engine(session)
+
+    def set_engine(self, engine: str) -> str:
+        """Go as far as `engine` (`"quick"`, `"moderate"` or `"deep"`) and return it.
+
+        Raises `InvalidSettingValueError` for anything else."""
+        with self._database.session() as session:
+            return _OcrSettings.set_engine(session, engine)
+
+    def reset_engine(self) -> None:
+        with self._database.session() as session:
+            _OcrSettings.reset_engine(session)
 
 
 class LanguageSettings:
@@ -602,6 +635,7 @@ class Settings:
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
         self.index = IndexSettings(database)
+        self.ocr = OcrSettings(database)
         self.tiers = TierSettings(database)
         self.metrics = MetricsSettings(database)
         self.confidence = ConfidenceSettings(database)

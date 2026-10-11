@@ -173,7 +173,13 @@ class VethuQ:
         with self._lock:
             if self._indexer is None:
                 self._indexer = _Indexer(
-                    db, types, manager.language_specs, tiers, credits, after_pages=index.sync
+                    db,
+                    types,
+                    manager.language_specs,
+                    tiers,
+                    credits,
+                    after_pages=index.sync,
+                    phases=manager.ocr_phase_specs,
                 )
             return self._indexer
 

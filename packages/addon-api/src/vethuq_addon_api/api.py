@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.8.0"
+API_VERSION = "0.9.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:

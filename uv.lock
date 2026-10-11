@@ -2629,7 +2629,6 @@ dependencies = [
     { name = "vethuq-addon-like" },
     { name = "vethuq-addon-markdown" },
     { name = "vethuq-addon-noise-fuzzy" },
-    { name = "vethuq-addon-ocr-quick" },
     { name = "vethuq-addon-paddle" },
     { name = "vethuq-addon-pdf" },
     { name = "vethuq-addon-proximity" },
@@ -2638,6 +2637,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+deep-scan = [
+    { name = "vethuq-bundle-deep-scan" },
+]
 github = [
     { name = "vethuq-addon-github" },
 ]
@@ -2668,16 +2670,16 @@ requires-dist = [
     { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/add-ons/search/engines/like" },
     { name = "vethuq-addon-markdown", directory = "../VethuQ-premium/packages/add-ons/file-types/markdown" },
     { name = "vethuq-addon-noise-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" },
-    { name = "vethuq-addon-ocr-quick", directory = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" },
     { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" },
     { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/add-ons/file-types/pdf" },
     { name = "vethuq-addon-proximity", directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
     { name = "vethuq-addon-semantic", marker = "extra == 'semantic'", directory = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
     { name = "vethuq-addon-txt", directory = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
+    { name = "vethuq-bundle-deep-scan", marker = "extra == 'deep-scan'", directory = "../VethuQ-premium/packages/bundles/deep-scan" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", directory = "../VethuQ-premium/packages/bundles/image" },
 ]
-provides-extras = ["github", "images", "semantic"]
+provides-extras = ["deep-scan", "github", "images", "semantic"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -2860,9 +2862,31 @@ dependencies = [
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
+name = "vethuq-addon-ocr-deep"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-addon-ocr-moderate"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
 name = "vethuq-addon-ocr-quick"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
+source = { editable = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
 dependencies = [
     { name = "vethuq-addon-api" },
 ]
@@ -3006,6 +3030,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-bundle-deep-scan"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/bundles/deep-scan" }
+dependencies = [
+    { name = "vethuq-addon-ocr-deep" },
+    { name = "vethuq-addon-ocr-moderate" },
+    { name = "vethuq-addon-ocr-quick" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-ocr-deep", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" },
+    { name = "vethuq-addon-ocr-moderate", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" },
+    { name = "vethuq-addon-ocr-quick", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" },
+]
 
 [[package]]
 name = "vethuq-bundle-image"

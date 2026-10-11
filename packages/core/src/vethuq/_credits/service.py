@@ -331,8 +331,22 @@ class _PageMeter:
     def release(self, held: int) -> None:
         self.wallet.release(held)
 
+    def quote_rotated(self, width_pt, height_pt, covered: float, passes: int) -> tuple[float, int]:
+        """(size factor, cost in milli-credits) of `passes` rotated reads of a page, as the deeper
+        phases do. Raises `_PageTooLarge`."""
+        pricing = self.pricing()
+        factor = pricing.size_factor(width_pt, height_pt)
+        return factor, pricing.rotated_milli(factor, passes, covered=covered)
+
     def commit(
-        self, held: int, actual_milli: int, page_number: int, factor: float, phase: str
+        self,
+        held: int,
+        actual_milli: int,
+        page_number: int,
+        factor: float,
+        phase: str,
+        angle: int = 0,
+        count_page: bool = True,
     ) -> int:
         with self.wallet.lock, self.credits.database.session() as session:
             ids = self.wallet.commit(
@@ -344,7 +358,7 @@ class _PageMeter:
                 run_id=self.run_id,
                 page_number=page_number,
                 phase=phase,
-                angle=0,
+                angle=angle,
                 language=self.language,
                 size_factor_milli=milli(factor),
                 rate_card_version=self._terms.rate_card_version if self._terms else None,
@@ -354,7 +368,7 @@ class _PageMeter:
                 run = session.get(_IndexRun, self.run_id)
                 if run is not None:
                     run.credits_milli += actual_milli
-                    run.ocr_pages += 1
+                    run.ocr_pages += 1 if count_page else 0
         self.ledger_ids += ids
         self.charged_milli += actual_milli
         return actual_milli

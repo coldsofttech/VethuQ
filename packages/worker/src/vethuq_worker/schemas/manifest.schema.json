@@ -34,7 +34,8 @@
           "file": {"type": "string", "pattern": "^images/[0-9]{1,6}\\.png$"},
           "language": {"type": "string", "minLength": 1, "maxLength": 32},
           "phase": {"type": "string", "default": "quick"},
-          "size_factor": {"type": "number", "minimum": 0}
+          "size_factor": {"type": "number", "minimum": 0},
+          "angle": {"type": "integer", "minimum": 0, "maximum": 359, "default": 0}
         }
       }
     }

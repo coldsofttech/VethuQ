@@ -6,6 +6,20 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (OCR phases)
+- The moderate and deep OCR phases (`vethuq-addon-ocr-moderate`, `-deep`): pages that needed OCR are
+  read again at 90/180/270 degrees, then at every other multiple of 15, with the server models, and
+  what is found is merged into the text. `settings.ocr.get/set/reset_engine` (`quick`, `moderate`,
+  `deep`) says how far a run goes; `index.run()` does quick, then moderate, then deep, and returns to
+  quick for files that appear or change meanwhile. Credits: rotated reads at the rotated rate.
+  Remote tiers (GitHub, hybrid) take the deeper reads too. `pdf_pages_phases` records each read.
+- Add-on API 0.9.0: `OcrRequest.angle`, `OcrEngine.recognize(image, angle=0)`, `ReadPage.region_phase`.
+- A Markdown file's linked pictures are read from the moderate phase (quick leaves them).
+- The OCR phases are explicit installs, like the other optional add-ons: `vethuq-addon-ocr-quick` is
+  no longer a dependency of VethuQ. `pip install vethuq[deep-scan]` installs all three phases.
+- The ETA counts the deeper phases (`IndexEta.by_phase`); the quick pace no longer blends in the
+  rotated reads.
+
 ### Added (progress and ETA)
 - `client.index.status(wait=False, timeout=None)`: the latest run's counts, whether it is going, the
   remote jobs still out and an `IndexEta`; `wait=True` blocks until the run and its remote jobs are

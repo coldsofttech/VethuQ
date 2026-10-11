@@ -599,7 +599,7 @@ print(run.status, run.files_processed, "of", run.files_total, "files,", run.file
 
 Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process died is found and marked failed at the next run, and the files it was reading are put back.
 
-**How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. Text, CSV and Markdown files are one page of text each and are always native, however short: the page itself is never OCR'd. A picture a Markdown file links to on disk is read like the images of a mixed page, but only if an installed add-on reads that format; otherwise it is skipped with a warning in the log and the text is indexed anyway. OCR is the quick phase (upright pages, mobile models) and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
+**How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. Text, CSV and Markdown files are one page of text each and are always native, however short: the page itself is never OCR'd. A picture a Markdown file links to on disk is read like the images of a mixed page, from the moderate phase on (the quick phase leaves it), and only if an installed add-on reads that format; otherwise it is skipped with a warning in the log and the text is indexed anyway. OCR is in phases (see *OCR*): quick reads upright pages with the mobile models, and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
 
 ### Progress and ETA
 
@@ -668,12 +668,30 @@ client.file_types.get("pdf")  # a FileType, or None
 
 ## OCR
 
-`client.ocr` shows what reads scanned pages, all provided by add-ons installed with VethuQ: the engine (`vethuq-addon-paddle`) and the quick phase (`vethuq-addon-ocr-quick`). None of them can be switched off.
+`client.ocr` shows what reads scanned pages, all provided by add-ons: the engine (`vethuq-addon-paddle`, installed with VethuQ) and the OCR phases, which are explicit installs: `vethuq-addon-ocr-quick`, `vethuq-addon-ocr-moderate` and `vethuq-addon-ocr-deep`, or all three with `pip install vethuq[deep-scan]` (the `vethuq-bundle-deep-scan` bundle). Without the quick phase VethuQ reads native text but cannot OCR.
 
 ```python
-client.ocr.engines.list()  # [OcrEngine(id="paddle", profiles=("mobile",), available=True, ...)]
-client.ocr.phases.list()  # [OcrPhase(id="quick", angles=(0,), profile="mobile", ...)]
+client.ocr.engines.list()  # [OcrEngine(id="paddle", profiles=("mobile", "server"), available=True, ...)]
+client.ocr.phases.list()  # [OcrPhase(id="quick", angles=(0,), profile="mobile", ...), moderate, deep]
 ```
+
+### Phases and angles
+
+Text at an angle (a label on a drawing, a stamp, a sideways caption) is often missed by a single upright read, but reading every page at many angles is slow. So OCR is split into phases, each of which adds to what the ones before found:
+
+| Phase | Angles (counter-clockwise) | Models |
+|---|---|---|
+| `quick` | 0 | mobile |
+| `moderate` | 90, 180, 270 | server |
+| `deep` | every other multiple of 15 (15, 30, 45, ...) | server |
+
+`client.settings.ocr` says how far a run goes (`get/set/reset_engine`: `"quick"` unless changed). `index.run()` reads every file quick first, then continues with moderate and deep up to the setting; a file is searchable after its quick pass. Every few seconds it looks for new or changed files and, if there are any, reads them (quick) before going on: quick, then moderate, then deep, in that priority. A phase whose add-on is not installed is skipped with a warning in the log.
+
+- **What is turned.** Only pages that needed OCR: a scanned page (the whole page), or the images on a page that has a text layer. Native text, and the text, CSV and Markdown files, never are. A picture a Markdown file links to is read from `moderate` on, upright as well (the quick phase left it) and at 90, 180 and 270; `deep` adds the rest.
+- **Merging.** A line a rotated read adds must be at least 0.5 confident (odd angles read strokes as text). A line the page already has is dropped, and a line inside a new, longer one is replaced by it. The page's confidence follows its lines. Each phase read is recorded per page and language (`pdf_pages_phases`), saved as soon as the page is read, so a run that stops loses nothing; a second run reads only what is missing.
+- **Credits.** A phase is charged only when it runs on a page: each rotated read costs the page's size factor times the rotated rate (0.8 by default) per image, so moderate adds 3 x 0.8 and deep 20 x 0.8 for an A4 page, and a page read in two languages is charged for each. When they run out, the run ends as `WAITING_CREDITS`.
+- **Remote tiers.** The GitHub tier takes the deeper reads as well: the image is sent once, with the angles to read it at, and the worker turns it with the same server models (baked into its image). A hybrid run sends a deeper read to GitHub when `settings.tiers` `phases` lists its phase (or the page is large).
+- **ETA.** `index.status().eta` adds the pages still waiting for each phase the setting reaches, times that phase's angles, times how long a pass took before (`eta.by_phase`). Pages the quick phase has not read yet are not counted: whether they need OCR is not known until they are read.
 
 ### OCR models
 

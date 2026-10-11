@@ -50,7 +50,8 @@ class IndexEta:
     local_seconds: int  # of it, the pages read on this computer
     remote_seconds: int  # of it, waiting for jobs on a remote tier
     complete: bool  # False when part of the work has no history; `seconds` then leaves it out
-    by_file_type: dict[str, int] = field(default_factory=dict)  # `local_seconds`, per file type
+    by_file_type: dict[str, int] = field(default_factory=dict)  # the quick phase's, per file type
+    by_phase: dict[str, int] = field(default_factory=dict)  # `local_seconds`, per OCR phase
 
     @classmethod
     def _from_result(cls, result: _EtaResult) -> IndexEta:
@@ -60,6 +61,7 @@ class IndexEta:
             remote_seconds=round(result.remote_seconds),
             complete=result.complete,
             by_file_type={t: round(s) for t, s in sorted(result.by_file_type.items())},
+            by_phase={p: round(s) for p, s in result.by_phase.items()},
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -69,6 +71,7 @@ class IndexEta:
             "remote_seconds": self.remote_seconds,
             "complete": self.complete,
             "by_file_type": dict(self.by_file_type),
+            "by_phase": dict(self.by_phase),
         }
 
     def to_json(self, indent: int | None = None) -> str:
@@ -268,7 +271,7 @@ class Index:
     def _eta(self, run_id: int) -> IndexEta:
         with self._database.session() as session:
             model = _Runs.get(session, run_id)
-            estimate = _Eta(self._indexer.file_types).estimate(
+            estimate = _Eta(self._indexer.file_types, self._indexer.deepener).estimate(
                 session, model, _Eta.is_active(model)
             )
         return IndexEta._from_result(estimate)
@@ -318,7 +321,9 @@ class Index:
                 return None
             model = latest[0]
             active = _Eta.is_active(model)
-            estimate = _Eta(self._indexer.file_types).estimate(session, model, active)
+            estimate = _Eta(self._indexer.file_types, self._indexer.deepener).estimate(
+                session, model, active
+            )
             return IndexStatus(
                 run=IndexRun._from_model(model, _Runs.source_path(session, model)),
                 active=active,

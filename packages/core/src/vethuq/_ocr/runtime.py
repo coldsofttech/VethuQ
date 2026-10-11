@@ -42,14 +42,16 @@ class _Ocr:
 
     # ----- choosing ---------------------------------------------------------------------------
 
-    def phase(self) -> OcrPhaseSpec:
-        """The quick phase. Raises `OcrModelMissingError` if no add-on provides it."""
+    def phase(self, phase_id: str | None = None) -> OcrPhaseSpec:
+        """The OCR phase `phase_id` (default: quick). Raises `OcrModelMissingError` if no add-on
+        provides it."""
+        wanted = phase_id or self.PHASE
         for spec in self.phases():
-            if spec.id == self.PHASE and spec.available:
+            if spec.id == wanted and spec.available:
                 return spec
         raise _OcrModelMissingError(
-            "OCR isn't available: the quick OCR phase isn't installed.",
-            "Install the add-on: vethuq-addon-ocr-quick.",
+            f"OCR isn't available: the {wanted} OCR phase isn't installed.",
+            f"Install the add-on: vethuq-addon-ocr-{wanted} (or pip install vethuq[deep-scan]).",
         )
 
     def provider(self, profile: str) -> OcrEngineProvider:
@@ -91,9 +93,11 @@ class _Ocr:
                     )
             self._ensured.add(key)
 
-    def engine(self, language: LanguageSpec) -> tuple[OcrEngine, OcrPhaseSpec]:
-        """This thread's engine for `language` and the phase it serves."""
-        phase = self.phase()
+    def engine(
+        self, language: LanguageSpec, phase_id: str | None = None
+    ) -> tuple[OcrEngine, OcrPhaseSpec]:
+        """This thread's engine for `language` and the phase it serves (default: quick)."""
+        phase = self.phase(phase_id)
         provider = self.provider(phase.profile)
         cache: dict = self._local.__dict__.setdefault("engines", {})
         key = (provider.id, language.id, phase.profile)

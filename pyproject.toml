@@ -33,6 +33,9 @@ vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png" 
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
 vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
 vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
+vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
+vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
+vethuq-bundle-deep-scan = { path = "../VethuQ-premium/packages/bundles/deep-scan" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }

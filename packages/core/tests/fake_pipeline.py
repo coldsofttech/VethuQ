@@ -48,6 +48,8 @@ class State:
     pdf_available: bool = True
     engine_available: bool = True
     phase_available: bool = True
+    # (language, angle) of every read at an angle other than upright.
+    angle_calls: list[tuple[str, int]] = field(default_factory=list)
 
 
 STATE = State()
@@ -121,12 +123,22 @@ class FakeReader(DocumentReader):
 
 
 def self_render(page: dict, region: tuple | None) -> tuple:
+    """What the fake engine "sees": the text read upright, and what it would read at an angle."""
     confidence = page.get("confidence", 0.8)
     if region is None:
-        return ("page", page.get("ocr", ""), confidence)
+        angles = {int(a): t for a, t in page.get("ocr_at", {}).items()}
+        return ("page", page.get("ocr", ""), confidence, angles)
     texts = page.get("region_ocr", [])
     index = int(region[0])
-    return ("region", texts[index] if index < len(texts) else "", confidence)
+    angles = {
+        int(a): t for a, t in (page.get("region_ocr_at") or [{}] * (index + 1))[index].items()
+    }
+    return ("region", texts[index] if index < len(texts) else "", confidence, angles)
+
+
+def at_angles(page: dict, **by_angle: str) -> dict:
+    """`page` that also reads these texts at these angles (`a90="..."`), the whole page."""
+    return {**page, "ocr_at": {k.removeprefix("a"): v for k, v in by_angle.items()}}
 
 
 class FakeEngine:
@@ -141,9 +153,13 @@ class FakeEngine:
     def language(self) -> str:
         return self._language
 
-    def recognize(self, image: object) -> OcrResult:
+    def recognize(self, image: object, angle: int = 0) -> OcrResult:
         STATE.ocr_calls.append((self._language, image))
         text = image[1] if isinstance(image, tuple) else ""
+        if angle:
+            STATE.angle_calls.append((self._language, angle))
+            seen = image[3] if isinstance(image, tuple) and len(image) > 3 else {}
+            text = seen.get(angle, "")
         confidence = image[2] if isinstance(image, tuple) and len(image) > 2 else 0.8
         lines = tuple((line, confidence) for line in text.splitlines())
         return OcrResult(
@@ -160,7 +176,7 @@ class FakeEngine:
 class FakeProvider(OcrEngineProvider):
     id = "paddle"
     label = "Fake OCR"
-    profiles = ("mobile",)
+    profiles = ("mobile", "server")
 
     @property
     def available(self) -> bool:
@@ -253,6 +269,21 @@ class FakePaddleAddon(Addon):
         return [FakeProvider()]
 
 
+class FakeOcrModerateAddon(Addon):
+    manifest = Manifest(id="ocr-moderate", name="vethuq-addon-ocr-moderate", version="0.1.0")
+
+    def ocr_phases(self):
+        return [OcrPhaseSpec("moderate", "Moderate", 2, (90, 180, 270), "server")]
+
+
+class FakeOcrDeepAddon(Addon):
+    manifest = Manifest(id="ocr-deep", name="vethuq-addon-ocr-deep", version="0.1.0")
+
+    def ocr_phases(self):
+        angles = tuple(a for a in range(15, 360, 15) if a % 90)
+        return [OcrPhaseSpec("deep", "Deep", 3, angles, "server")]
+
+
 class FakeOcrQuickAddon(Addon):
     manifest = Manifest(id="ocr-quick", name="vethuq-addon-ocr-quick", version="0.1.0")
 
@@ -269,6 +300,12 @@ class FakeOcrQuickAddon(Addon):
             )
         ]
 
+
+# Not installed unless a test asks (`install(folder, DEEPER)`): the deeper phases are optional.
+DEEPER = {
+    "ocr-moderate": ("vethuq_addon_ocr_moderate", "FakeOcrModerateAddon"),
+    "ocr-deep": ("vethuq_addon_ocr_deep", "FakeOcrDeepAddon"),
+}
 
 ADDONS = {
     "pdf": ("vethuq_addon_pdf", "FakePdfAddon"),

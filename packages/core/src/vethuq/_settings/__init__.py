@@ -9,6 +9,7 @@ from vethuq._settings.settings import (
     _LanguageSettings,
     _LogSettings,
     _MetricsSettings,
+    _OcrSettings,
     _SearchSettings,
     _Settings,
     _SourceSettings,
@@ -20,6 +21,7 @@ from vethuq._settings.settings import (
 __all__ = [
     "_ConfidenceSettings",
     "_MetricsSettings",
+    "_OcrSettings",
     "_DatabaseSettings",
     "_IndexSettings",
     "_LanguageSettings",

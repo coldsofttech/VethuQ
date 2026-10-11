@@ -5,6 +5,14 @@ tags named `vethuq-worker-vX.Y.Z` (through hatch-vcs), not from this file.
 
 ## [Unreleased]
 
+### Added (deeper OCR phases)
+- Job protocol v1, additive: a manifest page may carry an `angle` (0 to 359, counter-clockwise).
+  Several pages may name the same image `file` with different angles, so `JobBuilder` puts an image
+  object in the job once however many angles it is read at, and the worker decodes it once. The
+  worker reads each page with its `phase`'s models (the `server` models for `moderate` and `deep`),
+  so the image needs the quick, moderate and deep add-ons installed (`bake-models` fetches the
+  server models too).
+
 ### Changed
 - The package is class-based: `JobCrypto`, `Container`, `Images`, `Protocol`, `ResultReader`, `Worker`,
   `Baker` and `WorkerCli` replace the module functions (`seal`, `pack`, `to_png`, `open_result`,

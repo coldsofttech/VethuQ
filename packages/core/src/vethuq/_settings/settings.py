@@ -76,6 +76,42 @@ class _SourceSettings:
         _Settings.reset(session, _SourceSettings.REMOVED_RETENTION_MINUTES_KEY)
 
 
+class _OcrSettings:
+    ENGINE_KEY = "ocr_engine"
+    # How far a run reads: each phase also does the ones before it. The phases come from add-ons.
+    ENGINES = ("quick", "moderate", "deep")
+    DEFAULT_ENGINE = "quick"
+
+    @staticmethod
+    def parse_engine(value: object) -> str:
+        engine = value.strip().lower() if isinstance(value, str) else ""
+        if engine not in _OcrSettings.ENGINES:
+            raise _InvalidSettingValueError(
+                f"The OCR engine must be one of {', '.join(_OcrSettings.ENGINES)}, not {value!r}.",
+                "quick reads upright text only; moderate and deep also read rotated text.",
+            )
+        return engine
+
+    @staticmethod
+    def get_engine(session: Session) -> str:
+        """The deepest OCR phase a run goes to. `quick` unless changed."""
+        value = _Settings.get(session, _OcrSettings.ENGINE_KEY)
+        try:
+            return _OcrSettings.parse_engine(value) if value else _OcrSettings.DEFAULT_ENGINE
+        except _InvalidSettingValueError:
+            return _OcrSettings.DEFAULT_ENGINE
+
+    @staticmethod
+    def set_engine(session: Session, value: object) -> str:
+        engine = _OcrSettings.parse_engine(value)
+        _Settings.set(session, _OcrSettings.ENGINE_KEY, engine)
+        return engine
+
+    @staticmethod
+    def reset_engine(session: Session) -> None:
+        _Settings.reset(session, _OcrSettings.ENGINE_KEY)
+
+
 class _IndexSettings:
     WORKERS_KEY = "index_workers"
     RETRY_ATTEMPTS_KEY = "index_retry_attempts"

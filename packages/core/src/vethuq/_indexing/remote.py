@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -32,6 +33,9 @@ from vethuq._stats import _PageFact, _Usage
 from vethuq._tiers import _Tiers
 from vethuq.enums import FileStatus, IndexRunStatus, RemoteJobStatus
 from vethuq_addon_api import JobState, OcrRequest, OcrResult
+
+if TYPE_CHECKING:
+    from vethuq._indexing.deepening import _Deepener
 
 _logger = logging.getLogger("vethuq.indexing")
 
@@ -69,6 +73,7 @@ class _Outbox:
         self.run_id = run_id
         self.entries: list[_Entry] = []
         self.bytes = 0
+        self.images: set[int] = set()  # the images (by identity) the batch already holds
         self.lock = threading.Lock()
         with remote.database.session() as session:
             self.max_images = _TierSettings.get_max_job_pages(session)
@@ -77,12 +82,14 @@ class _Outbox:
     def add(self, requests: list[OcrRequest], job_page_ids: list[int]) -> None:
         with self.lock:
             for request, job_page_id in zip(requests, job_page_ids, strict=True):
-                size = _size(request.image)
+                # One image read at several angles is sent once.
+                size = 0 if id(request.image) in self.images else _size(request.image)
                 if self.entries and (
                     len(self.entries) >= self.max_images or self.bytes + size > self.max_bytes
                 ):
                     self._send()
                 self.entries.append(_Entry(request, job_page_id, size))
+                self.images.add(id(request.image))
                 self.bytes += size
 
     def flush(self) -> None:
@@ -91,6 +98,7 @@ class _Outbox:
 
     def _send(self) -> None:
         entries, self.entries, self.bytes = self.entries, [], 0
+        self.images = set()
         if entries:
             self.remote.submit(self.tier, self.run_id, entries)
 
@@ -114,17 +122,22 @@ class _Remote:
         self.credits = credits
         self.language_of = language_of
         self.file_type_of = file_type_of
+        self.deepener: _Deepener | None = None  # set by the indexer: merges deeper phases
 
     # ----- staging ----------------------------------------------------------------------------
 
     @staticmethod
-    def staged(session: Session, document_id: int, language_id: int) -> set[int]:
-        """Pages of a document whose images are paid for and staged or away (in this language)."""
+    def staged(
+        session: Session, document_id: int, language_id: int, phase: str = "quick"
+    ) -> set[int]:
+        """Pages of a document whose images are paid for and staged or away (in this language and
+        OCR phase)."""
         return set(
             session.scalars(
                 select(_RemoteJobPage.page_number).where(
                     _RemoteJobPage.document_id == document_id,
                     _RemoteJobPage.language_id == language_id,
+                    _RemoteJobPage.phase == phase,
                     _RemoteJobPage.state.in_((_JobPageState.STAGED, _JobPageState.SENT)),
                 )
             )
@@ -307,17 +320,27 @@ class _Remote:
 
     def _import(self, session: Session, job: _RemoteJob, results: dict[str, OcrResult]) -> None:
         rows = list(session.scalars(select(_RemoteJobPage).where(_RemoteJobPage.job_id == job.id)))
-        pages: dict[tuple[int, int, int], list[_RemoteJobPage]] = {}
+        pages: dict[tuple[int, int, int, str], list[_RemoteJobPage]] = {}
         for row in rows:
-            pages.setdefault((row.document_id, row.page_number, row.language_id), []).append(row)
+            key = (row.document_id, row.page_number, row.language_id, row.phase)
+            pages.setdefault(key, []).append(row)
         done: list[tuple[int, int]] = []
         missing: list[int] = []
         bands = _ConfidenceSettings.get_bands(session)
         today = _Clock.today(session).isoformat()
-        for (document_id, number, language_id), images in pages.items():
-            answers = [results.get(r.request_key) for r in sorted(images, key=lambda r: r.region)]
+        for (document_id, number, language_id, phase), images in pages.items():
+            ordered = sorted(images, key=lambda r: (r.region, r.angle))
+            answers = [results.get(r.request_key) for r in ordered]
             if any(a is None for a in answers):
                 missing += [r.id for r in images]
+                continue
+            if phase != "quick":  # a deeper phase: its text is merged into the page
+                if self.deepener is not None:
+                    self.deepener.complete(
+                        session, document_id, number, language_id, phase, ordered, answers
+                    )
+                for image in images:
+                    image.state = _JobPageState.DONE
                 continue
             self._complete_page(
                 session, document_id, number, language_id, images, answers, bands, today

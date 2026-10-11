@@ -25,13 +25,14 @@ from vethuq._errors import (
     _SourcePathError,
 )
 from vethuq._filetypes import _FileTypeCatalog
+from vethuq._indexing.deepening import _Deepener
 from vethuq._indexing.gate import _ContentGate, _Scheduler
 from vethuq._indexing.remote import _Outbox, _Remote
 from vethuq._indexing.runs import _Runs
 from vethuq._indexing.store import _PageStore
 from vethuq._languages import _Languages
 from vethuq._ocr import _PageOcr, _PageResult
-from vethuq._settings import _ConfidenceSettings, _IndexSettings, _TierSettings
+from vethuq._settings import _ConfidenceSettings, _IndexSettings, _OcrSettings, _TierSettings
 from vethuq._sources import _Files, _Sources
 from vethuq._stats import _ErrorCode, _PageFact, _Usage
 from vethuq._tiers import HYBRID, LOCAL, _Router, _Tiers, _TierView
@@ -39,6 +40,7 @@ from vethuq.enums import FileStatus, IndexRunStatus
 from vethuq_addon_api import (
     FileRemovedError,
     LanguageSpec,
+    OcrPhaseSpec,
     PasswordProtectedError,
     UnreadableFileError,
 )
@@ -70,6 +72,7 @@ class _Indexer:
         tiers: _Tiers,
         credits: _Credits,
         after_pages: Callable[[], object] | None = None,
+        phases: Callable[[], list[OcrPhaseSpec]] = list,
     ) -> None:
         self._after_pages = after_pages
         self.database = database
@@ -85,6 +88,10 @@ class _Indexer:
         self._outbox: _Outbox | None = None
         self.remote = _Remote(database, tiers, credits, self._language_id, self._file_type_id)
         self.gate = _ContentGate()
+        self.deepener = _Deepener(
+            database, file_types, tiers, credits, self.remote, phases, languages
+        )
+        self.remote.deepener = self.deepener
 
     # ----- the target -------------------------------------------------------------------------
 
@@ -584,6 +591,7 @@ class _Indexer:
             todo = self._settle(todo, seconds)
             with self.database.session() as session:
                 session.get(_IndexRun, run_id).total_files = len(todo)
+            attempted = set(todo)
 
             def work(row_id: int) -> None:
                 if self._paused.is_set():
@@ -600,15 +608,20 @@ class _Indexer:
                     record.processed_files = max(record.processed_files, snapshot["processed"])
                     record.failed_files = max(record.failed_files, snapshot["failed"])
 
-            if count <= 0:
-                for row_id in todo:
-                    work(row_id)
-            else:
-                with ThreadPoolExecutor(
-                    max_workers=count, thread_name_prefix="vethuq-index"
-                ) as pool:
-                    for future in [pool.submit(work, row_id) for row_id in todo]:
-                        future.result()
+            def quick(rows: list[int]) -> None:
+                """The quick phase for these files: the first read of each."""
+                if count <= 0:
+                    for row_id in rows:
+                        work(row_id)
+                else:
+                    with ThreadPoolExecutor(
+                        max_workers=count, thread_name_prefix="vethuq-index"
+                    ) as pool:
+                        for future in [pool.submit(work, row_id) for row_id in rows]:
+                            future.result()
+
+            quick(todo)
+            self._deepen(run_id, sources, only_file, source_id, count, seconds, attempted, quick)
             if self._outbox is not None:
                 self._outbox.flush()
             self._await_remote(run_id, wait, wait_minutes)
@@ -641,6 +654,112 @@ class _Indexer:
             self._tier = self._remote_tier = self._router = None
             self._outbox = None
         return run_id
+
+    # ----- the deeper phases ------------------------------------------------------------------
+
+    # How often, in seconds, a run in its deeper phases looks for new or changed files: they go
+    # back to the front of the queue and get their quick read first.
+    QUICK_CHECK_SECONDS = 5.0
+
+    def _fresh(
+        self,
+        sources: list[_Source],
+        only_file: str | None,
+        attempted: set[int],
+        seconds: float,
+        run_id: int,
+    ) -> list[int]:
+        """The files that need their quick read and haven't had it in this run: new ones, and
+        ones that changed."""
+        with self.database.session() as session:
+            todo = self._discover(session, [session.get(_Source, s.id) for s in sources], only_file)
+        fresh = self._settle([row for row in todo if row not in attempted], seconds)
+        if fresh:
+            attempted.update(fresh)
+            with self.database.session() as session:
+                session.get(_IndexRun, run_id).total_files += len(fresh)
+        return fresh
+
+    def _deepen(
+        self,
+        run_id: int,
+        sources: list[_Source],
+        only_file: str | None,
+        source_id: int | None,
+        count: int,
+        seconds: float,
+        attempted: set[int],
+        quick: Callable[[list[int]], None],
+    ) -> None:
+        """Quick is done: read the pages again for each deeper phase the engine setting reaches,
+        moderate before deep. The first priority stays quick: every few seconds the run looks for
+        new or changed files and, if there are any, reads them (quick) before going on."""
+        with self.database.session() as session:
+            engine = _OcrSettings.get_engine(session)
+        if _PageOcr.order(engine) <= _PageOcr.order("quick"):
+            return
+        for name in self.deepener.missing(engine):
+            self._logger.warning(
+                "The %s OCR phase is not installed, so it is skipped (pip install "
+                "vethuq-addon-ocr-%s).", name, name,
+            )  # fmt: skip
+        phases = self.deepener.deeper(engine)
+        if not phases:
+            return
+        tried: set[tuple[int, int, str]] = set()
+        chunk = max(count, 1) * 4
+        last_check = time.monotonic()
+        while not self._paused.is_set():
+            if time.monotonic() - last_check >= self.QUICK_CHECK_SECONDS:
+                last_check = time.monotonic()
+                fresh = self._fresh(sources, only_file, attempted, seconds, run_id)
+                if fresh:
+                    quick(fresh)
+                    continue
+            batch: list[tuple] = []
+            for spec in phases:  # the lowest phase with pages left goes first
+                with self.database.session() as session:
+                    units = self.deepener.units(
+                        session, spec.id, (source_id, only_file), tried, chunk
+                    )
+                if units:
+                    batch = [(spec, unit) for unit in units]
+                    break
+            if not batch:
+                break
+            tried.update((unit.page_id, unit.language_id, spec.id) for spec, unit in batch)
+            if count <= 0:
+                for spec, unit in batch:
+                    self._deepen_one(run_id, spec, unit)
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=count, thread_name_prefix="vethuq-deepen"
+                ) as pool:
+                    for future in [
+                        pool.submit(self._deepen_one, run_id, spec, unit) for spec, unit in batch
+                    ]:
+                        future.result()
+
+    def _deepen_one(self, run_id: int, spec, unit) -> None:
+        """One page, one phase. A page that can't be read now is left for the next run."""
+        if self._paused.is_set():
+            return
+        try:
+            self.deepener.read(
+                unit, spec, run_id, self._tier, self._remote_tier, self._router, self._outbox,
+                self._paused.is_set,
+            )  # fmt: skip
+        except _CreditsExhaustedError:
+            self._paused.set()
+        except (FileNotFoundError, FileRemovedError, UnreadableFileError, _PageTooLarge) as exc:
+            self._logger.warning("Couldn't read %s again for %s: %s", unit.path, spec.id, exc)
+        except _OcrModelMissingError as exc:
+            self._logger.warning("The %s OCR phase can't run: %s", spec.id, exc)
+        except Exception:  # noqa: BLE001 - one page never stops the run
+            self._logger.warning(
+                "Reading %s page %d again for %s failed", unit.path, unit.page_number, spec.id,
+                exc_info=True,
+            )  # fmt: skip
 
     # ----- remote work ------------------------------------------------------------------------
 

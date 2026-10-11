@@ -202,6 +202,9 @@ class _PdfPage(_Base):
     )
     image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # For a page whose text is all native but that has pictures the quick phase left alone (a
+    # Markdown file's): the phase (`moderate`) from which they are read. NULL otherwise.
+    deepen_from: Mapped[str | None] = mapped_column(Text, nullable=True)
     # `done` once its text is final; a page whose OCR is still to come (or away) says so.
     status: Mapped[_PageState] = mapped_column(
         _enum(_PageState, "ck_pdf_pages_status"),
@@ -270,6 +273,35 @@ class _MarkdownPage(_Base):
     )
     encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local images linked
+
+
+class _PdfPagePhase(_Base):
+    """A deeper OCR phase (`moderate`, `deep`) read on a page in one language: the angles it read.
+    The quick read of a page is `pdf_pages_quick`."""
+
+    __tablename__ = "pdf_pages_phases"
+    __table_args__ = (
+        UniqueConstraint(
+            "page_id", "language_id", "phase", name="uq_pdf_pages_phases_page_language_phase"
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    # The angles read, comma separated; and the images they were read from (1 for a scanned page).
+    angles: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    region_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # What the phase added to the page's text.
+    lines_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    engine: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class _DocumentLanguage(_Base):
@@ -496,7 +528,7 @@ class _RemoteJobPage(_Base):
 
     __tablename__ = "remote_job_pages"
     __table_args__ = (
-        UniqueConstraint("document_id", "page_number", "region", "language_id",
+        UniqueConstraint("document_id", "page_number", "region", "language_id", "phase", "angle",
                          name="uq_remote_job_pages_image"),
         {"sqlite_autoincrement": True},
     )  # fmt: skip
@@ -511,6 +543,11 @@ class _RemoteJobPage(_Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     region: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    # The OCR phase asking, and the angle the image is read at (see `OcrRequest`).
+    phase: Mapped[str] = mapped_column(
+        Text, nullable=False, default="quick", server_default="quick"
+    )
+    angle: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     request_key: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[_JobPageState] = mapped_column(
         _enum(_JobPageState, "ck_remote_job_pages_state"),

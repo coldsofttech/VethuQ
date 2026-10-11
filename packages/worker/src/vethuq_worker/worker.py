@@ -197,8 +197,9 @@ class Worker:
     def _read_pages(self, manifest: Manifest, files: dict[str, bytes], engine: Engine) -> JobResult:
         results: list[PageResult] = []
         started = time.monotonic()
+        decoded: dict[str, object] = {}  # an image read at several angles is decoded once
         for page in manifest.pages:
-            results.append(self._read_page(page, files, engine))
+            results.append(self._read_page(page, files, engine, decoded))
         good = sum(1 for page in results if page.ok)
         status = "done" if good == len(results) else ("partial" if good else "failed")
         return JobResult(
@@ -210,7 +211,9 @@ class Worker:
         )
 
     @staticmethod
-    def _read_page(page, files: dict[str, bytes], engine: Engine) -> PageResult:
+    def _read_page(
+        page, files: dict[str, bytes], engine: Engine, decoded: dict[str, object] | None = None
+    ) -> PageResult:
         began = time.monotonic()
         spec = engine.language(page.language)
         if spec is None:
@@ -229,8 +232,13 @@ class Worker:
                 error_message="The page's image is missing.",
             )
         try:
+            cache = decoded if decoded is not None else {}
+            if page.file not in cache:
+                cache[page.file] = Images.from_png(data)
             outcome = engine.executor.recognize(
-                OcrRequest(page.key, Images.from_png(data), spec, page.phase, page.size_factor)
+                OcrRequest(
+                    page.key, cache[page.file], spec, page.phase, page.size_factor, page.angle
+                )
             )
         except Exception as error:  # noqa: BLE001 - one page never stops the job
             # Only the exception's type is reported: its message could carry page text.

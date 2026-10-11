@@ -23,7 +23,10 @@ class OcrRequest:
 
     `key` identifies it in the answer (VethuQ makes it unique per page and region). `image` is
     what an OCR engine accepts: an image file path or a BGR pixel array. `phase` is the OCR phase
-    asking (`quick`), `size_factor` the page's size against A4 (see docs/credits.md).
+    asking (`quick`, `moderate`, `deep`), `size_factor` the page's size against A4 (see
+    docs/credits.md). `angle` is the rotation, in degrees counter-clockwise, to read the image at
+    (0: as it is): the image is sent as it is and the engine turns it, so one image can be read at
+    many angles.
     """
 
     key: str
@@ -31,6 +34,7 @@ class OcrRequest:
     language: LanguageSpec
     phase: str = "quick"
     size_factor: float = 1.0
+    angle: int = 0
 
 
 class JobState(enum.StrEnum):

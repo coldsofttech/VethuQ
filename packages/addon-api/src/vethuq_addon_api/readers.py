@@ -89,6 +89,9 @@ class ReadPage:
     # separate image file rather than part of the page (a picture a Markdown file points to).
     # VethuQ skips a region whose file no installed add-on can read, and says so in the log.
     region_files: tuple[Path, ...] = ()
+    # The OCR phase (`moderate`, `deep`) from which `image_regions` are read. Empty: from the first
+    # phase (`quick`), as for a PDF's images. A Markdown file's pictures are left to `moderate`.
+    region_phase: str = ""
     # Facts about the file that its file type keeps beside the text, such as `{"encoding":
     # "utf-8"}`. VethuQ stores the keys it has a column for and ignores the rest.
     details: Mapping[str, Any] = field(default_factory=dict)

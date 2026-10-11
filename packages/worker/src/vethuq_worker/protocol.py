@@ -52,6 +52,9 @@ class PageSpec:
     language: str
     phase: str = "quick"
     size_factor: float = 1.0
+    # The rotation, in degrees counter-clockwise, to read the image at. Several pages may name the
+    # same `file` with different angles: the image is in the job once.
+    angle: int = 0
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,7 @@ class Manifest:
                     "language": p.language,
                     "phase": p.phase,
                     "size_factor": p.size_factor,
+                    "angle": p.angle,
                 }
                 for p in self.pages
             ],
@@ -96,6 +100,7 @@ class Manifest:
                     p["language"],
                     p.get("phase", "quick"),
                     float(p.get("size_factor", 1.0)),
+                    int(p.get("angle", 0)),
                 )
                 for p in document["pages"]
             ),

@@ -44,6 +44,7 @@ class JobBuilder:
         self._client = client
         self._pages: list[PageSpec] = []
         self._images: dict[str, bytes] = {}
+        self._named: dict[int, tuple[object, str]] = {}  # an image (by identity) and its file
         self._bytes = 0
 
     def __len__(self) -> int:
@@ -59,19 +60,34 @@ class JobBuilder:
         return len(self._pages) < self._max_pages and self._bytes + image_bytes <= self._max_bytes
 
     def add(self, request: OcrRequest) -> None:
-        png = Images.to_png(request.image)
+        """Add one image to read. The same image object added again (to read it at another angle)
+        is in the job once."""
+        known = self._named.get(id(request.image))
+        png = b"" if known is not None else Images.to_png(request.image)
         if len(self._pages) >= self._max_pages:
             raise JobError("too_many_pages", f"A job holds at most {self._max_pages} pages.")
         if self._bytes + len(png) > self._max_bytes:
             raise JobError("too_large", "The job would be larger than a job may be.")
         if any(page.key == request.key for page in self._pages):
             raise JobError("bad_manifest", f"Page {request.key!r} is already in the job.")
-        name = f"images/{len(self._pages) + 1:04d}.png"
+        if known is not None:
+            name = known[1]
+        else:
+            name = f"images/{len(self._images) + 1:04d}.png"
+            self._images[name] = png
+            # Keeping the image itself keeps its identity from being reused by another object.
+            self._named[id(request.image)] = (request.image, name)
+            self._bytes += len(png)
         self._pages.append(
-            PageSpec(request.key, name, request.language.id, request.phase, request.size_factor)
+            PageSpec(
+                request.key,
+                name,
+                request.language.id,
+                request.phase,
+                request.size_factor,
+                request.angle % 360,
+            )
         )
-        self._images[name] = png
-        self._bytes += len(png)
 
     def manifest(self) -> Manifest:
         return Manifest(

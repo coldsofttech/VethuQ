@@ -50,6 +50,8 @@ class _PageResult:
     ledger_ids: tuple[int, ...] = ()
     # What the file type keeps about the page beside its text (`ReadPage.details`).
     details: Mapping[str, Any] = field(default_factory=dict)
+    # The phase from which the page has pictures this read left alone (see `ReadPage.region_phase`).
+    deepen_from: str = ""
 
 
 class _PageOcr:
@@ -65,6 +67,20 @@ class _PageOcr:
     """
 
     _logger = logging.getLogger("vethuq.indexing")
+    # The phases in the order they run: quick first. A page's `region_phase` is one of them.
+    ORDER = {"quick": 1, "moderate": 2, "deep": 3}
+
+    @staticmethod
+    def order(phase: str) -> int:
+        return _PageOcr.ORDER.get(phase, len(_PageOcr.ORDER) + 1)
+
+    @staticmethod
+    def for_phase(page: ReadPage, phase: str) -> ReadPage:
+        """`page` as the OCR phase `phase` sees it: pictures left to a later phase
+        (`ReadPage.region_phase`) are not there yet."""
+        if page.region_phase and _PageOcr.order(page.region_phase) > _PageOcr.order(phase):
+            return replace(page, image_regions=(), region_files=())
+        return page
 
     MIN_CHARS = 20
     MIN_WORDS = 3
@@ -86,11 +102,19 @@ class _PageOcr:
         path: Path,
         reader_for: Callable[[Path], DocumentReader | None] | None = None,
         warn: bool = True,
+        phase: str = "quick",
+        page_number: int | None = None,
     ) -> Iterator[tuple[int, ReadPage]]:
-        """The pages of `path`. With `reader_for` (the reader of the add-on that reads an image
-        file, or None), the pictures a page takes from files are resolved: see
-        `readable_regions`. `warn` logs the pictures that are skipped."""
-        for number, page in enumerate(reader.read(path), start=1):
+        """The pages of `path` (only `page_number`, if given) as `phase` sees them. With
+        `reader_for` (the reader of the add-on that reads an image file, or None), the pictures a
+        page takes from files are resolved: see `readable_regions`. `warn` logs the pictures that
+        are skipped."""
+        if page_number is None:
+            pages = enumerate(reader.read(path), start=1)
+        else:
+            pages = ((page_number, page) for page in reader.read(path, page_number))
+        for number, page in pages:
+            page = _PageOcr.for_phase(page, phase)
             yield number, _PageOcr.readable_regions(page, path, reader_for, warn)
 
     @staticmethod
@@ -195,7 +219,12 @@ class _PageOcr:
     ) -> _PageResult:
         """Read one page (see `_read`), carrying the page's details along."""
         result = _PageOcr._read(number, page, executor, language, meter, key_prefix)
-        return replace(result, details=dict(page.details)) if page.details else result
+        later = page.region_phase and _PageOcr.order(page.region_phase) > _PageOcr.order("quick")
+        if page.details:
+            result = replace(result, details=dict(page.details))
+        if later:  # the pictures the phase left alone are for `region_phase`
+            result = replace(result, deepen_from=page.region_phase)
+        return result
 
     @staticmethod
     def _read(

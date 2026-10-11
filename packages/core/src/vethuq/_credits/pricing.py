@@ -47,6 +47,16 @@ class _Pricing:
             return milli(full)
         return milli(min(full, max(full * covered, t.minimum)))
 
+    def rotated_milli(self, factor: float, passes: int, *, covered: float = 1.0) -> int:
+        """The cost of reading a page at `passes` rotated angles (the deeper phases): each pass is
+        `factor` x the rotated rate x the device and model multipliers. `covered` is the share of
+        the page read (images only), as for `cost_milli`."""
+        t = self.terms
+        one = factor * t.rotated_factor * t.cpu * t.fast
+        if covered < 1.0:
+            one = min(one, max(one * covered, t.minimum))
+        return milli(one * passes)
+
     def blank_milli(self, charged_milli: int) -> int:
         """A page that turned out to be blank costs the minimum only."""
         return min(charged_milli, milli(self.terms.minimum))

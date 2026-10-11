@@ -13,12 +13,21 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _DocumentIndex, _IndexRun, _PdfPage, _RemoteJob, _UsageDaily
-from vethuq._db.values import _PageSource
+from vethuq._db import (
+    _DocumentIndex,
+    _IndexRun,
+    _PdfPage,
+    _PdfPagePhase,
+    _RemoteJob,
+    _UsageDaily,
+)
+from vethuq._db.values import _PageSource, _PageState
 from vethuq._filetypes import _FileTypeCatalog
+from vethuq._ocr import _PageOcr
+from vethuq._settings import _OcrSettings
 from vethuq.enums import FileStatus, IndexRunStatus, RemoteJobStatus
 
 
@@ -27,7 +36,8 @@ class _EtaResult:
     local_seconds: float = 0.0
     remote_seconds: float = 0.0
     complete: bool = True
-    by_file_type: dict[str, float] = field(default_factory=dict)
+    by_file_type: dict[str, float] = field(default_factory=dict)  # the quick phase's local time
+    by_phase: dict[str, float] = field(default_factory=dict)  # local time, per OCR phase
 
     @property
     def seconds(self) -> float:
@@ -41,8 +51,9 @@ class _Eta:
     SAMPLE_FILES = 500
     LOCAL = "local"
 
-    def __init__(self, catalog: _FileTypeCatalog) -> None:
+    def __init__(self, catalog: _FileTypeCatalog, deepener=None) -> None:
         self.catalog = catalog
+        self.deepener = deepener  # the deeper phases the engine setting reaches
 
     # ----- the estimate -----------------------------------------------------------------------
 
@@ -50,11 +61,19 @@ class _Eta:
         """What `run` still has to do: its unfinished files (while it is `active`) and the remote
         jobs that are still out."""
         local, by_type, complete = 0.0, {}, True
+        by_phase: dict[str, float] = {}
         remote_pages = False
         if active:
             local, by_type, complete, remote_pages = self._local(session, run)
+            if by_type:
+                by_phase["quick"] = local
+            deeper, deeper_complete, deeper_remote = self._deeper(session, run)
+            by_phase.update(deeper)
+            local += sum(deeper.values())
+            complete = complete and deeper_complete
+            remote_pages = remote_pages or deeper_remote
         remote, remote_complete = self._remote(session, run, remote_pages)
-        return _EtaResult(local, remote, complete and remote_complete, by_type)
+        return _EtaResult(local, remote, complete and remote_complete, by_type, by_phase)
 
     # ----- local OCR --------------------------------------------------------------------------
 
@@ -87,6 +106,82 @@ class _Eta:
                 continue
             seconds[file_type] = ocr_pages * per_page / workers
         return sum(seconds.values()), seconds, complete, ocr_pending and run.tier != self.LOCAL
+
+    def _deeper(self, session: Session, run: _IndexRun) -> tuple[dict[str, float], bool, bool]:
+        """The deeper OCR phases the engine setting reaches: the pages that have not had a phase
+        yet, times the passes it makes of each, times how long a pass took before. Pages the quick
+        phase has not read yet are not counted: whether they need OCR is not known until they are
+        read. Returns (seconds per phase, whether every phase had history, whether a remote tier
+        has such pages to read)."""
+        if self.deepener is None:
+            return {}, True, False
+        engine = _OcrSettings.get_engine(session)
+        seconds: dict[str, float] = {}
+        complete, remote = True, False
+        workers = max(run.workers, 1)
+        for spec in self.deepener.deeper(engine):
+            pages = self._pages_without(session, spec.id, run)
+            if not pages:
+                continue
+            if run.tier not in (self.LOCAL, "hybrid"):
+                remote = True  # a remote tier reads them: see `_remote`
+                continue
+            per_pass = self._seconds_per_pass(session, spec.id)
+            if per_pass is None:
+                complete = False
+                continue
+            seconds[spec.id] = pages * len(spec.angles) * per_pass / workers
+        return seconds, complete, remote
+
+    @staticmethod
+    def _pages_without(session: Session, phase: str, run: _IndexRun) -> int:
+        """Pages that need `phase` (scanned, with images, or with pictures left to it) and have
+        not had it in any language."""
+        wanted = _PageOcr.order(phase)
+        later = [p for p in _PageOcr.ORDER if _PageOcr.order(p) > wanted]
+        eligible = or_(
+            _PdfPage.source.in_((_PageSource.OCR, _PageSource.MIXED)),
+            _PdfPage.deepen_from.is_not(None),
+        )
+        statement = (
+            select(func.count())
+            .select_from(_PdfPage)
+            .where(
+                _PdfPage.status == _PageState.DONE,
+                eligible,
+                or_(_PdfPage.deepen_from.is_(None), _PdfPage.deepen_from.not_in(later)),
+                ~exists().where(
+                    and_(_PdfPagePhase.page_id == _PdfPage.id, _PdfPagePhase.phase == phase)
+                ),
+            )
+        )
+        scope = None
+        if run.file_path is not None:
+            scope = _DocumentIndex.file_path == run.file_path
+        elif run.source_id is not None:
+            scope = _DocumentIndex.source_id == run.source_id
+        if scope is not None:
+            statement = statement.where(
+                exists().where(and_(_DocumentIndex.document_id == _PdfPage.document_id, scope))
+            )
+        return int(session.scalar(statement) or 0)
+
+    def _seconds_per_pass(self, session: Session, phase: str) -> float | None:
+        """Seconds one rotated read of a page took in `phase`: the last `WINDOW_DAYS` days, else
+        all time. None if the phase has never run."""
+        since = (datetime.now(UTC) - timedelta(days=self.WINDOW_DAYS)).date().isoformat()
+
+        def average(recent_only: bool) -> float | None:
+            statement = select(
+                func.sum(_UsageDaily.duration_ms), func.sum(_UsageDaily.passes)
+            ).where(_UsageDaily.phase == phase, _UsageDaily.duration_ms > 0, _UsageDaily.passes > 0)
+            if recent_only:
+                statement = statement.where(_UsageDaily.day >= since)
+            ms, passes = session.execute(statement).one()
+            return ms / 1000 / passes if ms and passes else None
+
+        recent = average(True)
+        return recent if recent is not None else average(False)
 
     def _remaining(self, session: Session, run: _IndexRun) -> dict[str, int]:
         """The files the run has yet to do, by file type: its total less what it has done, taken
@@ -156,7 +251,7 @@ class _Eta:
                     func.sum(_UsageDaily.passes),
                 )
                 .where(
-                    _UsageDaily.phase != "",
+                    _UsageDaily.phase == "quick",
                     _UsageDaily.duration_ms > 0,
                     _UsageDaily.passes > 0,
                 )

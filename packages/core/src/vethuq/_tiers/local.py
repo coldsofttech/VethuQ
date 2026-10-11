@@ -17,5 +17,7 @@ class _LocalExecutor(OcrExecutor):
         return "this computer"
 
     def recognize(self, request: OcrRequest) -> OcrResult:
-        engine, _phase = self._ocr.engine(request.language)
+        engine, _phase = self._ocr.engine(request.language, request.phase)
+        if request.angle:
+            return engine.recognize(request.image, request.angle)
         return engine.recognize(request.image)
