@@ -736,12 +736,12 @@ Only closed UTC days are sent, each once. The schema is in the VethuQ repository
 Run OCR in **your own GitHub account**. `client.github.setup()` creates a private repository you own, writes VethuQ's thin caller workflow into it and gives it a master key as a secret. VethuQ then encrypts the pages that need OCR, uploads them there, and a GitHub Actions job runs the worker image on them; results come back encrypted. Pages with a text layer never leave your computer. There is no template repository: GitHub copies a template whole, so the client writes the one workflow file itself (the caller ships inside the package, so it always matches the client).
 
 ```python
-runner = client.github.setup("my-runner", token="github_pat_...")   # or set VETHUQ_GITHUB_TOKEN
+runner = client.github.setup("my-runner", token="github_pat_...")  # or set VETHUQ_GITHUB_TOKEN
 print(runner.url, runner.workflow_ref, runner.key_fingerprint)
 
-client.github.status().problems      # exists? workflow unchanged? secret set? up to date?
-client.github.update()               # move to the newest runner version this VethuQ allows
-client.github.versions()             # what it may set up (workflow tag, image, protocol)
+client.github.status().problems  # exists? workflow unchanged? secret set? up to date?
+client.github.update()  # move to the newest runner version this VethuQ allows
+client.github.versions()  # what it may set up (workflow tag, image, protocol)
 client.github.remove(delete_repo=True)
 ```
 
