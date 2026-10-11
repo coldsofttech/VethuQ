@@ -35,6 +35,9 @@ dependencies = [
 github = ["vethuq-addon-github~=0.1"]
 # Search by meaning (a free add-on; preparing pages costs credits). Brings ONNX Runtime.
 semantic = ["vethuq-addon-semantic~=0.1"]
+# Read image files (PNG, JPG, TIFF) and the pictures Markdown files link to: the image bundle, which
+# installs the three free image add-ons.
+images = ["vethuq-bundle-image~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

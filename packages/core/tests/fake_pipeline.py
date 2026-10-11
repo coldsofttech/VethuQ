@@ -223,6 +223,29 @@ class FakePdfAddon(Addon):
         ]
 
 
+class FakePictureReader(DocumentReader):
+    """An image file: one page for OCR whose text is what the file holds."""
+
+    def read(self, file_path, page_number=None):
+        text = Path(file_path).read_text(encoding="utf-8")
+        yield ReadPage(
+            native_text="",
+            image_regions=(),
+            render=lambda region: ("page", text, 0.9),
+            width_pt=595.276,
+            height_pt=841.89,
+        )
+
+
+class FakePngAddon(Addon):
+    """`vethuq-addon-png`, which VethuQ does not install by default: only tests that ask for it."""
+
+    manifest = Manifest(id="png", name="vethuq-addon-png", version="0.1.0")
+
+    def file_types(self):
+        return [FileTypeSpec("png", "PNG", (".png",), FakePictureReader())]
+
+
 class FakePaddleAddon(Addon):
     manifest = Manifest(id="paddle", name="vethuq-addon-paddle", version="0.1.0")
 
@@ -254,9 +277,10 @@ ADDONS = {
 }
 
 
-def install(folder: Path) -> None:
-    """Make the three add-ons look installed (dist-info with entry points) from `folder`."""
-    for addon_id, (module, cls) in ADDONS.items():
+def install(folder: Path, extra: dict[str, tuple[str, str]] | None = None) -> None:
+    """Make the three add-ons look installed (dist-info with entry points) from `folder`, and
+    any `extra` ones (`{"png": ("vethuq_addon_png", "FakePngAddon")}`)."""
+    for addon_id, (module, cls) in {**ADDONS, **(extra or {})}.items():
         dist = folder / f"{module}-0.1.0.dist-info"
         dist.mkdir()
         (dist / "METADATA").write_text(

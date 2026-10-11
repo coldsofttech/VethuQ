@@ -2641,6 +2641,9 @@ dependencies = [
 github = [
     { name = "vethuq-addon-github" },
 ]
+images = [
+    { name = "vethuq-bundle-image" },
+]
 semantic = [
     { name = "vethuq-addon-semantic" },
 ]
@@ -2672,8 +2675,9 @@ requires-dist = [
     { name = "vethuq-addon-semantic", marker = "extra == 'semantic'", directory = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
     { name = "vethuq-addon-txt", directory = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
+    { name = "vethuq-bundle-image", marker = "extra == 'images'", directory = "../VethuQ-premium/packages/bundles/image" },
 ]
-provides-extras = ["github", "semantic"]
+provides-extras = ["github", "images", "semantic"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -2770,6 +2774,24 @@ requires-dist = [
     { name = "pynacl", specifier = ">=1.5" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
     { name = "vethuq-worker", extras = ["images"], editable = "packages/worker" },
+]
+
+[[package]]
+name = "vethuq-addon-jpg"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 
 [[package]]
@@ -2887,6 +2909,24 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-png"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/png" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-proximity"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" }
@@ -2924,6 +2964,24 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-tiff"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-txt"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/file-types/txt" }
@@ -2948,6 +3006,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-bundle-image"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/bundles/image" }
+dependencies = [
+    { name = "vethuq-addon-jpg" },
+    { name = "vethuq-addon-png" },
+    { name = "vethuq-addon-tiff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-jpg", editable = "../VethuQ-premium/packages/add-ons/file-types/jpg" },
+    { name = "vethuq-addon-png", editable = "../VethuQ-premium/packages/add-ons/file-types/png" },
+    { name = "vethuq-addon-tiff", editable = "../VethuQ-premium/packages/add-ons/file-types/tiff" },
+]
 
 [[package]]
 name = "vethuq-worker"

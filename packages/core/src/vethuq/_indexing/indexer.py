@@ -290,7 +290,7 @@ class _Indexer:
             prefix = f"d{document_id}.l{plan.language_id}."
             try:
                 for number, page in _PageOcr.pages(
-                    file_type.reader, Path(plan.path), self.file_types.is_supported
+                    file_type.reader, Path(plan.path), self.file_types.reader_for
                 ):
                     if self._skip(number, pages, read, staged):
                         continue
@@ -506,9 +506,7 @@ class _Indexer:
             file_type = self.file_types.for_path(path)
             try:
                 found = list(
-                    _PageOcr.pages(
-                        file_type.reader, Path(path), self.file_types.is_supported, False
-                    )
+                    _PageOcr.pages(file_type.reader, Path(path), self.file_types.reader_for, False)
                 )
             except Exception:  # noqa: BLE001
                 self._logger.debug("Couldn't read %s to estimate it", path)

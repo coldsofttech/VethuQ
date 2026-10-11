@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from vethuq_addon_api import FileTypeSpec
+from vethuq_addon_api import DocumentReader, FileTypeSpec
 
 
 class _FileTypeCatalog:
@@ -26,6 +26,11 @@ class _FileTypeCatalog:
             (s for s in self.specs() if s.available and extension in s.extensions),
             None,
         )
+
+    def reader_for(self, path: str | Path) -> DocumentReader | None:
+        """The reader of the available file type that reads `path`, or None."""
+        spec = self.for_path(path)
+        return spec.reader if spec is not None else None
 
     def is_supported(self, path: str | Path) -> bool:
         return self.for_path(path) is not None

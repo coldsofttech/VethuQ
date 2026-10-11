@@ -29,6 +29,10 @@ vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf" 
 vethuq-addon-txt = { path = "../VethuQ-premium/packages/add-ons/file-types/txt" }
 vethuq-addon-csv = { path = "../VethuQ-premium/packages/add-ons/file-types/csv" }
 vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown" }
+vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png" }
+vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
+vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
+vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }

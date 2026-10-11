@@ -84,34 +84,56 @@ class _PageOcr:
     def pages(
         reader: DocumentReader,
         path: Path,
-        readable: Callable[[Path], bool] | None = None,
+        reader_for: Callable[[Path], DocumentReader | None] | None = None,
         warn: bool = True,
     ) -> Iterator[tuple[int, ReadPage]]:
-        """The pages of `path`. With `readable` (whether an installed add-on reads an image file),
-        a region taken from an image file nothing can read is dropped, and logged if `warn`."""
+        """The pages of `path`. With `reader_for` (the reader of the add-on that reads an image
+        file, or None), the pictures a page takes from files are resolved: see
+        `readable_regions`. `warn` logs the pictures that are skipped."""
         for number, page in enumerate(reader.read(path), start=1):
-            yield number, _PageOcr.readable_regions(page, path, readable, warn)
+            yield number, _PageOcr.readable_regions(page, path, reader_for, warn)
 
     @staticmethod
     def readable_regions(
-        page: ReadPage, path: Path, readable: Callable[[Path], bool] | None, warn: bool
+        page: ReadPage,
+        path: Path,
+        reader_for: Callable[[Path], DocumentReader | None] | None,
+        warn: bool,
     ) -> ReadPage:
-        if readable is None or not page.region_files:
+        """A page whose `region_files` can be read. A region from an image file that no installed
+        add-on reads is dropped (and logged if `warn`), so the rest of the page is still
+        indexed. A region that is kept is rendered by the add-on that reads its file, so a picture
+        is prepared the way an image file of its own would be (orientation, colour, size)."""
+        if reader_for is None or not page.region_files:
             return page
-        keep = [i for i, file in enumerate(page.region_files) if readable(file)]
-        if len(keep) == len(page.region_files):
-            return page
+        readers = [reader_for(file) for file in page.region_files]
+        keep = [i for i, reader in enumerate(readers) if reader is not None]
         if warn:
             for i, file in enumerate(page.region_files):
-                if i not in keep:
+                if readers[i] is None:
                     _PageOcr._logger.warning(
                         "%s: the image %s was not read: no installed add-on reads %s files",
                         path, file, file.suffix.lower() or "such",
                     )  # fmt: skip
+        if not keep:
+            return replace(page, image_regions=(), region_files=())
+
+        def render(region: Any) -> Any:
+            index = int(region[0])
+            reader = readers[index]
+            if reader is None:  # not asked for: only kept regions are read
+                return page.render(region)
+            pages = reader.read(page.region_files[index], 1)
+            try:
+                return next(pages).render(None)
+            finally:
+                pages.close()
+
         return replace(
             page,
             image_regions=tuple(page.image_regions[i] for i in keep),
             region_files=tuple(page.region_files[i] for i in keep),
+            render=render,
         )
 
     @staticmethod

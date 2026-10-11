@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 import vethuq
 from vethuq._db import _CsvPage, _MarkdownPage, _PdfPage, _TxtPage
+from vethuq._filetypes import _FileTypeCatalog
 from vethuq._indexing import _Indexer
 from vethuq.enums import FileStatus
 
@@ -91,8 +92,15 @@ class TestTextFiles:
 
 class TestMarkdownPictures:
     def test_without_an_add_on_for_the_format_the_picture_is_skipped_with_a_warning(
-        self, client, root, caplog
+        self, client, root, caplog, monkeypatch
     ):
+        # Whatever is installed here, no add-on reads PNG for this test.
+        reader_for = _FileTypeCatalog.reader_for
+        monkeypatch.setattr(
+            _FileTypeCatalog,
+            "reader_for",
+            lambda self, path: None if str(path).endswith(".png") else reader_for(self, path),
+        )
         (root / "door.png").write_bytes(b"not really a png")
         (root / "c.md").write_text("# Doors\n\nA red door.\n\n![The door](door.png)\n")
         with caplog.at_level(logging.WARNING, logger="vethuq.indexing"):
@@ -111,3 +119,37 @@ class TestMarkdownPictures:
             _, statuses = index(client, root)
         assert statuses["c.md"] is FileStatus.INDEXED
         assert not [r for r in caplog.records if "was not read" in r.getMessage()]
+
+
+class TestMarkdownPicturesWithTheImageAddOn:
+    """With an add-on that reads the picture's format, the picture is read like an image file."""
+
+    @pytest.fixture
+    def png(self, tmp_path_factory, monkeypatch):
+        import sys
+
+        from tests import fake_pipeline
+
+        folder = tmp_path_factory.mktemp("png_addon")
+        monkeypatch.setattr(sys, "path", [str(folder), *sys.path])
+        fake_pipeline.install(
+            folder, {"png": ("vethuq_addon_png", "FakePngAddon")}
+        )  # already installed once by the autouse fixture; this adds png
+        yield
+        for name in [n for n in sys.modules if n.startswith("vethuq.addons.")]:
+            if name.rsplit(".", 1)[-1] == "png":
+                del sys.modules[name]
+
+    def test_its_text_is_added_to_the_page(self, png, tmp_path, root, caplog):
+        (root / "door.png").write_text("RED DOOR NUMBER SEVEN", encoding="utf-8")
+        (root / "c.md").write_text("# Doors\n\nA page about doors.\n\n![d](door.png)\n")
+        with vethuq.VethuQ(db_path=tmp_path / "db2" / "vethuq.db") as client:
+            client.settings.index.set_stability_check_seconds(0)
+            with caplog.at_level(logging.WARNING, logger="vethuq.indexing"):
+                run, statuses = index(client, root)
+            assert statuses["c.md"] is FileStatus.INDEXED
+            assert statuses["door.png"] is FileStatus.INDEXED  # the image is a file of its own too
+            assert not [r for r in caplog.records if "was not read" in r.getMessage()]
+            assert run.ocr_pages == 2  # the picture inside the Markdown file, and the image file
+            found = client.search.run("seven").matches
+            assert {m.file_name for m in found} == {"c.md", "door.png"}

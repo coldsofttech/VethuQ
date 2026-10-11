@@ -33,7 +33,8 @@ class _Version:
         """The database schema version this build reads and writes."""
         return _Schema.VERSION
 
-    # Placeholders: these will list what is installed once the catalogs behind them exist.
+    # Placeholders: these will list what is installed once the catalogs behind them exist (the
+    # bundles are real: see below).
 
     @staticmethod
     def file_types() -> tuple[str, ...]:
@@ -55,6 +56,10 @@ class _Version:
     def add_ons() -> tuple[str, ...]:
         return ()
 
+    BUNDLE_GROUP = "vethuq.bundles"
+
     @staticmethod
     def bundles() -> tuple[str, ...]:
-        return ()
+        """The bundles installed (`vethuq-bundle-<name>`), by name: each registers itself under
+        the `vethuq.bundles` entry point group."""
+        return tuple(sorted({e.name for e in metadata.entry_points(group=_Version.BUNDLE_GROUP)}))

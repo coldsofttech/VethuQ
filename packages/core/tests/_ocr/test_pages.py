@@ -4,7 +4,7 @@ import pytest
 
 from vethuq._db.values import _PageSource
 from vethuq._ocr import _PageOcr
-from vethuq_addon_api import LanguageSpec, ReadPage
+from vethuq_addon_api import DocumentReader, LanguageSpec, ReadPage
 from vethuq_addon_api.testing import FakeExecutor
 
 EN = LanguageSpec("en", "English", default=True)
@@ -112,24 +112,52 @@ class TestTextOnlyPageWithPictures:
         from pathlib import Path
 
         read = self.picture_page([Path("a.png"), Path("b.tif")])
+        readers = {".png": ImageReader()}
         with caplog.at_level("WARNING", logger="vethuq.indexing"):
             kept = _PageOcr.readable_regions(
-                read, Path("n.md"), lambda f: f.suffix == ".png", warn=True
+                read, Path("n.md"), lambda f: readers.get(f.suffix), warn=True
             )
         assert kept.region_files == (Path("a.png"),) and len(kept.image_regions) == 1
-        assert kept.render(kept.image_regions[0]) == "img-0"
         assert [r.getMessage() for r in caplog.records if "b.tif" in r.getMessage()]
+
+    def test_a_kept_picture_is_rendered_by_the_add_on_that_reads_its_format(self):
+        from pathlib import Path
+
+        read = self.picture_page([Path("a.tif"), Path("b.png"), Path("c.tif")])
+        readers = {".tif": ImageReader("tif"), ".png": ImageReader("png")}
+        kept = _PageOcr.readable_regions(read, Path("n.md"), lambda f: readers.get(f.suffix), False)
+        # The regions keep their coordinates, so the right file is found for each.
+        assert [kept.render(r) for r in kept.image_regions] == [
+            "tif:a.tif", "png:b.png", "tif:c.tif",
+        ]  # fmt: skip
+        assert ImageReader.opened == []  # every reader was closed
 
     def test_with_no_picture_left_the_page_is_native(self):
         from pathlib import Path
 
         read = self.picture_page([Path("a.png")])
-        kept = _PageOcr.readable_regions(read, Path("n.md"), lambda f: False, warn=False)
+        kept = _PageOcr.readable_regions(read, Path("n.md"), lambda f: None, warn=False)
         assert not _PageOcr.needs_ocr(kept)
         assert _PageOcr.read_page(1, kept, None).source is _PageSource.NATIVE
 
-    def test_without_a_filter_the_page_is_unchanged(self):
+    def test_without_a_resolver_the_page_is_unchanged(self):
         from pathlib import Path
 
         read = self.picture_page([Path("a.png")])
         assert _PageOcr.readable_regions(read, Path("n.md"), None, warn=True) is read
+
+
+class ImageReader(DocumentReader):
+    """Reads an image file as one page whose render says which file and reader it came from."""
+
+    opened: list = []
+
+    def __init__(self, label="png"):
+        self.label = label
+
+    def read(self, file_path, page_number=None):
+        ImageReader.opened.append(file_path)
+        try:
+            yield ReadPage("", (), lambda region: f"{self.label}:{file_path.name}")
+        finally:
+            ImageReader.opened.remove(file_path)

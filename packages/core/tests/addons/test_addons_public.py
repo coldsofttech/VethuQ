@@ -28,7 +28,7 @@ class TestWithoutAddons:
     def test_only_the_built_in_addons_are_installed(self, client):
         assert isinstance(client.addons, Addons)
         installed = [info.id for info in client.addons.list()]
-        assert [i for i in installed if i != "semantic"] == [  # semantic is an extra
+        assert [i for i in installed if i not in {"semantic", "png", "jpg", "tiff"}] == [  # extras
             "case",
             "csv",
             "english",

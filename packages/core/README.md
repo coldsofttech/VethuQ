@@ -348,7 +348,7 @@ errors = client.sources.list_files(1, detailed=True, status="error")  # only the
 | `ERROR` | Processing failed; see `error` |
 | `MODIFIED` | Changed on disk since it was indexed. It will be processed again |
 | `REMOVED` | Indexed once and no longer on disk. It stays listed (with `on_disk` false) until the source is purged |
-| `UNSUPPORTED` | A kind of file VethuQ can't read yet. Supported: PDF, text, CSV and Markdown for now |
+| `UNSUPPORTED` | A kind of file VethuQ can't read yet. Supported: PDF, text, CSV and Markdown, and images with the image add-ons installed |
 
 A `FileIndex` has `status`, `on_disk`, `error`, `sha256` (known once the file has been read), `indexed_at`, `retry_count` and `duplicate_of` (for a file with the same content as an earlier one: the path of that original), plus `to_dict()` and `to_json()`. `status` (a `FileStatus` or its string) keeps only the files in that state and needs `detailed=True`. Reading never changes anything; the index is written as files are processed. The documents behind it are internal.
 
@@ -634,7 +634,7 @@ Each also has a `get_...` and `reset_...`. The stability check waits once per ru
 
 ## File types
 
-`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for.
+`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. Image files (PNG, JPG, TIFF) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
 
 ```python
 client.file_types.list()  # [FileType(id="pdf", label="PDF", extensions=(".pdf",), available=True, reason="")]
@@ -1232,9 +1232,9 @@ It returns a `VersionDetails`:
 | `ocr_engines` | The OCR engines installed |
 | `ocr_languages` | The OCR languages installed |
 | `add_ons` | The add-ons installed |
-| `bundles` | The bundles installed |
+| `bundles` | The bundles installed (for example `image`) |
 
-The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
+`bundles` lists the names of the installed bundles (`vethuq-bundle-<name>` packages register under the `vethuq.bundles` entry point group). The other five of the last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
 Searching is in `vethuq.search`, processing tiers are in `vethuq.tiers`, the GitHub runner is in the GitHub add-on (`vethuq.addons.github`), credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 

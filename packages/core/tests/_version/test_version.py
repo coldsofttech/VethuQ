@@ -54,3 +54,24 @@ class TestVersion:
     )
     def test_placeholders_are_empty_for_now(self, placeholder):
         assert getattr(_Version, placeholder)() == ()
+
+
+class TestBundles:
+    def test_none_installed(self, monkeypatch):
+        monkeypatch.setattr(metadata, "entry_points", lambda group: [])
+        assert _Version.bundles() == ()
+
+    def test_the_installed_bundles_by_name(self, monkeypatch):
+        class Point:
+            def __init__(self, name):
+                self.name = name
+
+        seen = []
+
+        def entry_points(group):
+            seen.append(group)
+            return [Point("image"), Point("archives"), Point("image")]
+
+        monkeypatch.setattr(metadata, "entry_points", entry_points)
+        assert _Version.bundles() == ("archives", "image")
+        assert seen == ["vethuq.bundles"]

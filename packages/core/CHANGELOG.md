@@ -6,6 +6,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (image file types)
+- The image file types are free add-ons that are not installed with VethuQ: `vethuq-addon-png`,
+  `-jpg` and `-tiff`. `pip install vethuq[images]` (or `vethuq-bundle-image`) installs the three.
+- `client.version.bundles` lists the installed bundles (the `vethuq.bundles` entry point group).
+- A picture a Markdown file links to is rendered by the add-on that reads its format, as an image
+  file of its own would be (orientation, colour and size handled). The file is charged as one mixed
+  page; the picture is not priced by its pixels.
+
 ### Added (file types)
 - The `.txt`, `.csv` and `.md`/`.markdown` file types, as the free add-ons `vethuq-addon-txt`,
   `vethuq-addon-csv` and `vethuq-addon-markdown`, installed with VethuQ. These files are read
