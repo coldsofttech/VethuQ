@@ -10,8 +10,27 @@ from vethuq_addon_api.api import (
     LanguageSpec,
     Manifest,
     MigrationInfo,
+    OcrPhaseSpec,
 )
 from vethuq_addon_api.errors import AddonError, AddonLicenceError
+from vethuq_addon_api.ocr import (
+    ModelProgress,
+    OcrEngine,
+    OcrEngineProvider,
+    OcrModelSpec,
+    OcrResult,
+)
+from vethuq_addon_api.readers import (
+    CorruptedFileError,
+    DocumentReader,
+    FileRemovedError,
+    FileTypeSpec,
+    PasswordProtectedError,
+    ReadPage,
+    Region,
+    UnreadableFileError,
+    extended_path,
+)
 
 ENTRY_POINT_GROUP = "vethuq.addons"
 
@@ -21,9 +40,24 @@ __all__ = [
     "Addon",
     "AddonError",
     "AddonLicenceError",
+    "CorruptedFileError",
+    "DocumentReader",
+    "FileRemovedError",
+    "FileTypeSpec",
     "Hook",
     "Host",
     "LanguageSpec",
     "Manifest",
     "MigrationInfo",
+    "ModelProgress",
+    "OcrEngine",
+    "OcrEngineProvider",
+    "OcrModelSpec",
+    "OcrPhaseSpec",
+    "OcrResult",
+    "PasswordProtectedError",
+    "ReadPage",
+    "Region",
+    "UnreadableFileError",
+    "extended_path",
 ]

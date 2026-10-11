@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 from vethuq_addon_api.api import API_VERSION
+from vethuq_addon_api.ocr import OcrResult
+from vethuq_addon_api.readers import DocumentReader, ReadPage
 
 
 class FakeHost:
@@ -65,3 +68,62 @@ class FakeHost:
     def log(self, level: int, message: str) -> None:
         self.logs.append((level, message))
         logging.getLogger("vethuq.addon.fake").log(level, message)
+
+
+class FakeEngine:
+    """An `OcrEngine` that returns canned text, for testing code that uses one.
+
+    `texts` maps what `recognize` is given (the image) to the text to return; any other image
+    gets `default`. Every call is recorded in `calls`.
+    """
+
+    def __init__(
+        self,
+        texts: dict[str, str] | None = None,
+        *,
+        default: str = "",
+        confidence: float = 0.9,
+        language: str = "en",
+        name: str = "fake-ocr 1.0",
+    ) -> None:
+        self._texts = texts or {}
+        self._default = default
+        self._confidence = confidence
+        self._language = language
+        self._name = name
+        self.calls: list[object] = []
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def language(self) -> str:
+        return self._language
+
+    def recognize(self, image: object) -> OcrResult:
+        self.calls.append(image)
+        text = self._texts.get(image, self._default) if isinstance(image, str) else self._default
+        lines = tuple((line, self._confidence) for line in text.splitlines())
+        return OcrResult(
+            text=text,
+            confidence=self._confidence if text else 0.0,
+            engine=self._name,
+            language=self._language,
+            lines=lines,
+        )
+
+
+class FakeReader(DocumentReader):
+    """A `DocumentReader` that yields the pages it was given, whatever the file."""
+
+    def __init__(self, pages: list[ReadPage] | None = None) -> None:
+        self.pages = pages or []
+        self.opened: list[Path] = []
+
+    def read(self, file_path: Path, page_number: int | None = None) -> Iterator[ReadPage]:
+        self.opened.append(Path(file_path))
+        if page_number is not None:
+            yield self.pages[page_number - 1]
+            return
+        yield from self.pages

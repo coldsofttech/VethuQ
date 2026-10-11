@@ -8,11 +8,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from vethuq_addon_api.ocr import OcrEngineProvider
+    from vethuq_addon_api.readers import FileTypeSpec
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.2.0"
+API_VERSION = "0.3.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -109,6 +113,24 @@ class LanguageSpec:
         return json.dumps(self.to_dict(), indent=indent)
 
 
+@dataclass(frozen=True)
+class OcrPhaseSpec:
+    """A phase of OCR an add-on provides.
+
+    Phases run in `order`; the first (`quick`) reads every page upright so a file is searchable
+    fast. `angles` are the rotations, in degrees, the phase reads; `profile` names the OCR model
+    set it uses (for example `mobile`).
+    """
+
+    id: str
+    label: str
+    order: int
+    angles: tuple[int, ...] = (0,)
+    profile: str = ""
+    available: bool = True
+    reason: str = ""
+
+
 @runtime_checkable
 class Host(Protocol):
     """What VethuQ offers an add-on. Each add-on gets its own host, so settings are its own."""
@@ -163,6 +185,18 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
 
     def before_migration(self, info: MigrationInfo) -> None:  # noqa: B027 - optional hook
         """The database is about to be migrated to a newer schema."""
+
+    def file_types(self) -> list[FileTypeSpec]:
+        """The file types this add-on can read (none, unless it is a file-type add-on)."""
+        return []
+
+    def ocr_engines(self) -> list[OcrEngineProvider]:
+        """The OCR engines this add-on provides (none, unless it is an engine add-on)."""
+        return []
+
+    def ocr_phases(self) -> list[OcrPhaseSpec]:
+        """The OCR phases this add-on provides (none, unless it is a phase add-on)."""
+        return []
 
     def languages(self) -> list[LanguageSpec]:
         """The languages this add-on provides (none, unless it is a language add-on).
