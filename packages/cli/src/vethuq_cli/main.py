@@ -20,7 +20,18 @@ def _version(value: bool) -> None:
         raise typer.Exit()
 
 
+def _can_interact() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 def _main(
+    ctx: typer.Context,
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Open the interactive shell (needs vethuq-interactive-cli).",
+    ),
     json: bool = typer.Option(False, "--json", help="Print results as JSON."),
     db: Path = typer.Option(None, "--db", help="Use this database file."),  # noqa: B008
     version: bool = typer.Option(
@@ -31,15 +42,31 @@ def _main(
     State.json = json
     if db is not None:
         State.db_path = db
+    if ctx.invoked_subcommand is not None:
+        return
+    # No command: the interactive shell when it is installed and this is a terminal, else help.
+    if interactive or _can_interact():
+        try:
+            from vethuq_interactive_cli import run
+        except ImportError:
+            if interactive:
+                raise SystemExit(
+                    "The interactive shell needs: pip install vethuq-interactive-cli"
+                ) from None
+        else:
+            run(root=ctx.find_root().command)  # type: ignore[arg-type]
+            raise typer.Exit()
+    typer.echo(ctx.get_help())
+    raise typer.Exit()
 
 
 def build_app() -> typer.Typer:
     """The whole command tree: the built-in groups, the settings hierarchy (it lists the installed
     engines and add-ons) and the commands installed add-ons describe."""
     app = typer.Typer(
-        help=f"{vethuq.APP_NAME}: {vethuq.APP_TAGLINE}", no_args_is_help=True, add_completion=False
+        help=f"{vethuq.APP_NAME}: {vethuq.APP_TAGLINE}", no_args_is_help=False, add_completion=False
     )
-    app.callback()(_main)
+    app.callback(invoke_without_command=True)(_main)
     commands.register(app)
     client = State.client()
     app.add_typer(settings.build(client), name="settings")

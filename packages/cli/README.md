@@ -7,6 +7,8 @@ The `vethuq` command line, built on the public `vethuq` API (never its internals
     vethuq index run
     vethuq search "invoice" --engine like
 
+With `vethuq-interactive-cli` installed, `vethuq` with no command (in a terminal) opens the interactive shell, and `--interactive` forces it.
+
 Every command takes the global `--json` (print JSON) and `--db FILE`. With no command it prints help.
 
 | Group | What it does |

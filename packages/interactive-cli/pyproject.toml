@@ -1,0 +1,33 @@
+[project]
+name = "vethuq-interactive-cli"
+dynamic = ["version"]
+description = "VethuQ interactive shell: arrow-key menus over the vethuq command line"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "vethuq-cli",
+    "questionary>=2.0",
+]
+
+[project.scripts]
+vethuq-interactive = "vethuq_interactive_cli.main:main"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_interactive_cli"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# This package lives in a subdirectory of the repo, not at its root.
+root = "../.."
+# Released on its own with tags `interactive-cli-vX.Y.Z` (or `-dev.N`).
+tag_regex = "^interactive-cli-v(?P<version>\\d+\\.\\d+\\.\\d+(-dev\\.\\d+)?)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "interactive-cli-v*"]
+
+[tool.uv.sources]
+vethuq-cli = { workspace = true }
