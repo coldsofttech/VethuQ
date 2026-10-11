@@ -28,6 +28,7 @@ vethuq-addon-english = { path = "../VethuQ-premium/packages/english" }
 vethuq-addon-pdf = { path = "../VethuQ-premium/packages/pdf" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/ocr-quick" }
+vethuq-addon-github = { path = "../VethuQ-premium/packages/github" }
 
 [dependency-groups]
 dev = [
@@ -40,6 +41,7 @@ dev = [
     "jsonschema>=4.20",
     "pillow>=10",
     "pyyaml>=6",
+    "pynacl>=1.5",
 ]
 
 [tool.ruff]

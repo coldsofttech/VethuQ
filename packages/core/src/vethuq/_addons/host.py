@@ -71,6 +71,9 @@ class _Host:
         policy = self._policy()
         return frozenset(policy.revoked_licence_ids) if policy is not None else frozenset()
 
+    def licence_tokens(self) -> dict[str, str]:
+        return _AddonSettingsStore.licences(self._db_path)
+
     def addon_policy_enabled(self) -> bool:
         policy = self._policy()
         entry = policy.addons.get(self._addon_id) if policy is not None else None

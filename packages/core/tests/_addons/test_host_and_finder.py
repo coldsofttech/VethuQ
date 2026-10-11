@@ -46,6 +46,20 @@ class TestHost:
         first.reset_setting("mode")
         assert first.get_setting("mode") is None
 
+    def test_licence_tokens_are_each_addons_licence_setting(self, db_path):
+        _Host("a", db_path, lambda: None).set_setting("licence", "token-a")
+        _Host("b", db_path, lambda: None).set_setting("licence", "token-b")
+        _Host("c", db_path, lambda: None).set_setting("licence", "")
+        _Host("d", db_path, lambda: None).set_setting("other", "x")
+        assert _Host("a", db_path, lambda: None).licence_tokens() == {
+            "a": "token-a",
+            "b": "token-b",
+        }
+
+    def test_licence_tokens_without_a_database_are_empty(self, tmp_path):
+        assert _Host("a", tmp_path / "none.db", lambda: None).licence_tokens() == {}
+        assert not (tmp_path / "none.db").exists()
+
     def test_a_missing_database_gives_the_default(self, tmp_path):
         host = _Host("a", tmp_path / "none.db", lambda: None)
         assert host.get_setting("mode", "d") == "d"

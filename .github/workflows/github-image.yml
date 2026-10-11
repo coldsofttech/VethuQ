@@ -6,7 +6,8 @@
 # those repositories is logged or uploaded except as compiled wheels inside the image.
 #
 # It prints a compatibility row for the job summary; a person adds it to
-# packages/core/src/vethuq/_github/compatibility.json (rows are never rewritten by automation).
+# the compatibility table in VethuQ-premium (packages/github/src/vethuq_addon_github/_compat.py);
+# rows are never rewritten by automation.
 name: github-image
 
 on:
@@ -161,7 +162,7 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           {
-            echo "### Add this row to compatibility.json"
+            echo "### Add this row to the compatibility table (vethuq_addon_github/_compat.py)"
             echo
             echo '```json'
             echo "{"

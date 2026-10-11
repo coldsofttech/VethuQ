@@ -11,7 +11,9 @@ The add-on API version (`API_VERSION`) is 0.4.0.
 - Processing tiers: `TierSpec`, `Addon.processing_tiers()`, and the executor contract (`OcrExecutor`,
   `OcrRequest`, `JobState`). A tier decides where pages that need OCR are read; a synchronous
   executor implements `recognize`, an asynchronous one `submit`, `poll`, `collect` and `cancel`.
-- Testing: `FakeExecutor`.
+- `Host.licence_tokens()`: the installed add-on licences by add-on id, for tiers that read pages
+  elsewhere and have the licences checked there.
+- Testing: `FakeExecutor`; `FakeHost.licences`.
 
 ### Added (API 0.3.0)
 - File types: `FileTypeSpec`, `Addon.file_types()`, and the reader contract (`DocumentReader`,

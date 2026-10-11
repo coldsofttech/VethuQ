@@ -30,8 +30,8 @@ publishing (the private checkouts need the secret, so they only run for branches
 3. Build the image, then smoke-test it with no network on the synthetic job in
    `github/protocol/v1/fixtures`.
 4. Push `:X.Y.Z` and print a **compatibility row** (with the image digest) in the run summary.
-   A person adds it to `packages/core/src/vethuq/_github/compatibility.json` together with the
-   `github-tier-vX.Y.Z` workflow tag; automation never rewrites rows.
+   A person adds it to the add-on's table (`vethuq_addon_github/_compat.py` in `VethuQ-premium`)
+   together with the `github-tier-vX.Y.Z` workflow tag; automation never rewrites rows.
 5. The first time, make the package public (GitHub > Packages > vethuq-worker > settings), or the
    runners can't pull it.
 

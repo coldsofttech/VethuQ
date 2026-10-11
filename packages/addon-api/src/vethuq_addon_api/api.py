@@ -160,6 +160,11 @@ class Host(Protocol):
     def revoked_licence_ids(self) -> frozenset[str]:
         """Licence ids the signed policy has revoked (from the cached policy; no network)."""
 
+    def licence_tokens(self) -> dict[str, str]:
+        """The licence tokens installed for add-ons (their `licence` setting), by add-on id.
+        For a tier that reads pages somewhere else, so the licences can be checked there; never
+        write them to a log or send them anywhere that isn't encrypted for that purpose."""
+
     def addon_policy_enabled(self) -> bool:
         """False if the signed policy has switched this add-on off remotely."""
 

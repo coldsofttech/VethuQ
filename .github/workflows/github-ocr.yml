@@ -1,4 +1,4 @@
-# The reusable workflow behind the GitHub runner (`client.github`). It is called from a user's own
+# The reusable workflow behind the GitHub runner (the `vethuq-addon-github` add-on). It is called from a user's own
 # runner repository by the thin caller VethuQ writes there (`vethuq-ocr.yml`), pinned to a tag of
 # this repository. It must stay public for that to work.
 #

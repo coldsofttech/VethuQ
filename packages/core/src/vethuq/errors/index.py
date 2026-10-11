@@ -29,26 +29,6 @@ class CreditsExhaustedError(CreditsError):
     """There aren't enough credits for the work."""
 
 
-class GitHubError(VethuQError):
-    """Base class for GitHub runner errors."""
-
-
-class GitHubAuthError(GitHubError):
-    """The GitHub token is missing, rejected, or lacks a permission."""
-
-
-class GitHubSetupError(GitHubError):
-    """The runner repository couldn't be set up, updated or reached."""
-
-
-class GitHubNotSetUpError(GitHubError):
-    """No GitHub runner has been set up yet."""
-
-
-class GitHubUnavailableError(GitHubError):
-    """The GitHub tier isn't available: the policy has it off, or it needs a newer VethuQ."""
-
-
 class TierError(VethuQError):
     """Base class for processing tier errors."""
 

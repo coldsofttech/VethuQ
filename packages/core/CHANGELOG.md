@@ -94,14 +94,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - **Wallets by tier**: `credits.wallets()`, `credits.balance(wallet)`, `history(wallet=)`; the
   GitHub wallet (20 a day for a private runner repository, 200 for a public one), with promotions
   and the metrics bonus. `CreditBalance` and `CreditEntry` carry their wallet.
-- **GitHub runner** (`client.github`, types in `vethuq.github`): `setup`, `status`, `update`,
-  `remove`, `runner` and `versions`. Creates (or adopts) a private repository you own, writes the
-  caller workflow, and sets the master key as a secret (sealed with the repository's public key;
-  kept in `<data root>/github/master.key`). Only runner versions in the compatibility table are
-  written; the policy feature `github_tier` is the kill switch. Errors `GitHubError`,
-  `GitHubAuthError`, `GitHubSetupError`, `GitHubNotSetUpError`, `GitHubUnavailableError`. The
-  reusable workflow `.github/workflows/github-ocr.yml` and the layout are in `github/`; this
-  replaces the separate `VethuQ-github-tier` repository. The worker image is not built yet.
+- **GitHub runner** — now the free, optional `vethuq-addon-github` add-on (`pip install
+  "VethuQ[github]"`; premium repository), which provides the `github` processing tier. `GitHub(client)`
+  (`from vethuq.addons.github import GitHub`) has `setup`, `status`, `update`, `remove`, `runner` and
+  `versions`; index runs send pages to the runner through the job protocol (see `github/`), collect
+  the encrypted results and delete everything the job left in the repository. Core no longer has
+  `client.github`, `vethuq.github`, the `GitHub*` errors or the `pynacl` dependency. The reusable
+  workflow `.github/workflows/github-ocr.yml` and the layout are in `github/`; this replaces the
+  separate `VethuQ-github-tier` repository.
 - Internal tables `credit_grants`, `credit_ledger`, `usage_daily` and `usage_failures`.
 - Internal tables `pdf_pages`, `pdf_pages_quick`, `document_languages` and `index_runs`.
 - **Logs** (`client.logs`, types in `vethuq.logs`): one class per log (`DatabaseLog`, `IndexLog`,

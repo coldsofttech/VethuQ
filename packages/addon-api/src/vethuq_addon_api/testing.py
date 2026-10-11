@@ -29,6 +29,7 @@ class FakeHost:
         self._revoked = revoked
         self._enabled = enabled
         self.settings: dict[str, str] = {}
+        self.licences: dict[str, str] = {}
         self.logs: list[tuple[int, str]] = []
         self.released = 0
 
@@ -59,6 +60,9 @@ class FakeHost:
 
     def revoked_licence_ids(self) -> frozenset[str]:
         return self._revoked
+
+    def licence_tokens(self) -> dict[str, str]:
+        return dict(self.licences)
 
     def addon_policy_enabled(self) -> bool:
         return self._enabled

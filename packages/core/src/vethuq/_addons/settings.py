@@ -32,6 +32,24 @@ class _AddonSettingsStore:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path, timeout=self.TIMEOUT_SECONDS)
 
+    @classmethod
+    def licences(cls, db_path: Path) -> dict[str, str]:
+        """Every add-on's `licence` setting, by add-on id (empty ones left out)."""
+        try:  # read-only, so a missing database isn't created by asking
+            conn = sqlite3.connect(
+                f"{Path(db_path).resolve().as_uri()}?mode=ro", uri=True, timeout=cls.TIMEOUT_SECONDS
+            )
+            try:
+                rows = conn.execute(
+                    "SELECT key, value FROM settings WHERE key LIKE 'addon.%.licence'"
+                ).fetchall()
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            return {}
+        found = {key.removeprefix("addon.").removesuffix(".licence"): value for key, value in rows}
+        return {addon: value for addon, value in found.items() if value}
+
     def get(self, key: str, default: str | None = None) -> str | None:
         full = self.full_key(key)
         try:

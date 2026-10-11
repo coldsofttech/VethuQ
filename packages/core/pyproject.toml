@@ -15,8 +15,11 @@ dependencies = [
     "vethuq-addon-paddle~=0.1",
     "vethuq-addon-ocr-quick~=0.1",
     "psutil>=5.9",
-    "pynacl>=1.5",
 ]
+
+[project.optional-dependencies]
+# Run OCR in your own GitHub account (a free add-on).
+github = ["vethuq-addon-github~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

@@ -27,7 +27,6 @@ class TestPublicApi:
             "db",
             "errors",
             "file_types",
-            "github",
             "index",
             "logs",
             "metrics",
