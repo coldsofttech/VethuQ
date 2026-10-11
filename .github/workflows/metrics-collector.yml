@@ -51,7 +51,7 @@ jobs:
       - name: The Python client and the schema agree
         run: |
           pip install jsonschema
-          python metrics/check_schema.py
+          python metrics/schema/check.py
 
   deploy:
     needs: test
