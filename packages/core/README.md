@@ -687,7 +687,7 @@ A `TierInfo` has `id`, `label`, `wallet`, `available`, `reason` (why not), `sele
 
 Tiers come from add-ons (`Addon.processing_tiers()` in the add-on API 0.4.0): each brings an `OcrExecutor` that reads images, either at once (`recognize`) or as a batch that finishes later (`submit`, `poll`, `collect`). Each tier is paid from its own wallet; the GitHub wallet gets 20 credits a day for a private runner repository and 200 for a public one, and the metrics bonus applies to it as it does to `local`.
 
-**Not in this version yet:** `hybrid`; a run with it raises `TierUnavailableError`. The `github` tier comes from the [GitHub add-on](#github-runner).
+**Hybrid.** `client.index.run(tier="hybrid")` reads pages that need OCR here, except the ones the router sends to GitHub: a page whose size against A4 is at least `settings.tiers` `min_size_factor` (2, an A3 sheet, by default; 0 turns the rule off), or whose OCR phase is in `phases` (the deeper `moderate`/`deep` phases, once they exist; none by default). Each page is paid from the wallet of the tier that reads it (`local` or `github`). A page GitHub can't take (its wallet can't pay) is read here instead, and the run ends `WAITING_REMOTE` while the sent pages are away, as with `github`. Hybrid needs the `github` tier to be available; the `github` tier comes from the [GitHub add-on](#github-runner). The credit estimate doesn't split by tier.
 
 ### Tier settings
 

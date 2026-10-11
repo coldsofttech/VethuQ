@@ -26,9 +26,6 @@ class _TierView:
 
 
 class _Tiers:
-    # Hybrid routing arrives in a later step; until then a run refuses `hybrid`.
-    HYBRID_READY = False
-
     def __init__(self, specs: Callable[[], list[TierSpec]], local: OcrExecutor) -> None:
         self._specs = specs
         self._local = local
@@ -75,6 +72,13 @@ class _Tiers:
     def get(self, tier: str) -> _TierView | None:
         return next((v for v in self.views() if v.id == tier), None)
 
+    def hybrid_parts(self) -> tuple[_TierView, _TierView]:
+        """(local, GitHub) as hybrid uses them. Only for a hybrid run, which `resolve` has
+        already checked can run."""
+        local, github = self.get(LOCAL), self.get(GITHUB)
+        assert local is not None and github is not None  # noqa: S101 - resolve() guarantees it
+        return local, github
+
     def known(self) -> str:
         return ", ".join(v.id for v in self.views())
 
@@ -93,10 +97,5 @@ class _Tiers:
             raise _TierUnavailableError(
                 f"The {view.label} tier can't be used: {view.reason}.",
                 "Use client.tiers.list() to see what is available, or run with tier='local'.",
-            )
-        if view.id == HYBRID and not self.HYBRID_READY:
-            raise _TierUnavailableError(
-                f"The {view.label} tier can't run in this version of VethuQ yet.",
-                "Use tier='local' or a single remote tier.",
             )
         return view

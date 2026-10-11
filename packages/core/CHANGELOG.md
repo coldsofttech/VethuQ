@@ -94,6 +94,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - **Wallets by tier**: `credits.wallets()`, `credits.balance(wallet)`, `history(wallet=)`; the
   GitHub wallet (20 a day for a private runner repository, 200 for a public one), with promotions
   and the metrics bonus. `CreditBalance` and `CreditEntry` carry their wallet.
+- **Hybrid tier** (`index.run(tier="hybrid")`): local first; pages at or above
+  `settings.tiers.min_size_factor` (and pages in the chosen OCR phases) go to the `github` tier; each
+  page is paid from the wallet of the tier that reads it, and a page GitHub can't pay for is read
+  locally. Pages away are collected like a plain `github` run.
 - **GitHub runner** — now the free, optional `vethuq-addon-github` add-on (`pip install
   "VethuQ[github]"`; premium repository), which provides the `github` processing tier. `GitHub(client)`
   (`from vethuq.addons.github import GitHub`) has `setup`, `status`, `update`, `remove`, `runner` and

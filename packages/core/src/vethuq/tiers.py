@@ -7,7 +7,7 @@ where that OCR runs:
 - `github`: in your own GitHub account (the GitHub add-on). Only the pages that need OCR are sent,
   encrypted.
 - `hybrid`: local first, with the pages the settings pick (large ones, and later the deeper OCR
-  phases) sent to GitHub.
+  phases) sent to GitHub; a page GitHub can't take is read here.
 
 Each tier pays from its own credit wallet (see `credits`).
 """

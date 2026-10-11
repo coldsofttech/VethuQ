@@ -104,3 +104,25 @@ def _en():
     from vethuq_addon_api import LanguageSpec
 
     return LanguageSpec("en", "English", default=True)
+
+
+def test_hybrid_sends_only_the_big_page_through_the_real_addon(client, fake, tmp_path):
+    from vethuq.addons.github import GitHub
+
+    GitHub(client).setup("runner")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "mixed.pdf").write_text(fp.pdf_document(fp.scanned_page(), fp.scanned_page(**fp.A3)))
+    source = client.sources.create(docs)
+
+    run = client.index.run(tier="hybrid")
+    assert run.tier == "hybrid" and run.status is IndexRunStatus.WAITING_REMOTE
+    (job,) = client.index.jobs()
+    assert (job.tier, job.images) == ("github", 1)
+
+    (run_id,) = fake.repo("octo/runner")["runs"]
+    engine = StaticEngine(FakeExecutor(default="read on the runner"), [_en()])
+    fake.execute("octo/runner", run_id, engine, tmp_path)
+    client.index.collect()
+    (file,) = client.sources.list_files(source.id, detailed=True)
+    assert file.index.status is FileStatus.INDEXED

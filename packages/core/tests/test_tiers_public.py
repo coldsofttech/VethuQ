@@ -181,13 +181,6 @@ class TestRunning:
         with pytest.raises(errors.TierUnavailableError, match="needs the GitHub tier"):
             client.index.run(tier="hybrid")
 
-    def test_hybrid_cannot_run_yet(self, github_addon, client, root):
-        write(root, "a.pdf", fp.native_page())
-        client.sources.create(root)
-        with pytest.raises(errors.TierUnavailableError, match="can't run in this version"):
-            client.index.run(tier="hybrid")
-        assert client.index.history() == []
-
     def test_wait_and_timeout_are_checked_and_ignored_locally(self, client, root):
         write(root, "a.pdf", fp.native_page())
         client.sources.create(root)

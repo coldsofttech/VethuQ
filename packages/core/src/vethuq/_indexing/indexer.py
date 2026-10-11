@@ -34,7 +34,7 @@ from vethuq._ocr import _PageOcr, _PageResult
 from vethuq._settings import _ConfidenceSettings, _IndexSettings, _TierSettings
 from vethuq._sources import _Files, _Sources
 from vethuq._stats import _ErrorCode, _PageFact, _Usage
-from vethuq._tiers import _Tiers, _TierView
+from vethuq._tiers import HYBRID, LOCAL, _Router, _Tiers, _TierView
 from vethuq.enums import FileStatus, IndexRunStatus
 from vethuq_addon_api import (
     FileRemovedError,
@@ -75,6 +75,8 @@ class _Indexer:
         self.languages = languages
         self.tiers = tiers
         self._tier: _TierView | None = None
+        self._remote_tier: _TierView | None = None  # where pages that are sent away go
+        self._router: _Router | None = None  # hybrid only: which pages are sent
         self.credits = credits
         self._run_id: int | None = None
         self._paused = threading.Event()
@@ -268,29 +270,33 @@ class _Indexer:
                 pages = _PageStore.pages(session, document_id)
                 read = _PageStore.read_in(session, document_id, plan.language_id)
                 staged = self.remote.staged(session, document_id, plan.language_id)
-            tier = self._tier
-            meter = _PageMeter(
-                self.credits,
-                source_id=plan.source_id,
-                run_id=self._run_id,
-                label=plan.path,
-                language=plan.language.id,
-                additional_language=additional,
-                wallet=tier.wallet if tier else "local",
-            )
-            executor = tier.executor if tier else None
+            meters: dict[str, _PageMeter] = {}
+
+            def meter_for(wallet: str) -> _PageMeter:
+                if wallet not in meters:
+                    meters[wallet] = _PageMeter(
+                        self.credits,
+                        source_id=plan.source_id,
+                        run_id=self._run_id,
+                        label=plan.path,
+                        language=plan.language.id,
+                        additional_language=additional,
+                        wallet=wallet,
+                    )
+                return meters[wallet]
+
             prefix = f"d{document_id}.l{plan.language_id}."
             try:
                 for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
                     if self._skip(number, pages, read, staged):
                         continue
-                    result = _PageOcr.read_page(
-                        number, page, executor, plan.language, meter, key_prefix=prefix
-                    )
+                    result = self._read(number, page, plan, meter_for, prefix)
                     self._save_page(plan, document_id, result)
-                    meter.forget()
+                    for meter in meters.values():
+                        meter.forget()
             except BaseException:
-                meter.refund_all()
+                for meter in meters.values():
+                    meter.refund_all()
                 raise
             with self.database.session() as session:
                 row = session.get(_DocumentIndex, plan.row_id)
@@ -302,6 +308,45 @@ class _Indexer:
                 _Documents.finish(session, row, sha256)
             return "done"
 
+    def _read(self, number, page, plan: _Plan, meter_for, prefix: str) -> _PageResult:
+        """Read one page with the tier that suits it. A hybrid run keeps a page here unless the
+        router sends it away; a page that can't be paid for on the remote tier is read here."""
+        tier = self._tier
+        if tier is None:
+            return _PageOcr.read_page(
+                number, page, None, plan.language, meter_for(LOCAL), key_prefix=prefix
+            )
+        if tier.id != HYBRID:
+            return _PageOcr.read_page(
+                number,
+                page,
+                tier.executor,
+                plan.language,
+                meter_for(tier.wallet),
+                key_prefix=prefix,
+            )
+        local, remote = self.tiers.hybrid_parts()
+        away = False
+        if self._router is not None and _PageOcr.needs_ocr(page):
+            try:
+                factor = (
+                    meter_for(local.wallet).pricing().size_factor(page.width_pt, page.height_pt)
+                )
+            except _PageTooLarge:
+                factor = 0.0  # reading it fails the same way anywhere
+            away = self._router.remote(factor)
+        if away:
+            try:
+                return _PageOcr.read_page(
+                    number, page, remote.executor, plan.language, meter_for(remote.wallet),
+                    key_prefix=prefix,
+                )  # fmt: skip
+            except _CreditsExhaustedError:
+                self._logger.info("GitHub credits are used up; page %d is read here", number)
+        return _PageOcr.read_page(
+            number, page, local.executor, plan.language, meter_for(local.wallet), key_prefix=prefix
+        )
+
     def _save_page(self, plan: _Plan, document_id: int, result: _PageResult) -> None:
         """Save one page the moment it is read: the page, what it cost, and the run's counts. A
         page whose OCR is away is saved waiting, with its images staged to be sent."""
@@ -311,7 +356,7 @@ class _Indexer:
             if result.pending:
                 ids = self.remote.stage(
                     session, document_id, plan.language_id, result, self._run_id,
-                    self._tier.wallet if self._tier else "local",
+                    self._remote_tier.wallet if self._remote_tier else "local",
                 )  # fmt: skip
             else:
                 fact = _PageFact(
@@ -503,14 +548,24 @@ class _Indexer:
             source_id = sources[0].id if target is not None else None
             _Languages.ensure_rows(session, self.languages())  # once, before the workers start
             view = self.tiers.resolve(tier, _TierSettings.get_default(session))
+            remote_tier, router = None, None
+            if view.id == HYBRID:
+                _local, remote_tier = self.tiers.hybrid_parts()
+                router = _Router(
+                    _TierSettings.get_min_size_factor(session),
+                    tuple(_TierSettings.get_phases(session)),
+                )
+                self.credits.sync(session, remote_tier.wallet)
+            elif view.asynchronous:
+                remote_tier = view
             self.credits.sync(session, view.wallet)  # today's allowance, before the workers start
             run = _Runs.begin(session, source_id, only_file, count, view.id)
             run_id = run.id
             self.remote.recover(session)
             wait_minutes = timeout or _TierSettings.get_wait_timeout_minutes(session)
         self._run_id = run_id
-        self._tier = view
-        self._outbox = _Outbox(self.remote, view.id, run_id) if view.asynchronous else None
+        self._tier, self._remote_tier, self._router = view, remote_tier, router
+        self._outbox = _Outbox(self.remote, remote_tier.id, run_id) if remote_tier else None
         self._paused.clear()
         counts = {"processed": 0, "failed": 0}
         lock = threading.Lock()
@@ -576,7 +631,7 @@ class _Indexer:
         finally:
             _Runs.end(run_id)
             self._run_id = None
-            self._tier = None
+            self._tier = self._remote_tier = self._router = None
             self._outbox = None
         return run_id
 
