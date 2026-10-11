@@ -46,6 +46,8 @@ env:
     file-types/pdf file-types/txt file-types/csv file-types/markdown
     file-types/png file-types/jpg file-types/tiff
     file-types/html file-types/xml file-types/css file-types/js file-types/json file-types/yaml
+    file-types/docx file-types/doc file-types/xlsx file-types/xls file-types/pptx file-types/ppt
+    file-types/rtf file-types/eml
     ocr/engines/paddle ocr/modes/quick ocr/modes/moderate ocr/modes/deep
     search/engines/like search/engines/exact search/engines/lexical search/engines/full-text
     search/engines/proximity search/engines/fuzzy search/engines/noise-fuzzy search/engines/semantic
