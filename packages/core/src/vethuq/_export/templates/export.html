@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<title>{{APP_NAME}} search export: {{QUERY_TEXT}}</title>
+{{HEAD}}
+</head>
+<body>
+<main class="page">
+{{HEADER}}
+<h1>Search export: <span class="query">{{QUERY}}</span></h1>
+<p class="meta">Report generated {{GENERATED_AT}}</p>
+<section class="cards" aria-label="Summary">
+{{CARDS}}
+</section>
+<div class="chips" aria-label="Search settings">{{CHIPS}}</div>
+<div class="toolbar">
+  <button type="button" data-expand="all">Expand all</button>
+  <button type="button" data-expand="none">Collapse all</button>
+</div>
+<div class="results">
+  <div class="row-cells header">
+    <span></span>
+    <span>File Name</span>
+    <span>File Path</span>
+    <span>Page</span>
+    <span>Total Pages</span>
+    <span>Match</span>
+  </div>
+  {{ROWS}}
+</div>
+{{FOOTER}}
+</main>
+{{SCRIPT}}
+</body>
+</html>

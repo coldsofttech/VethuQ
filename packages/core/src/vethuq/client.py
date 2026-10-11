@@ -9,6 +9,7 @@ from types import TracebackType
 from vethuq._addons import _AddonManager
 from vethuq._credits import _Credits
 from vethuq._db import _Database
+from vethuq._export import _Exporter, _ExportLanguages
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._indexing import _Indexer
 from vethuq._languages import _LanguageCatalog
@@ -148,6 +149,16 @@ class VethuQ:
                 )
             return self._search_engines
 
+    def _exporter(self) -> _Exporter:
+        manager, engines = self._manager(), self._search_catalog()
+
+        def badges() -> dict[str, tuple[str, bool]]:
+            return {
+                v.id: (v.spec.badge or v.spec.label, v.spec.approximate) for v in engines.views()
+            }
+
+        return _Exporter(_ExportLanguages(manager.language_specs), badges)
+
     def _search_indexer(self) -> _SearchIndex:
         db, manager = self._db(), self._manager()
         with self._lock:
@@ -190,7 +201,9 @@ class VethuQ:
     def sources(self) -> Sources:
         """Register and manage sources."""
         if self._sources is None:
-            self._sources = Sources(self._db(), self._catalog(), self._file_type_catalog())
+            self._sources = Sources(
+                self._db(), self._catalog(), self._file_type_catalog(), self._exporter()
+            )
         return self._sources
 
     @property
@@ -289,7 +302,7 @@ class VethuQ:
         """Search the indexed pages: find a query with a search engine, and look after the index."""
         if self._search is None:
             db, engines, index = self._db(), self._search_catalog(), self._search_indexer()
-            self._search = Search(db, engines, index, _Search(db, engines, index))
+            self._search = Search(db, engines, index, _Search(db, engines, index), self._exporter())
         return self._search
 
     @property

@@ -645,6 +645,9 @@ class _TierSettings:
 class _SearchSettings:
     ENGINE_KEY = "search_engine"
     CONTEXT_KEY = "search_snippet_context_chars"
+    EXPORT_FORMAT_KEY = "search_export_format"
+    EXPORT_FORMATS = ("json", "html")
+    DEFAULT_EXPORT_FORMAT = "json"
     NORMALIZER_PREFIX = "search_normalize_"
     ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
     LEVEL_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
@@ -691,6 +694,23 @@ class _SearchSettings:
                 f"not {chars!r}."
             )
         _Settings.set(session, _SearchSettings.CONTEXT_KEY, str(chars))
+
+    @staticmethod
+    def get_export_format(session: Session) -> str:
+        """The format an export is written in when it doesn't name one. `json` unless changed."""
+        value = _Settings.get(session, _SearchSettings.EXPORT_FORMAT_KEY)
+        if value in _SearchSettings.EXPORT_FORMATS:
+            return value
+        return _SearchSettings.DEFAULT_EXPORT_FORMAT
+
+    @staticmethod
+    def set_export_format(session: Session, value: object) -> None:
+        if value not in _SearchSettings.EXPORT_FORMATS:
+            raise _InvalidSettingValueError(
+                f"{value!r} isn't an export format.",
+                f"Formats: {', '.join(_SearchSettings.EXPORT_FORMATS)}.",
+            )
+        _Settings.set(session, _SearchSettings.EXPORT_FORMAT_KEY, str(value))
 
     @staticmethod
     def normalizer_key(normalizer: str) -> str:

@@ -33,7 +33,7 @@ def languages(self) -> list[LanguageSpec]:
     return [LanguageSpec(id="en", label="English", script="latin", default=True)]
 ```
 
-`default=True` marks the system default language (every install has exactly one). A language that
+`default=True` marks the system default language (every install has exactly one). `script_ranges` are the code point ranges of its writing system, so VethuQ can recognise text in it (exports tag such runs with the language). A language that
 exists but can't be used right now (a lapsed licence) is returned with `available=False` and a `reason`.
 
 ## File types, OCR engines and phases
@@ -58,7 +58,7 @@ exists but can't be used right now (a lapsed licence) is returned with `availabl
   `corpus.candidates(query)` gives the pages that can match (`candidates(None)` gives all of them:
   an engine that tolerates typos can't be narrowed by the query).
 - An engine can declare options a search may override (`SearchOption`; they arrive in
-  `request.options`), say it is `approximate` (it guesses, so VethuQ's ranking puts it below the
+  `request.options`), give it a short `badge` ("Exact", "Similar") that exports show beside a hit, say it is `approximate` (it guesses, so VethuQ's ranking puts it below the
   engines that match the text), and prepare pages ahead of searches by overriding
   `SearchEngine.pending(corpus)` and `SearchEngine.sync(corpus, progress)` (`SyncReport`): searching
   never prepares anything. VethuQ does the ranking, the merging of hits several engines agree on and

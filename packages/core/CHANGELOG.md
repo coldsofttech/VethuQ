@@ -6,6 +6,17 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (export)
+- `client.search.export(result, path, format=None)`, `client.sources.export(sources, path, format=None)`
+  and `client.sources.export_files(source, files, path, format=None)`: JSON or one portable HTML
+  page (logo, summary, palette in light and dark, printable). A search export records how the search
+  ran (engine, normalizer levels, engine options, pages not prepared) and how each match was found
+  (the engine's badge). `settings.search.get/set/reset_export_format`, `ExportFormat`.
+- `SearchResult.options`: the engine options a search ran with.
+- Add-on API 0.7.0: `LanguageSpec.script_ranges` (text is recognised as a language by its script;
+  non-default-language runs in an HTML export are tagged `<span lang>`) and
+  `SearchEngineSpec.badge`.
+
 ### Added (search engines)
 - The engines `lexical`, `proximity`, `full-text`, `fuzzy`, `noise-fuzzy` and `semantic`, and the
   `leetspeak` normalizer, are add-ons (the first five and the normalizer are free and installed

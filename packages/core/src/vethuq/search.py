@@ -10,13 +10,15 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from vethuq._db import _Database
 from vethuq._errors import _SearchOptionError
+from vethuq._export import _Exporter
 from vethuq._search import HYBRID, _Engines, _Search, _SearchIndex
 from vethuq._search.service import _Match, _Synced
 from vethuq._settings import _SearchSettings
-from vethuq.enums import SearchSortBy, SortOrder
+from vethuq.enums import ExportFormat, SearchSortBy, SortOrder
 
 __all__ = [
     "NormalizerInfo",
@@ -84,6 +86,8 @@ class SearchResult:
     # Per engine, the pages it can't search yet because they aren't prepared (semantic search
     # embeds pages ahead of time: see `Search.sync`). Only engines with some are listed.
     pending: dict[str, int] = field(default_factory=dict)
+    # The engine options this search was run with, by engine id (what `options=` asked for).
+    options: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def __iter__(self):
         return iter(self.matches)
@@ -99,6 +103,7 @@ class SearchResult:
         data["matches"] = [m.to_dict() for m in self.matches]
         data["levels"] = {k: dict(v) for k, v in self.levels.items()}
         data["pending"] = dict(self.pending)
+        data["options"] = {k: dict(v) for k, v in self.options.items()}
         return data
 
     def to_json(self, indent: int | None = None) -> str:
@@ -196,12 +201,18 @@ class Search:
     """
 
     def __init__(
-        self, database: _Database, engines: _Engines, index: _SearchIndex, search: _Search
+        self,
+        database: _Database,
+        engines: _Engines,
+        index: _SearchIndex,
+        search: _Search,
+        exporter: _Exporter,
     ) -> None:
         self._database = database
         self._engines = engines
         self._index = index
         self._search = search
+        self._exporter = exporter
 
     def run(
         self,
@@ -273,13 +284,14 @@ class Search:
         name = name.strip().lower() if isinstance(name, str) else name
         if combine is not None and not isinstance(combine, str):
             raise TypeError("combine is the id of a keyword engine.")
+        asked = _Engines.parse_options(options)
         outcome = self._search.run(
             query,
             name,
             explicit,
             chars,
             list(languages) if languages is not None else None,
-            _Engines.parse_options(options),
+            asked,
             combine.strip().lower() if combine is not None else None,
         )
         matches = outcome.matches
@@ -311,7 +323,38 @@ class Search:
             levels=outcome.levels,
             index_rebuilt=outcome.index_rebuilt,
             pending=outcome.pending,
+            options=asked,
         )
+
+    def export(
+        self,
+        result: SearchResult,
+        output: str | Path,
+        format: ExportFormat | str | None = None,
+    ) -> Path:
+        """Write a search result to a file and return its path.
+
+        `format` is `json` or `html`; left out, the saved default (`settings.search`, `json`).
+        The file holds the query, how the search was run (engine, the level each normalizer ran
+        at, the engine options, the pages an engine hadn't prepared) and every match in
+        `result.matches`: to export all of them, run the search without `limit`. The HTML is one
+        portable page (logo, summary, a row per match that opens to its text, light and dark,
+        printable); each match says how it was found (`Exact`, `Similar 83%`) and text in a
+        language other than the default is marked up so a browser picks its font. The folder of
+        `output` is created if needed.
+
+        Raises `ValueError` for a format that isn't `json` or `html` and `IsADirectoryError` if
+        `output` is a folder.
+        """
+        if not isinstance(result, SearchResult):
+            raise TypeError("export takes the SearchResult that run() returned.")
+        return self._exporter.search_results(result, Path(output), self._format(format))
+
+    def _format(self, format_: ExportFormat | str | None) -> str:
+        if format_ is None:
+            with self._database.session() as session:
+                return _SearchSettings.get_export_format(session)
+        return _Exporter.check_format(str(getattr(format_, "value", format_)).strip().lower())
 
     def engines(self) -> list[SearchEngineInfo]:
         """The search engines add-ons provide, strictest first."""

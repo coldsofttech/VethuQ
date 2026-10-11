@@ -844,9 +844,32 @@ client.search.run("refund policy", engine="hybrid")  # meaning and words togethe
 - **`hybrid`** (the search engine; it has nothing to do with the `hybrid` processing tier) is a search of its own: `semantic` together with a keyword engine (`combine`, `full-text` unless told), each engine's hits shown as it found them, with the pages ranked by *reciprocal rank fusion*. A page scores the sum, over the two engines, of `1 / (60 + its position in that engine's ranking)`: only positions count, because a cosine and a BM25 can't be compared, and a page both like rises above a page only one found. It is ranked by default (`sort="rank"`). A keyword engine that can't search the query contributes nothing; `semantic` failing fails the search. Semantic search is weak where keyword search is strong (an invoice number, a name, an exact phrase) and the other way round, which is what this is for.
 - `semantic` is not part of the `all` search (`in_all` is false).
 
+### Exporting
+
+A search result, the list of sources and the files of a source can be written to a file, as JSON or as one portable HTML page. Exporting is free and needs no add-on.
+
+```python
+result = client.search.run("invoice", engine="all")  # no limit: every match is exported
+client.search.export(result, "invoice.html", "html")  # returns the path
+client.search.export(result, "invoice.json")  # the saved format when none is named
+
+client.sources.export(client.sources.list(), "sources.html", "html")
+source = client.sources.list()[0]
+files = client.sources.list_files(
+    source.id, detailed=True
+)  # with `detailed` the export shows the indexing state
+client.sources.export_files(source, files, "files.json")
+```
+
+- **Format.** `json` or `html` (`vethuq.enums.ExportFormat`); left out, the saved default `client.settings.search.get/set/reset_export_format()` (`json` unless changed). A format that isn't one raises `ValueError`; so does naming a folder (`IsADirectoryError`). The folder of the file is created if needed.
+- **A search export** holds the query, how the search was run (the engine, the level each normalizer ran at, the engine options, the pages an engine hadn't prepared) and every match in `result.matches`. Each match says how it was found: the engine's badge (`Exact`, `Contains`, `Relevant`, `Near`, `Word`, `Similar 83%`, `Obscured`, `Meaning`), set by the engine's add-on (`SearchEngineSpec.badge`; the label if it has none), with the score for engines that guess. `matched_by`, `modifiers` and `score` are in the JSON.
+- **The HTML** is one file: logo, summary cards, the settings as chips, a row per match that opens to its text with the match highlighted, light and dark from the shared palette, printable (every row opens). Paths link to the files. Nothing is loaded from the network.
+- **Languages.** Languages say which writing system they use (`LanguageSpec.script_ranges`, add-on API 0.7.0). The export lists the languages a query and its matches are written in, writes the text as is (never `\u0c24`), marks up each run in a language other than the default with `<span lang="te">` so a browser picks the right font and shaping, and sets the page's `lang` (the one language used, else the default). Every language the add-ons provide counts, usable or not: a file read when Telugu was installed is still Telugu after it is removed.
+- **Listings.** `sources.export` shows each source's type, status, progress, languages and dates. `sources.export_files` shows each file's name, size and modification time, and, for files listed with `detailed=True`, its status, type, pages, confidence and band, low-confidence pages, languages, when it was indexed, retries, what it duplicates and why it failed. A `Source`, its id or its path names the source.
+
 ### Search settings
 
-`client.settings.search`: `get/set/reset_engine` (`all`, `hybrid`, or an engine id; `all` unless changed), `get/set/reset_snippet_context_chars` (characters shown either side of a match; 80), `get/set/reset_normalizer(id)` for any installed normalizer (`auto`, the default, lets each engine use its own level, or one of its levels), and `get/set/reset_case` and `get/set/reset_unicode` for the two that ship.
+`client.settings.search`: `get/set/reset_engine` (`all`, `hybrid`, or an engine id; `all` unless changed), `get/set/reset_snippet_context_chars` (characters shown either side of a match; 80), `get/set/reset_export_format` (`json` or `html`; `json`), `get/set/reset_normalizer(id)` for any installed normalizer (`auto`, the default, lets each engine use its own level, or one of its levels), and `get/set/reset_case` and `get/set/reset_unicode` for the two that ship.
 
 ## GitHub runner
 

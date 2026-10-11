@@ -523,6 +523,21 @@ class SearchSettings:
         with self._database.session() as session:
             _SearchSettings.reset(session, _SearchSettings.CONTEXT_KEY)
 
+    def get_export_format(self) -> str:
+        """The format `search.export`, `sources.export` and `sources.export_files` write when they
+        aren't told one: `json` (the default) or `html`."""
+        with self._database.session() as session:
+            return _SearchSettings.get_export_format(session)
+
+    def set_export_format(self, format: str) -> None:
+        """Raises `InvalidSettingValueError` unless it is `json` or `html`."""
+        with self._database.session() as session:
+            _SearchSettings.set_export_format(session, str(format).strip().lower())
+
+    def reset_export_format(self) -> None:
+        with self._database.session() as session:
+            _SearchSettings.reset(session, _SearchSettings.EXPORT_FORMAT_KEY)
+
     def get_normalizer(self, normalizer: str) -> str:
         """The level saved for a normalizer (`case`, `unicode`, ...), or `auto`."""
         with self._database.session() as session:

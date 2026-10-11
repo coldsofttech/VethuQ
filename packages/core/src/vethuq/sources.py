@@ -13,13 +13,15 @@ from sqlalchemy.orm import Session
 from vethuq._db import _Database, _DocumentIndex, _Source
 from vethuq._documents import _Documents
 from vethuq._errors import _SourceAlreadyExistsError
+from vethuq._export import _Exporter
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._languages import _LanguageCatalog
-from vethuq._settings import _ConfidenceSettings, _SourceSettings
+from vethuq._settings import _ConfidenceSettings, _SearchSettings, _SourceSettings
 from vethuq._sources import _FileEntry, _Files, _Sources
 from vethuq._stats import _Bands
 from vethuq.enums import (
     ConfidenceBand,
+    ExportFormat,
     FileStatus,
     SortOrder,
     SourceSortBy,
@@ -227,11 +229,16 @@ class Sources:
     """
 
     def __init__(
-        self, database: _Database, catalog: _LanguageCatalog, file_types: _FileTypeCatalog
+        self,
+        database: _Database,
+        catalog: _LanguageCatalog,
+        file_types: _FileTypeCatalog,
+        exporter: _Exporter | None = None,
     ) -> None:
         self._database = database
         self._catalog = catalog
         self._file_types = file_types
+        self._exporter = exporter
 
     def create(
         self, source: Source | str | Path, *, languages: Sequence[str] | None = None
@@ -461,6 +468,52 @@ class Sources:
             return Source._from_model(
                 _Sources.set_languages(session, id_or_path, languages, self._catalog)
             )
+
+    def export(
+        self,
+        sources: Sequence[Source],
+        output: str | Path,
+        format: ExportFormat | str | None = None,
+    ) -> Path:
+        """Write a list of sources (what `list()` returned) to a file and return its path.
+
+        `format` is `json` or `html`; left out, the saved default (`settings.search`, `json`). The
+        HTML is one portable page with a row per source and its status. The folder of `output` is
+        created if needed. Raises `ValueError` for a format that isn't `json` or `html` and
+        `IsADirectoryError` if `output` is a folder.
+        """
+        return self._exporter_().sources(list(sources), Path(output), self._format(format))
+
+    def export_files(
+        self,
+        source: Source | int | str | Path,
+        files: Sequence[SourceFile],
+        output: str | Path,
+        format: ExportFormat | str | None = None,
+    ) -> Path:
+        """Write the files of a source (what `list_files()` returned) to a file and return its path.
+
+        Files listed with `detailed=True` carry where each is in indexing, and the export then
+        shows it (status, type, pages, confidence, band, languages, duplicates, errors). `format`
+        and the errors are as in `export`. Raises `SourceNotFoundError` if `source` isn't one.
+        """
+        if not isinstance(source, Source):
+            with self._database.session() as session:
+                source = Source._from_model(_Sources.get(session, source))
+        return self._exporter_().source_files(
+            source, list(files), Path(output), self._format(format)
+        )
+
+    def _exporter_(self) -> _Exporter:
+        if self._exporter is None:
+            raise RuntimeError("This Sources was made without an exporter; use VethuQ().sources.")
+        return self._exporter
+
+    def _format(self, format_: ExportFormat | str | None) -> str:
+        if format_ is None:
+            with self._database.session() as session:
+                return _SearchSettings.get_export_format(session)
+        return _Exporter.check_format(str(getattr(format_, "value", format_)).strip().lower())
 
     def purge(self, id_or_path: int | str | Path) -> PurgeResult:
         """Permanently delete a removed source.

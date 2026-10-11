@@ -6,6 +6,7 @@ from enum import StrEnum
 
 __all__ = [
     "FileStatus",
+    "ExportFormat",
     "AddonStatus",
     "CreditEntryKind",
     "ProcessingTier",
@@ -57,6 +58,13 @@ class FileStatus(StrEnum):
     MODIFIED = "modified"  # changed since it was indexed; it will be processed again
     REMOVED = "removed"  # no longer on disk (kept until the source is purged)
     UNSUPPORTED = "unsupported"  # VethuQ can't read this kind of file (yet)
+
+
+class ExportFormat(StrEnum):
+    """What search results and source listings can be exported as."""
+
+    JSON = "json"
+    HTML = "html"
 
 
 class SortOrder(StrEnum):

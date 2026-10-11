@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+<title>{{APP_NAME}} export: {{TITLE}}</title>
+{{HEAD}}
+</head>
+<body>
+<main class="page">
+{{HEADER}}
+<h1>{{TITLE}}</h1>
+<p class="meta">Report generated {{GENERATED_AT}}</p>
+<section class="cards" aria-label="Summary">
+{{CARDS}}
+</section>
+<div class="results table-wrap">
+<table class="list">
+<thead><tr>{{HEADERS}}</tr></thead>
+<tbody>
+{{ROWS}}
+</tbody>
+</table>
+</div>
+{{FOOTER}}
+</main>
+</body>
+</html>
