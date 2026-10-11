@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from vethuq._db import (
@@ -82,16 +82,21 @@ class _Documents:
 
     @staticmethod
     def page_facts(
-        session: Session, document_ids: set[int]
-    ) -> dict[int, tuple[int, float | None, list[str]]]:
-        """For each document: its page count, the average confidence of its pages, and the
-        languages it was read in."""
+        session: Session, document_ids: set[int], medium_cutoff: float = 0.8
+    ) -> dict[int, tuple[int, float | None, list[str], int]]:
+        """For each document: its page count, the average confidence of its pages, the languages
+        it was read in, and the pages below `medium_cutoff` confidence."""
         if not document_ids:
             return {}
         facts = {
-            document_id: (count, average)
-            for document_id, count, average in session.execute(
-                select(_PdfPage.document_id, func.count(), func.avg(_PdfPage.confidence))
+            document_id: (count, average, int(low or 0))
+            for document_id, count, average, low in session.execute(
+                select(
+                    _PdfPage.document_id,
+                    func.count(),
+                    func.avg(_PdfPage.confidence),
+                    func.sum(case((_PdfPage.confidence < medium_cutoff, 1), else_=0)),
+                )
                 .where(_PdfPage.document_id.in_(document_ids))
                 .group_by(_PdfPage.document_id)
             )
@@ -109,9 +114,10 @@ class _Documents:
             languages.setdefault(document_id, []).append(code)
         return {
             document_id: (
-                facts.get(document_id, (0, None))[0],
-                facts.get(document_id, (0, None))[1],
+                facts.get(document_id, (0, None, 0))[0],
+                facts.get(document_id, (0, None, 0))[1],
                 languages.get(document_id, []),
+                facts.get(document_id, (0, None, 0))[2],
             )
             for document_id in document_ids
         }
@@ -177,7 +183,7 @@ class _Documents:
             session.flush()
         now = _Documents._now()
         row.document_id, row.sha256 = document.id, sha256
-        row.status, row.error_message = FileStatus.INDEXED, None
+        row.status, row.error_message, row.error_code = FileStatus.INDEXED, None, None
         row.completed_at = row.indexed_at = now
         _Documents._changed(session, row)
         if previous is not None and previous != document.id:
@@ -185,18 +191,28 @@ class _Documents:
         return document
 
     @staticmethod
-    def mark_unsupported(session: Session, row: _DocumentIndex, message: str) -> None:
+    def mark_unsupported(
+        session: Session, row: _DocumentIndex, message: str, code: str | None = None
+    ) -> None:
         """The file can't be indexed as it is (for example it needs a password). It is looked at
         again if it changes."""
         row.status, row.error_message = FileStatus.UNSUPPORTED, message
+        row.error_code = code
         row.completed_at = _Documents._now()
         _Documents._changed(session, row)
 
     @staticmethod
-    def fail(session: Session, row: _DocumentIndex, message: str) -> None:
-        row.status, row.error_message = FileStatus.ERROR, message
+    def fail(session: Session, row: _DocumentIndex, message: str, code: str | None = None) -> None:
+        row.status, row.error_message, row.error_code = FileStatus.ERROR, message, code
         row.completed_at = _Documents._now()
         row.retry_count += 1
+        _Documents._changed(session, row)
+
+    @staticmethod
+    def put_back(session: Session, row: _DocumentIndex) -> None:
+        """Work on the file stopped before it finished (for example the credits ran out): it is
+        waiting again."""
+        row.status, row.started_at, row.completed_at = FileStatus.PENDING, None, None
         _Documents._changed(session, row)
 
     @staticmethod

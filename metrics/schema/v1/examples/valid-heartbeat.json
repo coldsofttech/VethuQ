@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "batch_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "install_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "client": {
+    "vethuq": "0.1.0",
+    "python": "3.13",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu_bucket": "3-4",
+    "ram_bucket": "16"
+  },
+  "settings": {
+    "workers": "auto",
+    "retry_attempts": 3,
+    "languages": [
+      "en"
+    ],
+    "confidence_bands": [
+      70,
+      80,
+      90
+    ]
+  },
+  "days": []
+}

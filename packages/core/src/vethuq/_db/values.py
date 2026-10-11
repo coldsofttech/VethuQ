@@ -29,3 +29,21 @@ class _PassSource(StrEnum):
     DEFAULT = "default"  # the system default or the global setting
     AUTO = "auto"  # chosen by detection
     MANUAL = "manual"  # chosen for the source
+
+
+class _GrantKind(StrEnum):
+    """What kind of credits a grant holds, which sets the order they are spent in."""
+
+    PROMO = "promo"  # a promotion: spent first
+    DAILY = "daily"  # the day's allowance, with the metrics bonus
+    ONE_OFF = "one_off"  # starter, licence and pack credits
+    GRACE = "grace"  # the small allowance after everything else is used
+
+
+class _LedgerKind(StrEnum):
+    """What a ledger row records."""
+
+    GRANT = "grant"
+    CHARGE = "charge"
+    REFUND = "refund"
+    EXPIRE = "expire"

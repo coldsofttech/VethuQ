@@ -16,3 +16,15 @@ class _IndexAlreadyRunningError(_IndexingError, errors.IndexAlreadyRunningError)
 
 class _IndexRunNotFoundError(_IndexingError, errors.IndexRunNotFoundError):
     exit_code = 52
+
+
+class _CreditsError(_VethuQError, errors.CreditsError):
+    exit_code = 60
+
+
+class _InvalidGrantError(_CreditsError, errors.InvalidGrantError):
+    exit_code = 61
+
+
+class _CreditsExhaustedError(_CreditsError, errors.CreditsExhaustedError):
+    exit_code = 62

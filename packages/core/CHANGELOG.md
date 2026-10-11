@@ -55,6 +55,25 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   clean). The engine is `vethuq-addon-paddle` (PaddleOCR, models in `<data root>/models`) and the
   phase `vethuq-addon-ocr-quick` (mobile models, upright pages). These three add-ons are free and
   installed with VethuQ.
+- **Credits** (`client.credits`, types in `vethuq.credits`): the local wallet (500 a day, a 2,000
+  starter, 2% free grace, no rollover), priced by page size from the signed policy's rate card with
+  built-in defaults; `balance`, `next_reset`, `estimate`, `history` (filter, sort, page), `redeem` and
+  `redeem_licence` (licence credit grants, once each). Pages are paid for as they are read and a
+  file that fails is refunded; native pages, duplicates and unchanged files are free. When credits
+  run out the run ends as `IndexRunStatus.WAITING_CREDITS` and continues after the reset. A policy
+  change applies from the next UTC day. Errors `CreditsError`, `InvalidGrantError`,
+  `CreditsExhaustedError`; `IndexRun` gains `pages_processed`, `ocr_pages` and `credits_charged`.
+- **Statistics** (`client.stats`, types in `vethuq.stats`): `overview` (group by source, language,
+  file type, engine, page source, confidence band or day; filter; sort; page), `source`, `failures`
+  and `low_confidence_pages`, from daily totals that outlive files and purged sources.
+  **Confidence bands** (`settings.confidence`; high from 90%, medium 80%, low 70%, below that
+  unreliable); `list_files(detailed=True)` shows `band` and `low_confidence_pages` and filters by
+  `min_confidence` and `band`.
+- **Metrics sharing** (`client.metrics`, off by default): `status`, `opt_in`, `opt_out`, `preview`,
+  `send` and `delete_data`. A content-free batch of the daily totals goes to the policy's collector
+  at the end of an index run, at most once a day; sharing earns +10% daily credits. The batch
+  schema and the collector (a Cloudflare Worker with D1) are in `metrics/`.
+- Internal tables `credit_grants`, `credit_ledger`, `usage_daily` and `usage_failures`.
 - Internal tables `pdf_pages`, `pdf_pages_quick`, `document_languages` and `index_runs`.
 - **Logs** (`client.logs`, types in `vethuq.logs`): one class per log (`DatabaseLog`, `IndexLog`,
   `UiLog`, `CliLog`, `PolicyLog`) with `file`, `tail`, `read` (filter by level, day and text; sort by
@@ -85,6 +104,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   | 30, 31 | `SettingsError`, `InvalidSettingValueError` |
   | 40 to 42 | `LogError`, `LogNotFoundError`, `InvalidLogRequestError` |
   | 50 to 52 | `IndexingError`, `IndexAlreadyRunningError`, `IndexRunNotFoundError` |
+  | 60 to 62 | `CreditsError`, `InvalidGrantError`, `CreditsExhaustedError` |
 
 - **Database integrity check** (`client.db`, types in `vethuq.db`): `integrity_check(quick=False)` and
   `integrity_status()`, with `IntegrityCheckResult` and `IntegrityCheckMode`. The check runs by itself

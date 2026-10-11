@@ -15,9 +15,12 @@ from vethuq._errors.generic import (
     _VethuQError,
 )
 from vethuq._errors.index import (
+    _CreditsError,
+    _CreditsExhaustedError,
     _IndexAlreadyRunningError,
     _IndexingError,
     _IndexRunNotFoundError,
+    _InvalidGrantError,
 )
 from vethuq._errors.logs import _InvalidLogRequestError, _LogError, _LogNotFoundError
 from vethuq._errors.settings import _InvalidSettingValueError, _SettingsError
@@ -32,6 +35,9 @@ from vethuq._errors.sources import (
 
 __all__ = [
     "_CorruptDatabaseError",
+    "_CreditsError",
+    "_CreditsExhaustedError",
+    "_InvalidGrantError",
     "_DataFolderNotWritableError",
     "_IndexAlreadyRunningError",
     "_IndexRunNotFoundError",

@@ -43,7 +43,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -66,6 +66,9 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `IndexingError` | 50 | Indexing | Root of the indexing errors below |
 | `IndexAlreadyRunningError` | 51 | Indexing | An index run is already going |
 | `IndexRunNotFoundError` | 52 | Indexing | There is no index run with that id |
+| `CreditsError` | 60 | Credits | Root of the credit errors below |
+| `InvalidGrantError` | 61 | Credits | A credit grant or licence can't be redeemed |
+| `CreditsExhaustedError` | 62 | Credits | There aren't enough credits for the work (an index run ends as `WAITING_CREDITS` instead of raising it) |
 | `LogError` | 40 | Logs | Root of the log errors below |
 | `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
 | `InvalidLogRequestError` | 42 | Logs | A log request had a bad `lines`, `day`, `level`, `order` or component |
@@ -658,6 +661,71 @@ models.clean()  # delete models no installed language needs
 
 `download` and `redownload` raise `OcrModelMissingError` for any model that couldn't be fetched.
 
+## Credits
+
+Reading pages costs credits; searching and everything else is free. **One credit is the work of reading one A4 page once, upright, in one language.** Pages that need no OCR (native text), duplicate files and unchanged files cost nothing. A page's price is its size against A4 (reduced by 5%, rounded up to a quarter, at least 0.25, and nothing above A0), times the pass rate. A page that is partly text is charged for the share of it the images cover (at least 0.25), a blank page costs 0.25, and a file that fails is refunded. The numbers come from the signed policy (`rate_card`, `wallets`, `caps`) and fall back to built-in defaults offline; a policy change applies from the next UTC day. The full rules are in `docs/credits.md` of the support repository.
+
+The free **local wallet** gets 500 credits a day (reset at 00:00 UTC, no rollover) and a one-off 2,000 starter, plus a 2% free grace used only when everything else is gone. Spending order: promotional, daily (with the metrics bonus), scoped one-off, general one-off, grace.
+
+```python
+balance = client.credits.balance()
+print(balance.daily, balance.one_off, balance.total, balance.next_reset)
+
+estimate = client.credits.estimate("~/docs")  # reads the files, changes nothing
+if estimate.affordable:
+    client.index.run("~/docs")
+
+client.credits.history(kind="charge", source=1, limit=20)  # the ledger
+client.credits.redeem([{"id": "LIC-1-g1", "amount": 250}])  # a licence's grants, once each
+client.credits.redeem_licence(token)  # verify with vethuq-entitlements, then redeem
+```
+
+`CreditBalance` has `daily`, `promotional`, `one_off`, `grace`, `total`, `daily_allowance`, `bonus_active`, `bonus` and `next_reset`. `history(kind=None, source=None, run_id=None, since=None, until=None, sort_by=CreditSortBy.AT, order=SortOrder.DESC, limit=None, offset=0)` gives `CreditEntry`s (`CreditEntryKind`: grant, charge, refund, expire); charges are written page by page, so the balance is always the latest. Purging a source deletes the charges made for it; the balance is not affected. Everything has `to_dict()` and `to_json()`.
+
+**Running out.** Pages are paid for as they are read. When the wallet (grace included) can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, the file in progress gives its credits back and waits as `PENDING`, and the next `index.run()` after the reset carries on.
+
+A licence can carry credit grants (`vethuq-admin licence issue --grant 250`): each grant has an id, an amount, an optional add-on scope and an expiry, and is added once however often it is redeemed. The policy's `caps.one_off_max` limits what you can hold.
+
+## Statistics
+
+`client.stats` shows the work done: processing and confidence. It is built from daily totals kept as pages are read (never names, paths or text), so it survives file changes and purged sources (those show as "(purged source)").
+
+```python
+overview = client.stats.overview()  # one row per source, plus the total
+overview = client.stats.overview(
+    StatsGroupBy.DAY,  # source, language, file_type, engine,
+    language="en",
+    since="2026-10-01",  # page_source, band or day
+    band="low",
+    sort_by=StatsSortBy.CREDITS,
+    order=SortOrder.DESC,
+    limit=10,
+)
+overview.total.pages, overview.rows[0].pages_per_minute
+
+client.stats.source(1)  # one source's totals (removed ones too)
+client.stats.failures()  # {"password": 2, "corrupt": 1, ...} by reason code
+client.stats.low_confidence_pages()  # the pages OCR wasn't sure of, least sure first
+```
+
+`overview(group_by=StatsGroupBy.SOURCE, *, source, language, file_type, engine, page_source, band, since, until, sort_by=StatsSortBy.KEY, order=SortOrder.ASC, limit, offset)`: the filters keep matching work only; `since` and `until` are UTC days; the total always covers every matching row. A `StatsRow` has `key`, `files` (indexed now; by source only), `pages`, `native_pages`, `ocr_pages`, `passes`, `confidence` (0 to 1), `bands`, `duration_ms`, `ms_per_ocr_page`, `pages_per_minute`, `credits` and `failures` (by source, file type or day).
+
+**Confidence bands.** `high` from 90%, `medium` from 80%, `low` from 70%, below that `unreliable`; native pages are 100%. Change them with `client.settings.confidence.set_bands(70, 80, 90)`. `list_files(detailed=True)` shows each file's `band` and `low_confidence_pages`, and takes `min_confidence` (0 to 1) and `band` to filter.
+
+## Metrics sharing
+
+Off unless you turn it on (`client.metrics.opt_in()`). When on, aggregated, content-free statistics (timings, confidence, phases, languages, engine, settings used, failure reasons, size buckets, rough hardware) are sent to the collector the policy names (`metrics.endpoint`), at the end of an index run, at most once a day. Never file names, paths, content, OCR text, search text, user names, licence ids or anything derived from your computer; the batch carries a random install id so the data can be deleted. In return the local wallet's daily credits go up by 10% (`metrics.bonus_percent`, at most 15%) while sharing is on and a batch was sent in the last 7 days, from the UTC day after a send. The bonus changes what you have, never what a page costs.
+
+```python
+client.metrics.status()  # opted_in, available, last_sent_at, pending_days, bonus_active ...
+client.metrics.preview()  # exactly what would be sent next
+client.metrics.send()  # now (forced with send(force=True)); never raises
+client.metrics.opt_out()
+client.metrics.delete_data()  # asks the collector to delete everything for this install
+```
+
+Only closed UTC days are sent, each once. The schema is in the VethuQ repository (`metrics/schema/v1`) and so is the collector (`metrics/collector`, a Cloudflare Worker); anything not in the schema is refused by both.
+
 ## Logs
 
 VethuQ keeps a log for each of its parts. They are plain text files in the `logs` folder of the data folder (`Paths.logs_dir()`), one file per day. Old days are kept for the retention set in the [log settings](#log-settings) (15 days by default).
@@ -990,7 +1058,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

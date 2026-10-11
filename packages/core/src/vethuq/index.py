@@ -16,6 +16,7 @@ from pathlib import Path
 
 from vethuq._db import _Database, _IndexRun
 from vethuq._indexing import _Indexer, _Runs
+from vethuq._metrics import _Metrics
 from vethuq.enums import IndexRunSortBy, IndexRunStatus, SortOrder
 
 __all__ = ["Index", "IndexRun", "IndexRunSortBy", "IndexRunStatus", "SortOrder"]
@@ -33,6 +34,9 @@ class IndexRun:
     files_total: int  # the files it had to do
     files_processed: int
     files_failed: int
+    pages_processed: int  # pages read in this run
+    ocr_pages: int  # of those, the pages that needed OCR
+    credits_charged: float  # what the run cost
     workers: int
     started_at: str  # UTC, ISO 8601
     completed_at: str | None
@@ -49,6 +53,9 @@ class IndexRun:
             files_total=model.total_files,
             files_processed=model.processed_files,
             files_failed=model.failed_files,
+            pages_processed=model.processed_pages,
+            ocr_pages=model.ocr_pages,
+            credits_charged=model.credits_milli / 1000,
             workers=model.workers,
             started_at=model.started_at,
             completed_at=model.completed_at,
@@ -65,6 +72,9 @@ class IndexRun:
             "files_total": self.files_total,
             "files_processed": self.files_processed,
             "files_failed": self.files_failed,
+            "pages_processed": self.pages_processed,
+            "ocr_pages": self.ocr_pages,
+            "credits_charged": self.credits_charged,
             "workers": self.workers,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
@@ -82,9 +92,10 @@ class Index:
     Not created directly: use `VethuQ().index`.
     """
 
-    def __init__(self, database: _Database, indexer: _Indexer) -> None:
+    def __init__(self, database: _Database, indexer: _Indexer, metrics: _Metrics) -> None:
         self._database = database
         self._indexer = indexer
+        self._metrics = metrics
 
     def run(
         self, target: int | str | Path | None = None, *, workers: int | str | None = None
@@ -95,13 +106,17 @@ class Index:
         out for every active source. The run picks up new and modified files, files that failed
         before, and files that weren't readable until an add-on was installed; files already
         indexed are left alone. `workers` is how many files are read at once: `"auto"`, or 0 to 8
-        (0 reads on this thread); left out, the setting `settings.index` applies. A file that
+        (0 reads on this thread); left out, the setting `settings.index` applies. Pages that need
+        OCR cost credits (see `credits`); if they run out the run ends as `WAITING_CREDITS` and
+        the next run, after they reset at 00:00 UTC, carries on. At the end, if you opted in, a
+        batch of anonymous metrics is sent (see `metrics`). A file that
         fails doesn't stop the run: see its `files_failed` and the file's `index.error`.
 
         Raises `IndexAlreadyRunningError` if a run is going, `SourceNotFoundError` if `target`
         isn't a source or a file in one, and `SourcePathError` if the source is gone from disk.
         """
         run_id = self._indexer.run(target, workers)
+        self._metrics.send()  # if you opted in; at most once a day; never raises
         return self.get(run_id)
 
     def get(self, run_id: int) -> IndexRun:

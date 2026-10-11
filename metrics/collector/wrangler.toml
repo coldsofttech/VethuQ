@@ -1,0 +1,18 @@
+# The VethuQ metrics collector. Deploy it from the "Deploy metrics collector" workflow, or by hand:
+#   npm ci && npx wrangler d1 create vethuq-metrics   (once; put the id below)
+#   npm run migrate && npm run deploy
+name = "vethuq-metrics"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+# The largest request body accepted, in bytes (the policy's metrics.max_batch_bytes should match).
+MAX_BODY_BYTES = "262144"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vethuq-metrics"
+# Replace with the id printed by `wrangler d1 create vethuq-metrics`.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

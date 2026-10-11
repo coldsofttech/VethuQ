@@ -11,21 +11,28 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from vethuq._credits import _Clock, _Credits, _PageMeter, _PageTooLarge
 from vethuq._db import _Database, _Document, _DocumentIndex, _IndexRun, _Language, _Source
 from vethuq._db.values import _PageSource
 from vethuq._documents import _Documents
-from vethuq._errors import _OcrModelMissingError, _SourceNotFoundError, _SourcePathError
+from vethuq._errors import (
+    _CreditsExhaustedError,
+    _OcrModelMissingError,
+    _SourceNotFoundError,
+    _SourcePathError,
+)
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._indexing.gate import _ContentGate, _Scheduler
 from vethuq._indexing.runs import _Runs
 from vethuq._indexing.store import _PageStore
 from vethuq._languages import _Languages
 from vethuq._ocr import _Ocr, _PageOcr, _PageResult
-from vethuq._settings import _IndexSettings
+from vethuq._settings import _ConfidenceSettings, _IndexSettings
 from vethuq._sources import _Files, _Sources
+from vethuq._stats import _ErrorCode, _PageFact, _Usage
 from vethuq.enums import FileStatus, IndexRunStatus
 from vethuq_addon_api import (
     FileRemovedError,
@@ -44,6 +51,8 @@ class _Plan:
     language: LanguageSpec
     language_id: int
     manual: bool
+    source_id: int
+    file_type: str
 
 
 class _Indexer:
@@ -57,11 +66,15 @@ class _Indexer:
         file_types: _FileTypeCatalog,
         languages: Callable[[], list[LanguageSpec]],
         ocr: _Ocr,
+        credits: _Credits,
     ) -> None:
         self.database = database
         self.file_types = file_types
         self.languages = languages
         self.ocr = ocr
+        self.credits = credits
+        self._run_id: int | None = None
+        self._paused = threading.Event()
         self.gate = _ContentGate()
 
     # ----- the target -------------------------------------------------------------------------
@@ -188,13 +201,26 @@ class _Indexer:
         language = next((s for s in specs if s.id == code), None)
         if language is None:
             _Documents.start(session, row)
-            _Documents.fail(session, row, f"The language {code!r} isn't installed.")
+            _Documents.fail(
+                session, row, f"The language {code!r} isn't installed.", _ErrorCode.LANGUAGE
+            )
             return None
         language_id = session.scalars(select(_Language.id).where(_Language.language == code)).one()
         _Documents.start(session, row)
-        return _Plan(row.id, row.file_path, language, language_id, manual)
+        spec = self.file_types.for_path(row.file_path)
+        return _Plan(
+            row.id,
+            row.file_path,
+            language,
+            language_id,
+            manual,
+            row.source_id,
+            spec.id if spec else "",
+        )
 
-    def _read(self, plan: _Plan, only: dict[int, _PageSource] | None) -> list[_PageResult]:
+    def _read(
+        self, plan: _Plan, only: dict[int, _PageSource] | None, meter: _PageMeter
+    ) -> list[_PageResult]:
         file_type = self.file_types.for_path(plan.path)
         if file_type is None:
             raise UnreadableFileError(plan.path, "no add-on reads this kind of file")
@@ -210,11 +236,12 @@ class _Indexer:
         for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
             if only is not None and only.get(number, _PageSource.NATIVE) is _PageSource.NATIVE:
                 continue
-            results.append(_PageOcr.read_page(number, page, engine_for))
+            results.append(_PageOcr.read_page(number, page, engine_for, meter))
         return results
 
     def _attempt(self, plan: _Plan) -> None:
-        """Read one file once, and record it."""
+        """Read one file once, and record it. Pages are paid for as they are read; if the file
+        doesn't finish, what it cost is given back."""
         started = _Runs._now()
         sha256 = self._hash(plan.path)
         with self.gate.hold(sha256):
@@ -229,62 +256,208 @@ class _Indexer:
                         _Documents.finish(session, row, sha256)
                         return
                     only = _PageStore.sources(session, document.id)
-            results = self._read(plan, only)
-            with self.database.session() as session:
-                row = session.get(_DocumentIndex, plan.row_id)
-                document = _Documents.finish(session, row, sha256)
-                if only is None:
-                    _PageStore.replace(session, document.id, results, plan.language_id)
-                else:
-                    _PageStore.merge(session, document.id, results, plan.language_id)
-                confidences = [r.confidence for r in results]
-                _PageStore.mark_language(
-                    session,
-                    document.id,
-                    plan.language_id,
-                    manual=plan.manual,
-                    confidence=sum(confidences) / len(confidences) if confidences else None,
-                    started_at=started,
+            meter = _PageMeter(
+                self.credits,
+                source_id=plan.source_id,
+                run_id=self._run_id,
+                label=plan.path,
+                language=plan.language.id,
+                additional_language=only is not None,
+            )
+            try:
+                results = self._read(plan, only, meter)
+                self._save(plan, sha256, only, results, started)
+            except BaseException:
+                meter.refund_all()
+                raise
+
+    def _save(
+        self,
+        plan: _Plan,
+        sha256: str,
+        only: dict[int, _PageSource] | None,
+        results: list[_PageResult],
+        started: str,
+    ) -> None:
+        with self.database.session() as session:
+            row = session.get(_DocumentIndex, plan.row_id)
+            document = _Documents.finish(session, row, sha256)
+            if only is None:
+                _PageStore.replace(session, document.id, results, plan.language_id)
+            else:
+                _PageStore.merge(session, document.id, results, plan.language_id)
+            confidences = [r.confidence for r in results]
+            _PageStore.mark_language(
+                session,
+                document.id,
+                plan.language_id,
+                manual=plan.manual,
+                confidence=sum(confidences) / len(confidences) if confidences else None,
+                started_at=started,
+            )
+            facts = [
+                _PageFact(
+                    page_source=r.source.value,
+                    phase="quick" if r.quick else "",
+                    engine=r.quick.engine if r.quick else "",
+                    size_bucket=self.credits_bucket(r.size_factor),
+                    confidence=r.confidence,
+                    duration_ms=r.quick.duration_ms if r.quick else 0,
+                    credits_milli=r.credits_milli,
+                    passes=1 if r.quick else 0,
+                )
+                for r in results
+            ]
+            _Usage.record_pages(
+                session,
+                _Clock.today(session).isoformat(),
+                plan.source_id,
+                plan.file_type,
+                plan.language.id,
+                facts,
+                _ConfidenceSettings.get_bands(session),
+            )
+            if self._run_id is not None:  # one statement, so workers can't lose each other's count
+                session.execute(
+                    update(_IndexRun)
+                    .where(_IndexRun.id == self._run_id)
+                    .values(processed_pages=_IndexRun.processed_pages + len(results))
                 )
 
-    def _process(self, row_id: int, retries: int) -> bool:
-        """Index one file, trying again if it fails. Returns whether it succeeded."""
+    @staticmethod
+    def credits_bucket(factor: float) -> str:
+        from vethuq._credits import _Pricing  # noqa: PLC0415
+
+        return _Pricing.bucket(factor)
+
+    @staticmethod
+    def _code(exc: BaseException) -> str:
+        if isinstance(exc, _PageTooLarge):
+            return _ErrorCode.PAGE_TOO_LARGE
+        if isinstance(exc, _OcrModelMissingError):
+            return _ErrorCode.OCR_UNAVAILABLE
+        if isinstance(exc, PasswordProtectedError):
+            return _ErrorCode.PASSWORD
+        if isinstance(exc, UnreadableFileError):
+            return _ErrorCode.CORRUPT if "damaged" in str(exc) else _ErrorCode.UNREADABLE
+        return _ErrorCode.OTHER
+
+    def _failed(self, plan: _Plan, row_id: int, message: str, code: str, *, unsupported=False):
+        with self.database.session() as session:
+            row = session.get(_DocumentIndex, row_id)
+            if unsupported:
+                _Documents.mark_unsupported(session, row, message, code)
+            else:
+                _Documents.fail(session, row, message, code)
+            _Usage.record_failure(
+                session, _Clock.today(session).isoformat(), plan.source_id, plan.file_type, code
+            )
+
+    def _process(self, row_id: int, retries: int) -> str:
+        """Index one file, trying again if it fails. Returns "ok", "failed" or "paused" (the
+        credits ran out, so the file is waiting again)."""
         with self.database.session() as session:
             plan = self._plan(session, row_id)
         if plan is None:
             with self.database.session() as session:
                 row = session.get(_DocumentIndex, row_id)
-                return row is not None and row.status is FileStatus.REMOVED
-        message = ""
+                return "ok" if row is not None and row.status is FileStatus.REMOVED else "failed"
+        message, code = "", _ErrorCode.OTHER
         for attempt in range(retries + 1):
             try:
                 self._attempt(plan)
-                return True
-            except FileNotFoundError:
+                return "ok"
+            except _CreditsExhaustedError:
+                self._paused.set()
+                with self.database.session() as session:
+                    _Documents.put_back(session, session.get(_DocumentIndex, row_id))
+                return "paused"
+            except (FileNotFoundError, FileRemovedError):
                 with self.database.session() as session:
                     _Documents.mark_removed(session, session.get(_DocumentIndex, row_id))
-                return True
-            except FileRemovedError:
-                with self.database.session() as session:
-                    _Documents.mark_removed(session, session.get(_DocumentIndex, row_id))
-                return True
+                return "ok"
             except PasswordProtectedError as exc:
-                with self.database.session() as session:
-                    _Documents.mark_unsupported(
-                        session, session.get(_DocumentIndex, row_id), str(exc)
-                    )
-                return True
-            except (UnreadableFileError, _OcrModelMissingError) as exc:
-                message = str(exc)
+                self._failed(plan, row_id, str(exc), _ErrorCode.PASSWORD, unsupported=True)
+                return "ok"
+            except (UnreadableFileError, _OcrModelMissingError, _PageTooLarge) as exc:
+                message, code = str(exc), self._code(exc)
                 break  # trying again won't change it
             except Exception as exc:  # noqa: BLE001 - one file never stops the run
                 message = f"{type(exc).__name__}: {exc}" if not str(exc) else str(exc)
                 self._logger.warning("Indexing %s failed (try %d)", plan.path, attempt + 1)
                 if attempt < retries:
                     time.sleep(self.RETRY_DELAY * (attempt + 1))
+        self._failed(plan, row_id, message, code)
+        return "failed"
+
+    # ----- estimating -------------------------------------------------------------------------
+
+    def estimate(self, target: int | str | Path | None) -> tuple[int, int, int, int]:
+        """(files, pages, OCR pages, milli-credits) indexing `target` would take now."""
+        todo: list[tuple[str, str | None, bool]] = []
         with self.database.session() as session:
-            _Documents.fail(session, session.get(_DocumentIndex, row_id), message)
-        return False
+            sources, only_file = self._resolve(session, target)
+            pricing = self.credits.pricing(session)
+            specs = self.languages()
+            for source in sources:
+                try:
+                    entries = _Files.list(source.path)
+                except _SourcePathError:
+                    continue
+                rows = {r.file_path: r for r in _Documents.rows(session, source.id)}
+                code = (source.language_codes or _Languages.default_ids(session, specs))[0]
+                for entry in entries:
+                    if only_file is not None and entry.path != only_file:
+                        continue
+                    spec = self.file_types.for_path(entry.path)
+                    status = _Sources.file_status(rows.get(entry.path), entry, spec is not None)
+                    if spec is not None and status in (
+                        FileStatus.PENDING,
+                        FileStatus.MODIFIED,
+                        FileStatus.ERROR,
+                        FileStatus.PROCESSING,
+                    ):
+                        todo.append((entry.path, code, spec is not None))
+            language_ids = dict(session.execute(select(_Language.language, _Language.id)).all())
+        files = pages = ocr_pages = cost = 0
+        for path, code, _ in todo:
+            try:
+                sha256 = self._hash(path)
+            except OSError:
+                continue
+            additional = False
+            with self.database.session() as session:
+                document = session.scalars(
+                    select(_Document).where(_Document.sha256 == sha256)
+                ).first()
+                if document is not None:
+                    language_id = language_ids.get(code or "")
+                    if language_id is None or _PageStore.covers(session, document.id, language_id):
+                        continue
+                    additional = True
+            file_type = self.file_types.for_path(path)
+            try:
+                found = list(_PageOcr.pages(file_type.reader, Path(path)))
+            except Exception:  # noqa: BLE001
+                self._logger.debug("Couldn't read %s to estimate it", path)
+                continue  # an unreadable file costs nothing
+            files += 1
+            for _number, page in found:
+                pages += 1
+                if not _PageOcr.needs_ocr(page):
+                    continue
+                has_text = _PageOcr.has_text(page.native_text.strip())
+                try:
+                    factor = pricing.size_factor(page.width_pt, page.height_pt)
+                except _PageTooLarge:
+                    continue
+                ocr_pages += 1
+                cost += pricing.cost_milli(
+                    factor,
+                    additional_language=additional,
+                    covered=_PageOcr.covered(page) if has_text else 1.0,
+                )
+        return files, pages, ocr_pages, cost
 
     # ----- a run ------------------------------------------------------------------------------
 
@@ -300,8 +473,11 @@ class _Indexer:
             seconds = _IndexSettings.get_stability_check_seconds(session)
             source_id = sources[0].id if target is not None else None
             _Languages.ensure_rows(session, self.languages())  # once, before the workers start
+            self.credits.sync(session)  # today's allowance, before the workers start
             run = _Runs.begin(session, source_id, only_file, count)
             run_id = run.id
+        self._run_id = run_id
+        self._paused.clear()
         counts = {"processed": 0, "failed": 0}
         lock = threading.Lock()
         try:
@@ -314,10 +490,14 @@ class _Indexer:
                 session.get(_IndexRun, run_id).total_files = len(todo)
 
             def work(row_id: int) -> None:
-                ok = self._process(row_id, retries)
+                if self._paused.is_set():
+                    return
+                outcome = self._process(row_id, retries)
+                if outcome == "paused":
+                    return
                 with lock:
                     counts["processed"] += 1
-                    counts["failed"] += 0 if ok else 1
+                    counts["failed"] += 0 if outcome == "ok" else 1
                     snapshot = dict(counts)
                 with self.database.session() as session:
                     record = session.get(_IndexRun, run_id)
@@ -333,7 +513,15 @@ class _Indexer:
                 ) as pool:
                     for future in [pool.submit(work, row_id) for row_id in todo]:
                         future.result()
-            self._finish(run_id, IndexRunStatus.COMPLETED, None, counts)
+            if self._paused.is_set():
+                self._finish(
+                    run_id,
+                    IndexRunStatus.WAITING_CREDITS,
+                    "Out of credits; they reset at 00:00 UTC. Run again then.",
+                    counts,
+                )
+            else:
+                self._finish(run_id, IndexRunStatus.COMPLETED, None, counts)
         except KeyboardInterrupt:
             self._finish(run_id, IndexRunStatus.STOPPED, "Interrupted.", counts)
             raise
@@ -342,6 +530,7 @@ class _Indexer:
             raise
         finally:
             _Runs.end(run_id)
+            self._run_id = None
         return run_id
 
     def _finish(self, run_id: int, status: IndexRunStatus, error: str | None, counts: dict) -> None:

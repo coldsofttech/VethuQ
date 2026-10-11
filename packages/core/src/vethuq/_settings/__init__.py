@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from vethuq._settings.settings import (
+    _ConfidenceSettings,
     _DatabaseSettings,
     _IndexSettings,
     _LanguageSettings,
     _LogSettings,
+    _MetricsSettings,
     _Settings,
     _SourceSettings,
     _UpdateSettings,
@@ -14,6 +16,8 @@ from vethuq._settings.settings import (
 )
 
 __all__ = [
+    "_ConfidenceSettings",
+    "_MetricsSettings",
     "_DatabaseSettings",
     "_IndexSettings",
     "_LanguageSettings",

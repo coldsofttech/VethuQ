@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -423,3 +425,86 @@ class _DatabaseSettings:
     def reset_integrity_check_interval_minutes(session: Session) -> None:
         """Back to the default interval (1 day)."""
         _Settings.reset(session, _IntegrityCheck.INTERVAL_KEY)
+
+
+class _MetricsSettings:
+    OPT_IN_KEY = "metrics_opt_in"
+    OPTED_IN_ON_KEY = "metrics_opted_in_on"
+    INSTALL_ID_KEY = "metrics_install_id"
+    LAST_SENT_KEY = "metrics_last_sent_at"
+    SENT_THROUGH_KEY = "metrics_sent_through"
+
+    @staticmethod
+    def get_opt_in(session: Session) -> bool:
+        """Whether anonymous usage metrics are shared. Off unless the user turned it on."""
+        return _Settings.get(session, _MetricsSettings.OPT_IN_KEY) == "1"
+
+    @staticmethod
+    def set_opt_in(session: Session, on: bool) -> None:
+        if not isinstance(on, bool):
+            raise _InvalidSettingValueError(
+                f"Metrics sharing is on or off (True or False), not {on!r}."
+            )
+        if on == _MetricsSettings.get_opt_in(session):
+            return
+        _Settings.set(session, _MetricsSettings.OPT_IN_KEY, "1" if on else "0")
+        if on:
+            _Settings.set(session, _MetricsSettings.OPTED_IN_ON_KEY, datetime.now(UTC).isoformat())
+
+    @staticmethod
+    def reset_opt_in(session: Session) -> None:
+        _Settings.reset(session, _MetricsSettings.OPT_IN_KEY)
+
+    @staticmethod
+    def install_id(session: Session) -> str:
+        """A random id, made on first use, that lets the collector delete this install's data. It
+        isn't derived from the computer, the user or any licence."""
+        value = _Settings.get(session, _MetricsSettings.INSTALL_ID_KEY)
+        if not value:
+            value = uuid.uuid4().hex
+            _Settings.set(session, _MetricsSettings.INSTALL_ID_KEY, value)
+        return value
+
+    @staticmethod
+    def sent_through(session: Session) -> str | None:
+        """The last UTC day (YYYY-MM-DD) whose data has been sent."""
+        return _Settings.get(session, _MetricsSettings.SENT_THROUGH_KEY)
+
+    @staticmethod
+    def new_install_id(session: Session) -> str:
+        _Settings.reset(session, _MetricsSettings.INSTALL_ID_KEY)
+        return _MetricsSettings.install_id(session)
+
+
+class _ConfidenceSettings:
+    KEY = "confidence_bands"
+    DEFAULT = (70, 80, 90)  # percent: from `low`, from `medium`, from `high`
+
+    @staticmethod
+    def get_bands(session: Session) -> tuple[int, int, int]:
+        """Where the confidence bands start, in percent: low, medium and high. Below the first is
+        `unreliable`."""
+        value = _Settings.get(session, _ConfidenceSettings.KEY)
+        try:
+            low, medium, high = (int(part) for part in (value or "").split(","))
+            if 0 <= low < medium < high <= 100:
+                return low, medium, high
+        except ValueError:
+            pass
+        return _ConfidenceSettings.DEFAULT
+
+    @staticmethod
+    def set_bands(session: Session, low: int, medium: int, high: int) -> None:
+        values = (low, medium, high)
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in values) or not (
+            0 <= low < medium < high <= 100
+        ):
+            raise _InvalidSettingValueError(
+                f"The bands must be whole percentages, rising, from 0 to 100, not {values!r}.",
+                "For example 70, 80, 90.",
+            )
+        _Settings.set(session, _ConfidenceSettings.KEY, f"{low},{medium},{high}")
+
+    @staticmethod
+    def reset_bands(session: Session) -> None:
+        _Settings.reset(session, _ConfidenceSettings.KEY)

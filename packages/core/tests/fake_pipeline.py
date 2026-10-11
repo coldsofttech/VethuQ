@@ -60,16 +60,19 @@ def pdf_document(*pages: dict, **extra: object) -> str:
     return json.dumps({"pages": list(pages), **extra})
 
 
-def native_page(text: str = "This page has plenty of native text on it.") -> dict:
-    return {"text": text}
+def native_page(text: str = "This page has plenty of native text on it.", **size: float) -> dict:
+    return {"text": text, **size}
 
 
-def scanned_page(ocr: str = "scanned words found by ocr") -> dict:
-    return {"text": "", "ocr": ocr}
+def scanned_page(ocr: str = "scanned words found by ocr", **size: float) -> dict:
+    return {"text": "", "ocr": ocr, **size}
 
 
-def mixed_page(text: str = "Native text with enough words in it.", *images: str) -> dict:
-    return {"text": text, "regions": len(images), "region_ocr": list(images)}
+A3 = {"width": 841.89, "height": 1190.55}
+
+
+def mixed_page(text: str = "Native text with enough words in it.", *images: str, **size) -> dict:
+    return {"text": text, "regions": len(images), "region_ocr": list(images), **size}
 
 
 class FakeReader(DocumentReader):
@@ -97,20 +100,28 @@ class FakeReader(DocumentReader):
         for number, page in enumerate(document["pages"], start=1):
             if page_number is not None and number != page_number:
                 continue
-            regions = tuple((float(i), 0.0, 10.0, 10.0) for i in range(page.get("regions", 0)))
+            if document.get("error_before_page") == number:
+                raise RuntimeError("fell over part way")
+            side = float(page.get("region_side", 10.0))
+            regions = tuple(
+                (float(i), 0.0, float(i) + side, side) for i in range(page.get("regions", 0))
+            )
             yield ReadPage(
                 native_text=page.get("text", ""),
                 image_regions=regions,
                 render=lambda region, page=page: self_render(page, region),
+                width_pt=page.get("width", 595.276),
+                height_pt=page.get("height", 841.89),
             )
 
 
-def self_render(page: dict, region: tuple | None) -> tuple[str, str]:
+def self_render(page: dict, region: tuple | None) -> tuple:
+    confidence = page.get("confidence", 0.8)
     if region is None:
-        return ("page", page.get("ocr", ""))
+        return ("page", page.get("ocr", ""), confidence)
     texts = page.get("region_ocr", [])
     index = int(region[0])
-    return ("region", texts[index] if index < len(texts) else "")
+    return ("region", texts[index] if index < len(texts) else "", confidence)
 
 
 class FakeEngine:
@@ -128,10 +139,11 @@ class FakeEngine:
     def recognize(self, image: object) -> OcrResult:
         STATE.ocr_calls.append((self._language, image))
         text = image[1] if isinstance(image, tuple) else ""
-        lines = tuple((line, 0.8) for line in text.splitlines())
+        confidence = image[2] if isinstance(image, tuple) and len(image) > 2 else 0.8
+        lines = tuple((line, confidence) for line in text.splitlines())
         return OcrResult(
             text=text,
-            confidence=0.8 if text else 0.0,
+            confidence=confidence if text else 0.0,
             engine=self.name,
             language=self._language,
             image_width=100,

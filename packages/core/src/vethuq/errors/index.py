@@ -15,3 +15,15 @@ class IndexAlreadyRunningError(IndexingError):
 
 class IndexRunNotFoundError(IndexingError):
     """There is no index run with that id."""
+
+
+class CreditsError(VethuQError):
+    """Base class for credit errors."""
+
+
+class InvalidGrantError(CreditsError):
+    """A credit grant or licence can't be redeemed."""
+
+
+class CreditsExhaustedError(CreditsError):
+    """There aren't enough credits for the work."""

@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from vethuq._db.values import _PageSource, _PassSource, _PassStatus
+from vethuq._db.values import _GrantKind, _LedgerKind, _PageSource, _PassSource, _PassStatus
 from vethuq.enums import FileStatus, IndexRunStatus, SourceStatus, SourceType
 
 
@@ -155,6 +155,8 @@ class _DocumentIndex(_Base):
         server_default=FileStatus.PENDING.value,
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Why it failed, as a short code (see `_ErrorCode`), for statistics.
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The file as it was when last seen; a different size or time on disk means it was modified.
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     modified_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -272,8 +274,135 @@ class _IndexRun(_Base):
     total_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     processed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Pages read in this run, how many of them needed OCR, and the credits that cost.
+    processed_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ocr_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[str] = mapped_column(Text, nullable=False)
     completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _CreditGrant(_Base):
+    """Credits a wallet received: its daily allowance, a starter, a licence grant, a promotion.
+
+    `remaining_milli` is what is left (credits are whole milli-credits). Daily and promotional
+    grants expire at the end of their UTC day; a grant with `scope` is spent only on that
+    add-on's work. `ref` makes granting repeatable: a wallet gets each `ref` once.
+    """
+
+    __tablename__ = "credit_grants"
+    __table_args__ = (
+        UniqueConstraint("wallet", "ref", name="uq_credit_grants_wallet_ref"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    wallet: Mapped[str] = mapped_column(Text, nullable=False, default="local")
+    kind: Mapped[_GrantKind] = mapped_column(_enum(_GrantKind, "ck_credit_grants_kind"))
+    origin: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ref: Mapped[str] = mapped_column(Text, nullable=False)
+    amount_milli: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_milli: Mapped[int] = mapped_column(Integer, nullable=False)
+    granted_at: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _CreditLedger(_Base):
+    """One movement of credits. A charge that spans several grants has a row for each."""
+
+    __tablename__ = "credit_ledger"
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    wallet: Mapped[str] = mapped_column(Text, nullable=False, default="local")
+    kind: Mapped[_LedgerKind] = mapped_column(_enum(_LedgerKind, "ck_credit_ledger_kind"))
+    amount_milli: Mapped[int] = mapped_column(Integer, nullable=False)
+    grant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credit_grants.id", ondelete="SET NULL"), nullable=True
+    )
+    # What the credits were for. Deleted with the source (the balance lives in the grants).
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    phase: Mapped[str | None] = mapped_column(Text, nullable=True)
+    angle: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    size_factor_milli: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _UsageDaily(_Base):
+    """What was processed on a UTC day, summed. No names, paths or text: this is what statistics
+    show and what metrics sharing sends (without `source_id`, which stays on this computer)."""
+
+    __tablename__ = "usage_daily"
+    __table_args__ = (
+        Index(
+            "uq_usage_daily_key",
+            "day",
+            text("coalesce(source_id, 0)"),
+            "file_type",
+            "phase",
+            "language",
+            "engine",
+            "page_source",
+            "size_bucket",
+            "band",
+            unique=True,
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    # Kept when its source is purged (statistics stay); then it is NULL.
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)  # "" for a native page
+    language: Mapped[str] = mapped_column(Text, nullable=False)
+    engine: Mapped[str] = mapped_column(Text, nullable=False)  # "" for a native page
+    page_source: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    band: Mapped[str] = mapped_column(Text, nullable=False)
+    pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    passes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    confidence_sum: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class _UsageFailure(_Base):
+    """Files that failed on a UTC day, by reason code."""
+
+    __tablename__ = "usage_failures"
+    __table_args__ = (
+        Index(
+            "uq_usage_failures_key",
+            "day",
+            text("coalesce(source_id, 0)"),
+            "file_type",
+            "code",
+            unique=True,
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="SET NULL"), nullable=True
+    )
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

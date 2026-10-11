@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/coldsofttech/VethuQ/metrics/schema/v1/delete.schema.json",
+  "title": "VethuQ metrics delete request (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["install_id"],
+  "properties": {
+    "install_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" }
+  }
+}

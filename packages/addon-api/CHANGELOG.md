@@ -9,7 +9,8 @@ The add-on API version (`API_VERSION`) is 0.3.0.
 
 ### Added (API 0.3.0)
 - File types: `FileTypeSpec`, `Addon.file_types()`, and the reader contract (`DocumentReader`,
-  `ReadPage`, `Region`, `UnreadableFileError` and its subclasses, `extended_path`).
+  `ReadPage` (with the page size in points), `Region`, `UnreadableFileError` and its subclasses,
+  `extended_path`).
 - OCR engines: `OcrEngineProvider` (create an engine, name and fetch its models), `OcrEngine`,
   `OcrResult`, `OcrModelSpec`, `Addon.ocr_engines()`.
 - OCR phases: `OcrPhaseSpec` and `Addon.ocr_phases()`.

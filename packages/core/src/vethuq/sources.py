@@ -15,9 +15,17 @@ from vethuq._documents import _Documents
 from vethuq._errors import _SourceAlreadyExistsError
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._languages import _LanguageCatalog
-from vethuq._settings import _SourceSettings
+from vethuq._settings import _ConfidenceSettings, _SourceSettings
 from vethuq._sources import _FileEntry, _Files, _Sources
-from vethuq.enums import FileStatus, SortOrder, SourceSortBy, SourceStatus, SourceType
+from vethuq._stats import _Bands
+from vethuq.enums import (
+    ConfidenceBand,
+    FileStatus,
+    SortOrder,
+    SourceSortBy,
+    SourceStatus,
+    SourceType,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -145,6 +153,8 @@ class FileIndex:
     confidence: float | None = None  # the average over the pages, 0 to 1
     languages: list[str] | None = None  # the language ids it was read in
     file_type: str | None = None  # the kind of file, e.g. "pdf"; None if no add-on reads it
+    low_confidence_pages: int | None = None  # pages below the `medium` confidence band
+    band: ConfidenceBand | None = None  # the band of the average confidence
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -159,6 +169,8 @@ class FileIndex:
             "confidence": self.confidence,
             "languages": list(self.languages) if self.languages is not None else None,
             "file_type": self.file_type,
+            "low_confidence_pages": self.low_confidence_pages,
+            "band": self.band.value if self.band else None,
         }
 
     def to_json(self, indent: int | None = None) -> str:
@@ -298,6 +310,9 @@ class Sources:
         id_or_path: int | str | Path,
         detailed: bool = False,
         status: FileStatus | str | None = None,
+        *,
+        min_confidence: float | None = None,
+        band: ConfidenceBand | str | None = None,
     ) -> list[SourceFile]:
         """The files that belong to an active source, as they are on disk now.
 
@@ -309,14 +324,21 @@ class Sources:
         (changed since it was indexed, so it will be processed again) or `UNSUPPORTED` (not a
         kind an installed add-on reads, or needing a password). Files that were indexed and have
         since gone from disk are listed too, as `REMOVED`, until the source is purged. `status`
-        keeps only the files with that `FileStatus` and needs `detailed=True`. Reading never
+        keeps only the files with that `FileStatus`; `min_confidence` (0 to 1) and `band` keep
+        only indexed files whose average confidence is at least that, or in that
+        `ConfidenceBand`. All three need `detailed=True`. Reading never
         changes anything.
 
         Raises `SourceNotFoundError` if no active source matches and `SourcePathError` if
         the source's path is no longer on disk.
         """
-        if status is not None and not detailed:
-            raise ValueError("status needs detailed=True.")
+        if (status is not None or min_confidence is not None or band is not None) and not detailed:
+            raise ValueError("status, min_confidence and band need detailed=True.")
+        if min_confidence is not None and not (
+            isinstance(min_confidence, int | float) and 0 <= min_confidence <= 1
+        ):
+            raise ValueError("min_confidence must be a number from 0 to 1.")
+        wanted_band = None if band is None else _Sources._coerce(ConfidenceBand, band, "band")
         wanted = None if status is None else _Sources._coerce(FileStatus, status, "status")
         with self._database.session() as session:
             source = _Sources.get(session, id_or_path)
@@ -325,7 +347,20 @@ class Sources:
             if not detailed:
                 return [SourceFile._from_entry(entry) for entry in entries]
             files = self._with_index(session, path, source_id, entries)
-        return [f for f in files if wanted is None or (f.index and f.index.status is wanted)]
+        return [
+            f
+            for f in files
+            if (wanted is None or (f.index and f.index.status is wanted))
+            and (
+                min_confidence is None
+                or (
+                    f.index
+                    and f.index.confidence is not None
+                    and f.index.confidence >= min_confidence
+                )
+            )
+            and (wanted_band is None or (f.index and f.index.band is wanted_band))
+        ]
 
     def _with_index(
         self, session: Session, source_path: str, source_id: int, entries: list[_FileEntry]
@@ -335,19 +370,22 @@ class Sources:
         originals = _Documents.original_paths(
             session, {r.document_id for r in rows.values() if r.document_id is not None}
         )
-        facts = _Documents.page_facts(session, set(originals))
+        bands = _ConfidenceSettings.get_bands(session)
+        facts = _Documents.page_facts(session, set(originals), bands[1] / 100)
         files: list[SourceFile] = []
 
         def index_for(
             row: _DocumentIndex | None, status: FileStatus, on_disk: bool, path: str
         ) -> FileIndex:
             duplicate_of = None
-            pages = confidence = languages = None
+            pages = confidence = languages = low = band = None
             if row is not None and row.document_id is not None:
                 original_id, original_path = originals[row.document_id]
                 duplicate_of = original_path if original_id != row.id else None
                 if row.status is FileStatus.INDEXED:
-                    pages, confidence, languages = facts[row.document_id]
+                    pages, confidence, languages, low = facts[row.document_id]
+                    if pages and confidence is not None:
+                        band = _Bands.of(confidence, bands)
             spec = self._file_types.for_path(path)
             return FileIndex(
                 status=status,
@@ -361,6 +399,8 @@ class Sources:
                 confidence=confidence,
                 languages=languages,
                 file_type=spec.id if spec is not None else None,
+                low_confidence_pages=low,
+                band=band,
             )
 
         for entry in entries:

@@ -7,24 +7,29 @@ from pathlib import Path
 from types import TracebackType
 
 from vethuq._addons import _AddonManager
+from vethuq._credits import _Credits
 from vethuq._db import _Database
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._indexing import _Indexer
 from vethuq._languages import _LanguageCatalog
 from vethuq._maintenance import _Maintenance
+from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
 from vethuq.addons import Addons
+from vethuq.credits import Credits
 from vethuq.db import Db
 from vethuq.file_types import FileTypes
 from vethuq.index import Index
 from vethuq.languages import Languages
 from vethuq.logs import Logs
+from vethuq.metrics import Metrics
 from vethuq.ocr import Ocr
 from vethuq.paths import Paths
 from vethuq.policy import PolicyClient
 from vethuq.settings import Settings
 from vethuq.sources import Sources
+from vethuq.stats import Stats
 from vethuq.updates import Updates
 from vethuq.version import VersionDetails
 
@@ -57,6 +62,12 @@ class VethuQ:
         self._index: Index | None = None
         self._ocr: Ocr | None = None
         self._ocr_runtime: _Ocr | None = None
+        self._credit_service: _Credits | None = None
+        self._metrics_service: _Metrics | None = None
+        self._indexer: _Indexer | None = None
+        self._credits: Credits | None = None
+        self._metrics: Metrics | None = None
+        self._stats: Stats | None = None
         self._lock = threading.Lock()
 
     @property
@@ -86,6 +97,30 @@ class VethuQ:
                     lambda: _Paths.models_dir(self.db_path),
                 )
             return self._ocr_runtime
+
+    def _credit_engine(self) -> _Credits:
+        db = self._db()
+        with self._lock:
+            if self._credit_service is None:
+                self._credit_service = _Credits(
+                    db, lambda: self.policy.current().policy.raw, self.version.vethuq
+                )
+            return self._credit_service
+
+    def _metrics_engine(self) -> _Metrics:
+        credits, db, version = self._credit_engine(), self._db(), self.version.vethuq
+        with self._lock:
+            if self._metrics_service is None:
+                self._metrics_service = _Metrics(db, credits, version)
+            return self._metrics_service
+
+    def _indexer_engine(self) -> _Indexer:
+        credits, runtime = self._credit_engine(), self._runtime()
+        db, types, manager = self._db(), self._file_type_catalog(), self._manager()
+        with self._lock:
+            if self._indexer is None:
+                self._indexer = _Indexer(db, types, manager.language_specs, runtime, credits)
+            return self._indexer
 
     def _release_database(self) -> None:
         """Close the connections (used by add-ons, e.g. before replacing the database file)."""
@@ -132,15 +167,30 @@ class VethuQ:
     def index(self) -> Index:
         """Index sources: read their files into pages."""
         if self._index is None:
-            manager = self._manager()
-            indexer = _Indexer(
-                self._db(),
-                self._file_type_catalog(),
-                manager.language_specs,
-                self._runtime(),
-            )
-            self._index = Index(self._db(), indexer)
+            self._index = Index(self._db(), self._indexer_engine(), self._metrics_engine())
         return self._index
+
+    @property
+    def credits(self) -> Credits:
+        """What reading pages costs, and what you have left."""
+        if self._credits is None:
+            indexer = self._indexer_engine()
+            self._credits = Credits(self._db(), self._credit_engine(), indexer.estimate)
+        return self._credits
+
+    @property
+    def stats(self) -> Stats:
+        """Statistics about the work done: processing and confidence."""
+        if self._stats is None:
+            self._stats = Stats(self._db())
+        return self._stats
+
+    @property
+    def metrics(self) -> Metrics:
+        """Sharing anonymous usage metrics (off unless you opt in)."""
+        if self._metrics is None:
+            self._metrics = Metrics(self._db(), self._metrics_engine())
+        return self._metrics
 
     @property
     def ocr(self) -> Ocr:
@@ -222,6 +272,12 @@ class VethuQ:
             self._file_types = None
             self._index = None
             self._ocr = None
+            self._credit_service = None
+            self._metrics_service = None
+            self._indexer = None
+            self._credits = None
+            self._metrics = None
+            self._stats = None
 
     def __enter__(self) -> VethuQ:
         return self

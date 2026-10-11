@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
-from vethuq import addons, db, errors, file_types, index, logs, ocr, paths, policy, sources, updates
+from vethuq import (
+    addons,
+    credits,
+    db,
+    errors,
+    file_types,
+    index,
+    logs,
+    metrics,
+    ocr,
+    paths,
+    policy,
+    sources,
+    stats,
+    updates,
+)
 from vethuq._brand import _Brand
 from vethuq._version import _Version
 from vethuq.client import VethuQ
@@ -23,15 +38,18 @@ __all__ = [
     "APP_VERSION",
     "__version__",
     "addons",
+    "credits",
     "db",
     "errors",
     "file_types",
     "index",
     "logs",
+    "metrics",
     "ocr",
     "paths",
     "policy",
     "sources",
+    "stats",
     "updates",
     "Language",
     "Paths",

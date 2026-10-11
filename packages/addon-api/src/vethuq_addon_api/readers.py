@@ -71,12 +71,17 @@ class ReadPage:
     are the embedded image areas large enough to matter. `render(region)` produces an image of
     the whole page, or just `region`, on demand: rendering is the expensive part, so it only
     happens for pages that need OCR. It returns what an OCR engine accepts, an image file path or
-    a BGR pixel array. A `ReadPage` is only valid until the iterator that produced it moves on.
+    a BGR pixel array. `width_pt` / `height_pt` are the page size. A `ReadPage` is only valid until
+    the iterator that produced it moves on.
     """
 
     native_text: str
     image_regions: tuple[Region, ...]
     render: Callable[[Region | None], Any]
+    # The page's size in points (1/72 inch), as it is displayed (after rotation); None if the
+    # reader doesn't know. VethuQ prices a page by its size.
+    width_pt: float | None = None
+    height_pt: float | None = None
 
 
 class DocumentReader(ABC):

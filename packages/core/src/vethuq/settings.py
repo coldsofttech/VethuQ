@@ -8,16 +8,20 @@ from vethuq._db import _Database, _IntegrityCheck
 from vethuq._languages import _LanguageCatalog, _Languages
 from vethuq._logs import _Log, _Logs
 from vethuq._settings import (
+    _ConfidenceSettings,
     _DatabaseSettings,
     _IndexSettings,
     _LanguageSettings,
     _LogSettings,
+    _MetricsSettings,
     _SourceSettings,
     _UpdateSettings,
 )
 from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
 
 __all__ = [
+    "ConfidenceSettings",
+    "MetricsSettings",
     "DatabaseSettings",
     "IndexSettings",
     "LanguageSettings",
@@ -329,6 +333,58 @@ class DatabaseSettings:
             _DatabaseSettings.reset_integrity_check_interval_minutes(session)
 
 
+class MetricsSettings:
+    """Settings for sharing anonymous usage metrics.
+
+    Not created directly: use `VethuQ().settings.metrics`. `VethuQ().metrics` is the usual way to
+    turn sharing on or off.
+    """
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_opt_in(self) -> bool:
+        """Whether metrics are shared. Off unless you turned it on."""
+        with self._database.session() as session:
+            return _MetricsSettings.get_opt_in(session)
+
+    def set_opt_in(self, on: bool) -> None:
+        """Turn sharing on or off. Raises `InvalidSettingValueError` unless `on` is a bool."""
+        with self._database.session() as session:
+            _MetricsSettings.set_opt_in(session, on)
+
+    def reset_opt_in(self) -> None:
+        with self._database.session() as session:
+            _MetricsSettings.reset_opt_in(session)
+
+
+class ConfidenceSettings:
+    """Where the confidence bands start.
+
+    Not created directly: use `VethuQ().settings.confidence`. A page is `high`, `medium`, `low` or
+    `unreliable` by its confidence in percent; by default 90, 80 and 70.
+    """
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_bands(self) -> tuple[int, int, int]:
+        """The percentages the `low`, `medium` and `high` bands start at. (70, 80, 90) unless
+        changed; below the first is `unreliable`."""
+        with self._database.session() as session:
+            return _ConfidenceSettings.get_bands(session)
+
+    def set_bands(self, low: int, medium: int, high: int) -> None:
+        """Change the bands: whole percentages, rising, from 0 to 100. Raises
+        `InvalidSettingValueError` for anything else."""
+        with self._database.session() as session:
+            _ConfidenceSettings.set_bands(session, low, medium, high)
+
+    def reset_bands(self) -> None:
+        with self._database.session() as session:
+            _ConfidenceSettings.reset_bands(session)
+
+
 class Settings:
     """VethuQ's settings, grouped by feature.
 
@@ -339,6 +395,8 @@ class Settings:
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
         self.index = IndexSettings(database)
+        self.metrics = MetricsSettings(database)
+        self.confidence = ConfidenceSettings(database)
         self.logs = LogSettings(database)
         self.updates = UpdateSettings(database)
         self.database = DatabaseSettings(database)

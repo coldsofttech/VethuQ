@@ -7,6 +7,11 @@ from enum import StrEnum
 __all__ = [
     "FileStatus",
     "AddonStatus",
+    "CreditEntryKind",
+    "CreditSortBy",
+    "ConfidenceBand",
+    "StatsGroupBy",
+    "StatsSortBy",
     "IndexRunSortBy",
     "IndexRunStatus",
     "IntegrityCheckMode",
@@ -77,6 +82,7 @@ class IndexRunStatus(StrEnum):
     COMPLETED = "completed"  # it ran to the end (some files may have failed: see its counts)
     STOPPED = "stopped"  # it was interrupted
     FAILED = "failed"  # it could not run, or its process died
+    WAITING_CREDITS = "waiting_credits"  # it ran out of credits; run again after they reset
 
 
 class IndexRunSortBy(StrEnum):
@@ -162,3 +168,54 @@ class IntegrityCheckMode(StrEnum):
     AUTO = "auto"  # when the database is opened, at most once per interval
     ENABLE = "enable"  # every time the database is opened
     DISABLE = "disable"  # never by itself; `client.db.integrity_check()` still works
+
+
+class CreditEntryKind(StrEnum):
+    """What a credit ledger entry records."""
+
+    GRANT = "grant"  # credits received: the day's allowance, a starter, a licence
+    CHARGE = "charge"  # credits spent on a page
+    REFUND = "refund"  # credits given back for work that did not finish
+    EXPIRE = "expire"  # credits that lapsed unspent
+
+
+class CreditSortBy(StrEnum):
+    """What a credit history can be sorted by."""
+
+    AT = "at"
+    AMOUNT = "amount_milli"
+    KIND = "kind"
+
+
+class ConfidenceBand(StrEnum):
+    """How sure OCR was of a page's text (the cut-offs are in `settings.confidence`)."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    UNRELIABLE = "unreliable"
+
+
+class StatsGroupBy(StrEnum):
+    """What `stats.overview` groups its rows by."""
+
+    SOURCE = "source"
+    LANGUAGE = "language"
+    FILE_TYPE = "file_type"
+    ENGINE = "engine"
+    PAGE_SOURCE = "page_source"
+    BAND = "band"
+    DAY = "day"
+
+
+class StatsSortBy(StrEnum):
+    """What `stats.overview` rows can be sorted by."""
+
+    KEY = "key"
+    FILES = "files"
+    PAGES = "pages"
+    OCR_PAGES = "ocr_pages"
+    CONFIDENCE = "confidence"
+    DURATION = "duration_ms"
+    CREDITS = "credits"
+    FAILURES = "failures"
