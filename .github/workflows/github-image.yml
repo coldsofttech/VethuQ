@@ -45,7 +45,7 @@ env:
     languages/english languages/telugu
     file-types/pdf file-types/txt file-types/csv file-types/markdown
     file-types/png file-types/jpg file-types/tiff
-    file-types/html file-types/xml file-types/css file-types/js file-types/json
+    file-types/html file-types/xml file-types/css file-types/js file-types/json file-types/yaml
     ocr/engines/paddle ocr/modes/quick ocr/modes/moderate ocr/modes/deep
     search/engines/like search/engines/exact search/engines/lexical search/engines/full-text
     search/engines/proximity search/engines/fuzzy search/engines/noise-fuzzy search/engines/semantic
