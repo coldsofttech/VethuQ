@@ -22,7 +22,6 @@ class TestExamples:
         )
 
     def test_schemas_in_the_repository_match_the_packaged_ones(self):
-
         for name in ("manifest", "result"):
             assert json.loads((ROOT / f"{name}.schema.json").read_text()) == Protocol.schema(name)
 

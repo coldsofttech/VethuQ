@@ -1,0 +1,97 @@
+# Runs the unit tests of every workspace package. The workspace resolves the premium add-ons and
+# the entitlements package from sibling checkouts (private, read with PREMIUM_READ_TOKEN), so the
+# job is skipped for fork PRs, which cannot read that secret.
+name: test
+
+on:
+  push:
+    branches: [main, feat/new-feature]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        package: [addon-api, core, worker]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        working-directory: work/VethuQ
+        run: uv sync --all-packages
+      - name: Test (${{ matrix.package }})
+        working-directory: work/VethuQ
+        run: |
+          set +e
+          uv run pytest packages/${{ matrix.package }}/tests -m "not integration" --junitxml=junit-${{ matrix.package }}.xml
+          code=$?
+          # Exit code 5 means no tests were collected, which is fine for a package without tests.
+          if [ "$code" -eq 5 ]; then code=0; fi
+          exit "$code"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.package }}-py${{ matrix.python }}
+          path: work/VethuQ/junit-${{ matrix.package }}.xml
+          if-no-files-found: ignore
+
+  tools:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: work/VethuQ
+        run: uv sync --all-packages
+      - name: Test (policy tools)
+        working-directory: work/VethuQ
+        run: uv run pytest tools/policy/tests -m "not integration"

@@ -173,7 +173,7 @@ class PolicyValidator:
 
     @staticmethod
     def _decimal_places_ok(value):
-        return isinstance(value, (int, float)) and abs(value * 1000 - round(value * 1000)) < 1e-9
+        return isinstance(value, int | float) and abs(value * 1000 - round(value * 1000)) < 1e-9
 
     def _check_decimals(self, node, where, errs):
         """Credit amounts have at most 3 decimal places (clients use integer millicredits)."""
@@ -186,7 +186,7 @@ class PolicyValidator:
             for i, value in enumerate(node):
                 self._check_decimals(value, f"{where}[{i}]", errs)
         elif (
-            isinstance(node, (int, float))
+            isinstance(node, int | float)
             and not isinstance(node, bool)
             and not self._decimal_places_ok(node)
         ):

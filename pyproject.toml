@@ -72,3 +72,6 @@ select = ["E", "F", "I", "UP", "B", "S"]
 [tool.pytest.ini_options]
 testpaths = ["packages/core/tests", "packages/addon-api/tests", "packages/worker/tests", "tools/policy/tests", "scripts"]
 addopts = "-ra"
+markers = [
+    "integration: end-to-end tests that need real engines or network (run by integration.yml only)",
+]

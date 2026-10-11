@@ -1,0 +1,68 @@
+# Integration tests (tests marked `integration`). There are none yet, so a run that collects
+# nothing passes with a warning. Manual only: these tests will need real engines or network.
+name: integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      python:
+        description: "Python version"
+        required: false
+        default: "3.12"
+        type: string
+      markers:
+        description: "pytest -m expression"
+        required: false
+        default: "integration"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Install
+        working-directory: work/VethuQ
+        run: uv sync --all-packages
+      - name: Run integration tests
+        working-directory: work/VethuQ
+        env:
+          MARKERS: ${{ inputs.markers }}
+        run: |
+          set +e
+          uv run pytest -m "$MARKERS" --junitxml=junit-integration.xml
+          code=$?
+          if [ "$code" -eq 5 ]; then
+            echo "::warning::No integration tests collected yet."
+            code=0
+          fi
+          exit "$code"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-integration
+          path: work/VethuQ/junit-integration.xml
+          if-no-files-found: ignore

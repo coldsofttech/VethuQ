@@ -90,7 +90,7 @@ class TestCredits:
         host.credits.charge(1500, note="semantic: 3 pages")
         assert host.credits.balance_milli() == before - 1500
         assert client.credits.balance("local").total == local
-        (row,) = [r for r in ledger(client, "semantic") if r.kind == "charge"]
+        (row,) = (r for r in ledger(client, "semantic") if r.kind == "charge")
         assert (row.amount_milli, row.phase, row.note) == (1500, "semantic", "semantic: 3 pages")
 
     def test_it_cannot_spend_more_than_it_has(self, host, client):

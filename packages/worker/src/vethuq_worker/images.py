@@ -21,7 +21,7 @@ class Images:
             from PIL import Image
         except ImportError as error:  # pragma: no cover - environment dependent
             raise JobError("bad_payload", "Pillow is needed to send images.") from error
-        if isinstance(image, (str, Path)):
+        if isinstance(image, str | Path):
             data = Path(image).read_bytes()
             if data.startswith(cls.PNG_SIGNATURE):
                 return data
