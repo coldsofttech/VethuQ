@@ -147,7 +147,8 @@ class Credits:
         self._wallets = wallets
 
     def wallets(self) -> list[str]:
-        """The wallets of the processing tiers that can be used now (`local` is always there)."""
+        """The wallets that can be used now: the processing tiers' (`local` is always there) and
+        the credit sub-wallets of installed add-ons (`semantic`, once that add-on is installed)."""
         return self._wallets()
 
     def _wallet(self, wallet: str) -> str:
@@ -157,8 +158,8 @@ class Credits:
         return name
 
     def balance(self, wallet: str = "local") -> CreditBalance:
-        """What a wallet holds now, brought up to date with today's allowance. `wallet` is one
-        of `wallets()`: `local`, or `github` once that tier can be used."""
+        """What a wallet holds now, brought up to date with today's allowance. `wallet` is one of
+        `wallets()`: `local`, `github` once that tier can be used, or an add-on's own (`semantic`)."""
         name = self._wallet(wallet)
         with self._database.session() as session:
             balance, _terms, reset = self._credits.balance(session, name)

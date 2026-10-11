@@ -3,6 +3,7 @@
     <data root>/            (e.g. %APPDATA%\\VethuQ on Windows)
         db/                 vethuq.db (+ -wal / -shm)
         db/backups/         compressed database backups (default; can be relocated)
+        addons/<id>/        files an add-on keeps of its own (semantic search's vectors, ...)
         run/                index.lock, index.control, index_state.json
         logs/               database.log, index.log, ui.log, cli.log
 
@@ -40,13 +41,14 @@ class _Paths:
     LOGS_DIRNAME = "logs"
     POLICY_DIRNAME = "policy"
     MODELS_DIRNAME = "models"
+    ADDONS_DIRNAME = "addons"
 
     ENV_VAR = "VETHUQ_HOME"
     LOCATION_FILENAME = "db.json"
     LOCATION_KEY = "location"
     BACKUPS_KEY = "backups"
     BACKUPS_DIRNAME = "backups"
-    _DATA_DIRNAMES = (DB_DIRNAME, RUN_DIRNAME, LOGS_DIRNAME)
+    _DATA_DIRNAMES = (DB_DIRNAME, RUN_DIRNAME, LOGS_DIRNAME, ADDONS_DIRNAME)
 
     @staticmethod
     def platform_data_root() -> Path:
@@ -269,6 +271,16 @@ class _Paths:
     def models_dir(db_path: Path, *, create: bool = True) -> Path:
         """Folder for the OCR models; created on demand unless not `create`."""
         path = _Paths.data_root(db_path) / _Paths.MODELS_DIRNAME
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def addon_dir(db_path: Path, addon_id: str, *, create: bool = True) -> Path:
+        """Folder an add-on keeps its own files in; created on demand unless not `create`."""
+        if not addon_id or "/" in addon_id or "\\" in addon_id or addon_id in (".", ".."):
+            raise ValueError(f"{addon_id!r} isn't an add-on id.")
+        path = _Paths.data_root(db_path) / _Paths.ADDONS_DIRNAME / addon_id
         if create:
             path.mkdir(parents=True, exist_ok=True)
         return path

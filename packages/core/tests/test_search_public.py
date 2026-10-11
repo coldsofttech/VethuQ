@@ -65,7 +65,12 @@ def found(result):
 class TestEnginesAndNormalizers:
     def test_the_installed_engines(self, client):
         engines = client.search.engines()
-        assert [e.id for e in engines] == ["exact", "like"]  # strictest first
+        installed = [e.id for e in engines]
+        assert installed[:2] == ["exact", "like"]  # strictest first
+        assert {"lexical", "proximity", "full-text", "fuzzy", "noise-fuzzy"} <= set(installed)
+        assert (
+            installed.index("proximity") < installed.index("full-text") < installed.index("fuzzy")
+        )
         like = next(e for e in engines if e.id == "like")
         assert isinstance(like, SearchEngineInfo)
         assert (
@@ -75,21 +80,25 @@ class TestEnginesAndNormalizers:
             == {
                 "unicode": "basic",
                 "case": "ignore",
+                "leetspeak": "off",  # an optional normalizer, there because its add-on is installed
             }
         )
+        fuzzy = next(e for e in engines if e.id == "fuzzy")
+        assert fuzzy.approximate and fuzzy.options == {"threshold": "balanced"}
+        assert not like.approximate and like.options == {}
         assert not like.selected  # the default is `all`
         assert json.loads(like.to_json()) == like.to_dict()
 
     def test_the_installed_normalizers_in_the_order_they_apply(self, client):
         normalizers = client.search.normalizers()
-        assert [n.id for n in normalizers] == ["unicode", "case"]
+        assert [n.id for n in normalizers] == ["unicode", "case", "leetspeak"]
         case = normalizers[1]
         assert isinstance(case, NormalizerInfo)
         assert (case.levels, case.identity, case.setting) == (("match", "ignore"), "match", "auto")
 
     def test_the_default_engine_is_marked(self, client):
         client.settings.search.set_engine("like")
-        assert {e.id: e.selected for e in client.search.engines()} == {"exact": False, "like": True}
+        assert {e.id for e in client.search.engines() if e.selected} == {"like"}
 
 
 class TestRunning:
@@ -129,15 +138,20 @@ class TestRunning:
 
     def test_all_merges_what_engines_agree_on(self, indexed):
         result = indexed.search.run("Museum")
-        spans = [(m.start, m.end, m.engine, m.matched_by) for m in result if m.page_number == 1]
-        assert (10, 16, "exact", ("exact", "like")) in spans
-        like_only = [m for m in result if m.matched_by == ("like",)]
-        assert any(m.matched == "Museum" and m.start > 16 for m in like_only)  # in "Museums"
-        assert result.engine == "all" and set(result.levels) == {"exact", "like"}
+        first = next(m for m in result if (m.page_number, m.start, m.end) == (1, 10, 16))
+        assert first.engine == "exact" and first.matched_by[:2] == ("exact", "like")
+        assert first.matched_by[2:] == tuple(  # strictest first
+            e for e in ("lexical", "full-text", "fuzzy", "noise-fuzzy") if e in first.matched_by
+        )
+        # "Museums": the exact engine doesn't find it, `like` does (and every engine that overlaps
+        # it is merged into that match, whose span is the strictest engine's).
+        inside = [m for m in result if m.matched == "Museum" and m.start > 16]
+        assert inside and all(m.engine == "like" and "exact" not in m.matched_by for m in inside)
+        assert result.engine == "all" and {"exact", "like"} <= set(result.levels)
 
     def test_the_levels_each_engine_ran_at_are_reported(self, indexed):
         result = indexed.search.run("x")
-        assert result.levels["like"] == {"unicode": "basic", "case": "ignore"}
+        assert result.levels["like"] == {"unicode": "basic", "case": "ignore", "leetspeak": "off"}
         assert result.levels["exact"] == {"unicode": "basic", "case": "match"}
 
     def test_an_empty_query_matches_nothing(self, indexed):
@@ -302,8 +316,14 @@ class TestResults:
         assert [m.start for m in backwards] == [m.start for m in reversed(everything.matches)]
 
     def test_sorting_by_score_puts_unscored_last(self, indexed):
-        result = indexed.search.run("Museum", sort=SearchSortBy.SCORE)
+        result = indexed.search.run("Museum", engine="like", sort=SearchSortBy.SCORE)
         assert result.total > 0 and all(m.score is None for m in result)
+        mixed = indexed.search.run("Museum", sort=SearchSortBy.SCORE)
+        scores = [m.score for m in mixed]
+        assert any(score is not None for score in scores)
+        scored = [score for score in scores if score is not None]
+        assert scores[: len(scored)] == sorted(scored, reverse=True)  # scored first, best first
+        assert all(score is None for score in scores[len(scored) :])
 
     def test_bad_paging_and_sorting(self, indexed):
         for kwargs in (

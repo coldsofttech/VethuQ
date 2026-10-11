@@ -497,7 +497,7 @@ class SearchSettings:
 
     def set_engine(self, engine: str) -> None:
         """Raises `InvalidSettingValueError` unless it is `all` or an installed engine."""
-        known = ["all", *self._engines()]
+        known = ["all", "hybrid", *self._engines()]
         if engine not in known:
             raise _InvalidSettingValueError(
                 f"{engine!r} isn't a search engine.", f"Engines: {', '.join(known)}."

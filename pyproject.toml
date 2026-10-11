@@ -31,12 +31,21 @@ vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/github" }
 vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like" }
 vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact" }
+vethuq-addon-lexical = { path = "../VethuQ-premium/packages/add-ons/search/engines/lexical" }
+vethuq-addon-full-text = { path = "../VethuQ-premium/packages/add-ons/search/engines/full-text" }
+vethuq-addon-proximity = { path = "../VethuQ-premium/packages/add-ons/search/engines/proximity" }
+vethuq-addon-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" }
+vethuq-addon-noise-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" }
+vethuq-addon-semantic = { path = "../VethuQ-premium/packages/add-ons/search/engines/semantic" }
 vethuq-addon-case = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/case" }
 vethuq-addon-unicode = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" }
+vethuq-addon-leetspeak = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" }
 
 [dependency-groups]
 dev = [
     "VethuQ",
+    "vethuq-addon-semantic",
+    "numpy>=1.26",
     "vethuq-addon-api",
     "vethuq-worker",
     "pytest>=8",

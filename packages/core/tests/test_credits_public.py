@@ -526,10 +526,23 @@ class TestRedeem:
         assert done[0].added and client.credits.balance().one_off == 2040
 
     def test_a_scoped_grant_is_not_general_credit(self, client):
-        client.credits.redeem([{"id": "S", "amount": 50, "scope": "semantic"}])
+        client.credits.redeem([{"id": "S", "amount": 50, "scope": "telugu"}])
         assert client.credits.balance().one_off == 2000
         entry = client.credits.history(kind="grant", limit=1)[0]
-        assert entry.note == "licence (semantic)"
+        assert entry.note == "licence (telugu)"
+
+    def test_a_grant_scoped_to_an_addon_with_a_wallet_tops_that_wallet_up(self, client):
+        pytest.importorskip("vethuq_addon_semantic")
+        (done,) = client.credits.redeem([{"id": "S", "amount": 50, "scope": "semantic"}])
+        assert done.added and done.credits == 50
+        assert client.credits.balance().one_off == 2000  # not the local wallet's
+        wallet = client.credits.balance("semantic")
+        assert (wallet.one_off, wallet.daily) == (50, 50)
+        entries = client.credits.history(kind="grant", wallet="semantic")
+        entry = next(e for e in entries if e.note == "licence")
+        assert (entry.wallet, entry.amount) == ("semantic", 50)
+        (again,) = client.credits.redeem([{"id": "S", "amount": 50, "scope": "semantic"}])
+        assert not again.added and client.credits.balance("semantic").one_off == 50
 
     def test_one_off_credits_are_spent_after_the_day_and_before_grace(self, client, root):
         policy(client, wallets={"local": {"daily": 1, "starter": 0}})

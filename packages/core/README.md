@@ -733,7 +733,9 @@ client.credits.redeem_licence(token)  # verify with vethuq-entitlements, then re
 
 **Running out.** Pages are paid for as they are read. When the wallet (grace included) can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, and the file in progress keeps the pages it read (saved and paid for) and waits as `PENDING`. The next `index.run()` after the reset carries on with the page after the last one saved.
 
-A licence can carry credit grants (`vethuq-admin licence issue --grant 250`): each grant has an id, an amount, an optional add-on scope and an expiry, and is added once however often it is redeemed. The policy's `caps.one_off_max` limits what you can hold.
+**Add-on wallets.** An add-on that does paid work has a sub-wallet named after it, listed in `client.credits.wallets()` (`semantic` is the first). It is separate from `local` and `github`: nothing is spent from one for another's work. Its daily allowance and price come from the policy (`wallets.addons.<id>`, `rate_card.semantic`), and an add-on spends from it through `Host.credits` (add-on API 0.6.0).
+
+A licence can carry credit grants (`vethuq-admin licence issue --grant 250`): each grant has an id, an amount, an optional add-on scope and an expiry, and is added once however often it is redeemed. A grant scoped to an add-on that has a sub-wallet (`semantic`) tops up that wallet; any other scope is local credit that only that work can spend. The policy's `caps.one_off_max` limits what you can hold.
 
 ## Statistics
 
@@ -777,7 +779,20 @@ Only closed UTC days are sent, each once. The schema is in the VethuQ repository
 
 ## Search
 
-`client.search` finds text on the pages that were indexed. Only pages of files that are `indexed` and whose text is final are searched. Search engines and the normalizers they apply come from add-ons, all free and installed with VethuQ: the engines `like` (the query anywhere in a page, even inside a word) and `exact` (the query as typed, as a whole word, always case-sensitive), and the normalizers `case` (`match`, `ignore`) and `unicode` (`off`, `basic` composes characters, `full` also folds accents and compatibility forms: `cafe` finds `café`, `ﬁne` is `fine`).
+`client.search` finds text on the pages that were indexed. Only pages of files that are `indexed` and whose text is final are searched. Search engines and the normalizers they apply come from add-ons, all free and installed with VethuQ:
+
+| Engine | Finds | Strictness |
+|---|---|---|
+| `exact` | the query as typed, as a whole word, always case-sensitive | 10 |
+| `like` | the query anywhere in a page, even inside a word | 20 |
+| `lexical` | the same, with pages ranked by relevance (BM25); at least 3 characters | 30 |
+| `proximity` | all of the query's words within N words of each other, in any order | 40 |
+| `full-text` | whole words and `"phrases"` (`mus*` is a prefix), with English word forms, ranked by relevance | 50 |
+| `fuzzy` | words close to the query's: misspellings and OCR misreads | 60 |
+| `noise-fuzzy` | words hidden by stray characters, look-alikes and typos (`h3ll0`, `h.e llo`) | 70 |
+| `semantic` | passages that *mean* what the query means, in about a hundred languages (`pip install vethuq[semantic]`) | 80 |
+
+and the normalizers `case` (`match`, `ignore`), `unicode` (`off`, `basic` composes characters, `full` also folds accents and compatibility forms: `cafe` finds `café`, `ﬁne` is `fine`) and `leetspeak` (`off`, `basic`, `standard`, `extended`: `h3ll0` is `hello`). `semantic` is free to use but **credit based**: preparing pages costs credits from its own wallet (see [Semantic search](#semantic-search)).
 
 ```python
 result = client.search.run("invoice")  # every engine; hits found by several say so
@@ -791,22 +806,47 @@ client.search.run(
 client.search.run("mus", case_sensitive=True, limit=20, offset=40, languages="en")
 ```
 
-`run(query, *, engine=None, normalize=None, case_sensitive=None, context_chars=None, languages=None, sort="path", order="asc", limit=None, offset=0)` returns a `SearchResult`: `matches` (the page asked for), `total`, `engine`, `levels` (the level each normalizer ran at, per engine) and `index_rebuilt`. A `SearchMatch` has the file (`file_id`, `file_name`, `file_path`, `duplicate_of_path` for a file with the same content as an earlier one), the page (`page_number`, `total_pages`, `source`), the text (`before`, `matched`, `after`, `truncated_before`, `truncated_after`, `start`, `end`), and `engine`, `matched_by` (every engine that found it, strictest first), `score` and `modifiers` (`accents` when a match needed the Unicode folding). Highlights always show the original text. An empty query matches nothing. `SearchResult`, `SearchMatch` and the rest have `to_dict()` and `to_json()`.
+`run(query, *, engine=None, normalize=None, case_sensitive=None, context_chars=None, languages=None, options=None, combine=None, sort=None, order="asc", limit=None, offset=0)` returns a `SearchResult`: `matches` (the page asked for), `total`, `engine`, `levels` (the level each normalizer ran at, per engine), `index_rebuilt` and `pending` (per engine, pages it can't search yet: see [Semantic search](#semantic-search)). A `SearchMatch` has the file (`file_id`, `file_name`, `file_path`, `duplicate_of_path` for a file with the same content as an earlier one), the page (`page_number`, `total_pages`, `source`), the text (`before`, `matched`, `after`, `truncated_before`, `truncated_after`, `start`, `end`), and `engine`, `matched_by` (every engine that found it, strictest first), `score` and `modifiers` (`accents` when a match needed the Unicode folding). Highlights always show the original text. An empty query matches nothing. `SearchResult`, `SearchMatch` and the rest have `to_dict()` and `to_json()`.
+
+**Engine options.** Some engines have settings of their own that a search can override, by engine id: `options={"fuzzy": {"threshold": "loose"}}` or `options="fuzzy.threshold=0.7,proximity.distance=3"`. `fuzzy` takes `threshold` (`strict`, `balanced`, `loose`, or 0.5 to 1), `proximity` takes `distance` (`tight`, `medium`, `loose`, or 1 to 100 words), `noise-fuzzy` takes `threshold`, `leetspeak` (`off`, `basic`, `standard`, `extended`; it carries its own look-alike tables) and `noise` (`low`, `medium`, `high`), `semantic` takes `threshold` and `limit` (`client.search.engines()` lists them with their defaults). Each is also a setting of its add-on (`client.addons.settings("fuzzy")`). An option the engine doesn't have, a value it doesn't allow, or one for an engine that isn't in the search raises `SearchOptionError`.
+
+**Ranking.** `sort="path"` (the default) orders by file, page and position; `sort="score"` by the engines' own scores; `sort="rank"` puts the best match first *across* engines. The engines answer different questions, so their scores can't be compared: pages are ranked by how strict the strictest engine that found them is (`exact`, `like`, `lexical`, `proximity`, `full-text`), what a normalization was needed for ranks below what matched as typed, the approximate engines (`fuzzy`, `noise-fuzzy`, `semantic`) come last, and within a tier an engine's own signal (relevance, similarity, or how many matches) orders the pages. In the `all` search, hits of different engines that overlap are one match, labelled with the strictest engine and listing every engine in `matched_by`. Ranking lives in VethuQ, not in an add-on, because only VethuQ sees every engine's hits: an engine added later is ranked by its `strictness` and `approximate` alone.
 
 **What counts as the same character** is a normalizer's level. For each normalizer an engine uses, the level is: the one asked for in this search (`normalize`, or `case_sensitive`), else the one the engine fixes, else the level you saved (`settings.search`, where the engine takes it), else the engine's own default. `like` ignores case and composes Unicode (`basic`); `exact` always matches case, composes Unicode, and takes a different Unicode level only when a search asks for it, never from the saved setting. Naming one engine and asking for what it can't do (`exact` with `case_sensitive=False`, a normalizer it doesn't use, an unknown level) raises `SearchOptionError`; in the `all` search an engine just doesn't apply what it can't.
 
 ```python
-client.search.engines()  # SearchEngineInfo: id, label, available / reason, in_all, selected, normalizers
+client.search.engines()  # SearchEngineInfo: id, label, available / reason, in_all, selected, normalizers, options, approximate
 client.search.normalizers()  # NormalizerInfo: id, levels, identity, version, setting
 client.search.status()  # SearchIndexStatus: pages_indexed, pages_total, current, full_text
 client.search.rebuild()  # build the index again from the stored page text
+client.search.sync("semantic")  # prepare pages for engines that need it (see below)
 ```
+
+A normalizer an engine merely *can* use (`like` and `fuzzy` take `leetspeak`) is optional: the engine works without that add-on installed, it just can't be asked to use it.
 
 **The index.** VethuQ records each finished page's text in the coarsest form the installed normalizers allow (case folded, accents dropped), and keeps an SQLite FTS5 trigram index over it (`page_search`, `page_search_fts`), so a search only reads the pages that can match; the engine still checks each one. The index is brought up to date after an index run and before a search. A page whose text changes loses its entry and gets a new one. It is stamped with the names and versions of the installed normalizers: when they change (an add-on installed, removed or upgraded) the first search rebuilds it, and `SearchResult.index_rebuilt` says so. Queries shorter than 3 characters, and SQLite builds without the trigram tokenizer, narrow pages with a plain substring test on the index instead.
 
+### Semantic search
+
+`semantic` finds passages by meaning: "refund policy" finds "customers may return goods for a full reimbursement", and a Telugu query finds the English page that says the same thing. It reads each page into vectors with a small multilingual model (`intfloat/multilingual-e5-small`, downloaded once, like the OCR models), so the work is **preparing pages**, done ahead of searches:
+
+```python
+reports = client.search.sync("semantic")  # downloads the model, then embeds the pages that need it
+print(reports[0].pages, reports[0].pending, reports[0].credits, reports[0].paused)
+
+result = client.search.run("refund policy", engine="semantic")
+print(result.pending)  # {"semantic": 12}: pages not prepared yet, so not searched
+client.search.run("refund policy", engine="hybrid")  # meaning and words together
+```
+
+- **Searching is free; preparing costs credits.** About **0.5 credit a page**, from the add-on's own sub-wallet (`client.credits.balance("semantic")`): a wallet that can't be spent on OCR, isn't touched by the metrics bonus, has a small daily allowance of its own (50 credits by default, set by the policy's `wallets.addons.semantic`) and can be topped up by a licence. A page with nothing to read costs nothing, a page whose text hasn't changed is never paid for twice, and nothing is embedded that can't be paid for. When the credits run out `sync` stops, keeps what it did and says so (`SearchSyncReport.paused`); the next call carries on. It never runs by itself: you decide when to spend.
+- **`sync(engine=None, progress=None)`** brings the search index up to date and asks each available engine (or the one named) to prepare its pages. `progress(engine, done, total)` is called as it goes. It returns a `SearchSyncReport` per engine (`engine`, `pages`, `pending`, `credits`, `paused`, `message`). It raises `SearchUnavailableError` for a named engine that can't be used or prepared (a model that can't be downloaded, say).
+- **`hybrid`** (the search engine; it has nothing to do with the `hybrid` processing tier) is a search of its own: `semantic` together with a keyword engine (`combine`, `full-text` unless told), each engine's hits shown as it found them, with the pages ranked by *reciprocal rank fusion*. A page scores the sum, over the two engines, of `1 / (60 + its position in that engine's ranking)`: only positions count, because a cosine and a BM25 can't be compared, and a page both like rises above a page only one found. It is ranked by default (`sort="rank"`). A keyword engine that can't search the query contributes nothing; `semantic` failing fails the search. Semantic search is weak where keyword search is strong (an invoice number, a name, an exact phrase) and the other way round, which is what this is for.
+- `semantic` is not part of the `all` search (`in_all` is false).
+
 ### Search settings
 
-`client.settings.search`: `get/set/reset_engine` (`all`, or an engine id; `all` unless changed), `get/set/reset_snippet_context_chars` (characters shown either side of a match; 80), `get/set/reset_normalizer(id)` for any installed normalizer (`auto`, the default, lets each engine use its own level, or one of its levels), and `get/set/reset_case` and `get/set/reset_unicode` for the two that ship.
+`client.settings.search`: `get/set/reset_engine` (`all`, `hybrid`, or an engine id; `all` unless changed), `get/set/reset_snippet_context_chars` (characters shown either side of a match; 80), `get/set/reset_normalizer(id)` for any installed normalizer (`auto`, the default, lets each engine use its own level, or one of its levels), and `get/set/reset_case` and `get/set/reset_unicode` for the two that ship.
 
 ## GitHub runner
 

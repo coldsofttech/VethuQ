@@ -63,6 +63,13 @@ class _Terms:
     github_daily_private: float = 20.0
     github_daily_public: float = 200.0
     github_starter: float = 0.0
+    # Credits per page of work an add-on does (the rate card's `semantic`: embedding one page).
+    semantic: float = 0.5
+    # Add-on sub-wallets by add-on id: {"local_daily": credits, "starter": credits}. An add-on
+    # with no entry has nothing to spend until a licence grants it credits.
+    addon_wallets: Mapping[str, Mapping[str, float]] = field(
+        default_factory=lambda: {"semantic": {"local_daily": 50.0, "starter": 0.0}}
+    )
     grace_percent: float = 2.0
     grace_mode: str = "free"
     bonus_percent: float = 10.0
@@ -138,6 +145,7 @@ class _Terms:
         values["step"] = number(size.get("step"), base.step, 0.001)
         values["minimum"] = number(size.get("minimum"), base.minimum)
         values["per_page_max"] = number(size.get("per_page_max"), base.per_page_max, 0.001)
+        values["semantic"] = number(card.get("semantic"), base.semantic)
         values["quick"] = number(phases.get("quick"), base.quick)
         values["language_pass"] = number(card.get("language_pass"), base.language_pass)
         values["rotated_factor"] = number(card.get("rotated_factor"), base.rotated_factor)
@@ -148,6 +156,7 @@ class _Terms:
         local = wallets.get("local") if isinstance(wallets.get("local"), Mapping) else {}
         values["local_daily"] = number(local.get("daily"), base.local_daily)
         values["local_starter"] = number(local.get("starter"), base.local_starter)
+        values["addon_wallets"] = _Terms._addon_wallets(wallets.get("addons"), base.addon_wallets)
         github = wallets.get("github") if isinstance(wallets.get("github"), Mapping) else {}
         values["github_daily_private"] = number(
             github.get("daily_private"), base.github_daily_private
@@ -191,6 +200,23 @@ class _Terms:
         return _Terms(**values)
 
     @staticmethod
+    def _addon_wallets(
+        value: Any, base: Mapping[str, Mapping[str, float]]
+    ) -> dict[str, dict[str, float]]:
+        """The baseline sub-wallets, each overridden by the policy's entry for the same add-on
+        (an add-on the policy names that has no baseline gets one)."""
+        wallets = {name: dict(entry) for name, entry in base.items()}
+        if not isinstance(value, Mapping):
+            return wallets
+        for name, entry in value.items():
+            if not isinstance(name, str) or not isinstance(entry, Mapping):
+                continue
+            wallet = wallets.setdefault(name, {"local_daily": 0.0, "starter": 0.0})
+            for key in ("local_daily", "starter"):
+                wallet[key] = number(entry.get(key), wallet.get(key, 0.0))
+        return wallets
+
+    @staticmethod
     def _promotions(value: Any, client_version: str) -> tuple[_Promotion, ...]:
         found: list[_Promotion] = []
         for item in value if isinstance(value, list) else []:
@@ -227,10 +253,18 @@ class _Terms:
         """A wallet's daily allowance. The GitHub one depends on the runner repo's visibility."""
         if wallet == "github":
             return self.github_daily_private if private else self.github_daily_public
-        return self.local_daily if wallet == "local" else 0.0
+        if wallet == "local":
+            return self.local_daily
+        return self.addon_wallets.get(wallet, {}).get("local_daily", 0.0)
+
+    def rate_for(self, key: str, default: float) -> float:
+        """What an add-on's work costs per page, from the rate card (`default` if it has none)."""
+        return {"semantic": self.semantic}.get(key, default)
 
     def starter_for(self, wallet: str) -> float:
-        return {"github": self.github_starter, "local": self.local_starter}.get(wallet, 0.0)
+        if wallet in ("github", "local"):
+            return self.github_starter if wallet == "github" else self.local_starter
+        return self.addon_wallets.get(wallet, {}).get("starter", 0.0)
 
     def best_promotion(
         self, day: date, base_milli: int, wallet: str = "local"

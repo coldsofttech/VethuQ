@@ -7,16 +7,32 @@ from collections.abc import Callable
 from pathlib import Path
 
 from vethuq._addons.settings import _AddonSettingsStore
+from vethuq._credits import _AddonCredits, _Credits
 from vethuq._db import _Schema
 from vethuq._logs import _DatabaseLog
 from vethuq._paths import _Paths
 from vethuq._policy import Policy, _PolicyClient
 from vethuq._version import _Version
-from vethuq_addon_api import API_VERSION
+from vethuq_addon_api import API_VERSION, Credits, CreditsExhaustedError
+
+
+class _NoCredits:
+    """The credits of a host that has no credit service (tests): the rate card's defaults, and
+    nothing to spend."""
+
+    def rate(self, key: str, default: float) -> float:
+        return default
+
+    def balance_milli(self) -> int:
+        return 0
+
+    def charge(self, amount_milli: int, *, note: str = "") -> None:
+        if amount_milli:
+            raise CreditsExhaustedError("There are no credits to spend here.")
 
 
 class _Host:
-    """One per add-on, so its settings and log lines are its own."""
+    """One per add-on, so its settings, credits and log lines are its own."""
 
     def __init__(
         self,
@@ -24,8 +40,12 @@ class _Host:
         db_path: Path,
         release_database: Callable[[], None],
         policy: Callable[[], Policy | None] | None = None,
+        credits: Callable[[], _Credits] | None = None,
     ) -> None:
         self._policy_source = policy
+        self._credits: Credits = (
+            _AddonCredits(addon_id, credits) if credits is not None else _NoCredits()
+        )
         self._addon_id = addon_id
         self._db_path = Path(db_path)
         self._release = release_database
@@ -46,6 +66,13 @@ class _Host:
     @property
     def schema_version(self) -> int:
         return _Schema.VERSION
+
+    @property
+    def credits(self) -> Credits:
+        return self._credits
+
+    def data_dir(self) -> Path:
+        return _Paths.addon_dir(self._db_path, self._addon_id)
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         return self._settings.get(key, default)

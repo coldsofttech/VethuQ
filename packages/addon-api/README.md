@@ -53,8 +53,23 @@ exists but can't be used right now (a lapsed licence) is returned with `availabl
   `index_form` (the coarsest form, which VethuQ's search index records).
 - `search_engines()` returns `SearchEngineSpec`s (search): an id, a `SearchEngine` and the
   normalizers it uses (`NormalizerUse`: default level, fixed, whether the saved setting reaches
-  it). `engine.search(request, corpus)` yields `Hit`s; `request.pipeline` folds the query and each
-  page alike, `corpus.candidates(query)` gives the pages that can match.
+  it; `optional` when the engine works without that normalizer installed). `engine.search(request,
+  corpus)` yields `Hit`s; `request.pipeline` folds the query and each page alike,
+  `corpus.candidates(query)` gives the pages that can match (`candidates(None)` gives all of them:
+  an engine that tolerates typos can't be narrowed by the query).
+- An engine can declare options a search may override (`SearchOption`; they arrive in
+  `request.options`), say it is `approximate` (it guesses, so VethuQ's ranking puts it below the
+  engines that match the text), and prepare pages ahead of searches by overriding
+  `SearchEngine.pending(corpus)` and `SearchEngine.sync(corpus, progress)` (`SyncReport`): searching
+  never prepares anything. VethuQ does the ranking, the merging of hits several engines agree on and
+  the `hybrid` fusion; an engine only reports its hits.
+
+## What the host gives an add-on
+
+`Host` (see `Addon.host`): its settings (`get_setting`, `set_setting`), `data_dir()` (a folder of its
+own for files that don't belong in VethuQ's database), `credits` (`rate`, `balance_milli`, `charge`:
+the add-on's own credit sub-wallet, for work that costs compute; `CreditsExhaustedError` when it
+runs out) and the licences and policy switches described above.
 
 The reader and engine types are in this package, so an add-on and VethuQ share them; the heavy
 libraries stay inside the add-ons.

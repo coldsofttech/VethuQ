@@ -8,13 +8,13 @@ so highlights always show the original text. Only pages of files that are `index
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 
 from vethuq._db import _Database
 from vethuq._errors import _SearchOptionError
-from vethuq._search import _Engines, _Search, _SearchIndex
-from vethuq._search.service import _Match
+from vethuq._search import HYBRID, _Engines, _Search, _SearchIndex
+from vethuq._search.service import _Match, _Synced
 from vethuq._settings import _SearchSettings
 from vethuq.enums import SearchSortBy, SortOrder
 
@@ -26,6 +26,7 @@ __all__ = [
     "SearchMatch",
     "SearchResult",
     "SearchSortBy",
+    "SearchSyncReport",
 ]
 
 
@@ -55,7 +56,9 @@ class SearchMatch:
 
     @classmethod
     def _from(cls, match: _Match) -> SearchMatch:
-        return cls(**asdict(match))
+        data = asdict(match)
+        data.pop("rank")
+        return cls(**data)
 
     def to_dict(self) -> dict[str, object]:
         data = dict(self.__dict__)
@@ -78,6 +81,9 @@ class SearchResult:
     total: int  # how many matches there are in all
     levels: dict[str, dict[str, str]]  # per engine, the level each normalizer ran at
     index_rebuilt: bool = False  # the search index was rebuilt first (normalizers changed)
+    # Per engine, the pages it can't search yet because they aren't prepared (semantic search
+    # embeds pages ahead of time: see `Search.sync`). Only engines with some are listed.
+    pending: dict[str, int] = field(default_factory=dict)
 
     def __iter__(self):
         return iter(self.matches)
@@ -92,6 +98,7 @@ class SearchResult:
         data = dict(self.__dict__)
         data["matches"] = [m.to_dict() for m in self.matches]
         data["levels"] = {k: dict(v) for k, v in self.levels.items()}
+        data["pending"] = dict(self.pending)
         return data
 
     def to_json(self, indent: int | None = None) -> str:
@@ -131,6 +138,8 @@ class SearchEngineInfo:
     in_all: bool  # the `all` search includes it
     selected: bool  # it is the default engine
     normalizers: dict[str, str] = field(default_factory=dict)  # normalizer -> its default level
+    options: dict[str, str] = field(default_factory=dict)  # option -> its default
+    approximate: bool = False  # it guesses (typos, meaning), so `rank` puts it below exact finds
 
     def to_dict(self) -> dict[str, object]:
         return dict(self.__dict__)
@@ -148,6 +157,25 @@ class SearchIndexStatus:
     pages_total: int  # finished pages that should be in it
     current: bool  # it was built for the installed normalizers
     full_text: bool  # SQLite's trigram index is in use (otherwise searches scan the index)
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self.__dict__)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
+class SearchSyncReport:
+    """What preparing one engine's pages did (`Search.sync`)."""
+
+    engine: str
+    pages: int  # prepared now
+    pending: int  # still not prepared
+    credits: float  # what it cost, in credits
+    paused: bool  # it stopped because the engine's credits ran out; the next sync carries on
+    message: str
 
     def to_dict(self) -> dict[str, object]:
         return dict(self.__dict__)
@@ -184,7 +212,9 @@ class Search:
         case_sensitive: bool | None = None,
         context_chars: int | None = None,
         languages: str | Sequence[str] | None = None,
-        sort: SearchSortBy | str = SearchSortBy.PATH,
+        options: Mapping[str, Mapping[str, object]] | str | None = None,
+        combine: str | None = None,
+        sort: SearchSortBy | str | None = None,
         order: SortOrder | str = SortOrder.ASC,
         limit: int | None = None,
         offset: int = 0,
@@ -197,6 +227,14 @@ class Search:
         left out, the saved level of each normalizer, or the engine's own. `case_sensitive` is
         shorthand for `case=match` / `case=ignore`. `languages` keeps pages of documents read in
         those language ids (`"en"`). `limit` and `offset` page the result (`total` counts all).
+
+        `options` are engines' own settings for this search, by engine id: `{"fuzzy": {"threshold":
+        0.7}}` or `"fuzzy.threshold=0.7"` (see `engines()` for what each takes). `engine="hybrid"`
+        runs `semantic` together with a keyword engine (`combine`, `full-text` unless told) and
+        ranks the pages both find by reciprocal rank fusion. `sort` is `path` (the default), `score`
+        or `rank` (best match first across engines; the default for `hybrid`). Engines that
+        prepare pages (semantic) only search the ones that are ready: `SearchResult.pending` says
+        how many aren't (see `sync`).
 
         Raises `SearchUnavailableError` (unknown engine, or one that can't be used),
         `SearchOptionError` (an unknown normalizer or level, or one the engine can't change) and
@@ -213,7 +251,8 @@ class Search:
                 )
             explicit["case"] = wanted
         try:
-            sort_by, direction = SearchSortBy(sort), SortOrder(order)
+            sort_by = SearchSortBy(sort) if sort is not None else None
+            direction = SortOrder(order)
         except ValueError as exc:
             raise ValueError(str(exc)) from None
         if limit is not None and (
@@ -231,15 +270,24 @@ class Search:
             )
         if isinstance(languages, str):
             languages = [languages]
+        name = name.strip().lower() if isinstance(name, str) else name
+        if combine is not None and not isinstance(combine, str):
+            raise TypeError("combine is the id of a keyword engine.")
         outcome = self._search.run(
             query,
-            name.strip().lower() if isinstance(name, str) else name,
+            name,
             explicit,
             chars,
             list(languages) if languages is not None else None,
+            _Engines.parse_options(options),
+            combine.strip().lower() if combine is not None else None,
         )
         matches = outcome.matches
-        if sort_by is SearchSortBy.SCORE:
+        if sort_by is None:
+            sort_by = SearchSortBy.RANK if name == HYBRID else SearchSortBy.PATH
+        if sort_by is SearchSortBy.RANK:
+            matches.sort(key=lambda m: m.rank)
+        elif sort_by is SearchSortBy.SCORE:
             matches.sort(
                 key=lambda m: (
                     m.score is None,
@@ -262,6 +310,7 @@ class Search:
             total=total,
             levels=outcome.levels,
             index_rebuilt=outcome.index_rebuilt,
+            pending=outcome.pending,
         )
 
     def engines(self) -> list[SearchEngineInfo]:
@@ -277,10 +326,47 @@ class Search:
                 reason=view.reason,
                 in_all=view.spec.in_all,
                 selected=view.id == default,
-                normalizers={use.id: use.default for use in view.spec.normalizers},
+                normalizers={use.id: use.default for use in self._engines.uses(view)},
+                options={option.name: option.default for option in view.spec.options},
+                approximate=view.spec.approximate,
             )
             for view in self._engines.views()
         ]
+
+    def sync(
+        self,
+        engine: str | None = None,
+        *,
+        progress: Callable[[str, int, int], None] | None = None,
+    ) -> list[SearchSyncReport]:
+        """Prepare the pages for the engines that need it (semantic search embeds them), after
+        bringing the search index up to date. `engine` is one engine's id (or `hybrid`); left out,
+        every engine that is available is asked, and the ones with nothing to prepare answer with
+        zeros. `progress(engine, done, total)` is called as pages are prepared.
+
+        Preparing costs credits for the engines that charge (semantic search pays from its own
+        credits, see `credits`); it stops, keeping what it did, when they run out
+        (`SearchSyncReport.paused`), and the next call carries on. Searching never prepares
+        anything and never charges.
+
+        Raises `SearchUnavailableError` if a named engine isn't known, can't be used, or can't be
+        prepared (for example its model can't be downloaded).
+        """
+        if engine is not None and not isinstance(engine, str):
+            raise TypeError("engine is an engine id.")
+        done = self._search.sync(engine.strip().lower() if engine is not None else None, progress)
+        return [self._report(item) for item in done]
+
+    @staticmethod
+    def _report(item: _Synced) -> SearchSyncReport:
+        return SearchSyncReport(
+            engine=item.engine,
+            pages=item.pages,
+            pending=item.pending,
+            credits=item.charged_milli / 1000,
+            paused=item.paused,
+            message=item.message,
+        )
 
     def normalizers(self) -> list[NormalizerInfo]:
         """The search normalizers add-ons provide, in the order they apply."""

@@ -246,3 +246,7 @@ class SearchSortBy(StrEnum):
 
     PATH = "path"  # file path, then page, then position (the default)
     SCORE = "score"  # best first, for engines that rank; matches without a score come last
+    # Best match first, across engines: pages by how strict the strictest engine that found them
+    # is, then by that engine's own signal; for `hybrid`, by reciprocal rank fusion. The default
+    # for `hybrid`.
+    RANK = "rank"

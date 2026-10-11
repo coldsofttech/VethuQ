@@ -11,6 +11,7 @@ from pathlib import Path
 
 from vethuq._addons.finder import _AddonFinder
 from vethuq._addons.host import _Host
+from vethuq._credits import _Credits
 from vethuq.enums import AddonStatus
 from vethuq_addon_api import (
     API_VERSION,
@@ -48,7 +49,9 @@ class _AddonManager:
         db_path: Path,
         release_database: Callable[[], None],
         discover: Callable[[], Iterable[EntryPoint]] | None = None,
+        credits: Callable[[], _Credits] | None = None,
     ) -> None:
+        self._credits = credits
         self._db_path = Path(db_path)
         self._release = release_database
         self._discover = discover or self._installed
@@ -81,7 +84,7 @@ class _AddonManager:
                 manifest.id, manifest.name, manifest.version, AddonStatus.INCOMPATIBLE, detail
             )
         try:
-            addon = cls(_Host(manifest.id, self._db_path, self._release))
+            addon = cls(_Host(manifest.id, self._db_path, self._release, credits=self._credits))
         except Exception as exc:  # noqa: BLE001
             self._logger.warning("Couldn't start add-on %s", manifest.id, exc_info=True)
             return _Loaded(

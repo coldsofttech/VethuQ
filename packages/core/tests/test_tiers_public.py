@@ -247,16 +247,21 @@ class TestRunning:
             assert session.scalars(select(_IndexRun.tier)).one() == "cloud"
 
 
+def tier_wallets(client):
+    """The wallets of tiers (an installed add-on with credits, semantic search, has its own)."""
+    return [w for w in client.credits.wallets() if w != "semantic"]
+
+
 class TestWallets:
     def test_only_the_wallets_of_usable_tiers(self, client):
-        assert client.credits.wallets() == ["local"]
+        assert tier_wallets(client) == ["local"]
         with pytest.raises(ValueError, match="No wallet 'github'"):
             client.credits.balance("github")
         with pytest.raises(ValueError):
             client.credits.history(wallet="github")
 
     def test_the_github_wallet(self, github_addon, client):
-        assert client.credits.wallets() == ["local", "github"]
+        assert tier_wallets(client) == ["local", "github"]
         balance = client.credits.balance("github")
         assert balance.wallet == "github"
         assert (balance.daily, balance.one_off, balance.grace) == (20, 0, 0.4)
@@ -306,9 +311,14 @@ class TestWallets:
         assert client.credits.balance("local").bonus == 50
 
     def test_add_on_wallets_get_no_daily_allowance(self, github_addon, client):
+        github_addon.extra = [TierSpec("translate", "Translate", "translate", FakeExecutor())]
+        balance = client.credits.balance("translate")
+        assert (balance.daily, balance.one_off, balance.total) == (0, 0, 0)
+
+    def test_the_semantic_wallet_gets_its_own_daily_allowance(self, github_addon, client):
         github_addon.extra = [TierSpec("semantic", "Semantic", "semantic", FakeExecutor())]
         balance = client.credits.balance("semantic")
-        assert (balance.daily, balance.one_off, balance.total) == (0, 0, 0)
+        assert (balance.daily, balance.one_off) == (50, 0)
 
 
 class TestTierSettings:

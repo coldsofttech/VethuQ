@@ -233,14 +233,18 @@ class _Credits:
             raise _InvalidGrantError(f"Grant {grant_id!r} has no credits.")
         expiry = self._expiry(grant_id, expires, now, terms)
         ref = f"grant:{grant_id}"
+        # A grant scoped to an add-on that has a sub-wallet (`semantic`) tops that wallet up: the
+        # add-on's credits are its own, and a scope on the local wallet could only be spent on OCR.
+        sub_wallet = scope if scope and scope in terms.addon_wallets else None
+        wallet = self.wallet_for(sub_wallet) if sub_wallet is not None else self.wallet
         existing = session.scalars(
-            select(_CreditGrant).where(_CreditGrant.wallet == LOCAL, _CreditGrant.ref == ref)
+            select(_CreditGrant).where(_CreditGrant.wallet == wallet.name, _CreditGrant.ref == ref)
         ).first()
         if existing is not None:
             return False, 0
         add = milli(amount)
         if terms.one_off_max is not None:
-            held = self.wallet.balance(session).one_off_milli
+            held = wallet.balance(session).one_off_milli
             room = max(milli(terms.one_off_max) - held, 0)
             if room == 0:
                 raise _InvalidGrantError(
@@ -248,8 +252,13 @@ class _Credits:
                     "Use some, then redeem again.",
                 )
             add = min(add, room)
-        grant = self.wallet.add_one_off(
-            session, ref, add, "licence", scope=scope or None, expires=expiry
+        grant = wallet.add_one_off(
+            session,
+            ref,
+            add,
+            "licence",
+            scope=None if sub_wallet is not None else (scope or None),
+            expires=expiry,
         )
         return grant is not None, add if grant is not None else 0
 

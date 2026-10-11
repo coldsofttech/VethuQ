@@ -27,14 +27,21 @@ def client(tmp_path):
 class TestWithoutAddons:
     def test_only_the_built_in_addons_are_installed(self, client):
         assert isinstance(client.addons, Addons)
-        assert [info.id for info in client.addons.list()] == [
+        installed = [info.id for info in client.addons.list()]
+        assert [i for i in installed if i != "semantic"] == [  # semantic is an extra
             "case",
             "english",
             "exact",
+            "full-text",
+            "fuzzy",
+            "leetspeak",
+            "lexical",
             "like",
+            "noise-fuzzy",
             "ocr-quick",
             "paddle",
             "pdf",
+            "proximity",
             "unicode",
         ]
         assert client.addons.get("backup") is None

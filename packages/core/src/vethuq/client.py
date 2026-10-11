@@ -89,7 +89,9 @@ class VethuQ:
     def _manager(self) -> _AddonManager:
         with self._lock:
             if self._addon_manager is None:
-                self._addon_manager = _AddonManager(self.db_path, self._release_database)
+                self._addon_manager = _AddonManager(
+                    self.db_path, self._release_database, credits=self._credit_engine
+                )
             return self._addon_manager
 
     def _catalog(self) -> _LanguageCatalog:
@@ -226,8 +228,15 @@ class VethuQ:
             indexer = self._indexer_engine()
             tiers = self._tier_engine()
 
+            credit_service, manager = self._credit_engine(), self._manager()
+
             def wallets() -> list[str]:
-                return list(dict.fromkeys(v.wallet for v in tiers.views() if v.available))
+                names = list(dict.fromkeys(v.wallet for v in tiers.views() if v.available))
+                # The sub-wallets of installed add-ons that work on credits (semantic search).
+                with self._db().session() as session:
+                    sub_wallets = credit_service.terms(session).addon_wallets
+                running = {i for i, loaded in manager.loaded().items() if loaded.addon is not None}
+                return names + [w for w in sub_wallets if w in running and w not in names]
 
             self._credits = Credits(self._db(), self._credit_engine(), indexer.estimate, wallets)
         return self._credits

@@ -6,6 +6,29 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (search engines)
+- The engines `lexical`, `proximity`, `full-text`, `fuzzy`, `noise-fuzzy` and `semantic`, and the
+  `leetspeak` normalizer, are add-ons (the first five and the normalizer are free and installed
+  with VethuQ; `semantic` is `pip install vethuq[semantic]`). Add-on API 0.6.0.
+- Engine options: `search.run(options=...)` (`"fuzzy.threshold=0.7"`), declared by each engine
+  (`SearchEngineInfo.options`); `SearchOptionError` for an unknown option or a bad value.
+- Optional normalizers: `like` and `fuzzy` take `leetspeak` when that add-on is installed and work
+  without it.
+- Ranking in VethuQ: `sort="rank"`, and in the `all` search hits of different engines that overlap
+  are one match (the strictest engine's, listing every engine in `matched_by`).
+- `engine="hybrid"` (`combine=`): `semantic` and a keyword engine, pages ranked by reciprocal rank
+  fusion; settable as the default engine.
+- `search.sync()` prepares pages for engines that need it (semantic embeds them), with progress and
+  a `SearchSyncReport`; `SearchResult.pending` counts the pages an engine could not search yet.
+- Add-on credits: `Host.credits` (rate card price, balance, charge) over a sub-wallet named after
+  the add-on, `client.credits.wallets()` lists them, and the policy's `wallets.addons.<id>` and
+  `rate_card.semantic` apply. Semantic search is free to use and costs about 0.5 credit a page to
+  prepare, from the `semantic` wallet (50 credits a day by default).
+- `Host.data_dir()`: a folder of an add-on's own (`<data root>/addons/<id>`, moved with the data).
+
+### Changed
+- `SearchSortBy` has `RANK`; `search.run(sort=...)` defaults to `path`, and to `rank` for `hybrid`.
+
 ### Added
 - Package `VethuQ` (import name `vethuq`), versioned from git tags, exposing `APP_NAME`,
   `APP_TAGLINE`, `APP_VERSION` and `__version__`.

@@ -139,20 +139,27 @@ class TestManager:
             "case",
             "english",
             "exact",
+            "full-text",
+            "fuzzy",
+            "leetspeak",
+            "lexical",
             "like",
+            "noise-fuzzy",
             "ocr-quick",
             "paddle",
             "pdf",
+            "proximity",
             "unicode",
         }  # installed with VethuQ
-        assert set(manager.loaded()) == always
+        before = set(manager.loaded())
+        assert always <= before and before - always <= {"semantic"}  # an extra, not required
         folder = tmp_path / "site"
         folder.mkdir()
         try:
             AddonFactory.install(folder)
-            assert set(manager.loaded()) == always
+            assert set(manager.loaded()) == before
             manager.reload()
-            assert "dummy" in manager.loaded()
+            assert set(manager.loaded()) == before | {"dummy"}
         finally:
             AddonFactory.forget("vethuq_addon_dummy")
 
