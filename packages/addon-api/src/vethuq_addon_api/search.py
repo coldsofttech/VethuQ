@@ -267,6 +267,9 @@ class SearchEngineSpec:
     # The engine guesses (typos, meaning) rather than matching the text: `rank` puts what it finds
     # below what the text-matching engines find.
     approximate: bool = False
+    # A word or two that names how this engine found a hit ("Exact", "Similar"), shown beside it in
+    # exports. Left empty, the label is used.
+    badge: str = ""
 
 
 NormalizerLevels = Mapping[str, str]

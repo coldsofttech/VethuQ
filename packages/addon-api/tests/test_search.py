@@ -120,8 +120,12 @@ class TestAddonHooks:
         addon = Plain(FakeHost(tmp_path / "v.db"))
         assert addon.search_engines() == [] and addon.normalizers() == []
 
+    def test_an_engine_spec_has_an_optional_badge(self):
+        assert SearchEngineSpec("a", "A", None).badge == ""
+        assert SearchEngineSpec("a", "A", None, badge="Exact").badge == "Exact"
+
     def test_the_api_version(self):
-        assert API_VERSION == "0.6.0"
+        assert API_VERSION == "0.7.0"
 
 
 class TestSixthApi:

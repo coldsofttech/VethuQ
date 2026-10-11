@@ -113,6 +113,12 @@ class TestLanguages:
         assert spec.to_dict()["ocr"] == {"engine": {"paddle": {"lang": "en"}}}
         assert json.loads(spec.to_json())["id"] == "en"
 
+    def test_script_ranges(self):
+        assert LanguageSpec("en", "English").script_ranges == ()
+        spec = LanguageSpec("te", "Telugu", script="telugu", script_ranges=((0x0C00, 0x0C7F),))
+        assert spec.script_ranges == ((0xC00, 0xC7F),)
+        assert spec.to_dict()["script_ranges"] == [[0xC00, 0xC7F]]
+
     def test_is_frozen(self):
         with pytest.raises(AttributeError):
             LanguageSpec("en", "English").id = "x"

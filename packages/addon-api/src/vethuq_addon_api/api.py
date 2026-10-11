@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.6.0"
+API_VERSION = "0.7.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -83,6 +83,11 @@ class LanguageSpec:
     that exists but can't be used right now (for instance its licence has lapsed) is returned with
     `available=False` and a `reason`. `ocr` holds what OCR will need later (engine language codes,
     model names); VethuQ stores it and doesn't read it yet.
+
+    `script_ranges` are the inclusive `(first, last)` code points of the language's writing system
+    (`(0x0C00, 0x0C7F)` for Telugu). VethuQ tells which language a piece of text is written in by
+    them, for example to mark up a Telugu run inside an English page in an HTML export so a browser
+    picks the right font. A language with none is never recognised by its text.
     """
 
     id: str
@@ -93,6 +98,7 @@ class LanguageSpec:
     available: bool = True
     reason: str = ""
     ocr: Mapping[str, Any] = field(default_factory=dict)
+    script_ranges: tuple[tuple[int, int], ...] = ()
 
     @property
     def display_label(self) -> str:
@@ -109,6 +115,7 @@ class LanguageSpec:
             "available": self.available,
             "reason": self.reason,
             "ocr": dict(self.ocr),
+            "script_ranges": [list(r) for r in self.script_ranges],
         }
 
     def to_json(self, indent: int | None = None) -> str:

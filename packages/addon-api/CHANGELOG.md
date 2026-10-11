@@ -5,7 +5,12 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.6.0.
+The add-on API version (`API_VERSION`) is 0.7.0.
+
+### Added (API 0.7.0)
+- `LanguageSpec.script_ranges`: the code point ranges of a language's writing system, so VethuQ can
+  tell which language a piece of text is in (exports mark up non-default-language runs with it).
+- `SearchEngineSpec.badge`: the short name an export shows for how an engine found a hit.
 
 ### Added (API 0.6.0)
 - Search engine options: `SearchOption`, `SearchEngineSpec.options` and `SearchRequest.options`
