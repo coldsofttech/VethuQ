@@ -30,6 +30,7 @@ class TestWithoutAddons:
         installed = [info.id for info in client.addons.list()]
         assert [i for i in installed if i != "semantic"] == [  # semantic is an extra
             "case",
+            "csv",
             "english",
             "exact",
             "full-text",
@@ -37,11 +38,13 @@ class TestWithoutAddons:
             "leetspeak",
             "lexical",
             "like",
+            "markdown",
             "noise-fuzzy",
             "ocr-quick",
             "paddle",
             "pdf",
             "proximity",
+            "txt",
             "unicode",
         ]
         assert client.addons.get("backup") is None

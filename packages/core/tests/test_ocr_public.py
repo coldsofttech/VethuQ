@@ -31,8 +31,11 @@ def client(tmp_path):
 class TestFileTypes:
     def test_pdf_is_listed(self, client):
         assert isinstance(client.file_types, FileTypes)
-        (pdf,) = client.file_types.list()
-        assert pdf == FileType("pdf", "PDF", (".pdf",), True, "")
+        listed = {t.id: t for t in client.file_types.list()}
+        assert listed["pdf"] == FileType("pdf", "PDF", (".pdf",), True, "")
+        # The free text file types are installed with VethuQ too.
+        assert {"csv", "markdown", "txt"} <= set(listed)
+        assert listed["markdown"].extensions == (".md", ".markdown")
 
     def test_get(self, client):
         assert client.file_types.get(" PDF ").id == "pdf"
@@ -40,7 +43,7 @@ class TestFileTypes:
 
     def test_an_unavailable_type_says_why(self, client):
         fp.STATE.pdf_available = False
-        (pdf,) = client.file_types.list()
+        pdf = client.file_types.get("pdf")
         assert (pdf.available, pdf.reason) == (False, "the PDF reader is off")
 
     def test_dict_and_json(self, client):

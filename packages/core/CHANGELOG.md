@@ -6,6 +6,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (file types)
+- The `.txt`, `.csv` and `.md`/`.markdown` file types, as the free add-ons `vethuq-addon-txt`,
+  `vethuq-addon-csv` and `vethuq-addon-markdown`, installed with VethuQ. These files are read
+  straight from disk as one page of text each; they are never OCR'd and cost no credits.
+- Add-on API 0.8.0: `ReadPage.ocr`. A page that sets it to `False` is final as it is, however short.
+
 ### Added (export)
 - `client.search.export(result, path, format=None)`, `client.sources.export(sources, path, format=None)`
   and `client.sources.export_files(source, files, path, format=None)`: JSON or one portable HTML

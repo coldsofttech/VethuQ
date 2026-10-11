@@ -1,6 +1,7 @@
 """The kinds of file VethuQ can read: `VethuQ().file_types`.
 
-File types come from add-ons; PDF (`vethuq-addon-pdf`) is installed with VethuQ.
+File types come from add-ons; PDF (`vethuq-addon-pdf`), text (`vethuq-addon-txt`), CSV
+(`vethuq-addon-csv`) and Markdown (`vethuq-addon-markdown`) are installed with VethuQ.
 """
 
 from __future__ import annotations

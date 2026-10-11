@@ -29,6 +29,18 @@ class TestHasText:
         assert _PageOcr.has_text(f"  {LOTS}  ")
 
 
+class TestTextOnlyPage:
+    def test_a_short_text_only_page_is_never_ocrd(self):
+        text_only = ReadPage(native_text="Hi", image_regions=(), render=lambda r: "x", ocr=False)
+        assert not _PageOcr.needs_ocr(text_only)
+        result = _PageOcr.read_page(1, text_only, None)
+        assert (result.text, result.source) == ("Hi", _PageSource.NATIVE)
+
+    def test_an_empty_text_only_page_is_native(self):
+        empty = ReadPage(native_text="", image_regions=(), render=lambda r: "x", ocr=False)
+        assert _PageOcr.read_page(1, empty, None).source is _PageSource.NATIVE
+
+
 class TestReadPage:
     def test_a_native_page_needs_no_engine(self):
         result = _PageOcr.read_page(1, page(LOTS), None)

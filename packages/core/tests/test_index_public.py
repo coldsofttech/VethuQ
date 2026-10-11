@@ -177,11 +177,11 @@ class TestRun:
             client.index.run(workers=9)
 
     def test_non_pdf_files_are_unsupported_and_untouched(self, client, root):
-        (root / "n.txt").write_text("hi")
+        (root / "n.docx").write_text("hi")
         source = client.sources.create(root)
         run = client.index.run()
         assert run.files_total == 0
-        assert files(client, source)["n.txt"].status is FileStatus.UNSUPPORTED
+        assert files(client, source)["n.docx"].status is FileStatus.UNSUPPORTED
 
 
 class TestChanges:

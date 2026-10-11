@@ -824,6 +824,39 @@ wheels = [
 ]
 
 [[package]]
+name = "markdown-it-py"
+version = "4.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mdurl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz", hash = "sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49", size = 82454, upload-time = "2026-05-07T12:08:28.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl", hash = "sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a", size = 91687, upload-time = "2026-05-07T12:08:27.182Z" },
+]
+
+[[package]]
+name = "mdit-py-plugins"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/59/fc/f8d0863f8862f25602c0404d75568e89fb6b4109804645e5cdfb1be5cf56/mdit_py_plugins-0.6.1.tar.gz", hash = "sha256:a2bca0f039f39dbd35fb74ae1b5f998608c437463371f0ff7f49a19a17a114d0", size = 56114, upload-time = "2026-05-13T09:03:38.91Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/69/6da5581c6a7fede7dc261bf4e67d6adca4196f176b43288b55b3db395b6e/mdit_py_plugins-0.6.1-py3-none-any.whl", hash = "sha256:214c82fb2ac524472ab6a5bcab1de80f73b50443e187f401bfd77efbc7c6481d", size = 66663, upload-time = "2026-05-13T09:03:37.76Z" },
+]
+
+[[package]]
+name = "mdurl"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
 name = "modelscope"
 version = "1.40.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2586,6 +2619,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "vethuq-addon-api" },
     { name = "vethuq-addon-case" },
+    { name = "vethuq-addon-csv" },
     { name = "vethuq-addon-english" },
     { name = "vethuq-addon-exact" },
     { name = "vethuq-addon-full-text" },
@@ -2593,11 +2627,13 @@ dependencies = [
     { name = "vethuq-addon-leetspeak" },
     { name = "vethuq-addon-lexical" },
     { name = "vethuq-addon-like" },
+    { name = "vethuq-addon-markdown" },
     { name = "vethuq-addon-noise-fuzzy" },
     { name = "vethuq-addon-ocr-quick" },
     { name = "vethuq-addon-paddle" },
     { name = "vethuq-addon-pdf" },
     { name = "vethuq-addon-proximity" },
+    { name = "vethuq-addon-txt" },
     { name = "vethuq-addon-unicode" },
 ]
 
@@ -2618,6 +2654,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = "~=2.0" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
     { name = "vethuq-addon-case", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/case" },
+    { name = "vethuq-addon-csv", directory = "../VethuQ-premium/packages/add-ons/file-types/csv" },
     { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/add-ons/languages/english" },
     { name = "vethuq-addon-exact", directory = "../VethuQ-premium/packages/add-ons/search/engines/exact" },
     { name = "vethuq-addon-full-text", directory = "../VethuQ-premium/packages/add-ons/search/engines/full-text" },
@@ -2626,12 +2663,14 @@ requires-dist = [
     { name = "vethuq-addon-leetspeak", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
     { name = "vethuq-addon-lexical", directory = "../VethuQ-premium/packages/add-ons/search/engines/lexical" },
     { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/add-ons/search/engines/like" },
+    { name = "vethuq-addon-markdown", directory = "../VethuQ-premium/packages/add-ons/file-types/markdown" },
     { name = "vethuq-addon-noise-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" },
     { name = "vethuq-addon-ocr-quick", directory = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" },
     { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" },
     { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/add-ons/file-types/pdf" },
     { name = "vethuq-addon-proximity", directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
     { name = "vethuq-addon-semantic", marker = "extra == 'semantic'", directory = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
+    { name = "vethuq-addon-txt", directory = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
 ]
 provides-extras = ["github", "semantic"]
@@ -2650,6 +2689,21 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-addon-csv"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/add-ons/file-types/csv" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
 
 [[package]]
 name = "vethuq-addon-english"
@@ -2752,6 +2806,27 @@ dependencies = [
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
+name = "vethuq-addon-markdown"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/add-ons/file-types/markdown" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "markdown-it-py" },
+    { name = "mdit-py-plugins" },
+    { name = "pyyaml" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "markdown-it-py", specifier = ">=3" },
+    { name = "mdit-py-plugins", specifier = ">=0.4" },
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-noise-fuzzy"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" }
@@ -2845,6 +2920,21 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", specifier = ">=1.18" },
     { name = "tokenizers", specifier = ">=0.20" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-txt"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/add-ons/file-types/txt" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 

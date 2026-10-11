@@ -137,6 +137,7 @@ class TestManager:
         manager = _AddonManager(db_path, lambda: None)
         always = {
             "case",
+            "csv",
             "english",
             "exact",
             "full-text",
@@ -144,11 +145,13 @@ class TestManager:
             "leetspeak",
             "lexical",
             "like",
+            "markdown",
             "noise-fuzzy",
             "ocr-quick",
             "paddle",
             "pdf",
             "proximity",
+            "txt",
             "unicode",
         }  # installed with VethuQ
         before = set(manager.loaded())

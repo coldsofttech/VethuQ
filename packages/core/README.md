@@ -334,7 +334,7 @@ for file in client.sources.list_files(1, detailed=True):
     print(file.relative_path, file.index.status)
 # a.pdf FileStatus.INDEXED
 # b.pdf FileStatus.PENDING
-# notes.txt FileStatus.UNSUPPORTED
+# notes.docx FileStatus.UNSUPPORTED
 # old.pdf FileStatus.REMOVED
 
 errors = client.sources.list_files(1, detailed=True, status="error")  # only the failures
@@ -348,7 +348,7 @@ errors = client.sources.list_files(1, detailed=True, status="error")  # only the
 | `ERROR` | Processing failed; see `error` |
 | `MODIFIED` | Changed on disk since it was indexed. It will be processed again |
 | `REMOVED` | Indexed once and no longer on disk. It stays listed (with `on_disk` false) until the source is purged |
-| `UNSUPPORTED` | A kind of file VethuQ can't read yet. Only PDF is supported for now |
+| `UNSUPPORTED` | A kind of file VethuQ can't read yet. Supported: PDF, text, CSV and Markdown for now |
 
 A `FileIndex` has `status`, `on_disk`, `error`, `sha256` (known once the file has been read), `indexed_at`, `retry_count` and `duplicate_of` (for a file with the same content as an earlier one: the path of that original), plus `to_dict()` and `to_json()`. `status` (a `FileStatus` or its string) keeps only the files in that state and needs `detailed=True`. Reading never changes anything; the index is written as files are processed. The documents behind it are internal.
 
@@ -599,7 +599,7 @@ print(run.status, run.files_processed, "of", run.files_total, "files,", run.file
 
 Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process died is found and marked failed at the next run, and the files it was reading are put back.
 
-**How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. OCR is the quick phase (upright pages, mobile models) and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
+**How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. Text, CSV and Markdown files are one page of text each and are always native, however short: they are never OCR'd and cost nothing. OCR is the quick phase (upright pages, mobile models) and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
 
 ### Index runs
 
@@ -634,7 +634,7 @@ Each also has a `get_...` and `reset_...`. The stability check waits once per ru
 
 ## File types
 
-`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`) is installed with VethuQ.
+`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for.
 
 ```python
 client.file_types.list()  # [FileType(id="pdf", label="PDF", extensions=(".pdf",), available=True, reason="")]

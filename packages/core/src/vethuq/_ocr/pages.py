@@ -67,6 +67,8 @@ class _PageOcr:
 
     @staticmethod
     def needs_ocr(page: ReadPage) -> bool:
+        if not page.ocr:
+            return False
         return not _PageOcr.has_text(page.native_text) or bool(page.image_regions)
 
     @staticmethod

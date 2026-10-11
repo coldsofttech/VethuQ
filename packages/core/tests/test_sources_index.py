@@ -26,7 +26,7 @@ def root(tmp_path):
     (folder / "a.pdf").write_bytes(b"a")
     (folder / "b.pdf").write_bytes(b"bb")
     (folder / "sub" / "c.pdf").write_bytes(b"ccc")
-    (folder / "notes.txt").write_text("text")
+    (folder / "notes.docx").write_text("text")
     return folder
 
 
@@ -68,7 +68,7 @@ class TestDetailedListing:
         assert {k: v.index.status for k, v in files.items()} == {
             "a.pdf": FileStatus.PENDING,
             "b.pdf": FileStatus.PENDING,
-            "notes.txt": FileStatus.UNSUPPORTED,
+            "notes.docx": FileStatus.UNSUPPORTED,
             "sub/c.pdf": FileStatus.PENDING,
         }
         assert files["a.pdf"].index == FileIndex(FileStatus.PENDING, file_type="pdf")

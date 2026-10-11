@@ -5,7 +5,12 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.7.0.
+The add-on API version (`API_VERSION`) is 0.8.0.
+
+### Added (API 0.8.0)
+- `ReadPage.ocr` (default `True`): a reader sets it to `False` for a page that is text through and
+  through (a text, CSV or Markdown file). Its `native_text` is final however short, and the page is
+  never OCR'd or priced.
 
 ### Added (API 0.7.0)
 - `LanguageSpec.script_ranges`: the code point ranges of a language's writing system, so VethuQ can

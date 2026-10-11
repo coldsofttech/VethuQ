@@ -11,7 +11,7 @@ dependencies = []
 [tool.uv]
 package = false
 default-groups = ["dev"]
-# The free add-ons (English, PDF, Paddle, quick OCR) are built in the premium repository; resolve them from a sibling checkout until they are
+# The free add-ons (English, PDF, text, CSV, Markdown, Paddle, quick OCR) are built in the premium repository; resolve them from a sibling checkout until they are
 # from its own workspace; use this workspace's copy.
 override-dependencies = ["vethuq-addon-api~=0.1"]
 
@@ -26,6 +26,9 @@ vethuq-worker = { workspace = true }
 # published (clone VethuQ and VethuQ-premium next to each other).
 vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/english" }
 vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf" }
+vethuq-addon-txt = { path = "../VethuQ-premium/packages/add-ons/file-types/txt" }
+vethuq-addon-csv = { path = "../VethuQ-premium/packages/add-ons/file-types/csv" }
+vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }

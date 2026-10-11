@@ -82,6 +82,9 @@ class ReadPage:
     # reader doesn't know. VethuQ prices a page by its size.
     width_pt: float | None = None
     height_pt: float | None = None
+    # False for a page that is text through and through (a text file): `native_text` is final,
+    # however short, and the page is never OCR'd, priced or sent to a tier.
+    ocr: bool = True
 
 
 class DocumentReader(ABC):
