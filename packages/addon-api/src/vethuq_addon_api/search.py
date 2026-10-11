@@ -264,6 +264,9 @@ class SearchEngineSpec:
     # Engines the `all` search leaves out (for example one that needs a model).
     in_all: bool = True
     strictness: int = 100  # lower is stricter; `all` lists a hit's engines strictest first
+    # The engine guesses (typos, meaning) rather than matching the text: `rank` puts what it finds
+    # below what the text-matching engines find.
+    approximate: bool = False
 
 
 NormalizerLevels = Mapping[str, str]

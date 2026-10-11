@@ -11,6 +11,7 @@ The add-on API version (`API_VERSION`) is 0.6.0.
 - Search engine options: `SearchOption`, `SearchEngineSpec.options` and `SearchRequest.options`
   (an engine's own settings for one search, such as `threshold`); `NormalizerUse.optional` (an
   engine that works without a normalizer being installed).
+- `SearchEngineSpec.approximate` (an engine that guesses, ranked below the exact ones).
 - Search engines that prepare pages: `SearchEngine.pending` and `SearchEngine.sync`, and
   `SyncReport`. Searching never prepares anything.
 - `Host.credits` (`Credits`: `rate`, `balance_milli`, `charge`) for an add-on's own sub-wallet,
