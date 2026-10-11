@@ -2496,10 +2496,14 @@ dependencies = [
     { name = "psutil" },
     { name = "sqlalchemy" },
     { name = "vethuq-addon-api" },
+    { name = "vethuq-addon-case" },
     { name = "vethuq-addon-english" },
+    { name = "vethuq-addon-exact" },
+    { name = "vethuq-addon-like" },
     { name = "vethuq-addon-ocr-quick" },
     { name = "vethuq-addon-paddle" },
     { name = "vethuq-addon-pdf" },
+    { name = "vethuq-addon-unicode" },
 ]
 
 [package.optional-dependencies]
@@ -2515,11 +2519,15 @@ requires-dist = [
     { name = "psutil", specifier = ">=5.9" },
     { name = "sqlalchemy", specifier = "~=2.0" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-addon-case", directory = "../VethuQ-premium/packages/search/normalisers/case" },
     { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/english" },
+    { name = "vethuq-addon-exact", directory = "../VethuQ-premium/packages/search/engines/exact" },
     { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/github" },
+    { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/search/engines/like" },
     { name = "vethuq-addon-ocr-quick", directory = "../VethuQ-premium/packages/ocr-quick" },
     { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/paddle" },
     { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/pdf" },
+    { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/search/normalisers/unicode" },
 ]
 provides-extras = ["github"]
 
@@ -2528,9 +2536,31 @@ name = "vethuq-addon-api"
 source = { editable = "packages/addon-api" }
 
 [[package]]
+name = "vethuq-addon-case"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/search/normalisers/case" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
 name = "vethuq-addon-english"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/english" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-addon-exact"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/search/engines/exact" }
 dependencies = [
     { name = "vethuq-addon-api" },
 ]
@@ -2556,6 +2586,17 @@ requires-dist = [
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
     { name = "vethuq-worker", extras = ["images"], editable = "packages/worker" },
 ]
+
+[[package]]
+name = "vethuq-addon-like"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/search/engines/like" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
 name = "vethuq-addon-ocr-quick"
@@ -2605,6 +2646,17 @@ requires-dist = [
     { name = "pypdfium2", specifier = ">=4.30" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
+
+[[package]]
+name = "vethuq-addon-unicode"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/search/normalisers/unicode" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
 name = "vethuq-worker"

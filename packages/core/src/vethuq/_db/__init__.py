@@ -14,6 +14,7 @@ from vethuq._db.models import (
     _DocumentLanguage,
     _IndexRun,
     _Language,
+    _PageSearch,
     _PdfPage,
     _PdfPageQuick,
     _RemoteJob,
@@ -26,6 +27,7 @@ from vethuq._db.models import (
     _UsageFailure,
 )
 from vethuq._db.schema import _Schema
+from vethuq._db.search_index import _SearchDdl
 
 __all__ = [
     "IntegrityCheckResult",
@@ -37,6 +39,7 @@ __all__ = [
     "_DocumentIndex",
     "_DocumentLanguage",
     "_IndexRun",
+    "_PageSearch",
     "_PdfPage",
     "_PdfPageQuick",
     "_RemoteJob",
@@ -45,6 +48,7 @@ __all__ = [
     "_Language",
     "_Migration",
     "_Schema",
+    "_SearchDdl",
     "_SchemaVersion",
     "_Setting",
     "_Source",

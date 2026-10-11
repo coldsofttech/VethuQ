@@ -16,6 +16,8 @@ from vethuq._maintenance import _Maintenance
 from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
+from vethuq._search import _Engines, _Search, _SearchIndex
+from vethuq._settings import _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq.addons import Addons
 from vethuq.credits import Credits
@@ -28,6 +30,7 @@ from vethuq.metrics import Metrics
 from vethuq.ocr import Ocr
 from vethuq.paths import Paths
 from vethuq.policy import PolicyClient
+from vethuq.search import Search
 from vethuq.settings import Settings
 from vethuq.sources import Sources
 from vethuq.stats import Stats
@@ -71,6 +74,10 @@ class VethuQ:
         self._metrics: Metrics | None = None
         self._stats: Stats | None = None
         self._tier_catalog: _Tiers | None = None
+        self._search_engines: _Engines | None = None
+        self._search_index: _SearchIndex | None = None
+        self._search_service: _Search | None = None
+        self._search: Search | None = None
         self._tiers: Tiers | None = None
         self._lock = threading.Lock()
 
@@ -125,12 +132,36 @@ class VethuQ:
                 self._tier_catalog = _Tiers(manager.tier_specs, _LocalExecutor(runtime))
             return self._tier_catalog
 
+    def _search_catalog(self) -> _Engines:
+        db, manager = self._db(), self._manager()
+
+        def saved(normalizer: str) -> str:
+            with db.session() as session:
+                return _SearchSettings.get_normalizer(session, normalizer)
+
+        with self._lock:
+            if self._search_engines is None:
+                self._search_engines = _Engines(
+                    manager.search_engine_specs, manager.normalizer_list, saved
+                )
+            return self._search_engines
+
+    def _search_indexer(self) -> _SearchIndex:
+        db, manager = self._db(), self._manager()
+        with self._lock:
+            if self._search_index is None:
+                self._search_index = _SearchIndex(db, manager.normalizer_list)
+            return self._search_index
+
     def _indexer_engine(self) -> _Indexer:
         credits, tiers = self._credit_engine(), self._tier_engine()
         db, types, manager = self._db(), self._file_type_catalog(), self._manager()
+        index = self._search_indexer()
         with self._lock:
             if self._indexer is None:
-                self._indexer = _Indexer(db, types, manager.language_specs, tiers, credits)
+                self._indexer = _Indexer(
+                    db, types, manager.language_specs, tiers, credits, after_pages=index.sync
+                )
             return self._indexer
 
     def _release_database(self) -> None:
@@ -235,8 +266,22 @@ class VethuQ:
     def settings(self) -> Settings:
         """VethuQ's settings."""
         if self._settings is None:
-            self._settings = Settings(self._db(), self._catalog())
+            engines = self._search_catalog()
+            self._settings = Settings(
+                self._db(),
+                self._catalog(),
+                lambda: [view.id for view in engines.views()],
+                lambda: {n.id: tuple(n.levels) for n in engines.normalizers().values()},
+            )
         return self._settings
+
+    @property
+    def search(self) -> Search:
+        """Search the indexed pages: find a query with a search engine, and look after the index."""
+        if self._search is None:
+            db, engines, index = self._db(), self._search_catalog(), self._search_indexer()
+            self._search = Search(db, engines, index, _Search(db, engines, index))
+        return self._search
 
     @property
     def logs(self) -> Logs:
@@ -301,7 +346,8 @@ class VethuQ:
             self._credits = None
             self._metrics = None
             self._stats = None
-            self._github = None
+            self._search_engines = self._search_index = None
+            self._search_service = self._search = None
             self._tier_catalog = None
             self._tiers = None
 

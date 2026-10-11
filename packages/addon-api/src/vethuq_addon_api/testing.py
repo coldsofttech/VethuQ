@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
 from vethuq_addon_api.api import API_VERSION
 from vethuq_addon_api.ocr import OcrResult
 from vethuq_addon_api.readers import DocumentReader, ReadPage
+from vethuq_addon_api.search import Folded, Normalizer, PageText, SearchCorpus
 from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest
 
 
@@ -203,3 +204,38 @@ class FakeExecutor(OcrExecutor):
         if not self.asynchronous:
             return super().cancel(handle)
         self.cancelled.append(handle)
+
+
+class FakeNormalizer(Normalizer):
+    """A `Normalizer` for testing code that uses one: at any level other than `off` it replaces
+    each character in `table` (default: upper case to lower case, one character for one)."""
+
+    levels = ("off", "on")
+    identity = "off"
+
+    def __init__(self, id: str = "fake", table: dict[str, str] | None = None, order: int = 100):
+        self.id = id
+        self.order = order
+        self.table = table or {c: c.lower() for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}
+
+    def fold(self, text: str, level: str) -> Folded:
+        if level == self.identity:
+            return Folded(text)
+        return Folded("".join(self.table.get(char, char) for char in text))
+
+    def index_form(self, text: str) -> str:
+        return self.fold(text, "on").text
+
+
+class FakeCorpus(SearchCorpus):
+    """A `SearchCorpus` over pages given as text. Every call to `candidates` is in `queries`."""
+
+    def __init__(self, texts: Iterable[str] = ()) -> None:
+        self.pages = [
+            PageText(i, 1 + i // 10, 1 + i % 10, 10, text) for i, text in enumerate(texts, start=1)
+        ]
+        self.queries: list[str | None] = []
+
+    def candidates(self, query: str | None = None) -> Iterator[PageText]:
+        self.queries.append(query)
+        yield from self.pages

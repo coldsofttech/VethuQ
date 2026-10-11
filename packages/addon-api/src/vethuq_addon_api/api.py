@@ -13,11 +13,12 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from vethuq_addon_api.ocr import OcrEngineProvider
     from vethuq_addon_api.readers import FileTypeSpec
+    from vethuq_addon_api.search import Normalizer, SearchEngineSpec
     from vethuq_addon_api.tiers import TierSpec
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.4.0"
+API_VERSION = "0.5.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -206,6 +207,14 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
 
     def processing_tiers(self) -> list[TierSpec]:
         """The processing tiers this add-on provides (none, unless it is a tier add-on)."""
+        return []
+
+    def search_engines(self) -> list[SearchEngineSpec]:
+        """The search engines this add-on provides (none, unless it is a search engine add-on)."""
+        return []
+
+    def normalizers(self) -> list[Normalizer]:
+        """The search normalizers this add-on provides (none, unless it is a normalizer add-on)."""
         return []
 
     def languages(self) -> list[LanguageSpec]:

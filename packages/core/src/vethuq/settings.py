@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from vethuq._db import _Database, _IntegrityCheck
+from vethuq._errors import _InvalidSettingValueError
 from vethuq._languages import _LanguageCatalog, _Languages
 from vethuq._logs import _Log, _Logs
 from vethuq._settings import (
@@ -14,6 +16,7 @@ from vethuq._settings import (
     _LanguageSettings,
     _LogSettings,
     _MetricsSettings,
+    _SearchSettings,
     _SourceSettings,
     _TierSettings,
     _UpdateSettings,
@@ -27,6 +30,7 @@ __all__ = [
     "IndexSettings",
     "LanguageSettings",
     "LogSettings",
+    "SearchSettings",
     "Settings",
     "SourceSettings",
     "TierSettings",
@@ -467,13 +471,119 @@ class TierSettings:
             _TierSettings.reset(session, _TierSettings.JOB_MB_KEY)
 
 
+class SearchSettings:
+    """Settings for searching.
+
+    Not created directly: use `VethuQ().settings.search`. What counts as "the same character" is a
+    setting per normalizer: `auto` (the default) lets each search engine use its own level (`like`
+    ignores case, `exact` matches it), anything else is one of the normalizer's levels and applies
+    to every engine that takes a saved level.
+    """
+
+    def __init__(
+        self,
+        database: _Database,
+        engines: Callable[[], list[str]],
+        normalizers: Callable[[], dict[str, tuple[str, ...]]],
+    ) -> None:
+        self._database = database
+        self._engines = engines
+        self._normalizers = normalizers
+
+    def get_engine(self) -> str:
+        """The engine a search uses when it doesn't name one: `all`, or an engine id."""
+        with self._database.session() as session:
+            return _SearchSettings.get_engine(session)
+
+    def set_engine(self, engine: str) -> None:
+        """Raises `InvalidSettingValueError` unless it is `all` or an installed engine."""
+        known = ["all", *self._engines()]
+        if engine not in known:
+            raise _InvalidSettingValueError(
+                f"{engine!r} isn't a search engine.", f"Engines: {', '.join(known)}."
+            )
+        with self._database.session() as session:
+            _SearchSettings.set_engine(session, engine)
+
+    def reset_engine(self) -> None:
+        with self._database.session() as session:
+            _SearchSettings.reset(session, _SearchSettings.ENGINE_KEY)
+
+    def get_snippet_context_chars(self) -> int:
+        """The characters of context shown either side of a match. 80 unless changed."""
+        with self._database.session() as session:
+            return _SearchSettings.get_context_chars(session)
+
+    def set_snippet_context_chars(self, chars: int) -> None:
+        """Raises `InvalidSettingValueError` unless it is a whole number from 0 to 2000."""
+        with self._database.session() as session:
+            _SearchSettings.set_context_chars(session, chars)
+
+    def reset_snippet_context_chars(self) -> None:
+        with self._database.session() as session:
+            _SearchSettings.reset(session, _SearchSettings.CONTEXT_KEY)
+
+    def get_normalizer(self, normalizer: str) -> str:
+        """The level saved for a normalizer (`case`, `unicode`, ...), or `auto`."""
+        with self._database.session() as session:
+            return _SearchSettings.get_normalizer(session, normalizer)
+
+    def set_normalizer(self, normalizer: str, level: str) -> None:
+        """Save a level for an installed normalizer. `auto` lets each engine use its own.
+        Raises `InvalidSettingValueError` for a normalizer or level that isn't installed."""
+        installed = self._normalizers()
+        if normalizer not in installed:
+            known = ", ".join(sorted(installed)) or "none"
+            raise _InvalidSettingValueError(
+                f"There is no normalizer {normalizer!r}.", f"Normalizers: {known}."
+            )
+        if level != "auto" and level not in installed[normalizer]:
+            raise _InvalidSettingValueError(
+                f"{normalizer} must be auto or one of {', '.join(installed[normalizer])}, "
+                f"not {level!r}."
+            )
+        with self._database.session() as session:
+            _SearchSettings.set_normalizer(session, normalizer, level)
+
+    def reset_normalizer(self, normalizer: str) -> None:
+        with self._database.session() as session:
+            _SearchSettings.reset_normalizer(session, normalizer)
+
+    def get_case(self) -> str:
+        """`auto`, `match` or `ignore`: whether upper and lower case are the same letter."""
+        return self.get_normalizer("case")
+
+    def set_case(self, level: str) -> None:
+        self.set_normalizer("case", level)
+
+    def reset_case(self) -> None:
+        self.reset_normalizer("case")
+
+    def get_unicode(self) -> str:
+        """`auto`, `off`, `basic` or `full`: how differently written characters are treated."""
+        return self.get_normalizer("unicode")
+
+    def set_unicode(self, level: str) -> None:
+        self.set_normalizer("unicode", level)
+
+    def reset_unicode(self) -> None:
+        self.reset_normalizer("unicode")
+
+
 class Settings:
     """VethuQ's settings, grouped by feature.
 
     Not created directly: use `VethuQ().settings`.
     """
 
-    def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
+    def __init__(
+        self,
+        database: _Database,
+        catalog: _LanguageCatalog,
+        engines: Callable[[], list[str]] = list,
+        normalizers: Callable[[], dict[str, tuple[str, ...]]] = dict,
+    ) -> None:
+        self.search = SearchSettings(database, engines, normalizers)
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
         self.index = IndexSettings(database)

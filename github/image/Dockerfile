@@ -22,6 +22,7 @@ COPY wheels /wheels
 # --pre: wheels built between tags carry development versions.
 RUN pip install --pre --find-links /wheels "vethuq-worker[run]" \
         vethuq-addon-english vethuq-addon-pdf vethuq-addon-paddle vethuq-addon-ocr-quick \
+        vethuq-addon-like vethuq-addon-exact vethuq-addon-case vethuq-addon-unicode \
     && rm -rf /wheels
 
 # The one step that needs the network: fetch the models and prove each engine loads.

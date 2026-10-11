@@ -36,8 +36,9 @@ permissions:
 
 env:
   IMAGE: ghcr.io/coldsofttech/vethuq-worker
-  # Premium add-ons the image carries (directory names under VethuQ-premium/packages).
-  PREMIUM_ADDONS: "english pdf paddle ocr-quick"
+  # Premium add-ons the image carries (folders under VethuQ-premium/packages; a grouped add-on's
+  # folder includes its group, for example search/engines/like).
+  PREMIUM_ADDONS: "english pdf paddle ocr-quick search/engines/like search/engines/exact search/normalisers/case search/normalisers/unicode"
 
 jobs:
   image:

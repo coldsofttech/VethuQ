@@ -43,7 +43,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, `TierError` for the processing tier errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, `SearchError` for the search errors, `TierError` for the processing tier errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -70,6 +70,10 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `InvalidGrantError` | 61 | Credits | A credit grant or licence can't be redeemed |
 | `TierError` | 80 | Tiers | Root of the processing tier errors below |
 | `TierUnavailableError` | 81 | Tiers | The tier asked for is unknown, not installed, not ready, or can't run in this version |
+| `SearchError` | 90 | Search | Root of the search errors below |
+| `SearchUnavailableError` | 91 | Search | The search engine asked for is unknown or can't be used now |
+| `SearchOptionError` | 92 | Search | A search option can't be honoured (`option` says which): an unknown normalizer or level, or one the engine can't change |
+| `SearchQueryError` | 93 | Search | The engine can't search the query |
 | `CreditsExhaustedError` | 62 | Credits | There aren't enough credits for the work (an index run ends as `WAITING_CREDITS` instead of raising it) |
 | `LogError` | 40 | Logs | Root of the log errors below |
 | `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
@@ -771,6 +775,39 @@ client.metrics.delete_data()  # asks the collector to delete everything for this
 
 Only closed UTC days are sent, each once. The schema is in the VethuQ repository (`metrics/schema/v1`) and so is the collector (`metrics/collector`, a Cloudflare Worker); anything not in the schema is refused by both.
 
+## Search
+
+`client.search` finds text on the pages that were indexed. Only pages of files that are `indexed` and whose text is final are searched. Search engines and the normalizers they apply come from add-ons, all free and installed with VethuQ: the engines `like` (the query anywhere in a page, even inside a word) and `exact` (the query as typed, as a whole word, always case-sensitive), and the normalizers `case` (`match`, `ignore`) and `unicode` (`off`, `basic` composes characters, `full` also folds accents and compatibility forms: `cafe` finds `café`, `ﬁne` is `fine`).
+
+```python
+result = client.search.run("invoice")  # every engine; hits found by several say so
+for match in result:
+    print(match.file_path, match.page_number, match.before, match.matched, match.after)
+
+client.search.run("Museum", engine="exact")
+client.search.run(
+    "cafe", engine="like", normalize={"unicode": "full"}
+)  # or "unicode=full,case=match"
+client.search.run("mus", case_sensitive=True, limit=20, offset=40, languages="en")
+```
+
+`run(query, *, engine=None, normalize=None, case_sensitive=None, context_chars=None, languages=None, sort="path", order="asc", limit=None, offset=0)` returns a `SearchResult`: `matches` (the page asked for), `total`, `engine`, `levels` (the level each normalizer ran at, per engine) and `index_rebuilt`. A `SearchMatch` has the file (`file_id`, `file_name`, `file_path`, `duplicate_of_path` for a file with the same content as an earlier one), the page (`page_number`, `total_pages`, `source`), the text (`before`, `matched`, `after`, `truncated_before`, `truncated_after`, `start`, `end`), and `engine`, `matched_by` (every engine that found it, strictest first), `score` and `modifiers` (`accents` when a match needed the Unicode folding). Highlights always show the original text. An empty query matches nothing. `SearchResult`, `SearchMatch` and the rest have `to_dict()` and `to_json()`.
+
+**What counts as the same character** is a normalizer's level. For each normalizer an engine uses, the level is: the one asked for in this search (`normalize`, or `case_sensitive`), else the one the engine fixes, else the level you saved (`settings.search`, where the engine takes it), else the engine's own default. `like` ignores case and composes Unicode (`basic`); `exact` always matches case, composes Unicode, and takes a different Unicode level only when a search asks for it, never from the saved setting. Naming one engine and asking for what it can't do (`exact` with `case_sensitive=False`, a normalizer it doesn't use, an unknown level) raises `SearchOptionError`; in the `all` search an engine just doesn't apply what it can't.
+
+```python
+client.search.engines()  # SearchEngineInfo: id, label, available / reason, in_all, selected, normalizers
+client.search.normalizers()  # NormalizerInfo: id, levels, identity, version, setting
+client.search.status()  # SearchIndexStatus: pages_indexed, pages_total, current, full_text
+client.search.rebuild()  # build the index again from the stored page text
+```
+
+**The index.** VethuQ records each finished page's text in the coarsest form the installed normalizers allow (case folded, accents dropped), and keeps an SQLite FTS5 trigram index over it (`page_search`, `page_search_fts`), so a search only reads the pages that can match; the engine still checks each one. The index is brought up to date after an index run and before a search. A page whose text changes loses its entry and gets a new one. It is stamped with the names and versions of the installed normalizers: when they change (an add-on installed, removed or upgraded) the first search rebuilds it, and `SearchResult.index_rebuilt` says so. Queries shorter than 3 characters, and SQLite builds without the trigram tokenizer, narrow pages with a plain substring test on the index instead.
+
+### Search settings
+
+`client.settings.search`: `get/set/reset_engine` (`all`, or an engine id; `all` unless changed), `get/set/reset_snippet_context_chars` (characters shown either side of a match; 80), `get/set/reset_normalizer(id)` for any installed normalizer (`auto`, the default, lets each engine use its own level, or one of its levels), and `get/set/reset_case` and `get/set/reset_unicode` for the two that ship.
+
 ## GitHub runner
 
 Run OCR in **your own GitHub account** with the free, optional GitHub add-on (`pip install "VethuQ[github]"`, or `vethuq-addon-github`). It provides the `github` [processing tier](#processing-tiers). `GitHub(client).setup()` creates a private repository you own, writes VethuQ's thin caller workflow into it and gives it a master key as a secret. `client.index.run(tier="github")` then encrypts the pages that need OCR, uploads them there, and a GitHub Actions job runs the worker image on them; results come back encrypted and are imported by `client.index.collect()` (or by the next run). Everything a job leaves in the repository (its release, tag and result artifact) is deleted once VethuQ has the result. Pages with a text layer never leave your computer. There is no template repository: GitHub copies a template whole, so the add-on writes the one workflow file itself.
@@ -1136,7 +1173,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Processing tiers are in `vethuq.tiers`, the GitHub runner is in the GitHub add-on (`vethuq.addons.github`), credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Searching is in `vethuq.search`, processing tiers are in `vethuq.tiers`, the GitHub runner is in the GitHub add-on (`vethuq.addons.github`), credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

@@ -99,4 +99,4 @@ class TestAddon:
     def test_the_api_version(self):
         from vethuq_addon_api import API_VERSION
 
-        assert API_VERSION == "0.4.0"
+        assert API_VERSION == "0.5.0"

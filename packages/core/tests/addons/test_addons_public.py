@@ -28,10 +28,14 @@ class TestWithoutAddons:
     def test_only_the_built_in_addons_are_installed(self, client):
         assert isinstance(client.addons, Addons)
         assert [info.id for info in client.addons.list()] == [
+            "case",
             "english",
+            "exact",
+            "like",
             "ocr-quick",
             "paddle",
             "pdf",
+            "unicode",
         ]
         assert client.addons.get("backup") is None
         assert not client.addons.is_installed("backup")

@@ -29,6 +29,10 @@ vethuq-addon-pdf = { path = "../VethuQ-premium/packages/pdf" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/ocr-quick" }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/github" }
+vethuq-addon-like = { path = "../VethuQ-premium/packages/search/engines/like" }
+vethuq-addon-exact = { path = "../VethuQ-premium/packages/search/engines/exact" }
+vethuq-addon-case = { path = "../VethuQ-premium/packages/search/normalisers/case" }
+vethuq-addon-unicode = { path = "../VethuQ-premium/packages/search/normalisers/unicode" }
 
 [dependency-groups]
 dev = [

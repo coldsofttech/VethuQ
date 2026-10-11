@@ -9,6 +9,7 @@ from sqlalchemy import Connection, Engine, func, inspect, select, update
 
 from vethuq._db.migration import _Migration
 from vethuq._db.models import _Base, _SchemaVersion
+from vethuq._db.search_index import _SearchDdl
 from vethuq._errors import _SchemaVersionError
 
 
@@ -61,6 +62,7 @@ class _Schema:
             stored = _Schema.stored_version(connection)
             _Schema.check_not_newer(stored)
             _Base.metadata.create_all(connection)
+            _SearchDdl.install(connection)
             if stored is None:
                 _Schema._logger.info("Created database schema v%d", _Schema.VERSION)
                 connection.execute(

@@ -239,3 +239,10 @@ class RemoteJobStatus(StrEnum):
     COMPLETED = "completed"  # its results were imported
     FAILED = "failed"  # the tier reported a failure; its pages and credits were given back
     EXPIRED = "expired"  # it took too long; its pages and credits were given back
+
+
+class SearchSortBy(StrEnum):
+    """What search results can be sorted by."""
+
+    PATH = "path"  # file path, then page, then position (the default)
+    SCORE = "score"  # best first, for engines that rank; matches without a score come last

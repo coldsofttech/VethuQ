@@ -5,7 +5,13 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.4.0.
+The add-on API version (`API_VERSION`) is 0.5.0.
+
+### Added (API 0.5.0)
+- Search: `Normalizer` (`fold`, `index_form`, levels, `order`, `version`), `Folded`, `Pipeline`,
+  `SearchEngine`, `SearchEngineSpec`, `NormalizerUse`, `SearchRequest`, `SearchCorpus`, `PageText`,
+  `Hit` and `SearchQueryError`; the hooks `Addon.search_engines()` and `Addon.normalizers()`.
+- Testing: `FakeNormalizer` and `FakeCorpus`.
 
 ### Added (API 0.4.0)
 - Processing tiers: `TierSpec`, `Addon.processing_tiers()`, and the executor contract (`OcrExecutor`,

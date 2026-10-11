@@ -33,6 +33,7 @@ class TestPublicApi:
             "ocr",
             "paths",
             "policy",
+            "search",
             "sources",
             "stats",
             "tiers",

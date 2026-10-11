@@ -35,7 +35,9 @@ class TestDockerfile:
 
     def test_the_addons_the_workflow_builds_are_installed(self):
         installed = set(re.findall(r"vethuq-addon-[a-z-]+", DOCKERFILE))
-        built = {f"vethuq-addon-{a}" for a in BUILD["env"]["PREMIUM_ADDONS"].split()}
+        built = {
+            f"vethuq-addon-{a.rsplit('/', 1)[-1]}" for a in BUILD["env"]["PREMIUM_ADDONS"].split()
+        }
         assert installed == built
 
 

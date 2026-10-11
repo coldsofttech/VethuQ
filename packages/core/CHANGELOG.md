@@ -94,6 +94,15 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - **Wallets by tier**: `credits.wallets()`, `credits.balance(wallet)`, `history(wallet=)`; the
   GitHub wallet (20 a day for a private runner repository, 200 for a public one), with promotions
   and the metrics bonus. `CreditBalance` and `CreditEntry` carry their wallet.
+- **Search** (`client.search`, types in `vethuq.search`): `run`, `engines`, `normalizers`, `status`
+  and `rebuild`. Engines and normalizers are free add-ons installed with VethuQ (`like`, `exact`,
+  `case`, `unicode`). A search folds the query and each page alike with the normalizers that apply
+  (levels from the search, the engine, your saved setting, or the engine's default), merges what
+  engines agree on in the `all` search and shows the original text. An index of each page's coarsest
+  form (SQLite FTS5 trigram, tables `page_search` and `page_search_fts`) narrows pages; it is kept up
+  to date after index runs and before searches, and rebuilt when the installed normalizers change.
+  `settings.search` (engine, snippet context, a level per normalizer), `SearchSortBy`, and the errors
+  `SearchError`, `SearchUnavailableError`, `SearchOptionError` and `SearchQueryError` (90 to 93).
 - **Hybrid tier** (`index.run(tier="hybrid")`): local first; pages at or above
   `settings.tiers.min_size_factor` (and pages in the chosen OCR phases) go to the `github` tier; each
   page is paid from the wallet of the tier that reads it, and a page GitHub can't pay for is read

@@ -135,7 +135,16 @@ class TestManager:
     def test_reload_looks_again(self, tmp_path, monkeypatch, db_path):
         monkeypatch.setattr(sys, "path", list(sys.path))
         manager = _AddonManager(db_path, lambda: None)
-        always = {"english", "ocr-quick", "paddle", "pdf"}  # installed with VethuQ
+        always = {
+            "case",
+            "english",
+            "exact",
+            "like",
+            "ocr-quick",
+            "paddle",
+            "pdf",
+            "unicode",
+        }  # installed with VethuQ
         assert set(manager.loaded()) == always
         folder = tmp_path / "site"
         folder.mkdir()

@@ -487,3 +487,16 @@ class _RemoteJobPage(_Base):
     # The run that staged it, and the wallet that paid.
     run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wallet: Mapped[str] = mapped_column(Text, nullable=False, default="local")
+
+
+class _PageSearch(_Base):
+    """A page's text in the coarsest form the installed search normalizers allow: what the search
+    index (`page_search_fts`) is built over. A page whose text changes loses its row (a trigger),
+    and gets a new one the next time the index is brought up to date."""
+
+    __tablename__ = "page_search"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    norm_text: Mapped[str] = mapped_column(Text, nullable=False)

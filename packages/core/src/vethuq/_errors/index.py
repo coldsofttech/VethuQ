@@ -36,3 +36,23 @@ class _TierError(_VethuQError, errors.TierError):
 
 class _TierUnavailableError(_TierError, errors.TierUnavailableError):
     exit_code = 81
+
+
+class _SearchError(_VethuQError, errors.SearchError):
+    exit_code = 90
+
+
+class _SearchUnavailableError(_SearchError, errors.SearchUnavailableError):
+    exit_code = 91
+
+
+class _SearchOptionError(_SearchError, errors.SearchOptionError):
+    exit_code = 92
+
+    def __init__(self, message: str, hint: str | None = None, option: str = "") -> None:
+        super().__init__(message, hint)
+        self.option = option
+
+
+class _SearchQueryError(_SearchError, errors.SearchQueryError):
+    exit_code = 93

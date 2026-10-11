@@ -69,7 +69,9 @@ class _Indexer:
         languages: Callable[[], list[LanguageSpec]],
         tiers: _Tiers,
         credits: _Credits,
+        after_pages: Callable[[], object] | None = None,
     ) -> None:
+        self._after_pages = after_pages
         self.database = database
         self.file_types = file_types
         self.languages = languages
@@ -606,6 +608,7 @@ class _Indexer:
             if self._outbox is not None:
                 self._outbox.flush()
             self._await_remote(run_id, wait, wait_minutes)
+            self._refresh_search()
             if self._paused.is_set():
                 self._finish(
                     run_id,
@@ -669,7 +672,18 @@ class _Indexer:
                     break
             time.sleep(min(self.POLL_SECONDS, max(deadline - time.monotonic(), 0)))
             ended += self.remote.collect(run_id)
+        self._refresh_search()
         return ended
+
+    def _refresh_search(self) -> None:
+        """Bring the search index up to date with the pages just saved (best effort: a search
+        does the same before it runs)."""
+        if self._after_pages is None:
+            return
+        try:
+            self._after_pages()
+        except Exception:  # noqa: BLE001 - the index is rebuilt on demand
+            self._logger.warning("Couldn't update the search index", exc_info=True)
 
     def _finish(self, run_id: int, status: IndexRunStatus, error: str | None, counts: dict) -> None:
         with self.database.session() as session:

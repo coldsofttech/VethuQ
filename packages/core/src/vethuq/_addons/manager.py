@@ -19,8 +19,10 @@ from vethuq_addon_api import (
     FileTypeSpec,
     LanguageSpec,
     MigrationInfo,
+    Normalizer,
     OcrEngineProvider,
     OcrPhaseSpec,
+    SearchEngineSpec,
     TierSpec,
 )
 
@@ -128,6 +130,14 @@ class _AddonManager:
     def tier_specs(self) -> list[TierSpec]:
         """The processing tiers the running add-ons provide, by id."""
         return sorted(self._collect("processing_tiers"), key=lambda spec: spec.id)
+
+    def search_engine_specs(self) -> list[SearchEngineSpec]:
+        """The search engines the running add-ons provide, by id."""
+        return sorted(self._collect("search_engines"), key=lambda spec: spec.id)
+
+    def normalizer_list(self) -> list[Normalizer]:
+        """The search normalizers the running add-ons provide, in the order they apply."""
+        return sorted(self._collect("normalizers"), key=lambda n: (n.order, n.id))
 
     def ocr_engine_providers(self) -> list[OcrEngineProvider]:
         """The OCR engines the running add-ons provide, by id."""

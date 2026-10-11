@@ -47,6 +47,14 @@ exists but can't be used right now (a lapsed licence) is returned with `availabl
   `OcrExecutor` that reads images somewhere (`recognize` for a synchronous executor; `submit`,
   `poll`, `collect` and `cancel` for one whose batches finish later).
 - `ocr_phases()` returns `OcrPhaseSpec`s: an order, the angles to read and the model profile.
+- `normalizers()` returns `Normalizer`s (search): what counts as "the same character" (`case`,
+  `unicode`). A normalizer has levels (one of them the identity), an `order`, a `version`, `fold`
+  (text to normalized text, remembering where each character came from: `Folded`) and
+  `index_form` (the coarsest form, which VethuQ's search index records).
+- `search_engines()` returns `SearchEngineSpec`s (search): an id, a `SearchEngine` and the
+  normalizers it uses (`NormalizerUse`: default level, fixed, whether the saved setting reaches
+  it). `engine.search(request, corpus)` yields `Hit`s; `request.pipeline` folds the query and each
+  page alike, `corpus.candidates(query)` gives the pages that can match.
 
 The reader and engine types are in this package, so an add-on and VethuQ share them; the heavy
 libraries stay inside the add-ons.

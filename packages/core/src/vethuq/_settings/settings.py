@@ -640,3 +640,81 @@ class _TierSettings:
     @staticmethod
     def reset(session: Session, key: str) -> None:
         _Settings.reset(session, key)
+
+
+class _SearchSettings:
+    ENGINE_KEY = "search_engine"
+    CONTEXT_KEY = "search_snippet_context_chars"
+    NORMALIZER_PREFIX = "search_normalize_"
+    ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+    LEVEL_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+    DEFAULT_ENGINE = "all"
+    DEFAULT_CONTEXT = 80
+    MAX_CONTEXT = 2000
+    AUTO = "auto"
+
+    @staticmethod
+    def get_engine(session: Session) -> str:
+        """The engine a search uses when it doesn't name one. `all` unless changed."""
+        value = _Settings.get(session, _SearchSettings.ENGINE_KEY)
+        return value if value and _SearchSettings.ID_RE.match(value) else "all"
+
+    @staticmethod
+    def set_engine(session: Session, engine: object) -> None:
+        if not isinstance(engine, str) or not _SearchSettings.ID_RE.match(engine):
+            raise _InvalidSettingValueError(
+                f"{engine!r} isn't a search engine id.", "For example all, like or exact."
+            )
+        _Settings.set(session, _SearchSettings.ENGINE_KEY, engine)
+
+    @staticmethod
+    def get_context_chars(session: Session) -> int:
+        """The characters of context a result shows either side of a match. 80 unless changed."""
+        value = _Settings.get(session, _SearchSettings.CONTEXT_KEY)
+        try:
+            chars = int(value) if value is not None else _SearchSettings.DEFAULT_CONTEXT
+        except ValueError:
+            return _SearchSettings.DEFAULT_CONTEXT
+        return (
+            chars if 0 <= chars <= _SearchSettings.MAX_CONTEXT else _SearchSettings.DEFAULT_CONTEXT
+        )
+
+    @staticmethod
+    def set_context_chars(session: Session, chars: object) -> None:
+        if (
+            isinstance(chars, bool)
+            or not isinstance(chars, int)
+            or not 0 <= chars <= _SearchSettings.MAX_CONTEXT
+        ):
+            raise _InvalidSettingValueError(
+                f"The context must be a whole number from 0 to {_SearchSettings.MAX_CONTEXT}, "
+                f"not {chars!r}."
+            )
+        _Settings.set(session, _SearchSettings.CONTEXT_KEY, str(chars))
+
+    @staticmethod
+    def normalizer_key(normalizer: str) -> str:
+        if not isinstance(normalizer, str) or not _SearchSettings.ID_RE.match(normalizer):
+            raise _InvalidSettingValueError(f"{normalizer!r} isn't a normalizer id.")
+        return f"{_SearchSettings.NORMALIZER_PREFIX}{normalizer}"
+
+    @staticmethod
+    def get_normalizer(session: Session, normalizer: str) -> str:
+        """The level saved for a normalizer, or `auto` (each engine's own) if none."""
+        value = _Settings.get(session, _SearchSettings.normalizer_key(normalizer))
+        return value if value and _SearchSettings.LEVEL_RE.match(value) else "auto"
+
+    @staticmethod
+    def set_normalizer(session: Session, normalizer: str, level: object) -> None:
+        key = _SearchSettings.normalizer_key(normalizer)
+        if not isinstance(level, str) or not _SearchSettings.LEVEL_RE.match(level):
+            raise _InvalidSettingValueError(f"{level!r} isn't a level of {normalizer}.")
+        _Settings.set(session, key, level)
+
+    @staticmethod
+    def reset_normalizer(session: Session, normalizer: str) -> None:
+        _Settings.reset(session, _SearchSettings.normalizer_key(normalizer))
+
+    @staticmethod
+    def reset(session: Session, key: str) -> None:
+        _Settings.reset(session, key)

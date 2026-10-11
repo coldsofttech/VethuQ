@@ -14,6 +14,10 @@ dependencies = [
     "vethuq-addon-pdf~=0.1",
     "vethuq-addon-paddle~=0.1",
     "vethuq-addon-ocr-quick~=0.1",
+    "vethuq-addon-like~=0.1",
+    "vethuq-addon-exact~=0.1",
+    "vethuq-addon-case~=0.1",
+    "vethuq-addon-unicode~=0.1",
     "psutil>=5.9",
 ]
 

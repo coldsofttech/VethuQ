@@ -35,3 +35,22 @@ class TierError(VethuQError):
 
 class TierUnavailableError(TierError):
     """The processing tier asked for can't be used now (unknown, not installed, or not ready)."""
+
+
+class SearchError(VethuQError):
+    """Base class for search errors."""
+
+
+class SearchUnavailableError(SearchError):
+    """The search engine asked for isn't known or can't be used now."""
+
+
+class SearchOptionError(SearchError):
+    """A search option can't be honoured (an unknown normalizer or level, or one the engine
+    can't change). `option` names which."""
+
+    option: str = ""
+
+
+class SearchQueryError(SearchError):
+    """The query can't be searched by the engine."""
