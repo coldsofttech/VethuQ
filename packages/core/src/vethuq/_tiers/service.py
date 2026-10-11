@@ -26,9 +26,8 @@ class _TierView:
 
 
 class _Tiers:
-    # Remote (asynchronous) tiers and hybrid routing arrive in later steps; until then a run
-    # refuses them with a clear message.
-    REMOTE_READY = False
+    # Hybrid routing arrives in a later step; until then a run refuses `hybrid`.
+    HYBRID_READY = False
 
     def __init__(self, specs: Callable[[], list[TierSpec]], local: OcrExecutor) -> None:
         self._specs = specs
@@ -95,9 +94,9 @@ class _Tiers:
                 f"The {view.label} tier can't be used: {view.reason}.",
                 "Use client.tiers.list() to see what is available, or run with tier='local'.",
             )
-        if view.asynchronous and not self.REMOTE_READY:
+        if view.id == HYBRID and not self.HYBRID_READY:
             raise _TierUnavailableError(
                 f"The {view.label} tier can't run in this version of VethuQ yet.",
-                "Use tier='local'.",
+                "Use tier='local' or a single remote tier.",
             )
         return view

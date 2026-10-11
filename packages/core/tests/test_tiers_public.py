@@ -181,12 +181,11 @@ class TestRunning:
         with pytest.raises(errors.TierUnavailableError, match="needs the GitHub tier"):
             client.index.run(tier="hybrid")
 
-    def test_remote_tiers_cannot_run_yet(self, github_addon, client, root):
+    def test_hybrid_cannot_run_yet(self, github_addon, client, root):
         write(root, "a.pdf", fp.native_page())
         client.sources.create(root)
-        for tier in ("github", "hybrid"):
-            with pytest.raises(errors.TierUnavailableError, match="can't run in this version"):
-                client.index.run(tier=tier)
+        with pytest.raises(errors.TierUnavailableError, match="can't run in this version"):
+            client.index.run(tier="hybrid")
         assert client.index.history() == []
 
     def test_wait_and_timeout_are_checked_and_ignored_locally(self, client, root):
@@ -205,7 +204,7 @@ class TestRunning:
         run = client.index.run(tier="cloud")
         assert run.tier == "cloud" and run.status is IndexRunStatus.COMPLETED
         assert fp.STATE.ocr_calls == []  # the local engine was not used
-        assert [r.key for r in github_addon.cloud.seen] == ["1:0", "2:0"]
+        assert [r.key.split(".")[-1] for r in github_addon.cloud.seen] == ["1:0", "2:0"]
         assert all(r.language.id == "en" and r.phase == "quick" for r in github_addon.cloud.seen)
         from vethuq._db import _PdfPage
 

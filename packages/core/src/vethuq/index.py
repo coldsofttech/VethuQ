@@ -14,12 +14,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from vethuq._db import _Database, _IndexRun
+from vethuq._db import _Database, _IndexRun, _RemoteJob
 from vethuq._indexing import _Indexer, _Runs
 from vethuq._metrics import _Metrics
-from vethuq.enums import IndexRunSortBy, IndexRunStatus, SortOrder
+from vethuq.enums import IndexRunSortBy, IndexRunStatus, RemoteJobStatus, SortOrder
 
-__all__ = ["Index", "IndexRun", "IndexRunSortBy", "IndexRunStatus", "SortOrder"]
+__all__ = [
+    "Index",
+    "IndexRun",
+    "IndexRunSortBy",
+    "IndexRunStatus",
+    "RemoteJob",
+    "RemoteJobStatus",
+    "SortOrder",
+]
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,46 @@ class IndexRun:
         return json.dumps(self.to_dict(), indent=indent)
 
 
+@dataclass(frozen=True)
+class RemoteJob:
+    """A batch of images sent to a remote processing tier."""
+
+    id: int
+    run_id: int | None  # the run that sent it
+    tier: str
+    status: RemoteJobStatus
+    images: int  # how many images it holds
+    size_bytes: int
+    credits: float  # what it cost (given back if it fails or expires)
+    submitted_at: str  # UTC, ISO 8601
+    completed_at: str | None
+    error: str | None
+
+    @classmethod
+    def _from_model(cls, model: _RemoteJob) -> RemoteJob:
+        return cls(
+            id=model.id,
+            run_id=model.run_id,
+            tier=model.tier,
+            status=model.status,
+            images=model.images,
+            size_bytes=model.size_bytes,
+            credits=model.credits_milli / 1000,
+            submitted_at=model.submitted_at,
+            completed_at=model.completed_at,
+            error=model.error,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        data = dict(self.__dict__)
+        data["status"] = self.status.value
+        return data
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
 class Index:
     """Index sources, and look back at the runs.
 
@@ -133,7 +181,9 @@ class Index:
             isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
         ):
             raise ValueError("timeout must be a number of minutes above 0.")
-        run_id = self._indexer.run(target, workers, tier)
+        if wait is not None and not isinstance(wait, bool):
+            raise TypeError("wait is True, False or None.")
+        run_id = self._indexer.run(target, workers, tier, wait, timeout)
         self._metrics.send()  # if you opted in; at most once a day; never raises
         return self.get(run_id)
 
@@ -174,3 +224,57 @@ class Index:
                 offset=offset,
             )
             return [IndexRun._from_model(m, _Runs.source_path(session, m)) for m in models]
+
+    def collect(
+        self, run_id: int | None = None, *, wait: bool = False, timeout: float | None = None
+    ) -> list[RemoteJob]:
+        """Ask the remote tiers about the jobs that are still out (of one run, or all of them)
+        and take in the results of those that are done. The pages arrive, and files whose pages
+        have all arrived become indexed. A job that failed or took too long is given back: its
+        pages wait to be sent again by a later run, and its credits are refunded.
+
+        With `wait=True` it keeps asking until no job is out or `timeout` minutes (default:
+        `settings.tiers`) pass. Returns the jobs that ended."""
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
+        ):
+            raise ValueError("timeout must be a number of minutes above 0.")
+        ended = self._indexer.collect(run_id, wait, timeout)
+        with self._database.session() as session:
+            return [RemoteJob._from_model(session.get(_RemoteJob, job_id)) for job_id in ended]
+
+    def jobs(
+        self,
+        status: RemoteJobStatus | str | None = None,
+        run_id: int | None = None,
+        tier: str | None = None,
+        order: SortOrder | str = SortOrder.DESC,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[RemoteJob]:
+        """The remote jobs, newest first unless `order` says otherwise. `status` keeps one
+        `RemoteJobStatus`, `run_id` the jobs a run sent, `tier` those of one tier."""
+        from sqlalchemy import select  # noqa: PLC0415
+
+        from vethuq._sources import _Sources  # noqa: PLC0415 - avoids an import cycle
+
+        direction = _Sources._coerce(SortOrder, order, "order")
+        statement = select(_RemoteJob)
+        if status is not None:
+            statement = statement.where(
+                _RemoteJob.status == _Sources._coerce(RemoteJobStatus, status, "status")
+            )
+        if run_id is not None:
+            statement = statement.where(_RemoteJob.run_id == run_id)
+        if tier is not None:
+            statement = statement.where(_RemoteJob.tier == str(tier).strip().lower())
+        column = _RemoteJob.id.desc() if direction is SortOrder.DESC else _RemoteJob.id.asc()
+        statement = statement.order_by(column)
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("limit and offset can't be negative.")
+        if limit is not None:
+            statement = statement.limit(limit)
+        if offset:
+            statement = statement.offset(offset)
+        with self._database.session() as session:
+            return [RemoteJob._from_model(job) for job in session.scalars(statement)]

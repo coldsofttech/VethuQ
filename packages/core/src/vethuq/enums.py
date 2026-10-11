@@ -9,6 +9,7 @@ __all__ = [
     "AddonStatus",
     "CreditEntryKind",
     "ProcessingTier",
+    "RemoteJobStatus",
     "CreditSortBy",
     "ConfidenceBand",
     "StatsGroupBy",
@@ -229,3 +230,12 @@ class ProcessingTier(StrEnum):
     LOCAL = "local"  # on this computer (always there)
     GITHUB = "github"  # in your own GitHub account (the GitHub add-on)
     HYBRID = "hybrid"  # local first, with some pages sent to GitHub
+
+
+class RemoteJobStatus(StrEnum):
+    """Where a batch of pages sent to a remote processing tier is."""
+
+    SUBMITTED = "submitted"  # sent; the tier is working on it
+    COMPLETED = "completed"  # its results were imported
+    FAILED = "failed"  # the tier reported a failure; its pages and credits were given back
+    EXPIRED = "expired"  # it took too long; its pages and credits were given back

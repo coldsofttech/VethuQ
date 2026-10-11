@@ -79,6 +79,16 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   (`Addon.processing_tiers()`, add-on API 0.4.0) as an `OcrExecutor`; local OCR now runs through
   one. `index.run(tier=, wait=, timeout=)`, `IndexRun.tier` and the run status `WAITING_REMOTE`
   (remote tiers can't run yet). `TierError` and `TierUnavailableError`.
+- **Pages are saved one at a time**: a page is saved (and its credits charged and counted) the
+  moment it is read, so a file that stops part way (no credits, a failure, a crash) keeps its
+  pages and the next attempt, in the same run or a later one, carries on after the last saved
+  page without paying for them again. A page whose OCR is still to come is saved `waiting`.
+- **Remote jobs** (`client.index.jobs()`, `client.index.collect()`, `RemoteJob`,
+  `RemoteJobStatus`): a tier that works in batches gets the images of pages that need OCR, paid
+  for when staged, in jobs bounded by `settings.tiers`; the run ends `WAITING_REMOTE` unless
+  `wait=True`. Finished jobs are imported (files become indexed once all their pages arrive);
+  failed, expired or empty results are refunded and their pages sent again later. Internal
+  tables `remote_jobs` and `remote_job_pages`; `pdf_pages` gains a `status`.
 - **Tier settings** (`client.settings.tiers`): hybrid size rule and phases, wait timeout and remote
   job limits.
 - **Wallets by tier**: `credits.wallets()`, `credits.balance(wallet)`, `history(wallet=)`; the

@@ -9,11 +9,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import psutil
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vethuq._db import _DocumentIndex, _IndexRun, _Source
+from vethuq._db import _DocumentIndex, _IndexRun, _RemoteJobPage, _Source
+from vethuq._db.values import _JobPageState
 from vethuq._documents import _Documents
 from vethuq._errors import _IndexAlreadyRunningError, _IndexRunNotFoundError
 from vethuq.enums import FileStatus, IndexRunSortBy, IndexRunStatus, SortOrder
@@ -43,6 +44,23 @@ class _Runs:
         return psutil.pid_exists(run.pid)
 
     @staticmethod
+    def stale_processing(session: Session) -> list[_DocumentIndex]:
+        """Files marked processing that nothing is working on: not the ones whose pages are away
+        in a remote job that is still open."""
+        away = select(_RemoteJobPage.document_id).where(_RemoteJobPage.state == _JobPageState.SENT)
+        return list(
+            session.scalars(
+                select(_DocumentIndex).where(
+                    _DocumentIndex.status == FileStatus.PROCESSING,
+                    or_(
+                        _DocumentIndex.document_id.is_(None),
+                        _DocumentIndex.document_id.not_in(away),
+                    ),
+                )
+            )
+        )
+
+    @staticmethod
     def recover(session: Session) -> bool:
         """Fail the runs whose process is gone, and put back the files they were reading.
         Returns whether a run is really going."""
@@ -58,11 +76,7 @@ class _Runs:
             _Runs._logger.warning("Index run %d was left running and has been failed", run.id)
         session.flush()
         if not live:
-            stale = list(
-                session.scalars(
-                    select(_DocumentIndex).where(_DocumentIndex.status == FileStatus.PROCESSING)
-                )
-            )
+            stale = _Runs.stale_processing(session)
             for row in stale:
                 row.status = FileStatus.PENDING
             session.flush()

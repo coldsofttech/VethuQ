@@ -275,17 +275,38 @@ class TestCharging:
         assert run.credits_charged == 0 and client.credits.balance().daily == 500
         assert client.stats.failures() == {"page_too_large": 1}
 
-    def test_a_file_that_fails_gives_its_credits_back(self, client, root):
+    def test_a_file_that_fails_keeps_the_pages_it_read_and_what_they_cost(self, client, root):
         write(root, "a.pdf", scan("first page words"), scan("second page words"), scan("third"),
               error_before_page=3)  # fmt: skip
         write(root, "b.pdf", scan("one"), scan("two"), scan("three"), error_before_page=3)
         client.sources.create(root)
         run = client.index.run(workers=0)
         assert run.files_failed == 2
-        assert client.credits.balance().daily == 500
-        assert run.credits_charged == 0 and run.ocr_pages == 0
-        refunds = client.credits.history(kind="refund")
-        assert len(refunds) == 4 and all(r.amount == 1.0 for r in refunds)
+        assert run.credits_charged == 4.0 and run.ocr_pages == 4
+        assert client.credits.balance().daily == 496
+        assert client.credits.history(kind="refund") == []
+        assert len(client.stats.low_confidence_pages(limit=None)) == 0  # not indexed: not listed
+
+    def test_a_failure_part_way_is_picked_up_where_it_stopped(self, client, root):
+        client.settings.index.set_retry_attempts(1)
+        write(root, "a.pdf", scan("one"), scan("two"), scan("three"), fail_page_once=3)
+        source = client.sources.create(root)
+        run = client.index.run(workers=0)
+        assert run.files_failed == 0 and run.credits_charged == 3.0  # pages 1 and 2 paid once
+        assert len(fp.STATE.ocr_calls) == 3
+        (info,) = client.sources.list_files(source.id, detailed=True)
+        assert info.index.pages == 3
+
+    def test_a_failed_file_is_resumed_by_the_next_run(self, client, root):
+        write(root, "a.pdf", scan("one"), scan("two"), scan("three"), fail_page_once=3)
+        source = client.sources.create(root)
+        assert client.index.run(workers=0).files_failed == 1
+        assert client.credits.balance().daily == 498
+        again = client.index.run(workers=0)
+        assert again.files_failed == 0 and again.credits_charged == 1.0  # only page 3
+        assert client.credits.balance().daily == 497
+        (info,) = client.sources.list_files(source.id, detailed=True)
+        assert info.index.pages == 3 and info.index.status is FileStatus.INDEXED
 
     def test_a_retried_file_is_charged_once(self, client, root):
         client.settings.index.set_retry_attempts(2)
@@ -310,15 +331,17 @@ class TestRunningOut:
         assert files["b.pdf"].status is FileStatus.PENDING  # waiting, not an error
         assert files["b.pdf"].retry_count == 0
         balance = client.credits.balance()
-        assert balance.daily == 1 and balance.grace == pytest.approx(0.04)  # b gave back its page
+        assert balance.daily == 0 and balance.grace == pytest.approx(0.04)
+        assert run.credits_charged == 2.0  # b's first page was read and paid for, and is kept
         assert run.files_failed == 0 and run.files_processed == 1
         assert b.exists() and a.exists()
 
         time.next_day()
         again = client.index.run()
         assert again.status is IndexRunStatus.COMPLETED and again.files_processed == 1
+        assert again.credits_charged == 1.0  # only b's second page
         files = {f.name: f.index for f in client.sources.list_files(source.id, detailed=True)}
-        assert files["b.pdf"].status is FileStatus.INDEXED
+        assert files["b.pdf"].status is FileStatus.INDEXED and files["b.pdf"].pages == 2
 
     def test_the_grace_covers_a_little_more(self, client, root):
         policy(client, wallets={"local": {"daily": 100, "starter": 0}}, grace_percent=2)

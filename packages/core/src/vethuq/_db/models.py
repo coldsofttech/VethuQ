@@ -17,8 +17,16 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from vethuq._db.values import _GrantKind, _LedgerKind, _PageSource, _PassSource, _PassStatus
-from vethuq.enums import FileStatus, IndexRunStatus, SourceStatus, SourceType
+from vethuq._db.values import (
+    _GrantKind,
+    _JobPageState,
+    _LedgerKind,
+    _PageSource,
+    _PageState,
+    _PassSource,
+    _PassStatus,
+)
+from vethuq.enums import FileStatus, IndexRunStatus, RemoteJobStatus, SourceStatus, SourceType
 
 
 def _enum(enum_class: type[StrEnum], name: str) -> Enum:
@@ -194,6 +202,13 @@ class _PdfPage(_Base):
     )
     image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # `done` once its text is final; a page whose OCR is still to come (or away) says so.
+    status: Mapped[_PageState] = mapped_column(
+        _enum(_PageState, "ck_pdf_pages_status"),
+        nullable=False,
+        default=_PageState.DONE,
+        server_default=_PageState.DONE.value,
+    )
 
 
 class _PdfPageQuick(_Base):
@@ -408,3 +423,67 @@ class _UsageFailure(_Base):
     file_type: Mapped[str] = mapped_column(Text, nullable=False)
     code: Mapped[str] = mapped_column(Text, nullable=False)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class _RemoteJob(_Base):
+    """A batch of images sent to a remote processing tier, and where it is."""
+
+    __tablename__ = "remote_jobs"
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("index_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    tier: Mapped[str] = mapped_column(Text, nullable=False)
+    wallet: Mapped[str] = mapped_column(Text, nullable=False)
+    # What the tier gave back for the batch; it must stay valid across restarts.
+    handle: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[RemoteJobStatus] = mapped_column(
+        _enum(RemoteJobStatus, "ck_remote_jobs_status"),
+        nullable=False,
+        default=RemoteJobStatus.SUBMITTED,
+    )
+    images: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    submitted_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _RemoteJobPage(_Base):
+    """One image of a page that needs remote OCR. It is paid for when it is staged; it belongs to
+    a job once the job is sent."""
+
+    __tablename__ = "remote_job_pages"
+    __table_args__ = (
+        UniqueConstraint("document_id", "page_number", "region", "language_id",
+                         name="uq_remote_job_pages_image"),
+        {"sqlite_autoincrement": True},
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("remote_jobs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    region: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    request_key: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[_JobPageState] = mapped_column(
+        _enum(_JobPageState, "ck_remote_job_pages_state"),
+        nullable=False,
+        default=_JobPageState.STAGED,
+    )
+    size_factor_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
+    credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The ledger rows that paid for it, to give back if it never comes back.
+    ledger_ids: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # The run that staged it, and the wallet that paid.
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wallet: Mapped[str] = mapped_column(Text, nullable=False, default="local")

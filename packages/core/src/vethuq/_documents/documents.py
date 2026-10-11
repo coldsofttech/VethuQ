@@ -173,6 +173,23 @@ class _Documents:
         _Documents._changed(session, row)
 
     @staticmethod
+    def attach(session: Session, row: _DocumentIndex, sha256: str) -> _Document:
+        """Point the file at the document for its content (made if new), before it is finished,
+        so the pages read so far have a home. A document the file no longer points at and nobody
+        else does is dropped."""
+        document = session.scalars(select(_Document).where(_Document.sha256 == sha256)).first()
+        if document is None:
+            document = _Document(sha256=sha256, created_at=_Documents._now())
+            session.add(document)
+            session.flush()
+        previous = row.document_id
+        row.document_id, row.sha256 = document.id, sha256
+        session.flush()
+        if previous is not None and previous != document.id:
+            _Documents.drop_orphans(session)
+        return document
+
+    @staticmethod
     def finish(session: Session, row: _DocumentIndex, sha256: str) -> _Document:
         """The file is indexed. Files with the same content share one document."""
         previous = row.document_id

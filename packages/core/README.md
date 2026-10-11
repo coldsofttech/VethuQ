@@ -696,11 +696,24 @@ Tiers come from add-ons (`Addon.processing_tiers()` in the add-on API 0.4.0): ea
 
 ### Tier settings
 
+### Remote jobs
+
+A tier whose work finishes later (an asynchronous executor, such as the GitHub add-on) works in jobs. `index.run(tier=...)` reads and renders the pages, keeps native text, and for the pages that need OCR pays for the images (from that tier's wallet), saves the page as waiting, and sends the images in batches of at most `max_job_pages` pages and `max_job_megabytes`. The run then ends as `IndexRunStatus.WAITING_REMOTE`: nothing waits for GitHub unless you ask (`wait=True, timeout=minutes`, default from `settings.tiers`).
+
+```python
+run = client.index.run(tier="github")  # WAITING_REMOTE when images are away
+client.index.jobs(status="submitted")  # [RemoteJob(id, run_id, tier, status, images, credits, ...)]
+client.index.collect()  # take in what has finished; returns the jobs that ended
+client.index.collect(wait=True, timeout=30)  # ... or keep asking for up to 30 minutes
+```
+
+`RemoteJobStatus`: `submitted`, `completed`, `failed`, `expired`. Every `index.run()` first collects jobs left by earlier runs, and again at its end. A finished job's pages are saved and files whose pages have all arrived become `INDEXED` (the run that sent them completes). A job the tier says failed, or that is out for more than 24 hours, is **given back**: its images' credits are refunded and its pages wait to be sent again by the next run. An image that comes back empty is treated the same. A run that dies before sending leaves paid-for images that the next run refunds and sends again. Running again while a job is out sends nothing twice; those files show as `PROCESSING`.
+
 `client.settings.tiers`: `get/set/reset_min_size_factor` (from what page size, against A4, hybrid sends a page to GitHub; 2 = A3; 0 turns the rule off), `get/set/reset_phases` (the OCR phases hybrid sends: `moderate`, `deep`; none by default), `get/set/reset_wait_timeout_minutes` (60), `get/set/reset_max_job_pages` (200) and `get/set/reset_max_job_megabytes` (200).
 
 ## Credits
 
-Reading pages costs credits; searching and everything else is free. **One credit is the work of reading one A4 page once, upright, in one language.** Pages that need no OCR (native text), duplicate files and unchanged files cost nothing. A page's price is its size against A4 (reduced by 5%, rounded up to a quarter, at least 0.25, and nothing above A0), times the pass rate. A page that is partly text is charged for the share of it the images cover (at least 0.25), a blank page costs 0.25, and a file that fails is refunded. The numbers come from the signed policy (`rate_card`, `wallets`, `caps`) and fall back to built-in defaults offline; a policy change applies from the next UTC day. The full rules are in `docs/credits.md` of the support repository.
+Reading pages costs credits; searching and everything else is free. **One credit is the work of reading one A4 page once, upright, in one language.** Pages that need no OCR (native text), duplicate files and unchanged files cost nothing. A page's price is its size against A4 (reduced by 5%, rounded up to a quarter, at least 0.25, and nothing above A0), times the pass rate. A page that is partly text is charged for the share of it the images cover (at least 0.25), a blank page costs 0.25, and a page that couldn't be read (or whose remote job failed) is refunded. The numbers come from the signed policy (`rate_card`, `wallets`, `caps`) and fall back to built-in defaults offline; a policy change applies from the next UTC day. The full rules are in `docs/credits.md` of the support repository.
 
 The free **local wallet** gets 500 credits a day (reset at 00:00 UTC, no rollover) and a one-off 2,000 starter, plus a 2% free grace used only when everything else is gone. Spending order: promotional, daily (with the metrics bonus), scoped one-off, general one-off, grace.
 
@@ -719,7 +732,7 @@ client.credits.redeem_licence(token)  # verify with vethuq-entitlements, then re
 
 `CreditBalance` has `daily`, `promotional`, `one_off`, `grace`, `total`, `daily_allowance`, `bonus_active`, `bonus` and `next_reset`. `history(kind=None, source=None, run_id=None, since=None, until=None, sort_by=CreditSortBy.AT, order=SortOrder.DESC, limit=None, offset=0)` gives `CreditEntry`s (`CreditEntryKind`: grant, charge, refund, expire); charges are written page by page, so the balance is always the latest. Purging a source deletes the charges made for it; the balance is not affected. Everything has `to_dict()` and `to_json()`.
 
-**Running out.** Pages are paid for as they are read. When the wallet (grace included) can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, the file in progress gives its credits back and waits as `PENDING`, and the next `index.run()` after the reset carries on.
+**Running out.** Pages are paid for as they are read. When the wallet (grace included) can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, and the file in progress keeps the pages it read (saved and paid for) and waits as `PENDING`. The next `index.run()` after the reset carries on with the page after the last one saved.
 
 A licence can carry credit grants (`vethuq-admin licence issue --grant 250`): each grant has an id, an amount, an optional add-on scope and an expiry, and is added once however often it is redeemed. The policy's `caps.one_off_max` limits what you can hold.
 

@@ -199,6 +199,28 @@ class _Credits:
             statement = statement.offset(offset)
         return list(session.scalars(statement))
 
+    def refund(
+        self,
+        session: Session,
+        wallet: str,
+        ledger_ids: list[int],
+        *,
+        run_id: int | None,
+        credits_milli: int,
+        images: int,
+        note: str,
+    ) -> None:
+        """Give back charges made earlier (work that never came back), and take them off the
+        run's counters."""
+        w = self.wallet_for(wallet)
+        with w.lock:
+            w.refund(session, ledger_ids, note)
+            if run_id is not None:
+                run = session.get(_IndexRun, run_id)
+                if run is not None:
+                    run.credits_milli = max(run.credits_milli - credits_milli, 0)
+                    run.ocr_pages = max(run.ocr_pages - images, 0)
+
     # ----- licence grants ---------------------------------------------------------------------
 
     def redeem(
@@ -327,6 +349,10 @@ class _PageMeter:
         self.ledger_ids += ids
         self.charged_milli += actual_milli
         return actual_milli
+
+    def forget(self) -> None:
+        """The pages charged so far are saved: they are no longer refundable with the file."""
+        self.ledger_ids, self.charged_milli = [], 0
 
     def refund_all(self, note: str = "the file was not indexed") -> None:
         if not self.ledger_ids:

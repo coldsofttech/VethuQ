@@ -47,3 +47,20 @@ class _LedgerKind(StrEnum):
     CHARGE = "charge"
     REFUND = "refund"
     EXPIRE = "expire"
+
+
+class _PageState(StrEnum):
+    """Whether a page's text is final."""
+
+    DONE = "done"
+    WAITING = "waiting"  # needs OCR that hasn't been started or sent
+    DISPATCHED = "dispatched"  # the OCR is in a remote job
+
+
+class _JobPageState(StrEnum):
+    """Where one image of a remote job is."""
+
+    STAGED = "staged"  # paid for, waiting to be sent in a job
+    SENT = "sent"  # in a job the tier is working on
+    DONE = "done"  # its result was imported
+    FAILED = "failed"  # the tier returned nothing for it

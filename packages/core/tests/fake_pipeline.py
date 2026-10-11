@@ -42,6 +42,7 @@ class State:
     ocr_calls: list[object] = field(default_factory=list)
     engines_created: list[str] = field(default_factory=list)
     flaky: dict[str, int] = field(default_factory=dict)
+    failed_once: set = field(default_factory=set)
     downloads: list[str] = field(default_factory=list)
     download_fails: set[str] = field(default_factory=set)
     pdf_available: bool = True
@@ -102,6 +103,10 @@ class FakeReader(DocumentReader):
                 continue
             if document.get("error_before_page") == number:
                 raise RuntimeError("fell over part way")
+            once = (str(file_path), number)
+            if document.get("fail_page_once") == number and once not in STATE.failed_once:
+                STATE.failed_once.add(once)
+                raise RuntimeError("fell over once")
             side = float(page.get("region_side", 10.0))
             regions = tuple(
                 (float(i), 0.0, float(i) + side, side) for i in range(page.get("regions", 0))

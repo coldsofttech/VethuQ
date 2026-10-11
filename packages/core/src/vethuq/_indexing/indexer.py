@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from vethuq._credits import _Clock, _Credits, _PageMeter, _PageTooLarge
 from vethuq._db import _Database, _Document, _DocumentIndex, _IndexRun, _Language, _Source
-from vethuq._db.values import _PageSource
+from vethuq._db.values import _PageSource, _PageState
 from vethuq._documents import _Documents
 from vethuq._errors import (
     _CreditsExhaustedError,
@@ -26,6 +26,7 @@ from vethuq._errors import (
 )
 from vethuq._filetypes import _FileTypeCatalog
 from vethuq._indexing.gate import _ContentGate, _Scheduler
+from vethuq._indexing.remote import _Outbox, _Remote
 from vethuq._indexing.runs import _Runs
 from vethuq._indexing.store import _PageStore
 from vethuq._languages import _Languages
@@ -77,6 +78,8 @@ class _Indexer:
         self.credits = credits
         self._run_id: int | None = None
         self._paused = threading.Event()
+        self._outbox: _Outbox | None = None
+        self.remote = _Remote(database, tiers, credits, self._language_id, self._file_type_id)
         self.gate = _ContentGate()
 
     # ----- the target -------------------------------------------------------------------------
@@ -142,7 +145,6 @@ class _Indexer:
                     FileStatus.PENDING,
                     FileStatus.MODIFIED,
                     FileStatus.ERROR,
-                    FileStatus.PROCESSING,
                 ) and self.file_types.is_supported(row.file_path):
                     todo.append(row.id)
             source.last_scanned_at = _Runs._now()
@@ -220,105 +222,125 @@ class _Indexer:
             spec.id if spec else "",
         )
 
-    def _read(
-        self, plan: _Plan, only: dict[int, _PageSource] | None, meter: _PageMeter
-    ) -> list[_PageResult]:
+    def _language_id(self, session: Session, row: _DocumentIndex) -> int | None:
+        """The id of the language a file is read in (its source's first, else the default)."""
+        source = session.get(_Source, row.source_id)
+        if source is None:
+            return None
+        specs = self.languages()
+        codes = source.language_codes or _Languages.default_ids(session, specs)
+        return session.scalar(select(_Language.id).where(_Language.language == codes[0]))
+
+    def _file_type_id(self, path: str) -> str:
+        spec = self.file_types.for_path(path)
+        return spec.id if spec else ""
+
+    def _skip(self, number: int, pages: dict, read: set[int], staged: set[int]) -> bool:
+        """Whether a page needs nothing more in this pass: it was read in this language, its
+        images are already staged or away, or it has no OCR to do."""
+        if number in read or number in staged:
+            return True
+        page = pages.get(number)
+        return (
+            page is not None
+            and page.source is _PageSource.NATIVE
+            and page.status is _PageState.DONE
+        )
+
+    def _attempt(self, plan: _Plan) -> str:
+        """Read one file once. Every page is paid for as it is read and saved at once, so a file
+        that stops part way (no credits, a crash, a failure) keeps its pages and the next
+        attempt carries on after them. Returns "done", or "staged" when pages are away."""
+        sha256 = self._hash(plan.path)
         file_type = self.file_types.for_path(plan.path)
         if file_type is None:
             raise UnreadableFileError(plan.path, "no add-on reads this kind of file")
-        results: list[_PageResult] = []
-        executor = self._tier.executor if self._tier else None
-        for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
-            if only is not None and only.get(number, _PageSource.NATIVE) is _PageSource.NATIVE:
-                continue
-            results.append(_PageOcr.read_page(number, page, executor, plan.language, meter))
-        return results
-
-    def _attempt(self, plan: _Plan) -> None:
-        """Read one file once, and record it. Pages are paid for as they are read; if the file
-        doesn't finish, what it cost is given back."""
-        started = _Runs._now()
-        sha256 = self._hash(plan.path)
         with self.gate.hold(sha256):
-            only = None
             with self.database.session() as session:
                 row = session.get(_DocumentIndex, plan.row_id)
-                document = session.scalars(
-                    select(_Document).where(_Document.sha256 == sha256)
-                ).first()
-                if document is not None:
-                    if _PageStore.covers(session, document.id, plan.language_id):
-                        _Documents.finish(session, row, sha256)
-                        return
-                    only = _PageStore.sources(session, document.id)
+                document = _Documents.attach(session, row, sha256)
+                document_id = document.id
+                if _PageStore.covers(session, document_id, plan.language_id):
+                    _Documents.finish(session, row, sha256)
+                    return "done"
+                additional = _PageStore.read_before(session, document_id, plan.language_id)
+                _PageStore.begin_pass(session, document_id, plan.language_id, manual=plan.manual)
+                pages = _PageStore.pages(session, document_id)
+                read = _PageStore.read_in(session, document_id, plan.language_id)
+                staged = self.remote.staged(session, document_id, plan.language_id)
+            tier = self._tier
             meter = _PageMeter(
                 self.credits,
                 source_id=plan.source_id,
                 run_id=self._run_id,
                 label=plan.path,
                 language=plan.language.id,
-                additional_language=only is not None,
-                wallet=self._tier.wallet if self._tier else "local",
+                additional_language=additional,
+                wallet=tier.wallet if tier else "local",
             )
+            executor = tier.executor if tier else None
+            prefix = f"d{document_id}.l{plan.language_id}."
             try:
-                results = self._read(plan, only, meter)
-                self._save(plan, sha256, only, results, started)
+                for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
+                    if self._skip(number, pages, read, staged):
+                        continue
+                    result = _PageOcr.read_page(
+                        number, page, executor, plan.language, meter, key_prefix=prefix
+                    )
+                    self._save_page(plan, document_id, result)
+                    meter.forget()
             except BaseException:
                 meter.refund_all()
                 raise
+            with self.database.session() as session:
+                row = session.get(_DocumentIndex, plan.row_id)
+                if _PageStore.waiting(session, document_id) or self.remote.staged(
+                    session, document_id, plan.language_id
+                ):
+                    return "staged"
+                _PageStore.finish_pass(session, document_id, plan.language_id)
+                _Documents.finish(session, row, sha256)
+            return "done"
 
-    def _save(
-        self,
-        plan: _Plan,
-        sha256: str,
-        only: dict[int, _PageSource] | None,
-        results: list[_PageResult],
-        started: str,
-    ) -> None:
+    def _save_page(self, plan: _Plan, document_id: int, result: _PageResult) -> None:
+        """Save one page the moment it is read: the page, what it cost, and the run's counts. A
+        page whose OCR is away is saved waiting, with its images staged to be sent."""
+        ids: list[int] = []
         with self.database.session() as session:
-            row = session.get(_DocumentIndex, plan.row_id)
-            document = _Documents.finish(session, row, sha256)
-            if only is None:
-                _PageStore.replace(session, document.id, results, plan.language_id)
+            _PageStore.save_page(session, document_id, result, plan.language_id)
+            if result.pending:
+                ids = self.remote.stage(
+                    session, document_id, plan.language_id, result, self._run_id,
+                    self._tier.wallet if self._tier else "local",
+                )  # fmt: skip
             else:
-                _PageStore.merge(session, document.id, results, plan.language_id)
-            confidences = [r.confidence for r in results]
-            _PageStore.mark_language(
-                session,
-                document.id,
-                plan.language_id,
-                manual=plan.manual,
-                confidence=sum(confidences) / len(confidences) if confidences else None,
-                started_at=started,
-            )
-            facts = [
-                _PageFact(
-                    page_source=r.source.value,
-                    phase="quick" if r.quick else "",
-                    engine=r.quick.engine if r.quick else "",
-                    size_bucket=self.credits_bucket(r.size_factor),
-                    confidence=r.confidence,
-                    duration_ms=r.quick.duration_ms if r.quick else 0,
-                    credits_milli=r.credits_milli,
-                    passes=1 if r.quick else 0,
+                fact = _PageFact(
+                    page_source=result.source.value,
+                    phase="quick" if result.quick else "",
+                    engine=result.quick.engine if result.quick else "",
+                    size_bucket=self.credits_bucket(result.size_factor),
+                    confidence=result.confidence,
+                    duration_ms=result.quick.duration_ms if result.quick else 0,
+                    credits_milli=result.credits_milli,
+                    passes=1 if result.quick else 0,
                 )
-                for r in results
-            ]
-            _Usage.record_pages(
-                session,
-                _Clock.today(session).isoformat(),
-                plan.source_id,
-                plan.file_type,
-                plan.language.id,
-                facts,
-                _ConfidenceSettings.get_bands(session),
-            )
-            if self._run_id is not None:  # one statement, so workers can't lose each other's count
-                session.execute(
-                    update(_IndexRun)
-                    .where(_IndexRun.id == self._run_id)
-                    .values(processed_pages=_IndexRun.processed_pages + len(results))
+                _Usage.record_pages(
+                    session,
+                    _Clock.today(session).isoformat(),
+                    plan.source_id,
+                    plan.file_type,
+                    plan.language.id,
+                    [fact],
+                    _ConfidenceSettings.get_bands(session),
                 )
+                if self._run_id is not None:  # one statement: workers can't lose each other's count
+                    session.execute(
+                        update(_IndexRun)
+                        .where(_IndexRun.id == self._run_id)
+                        .values(processed_pages=_IndexRun.processed_pages + 1)
+                    )
+        if result.pending and self._outbox is not None:
+            self._outbox.add(list(result.requests), ids)
 
     @staticmethod
     def credits_bucket(factor: float) -> str:
@@ -345,6 +367,8 @@ class _Indexer:
                 _Documents.mark_unsupported(session, row, message, code)
             else:
                 _Documents.fail(session, row, message, code)
+            if row.document_id is not None:
+                _PageStore.fail_pass(session, row.document_id, plan.language_id, message)
             _Usage.record_failure(
                 session, _Clock.today(session).isoformat(), plan.source_id, plan.file_type, code
             )
@@ -361,8 +385,7 @@ class _Indexer:
         message, code = "", _ErrorCode.OTHER
         for attempt in range(retries + 1):
             try:
-                self._attempt(plan)
-                return "ok"
+                return "ok" if self._attempt(plan) == "done" else "staged"
             except _CreditsExhaustedError:
                 self._paused.set()
                 with self.database.session() as session:
@@ -462,8 +485,13 @@ class _Indexer:
         target: int | str | Path | None,
         workers: int | str | None,
         tier: str | None = None,
+        wait: bool | None = None,
+        timeout: float | None = None,
     ) -> int:
-        """Index `target` (a source, a file in one, or every source) and return the run's id."""
+        """Index `target` (a source, a file in one, or every source) and return the run's id.
+
+        Work sent to a remote tier is collected at the start (jobs from earlier runs) and at the
+        end. With `wait`, the end waits for the run's own jobs, up to `timeout` minutes."""
         with self.database.session() as session:
             sources, only_file = self._resolve(session, target)
             count = _Scheduler.resolve(
@@ -478,12 +506,16 @@ class _Indexer:
             self.credits.sync(session, view.wallet)  # today's allowance, before the workers start
             run = _Runs.begin(session, source_id, only_file, count, view.id)
             run_id = run.id
+            self.remote.recover(session)
+            wait_minutes = timeout or _TierSettings.get_wait_timeout_minutes(session)
         self._run_id = run_id
         self._tier = view
+        self._outbox = _Outbox(self.remote, view.id, run_id) if view.asynchronous else None
         self._paused.clear()
         counts = {"processed": 0, "failed": 0}
         lock = threading.Lock()
         try:
+            self.remote.collect()  # jobs left by earlier runs that have finished since
             with self.database.session() as session:
                 todo = self._discover(
                     session, [session.get(_Source, s.id) for s in sources], only_file
@@ -496,8 +528,8 @@ class _Indexer:
                 if self._paused.is_set():
                     return
                 outcome = self._process(row_id, retries)
-                if outcome == "paused":
-                    return
+                if outcome in ("paused", "staged"):
+                    return  # paused: waiting for credits; staged: the pages are away
                 with lock:
                     counts["processed"] += 1
                     counts["failed"] += 0 if outcome == "ok" else 1
@@ -516,11 +548,21 @@ class _Indexer:
                 ) as pool:
                     for future in [pool.submit(work, row_id) for row_id in todo]:
                         future.result()
+            if self._outbox is not None:
+                self._outbox.flush()
+            self._await_remote(run_id, wait, wait_minutes)
             if self._paused.is_set():
                 self._finish(
                     run_id,
                     IndexRunStatus.WAITING_CREDITS,
                     "Out of credits; they reset at 00:00 UTC. Run again then.",
+                    counts,
+                )
+            elif self._remote_open(run_id):
+                self._finish(
+                    run_id,
+                    IndexRunStatus.WAITING_REMOTE,
+                    "Pages are away on the remote tier; run again, or collect, later.",
                     counts,
                 )
             else:
@@ -535,7 +577,44 @@ class _Indexer:
             _Runs.end(run_id)
             self._run_id = None
             self._tier = None
+            self._outbox = None
         return run_id
+
+    # ----- remote work ------------------------------------------------------------------------
+
+    POLL_SECONDS = 5.0
+
+    def _remote_open(self, run_id: int) -> bool:
+        with self.database.session() as session:
+            return bool(self.remote.open_jobs(session, run_id))
+
+    def _await_remote(self, run_id: int, wait: bool | None, minutes: float) -> None:
+        """Collect what has come back; with `wait`, keep asking until this run's jobs are done or
+        the time is up."""
+        self.remote.collect()
+        if not wait:
+            return
+        deadline = time.monotonic() + minutes * 60
+        while self._remote_open(run_id) and time.monotonic() < deadline:
+            time.sleep(min(self.POLL_SECONDS, max(deadline - time.monotonic(), 0)))
+            self.remote.collect()
+
+    def collect(
+        self, run_id: int | None = None, wait: bool = False, timeout: float | None = None
+    ) -> list[int]:
+        """Collect the remote jobs that have finished (of a run, or all). With `wait`, keep asking
+        until none is open or `timeout` minutes pass. Returns the ids of the jobs that ended."""
+        with self.database.session() as session:
+            minutes = timeout or _TierSettings.get_wait_timeout_minutes(session)
+        ended = self.remote.collect(run_id)
+        deadline = time.monotonic() + minutes * 60
+        while wait:
+            with self.database.session() as session:
+                if not self.remote.open_jobs(session, run_id) or time.monotonic() >= deadline:
+                    break
+            time.sleep(min(self.POLL_SECONDS, max(deadline - time.monotonic(), 0)))
+            ended += self.remote.collect(run_id)
+        return ended
 
     def _finish(self, run_id: int, status: IndexRunStatus, error: str | None, counts: dict) -> None:
         with self.database.session() as session:
@@ -544,9 +623,7 @@ class _Indexer:
             record.completed_at = _Runs._now()
             record.processed_files = max(record.processed_files, counts["processed"])
             record.failed_files = max(record.failed_files, counts["failed"])
-            for row in session.scalars(
-                select(_DocumentIndex).where(_DocumentIndex.status == FileStatus.PROCESSING)
-            ):
+            for row in _Runs.stale_processing(session):
                 row.status = FileStatus.PENDING
             session.flush()
             for source in session.scalars(select(_Source)):
