@@ -5,6 +5,7 @@ import pytest
 from vethuq_addon_api import (
     API_VERSION,
     Addon,
+    CreditsExhaustedError,
     Folded,
     Hit,
     Manifest,
@@ -18,7 +19,6 @@ from vethuq_addon_api import (
     SearchRequest,
     SyncReport,
 )
-from vethuq_addon_api import CreditsExhaustedError
 from vethuq_addon_api.testing import FakeCorpus, FakeCredits, FakeHost, FakeNormalizer
 
 
