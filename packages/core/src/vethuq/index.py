@@ -10,24 +10,70 @@ A run reads each file's text layer first, and runs OCR only on the pages and ima
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
 from vethuq._db import _Database, _IndexRun, _RemoteJob
 from vethuq._indexing import _Indexer, _Runs
+from vethuq._indexing.eta import _Eta, _EtaResult
 from vethuq._metrics import _Metrics
 from vethuq.enums import IndexRunSortBy, IndexRunStatus, RemoteJobStatus, SortOrder
 
 __all__ = [
     "Index",
+    "IndexEta",
     "IndexRun",
     "IndexRunSortBy",
     "IndexRunStatus",
     "RemoteJob",
     "RemoteJobStatus",
     "SortOrder",
+    "IndexStatus",
 ]
+
+
+@dataclass(frozen=True)
+class IndexEta:
+    """How long an index run has left, estimated from what earlier runs took here.
+
+    Pages read on this computer are sized from the seconds an OCR page took (per file type, over
+    the last 30 days, else all time) and from how many pages, and how many that needed OCR, files of
+    that type had; native text costs nothing. Pages away on a remote tier (GitHub) are sized from
+    how long its earlier jobs took. Nothing is timed during the run, so an estimate exists before
+    the first file is done. It is a guess: `complete` says whether every part of the work had
+    history to go on.
+    """
+
+    seconds: int  # the best estimate of the time left; 0 when nothing is left
+    local_seconds: int  # of it, the pages read on this computer
+    remote_seconds: int  # of it, waiting for jobs on a remote tier
+    complete: bool  # False when part of the work has no history; `seconds` then leaves it out
+    by_file_type: dict[str, int] = field(default_factory=dict)  # `local_seconds`, per file type
+
+    @classmethod
+    def _from_result(cls, result: _EtaResult) -> IndexEta:
+        return cls(
+            seconds=round(result.seconds),
+            local_seconds=round(result.local_seconds),
+            remote_seconds=round(result.remote_seconds),
+            complete=result.complete,
+            by_file_type={t: round(s) for t, s in sorted(result.by_file_type.items())},
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "seconds": self.seconds,
+            "local_seconds": self.local_seconds,
+            "remote_seconds": self.remote_seconds,
+            "complete": self.complete,
+            "by_file_type": dict(self.by_file_type),
+        }
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
 
 
 @dataclass(frozen=True)
@@ -50,6 +96,9 @@ class IndexRun:
     started_at: str  # UTC, ISO 8601
     completed_at: str | None
     error: str | None
+    # The time left when this was returned by `Index.run()` (the pages still away on a remote tier);
+    # None in `get()` and `history()`.
+    eta: IndexEta | None = field(default=None, compare=False)
 
     @classmethod
     def _from_model(cls, model: _IndexRun, source_path: str | None) -> IndexRun:
@@ -90,6 +139,35 @@ class IndexRun:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "error": self.error,
+            "eta": self.eta.to_dict() if self.eta is not None else None,
+        }
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
+class IndexStatus:
+    """Where the latest index run is, and how long it has left."""
+
+    run: IndexRun  # the latest run (its counts are live while it goes)
+    active: bool  # the run is going now (here, or in another process)
+    remote_jobs_open: int  # batches still out on a remote tier
+    eta: IndexEta
+
+    @property
+    def finished(self) -> bool:
+        """Nothing is going on any more: the run is over and no remote job is out."""
+        return not self.active and self.remote_jobs_open == 0
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "run": self.run.to_dict(),
+            "active": self.active,
+            "remote_jobs_open": self.remote_jobs_open,
+            "finished": self.finished,
+            "eta": self.eta.to_dict(),
         }
 
     def to_json(self, indent: int | None = None) -> str:
@@ -185,7 +263,68 @@ class Index:
             raise TypeError("wait is True, False or None.")
         run_id = self._indexer.run(target, workers, tier, wait, timeout)
         self._metrics.send()  # if you opted in; at most once a day; never raises
-        return self.get(run_id)
+        return replace(self.get(run_id), eta=self._eta(run_id))
+
+    def _eta(self, run_id: int) -> IndexEta:
+        with self._database.session() as session:
+            model = _Runs.get(session, run_id)
+            estimate = _Eta(self._indexer.file_types).estimate(
+                session, model, _Eta.is_active(model)
+            )
+        return IndexEta._from_result(estimate)
+
+    def status(self, *, wait: bool = False, timeout: float | None = None) -> IndexStatus | None:
+        """Where the latest index run is: its counts, whether it is going, the remote jobs still
+        out, and the time left (`eta`). None if no run has ever started.
+
+        It reads the database, so it works while `run()` is going in another thread or process.
+        With `wait=True` it blocks until nothing is going on any more (the run is over, and so is
+        every remote job it sent, collecting the results as they come back), then returns the
+        final status. `timeout` (minutes) bounds the wait: the time is up, you get the status as it
+        is then. Left out, a run is waited for as long as it goes and remote jobs for the
+        `settings.tiers` wait time.
+        """
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
+        ):
+            raise ValueError("timeout must be a number of minutes above 0.")
+        if not isinstance(wait, bool):
+            raise TypeError("wait is True or False.")
+        current = self._status()
+        if current is None or not wait:
+            return current
+        deadline = time.monotonic() + timeout * 60 if timeout is not None else None
+        remote_deadline = None
+        while not current.finished:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            if not current.active:
+                # The run is over; what is left is jobs away. Ask about them, for a while.
+                if remote_deadline is None:
+                    minutes = self._indexer.wait_minutes()
+                    remote_deadline = time.monotonic() + minutes * 60
+                if time.monotonic() >= remote_deadline:
+                    break
+                self._indexer.collect(current.run.id, False, None)
+            time.sleep(self._indexer.POLL_SECONDS if not current.active else 1.0)
+            current = self._status() or current
+        return current
+
+    def _status(self) -> IndexStatus | None:
+        with self._database.session() as session:
+            _Runs.recover(session)  # a run whose process died is failed, not "running"
+            latest = _Runs.history(session, limit=1)
+            if not latest:
+                return None
+            model = latest[0]
+            active = _Eta.is_active(model)
+            estimate = _Eta(self._indexer.file_types).estimate(session, model, active)
+            return IndexStatus(
+                run=IndexRun._from_model(model, _Runs.source_path(session, model)),
+                active=active,
+                remote_jobs_open=len(self._indexer.remote.open_jobs(session, model.id)),
+                eta=IndexEta._from_result(estimate),
+            )
 
     def get(self, run_id: int) -> IndexRun:
         """One run by id. Raises `IndexRunNotFoundError` if there is none."""

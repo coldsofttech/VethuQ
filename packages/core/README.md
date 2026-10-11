@@ -601,9 +601,34 @@ Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process di
 
 **How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. Text, CSV and Markdown files are one page of text each and are always native, however short: the page itself is never OCR'd. A picture a Markdown file links to on disk is read like the images of a mixed page, but only if an installed add-on reads that format; otherwise it is skipped with a warning in the log and the text is indexed anyway. OCR is the quick phase (upright pages, mobile models) and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
 
+### Progress and ETA
+
+`client.index.status()` is where the latest run is, and how long it has left. It reads the database, so it works while `run()` is going in another thread or process; it is `None` if no run has ever started.
+
+```python
+status = client.index.status()
+status.run  # the latest IndexRun, its counts live while it goes
+status.active, status.remote_jobs_open, status.finished
+status.eta.seconds  # the best estimate of the time left
+status.eta.local_seconds, status.eta.remote_seconds, status.eta.complete, status.eta.by_file_type
+
+status = client.index.status(wait=True)  # block until the run and its remote jobs are done
+status = client.index.status(wait=True, timeout=30)  # ... or for up to 30 minutes
+run = client.index.run(tier="github")
+run.eta  # what is still outstanding: for example the jobs away on GitHub
+```
+
+`wait=True` waits for the run (here or in another process) to end, then asks the remote tier about the jobs it sent and takes in their results as they finish, until none is out (or the time is up: you get the status as it is then). Without a `timeout` a run is waited for as long as it goes and remote jobs for `settings.tiers`' wait time. A run whose process died is marked failed.
+
+The ETA comes from what earlier runs took on this computer, so it exists before the first file is done:
+
+- **Pages read here.** The files still to do, by file type, times how many pages a file of that type has and how many of them needed OCR (from the files indexed most recently), times the seconds an OCR page took (`usage_daily`, last 30 days; all time for a type with nothing recent), divided by the run's workers. Native text, and file types read straight from disk, cost nothing.
+- **Pages away on a remote tier.** Jobs run side by side, so the slowest one counts: what the tier usually takes from submitted to completed (its last 30 days of jobs, else all time) less the job's age, never below 0. A run that still has pages to send adds one more such batch. The remote tier reads the pages, so they add nothing to the local time.
+- `complete` is `False` when part of the work has no history (a file type or tier never used); `seconds` then leaves that part out. It is a guess, not a promise. A `hybrid` run counts its pages as read here plus the jobs it has out.
+
 ### Index runs
 
-An `IndexRun` has `id`, `source_id`, `target` (the source's path, or the file's; `None` for a run of every source), `file_path`, `status` (`IndexRunStatus`: running, completed, stopped, failed), `files_total`, `files_processed`, `files_failed`, `workers`, `started_at`, `completed_at`, `error`, and `to_dict()` / `to_json()`.
+An `IndexRun` has `id`, `source_id`, `target` (the source's path, or the file's; `None` for a run of every source), `file_path`, `status` (`IndexRunStatus`: running, completed, stopped, failed), `files_total`, `files_processed`, `files_failed`, `workers`, `started_at`, `completed_at`, `error`, `eta` (only on what `run()` returns: the time still outstanding, see below) and `to_dict()` / `to_json()`.
 
 ```python
 client.index.get(run.id)

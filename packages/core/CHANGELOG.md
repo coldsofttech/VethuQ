@@ -6,6 +6,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (progress and ETA)
+- `client.index.status(wait=False, timeout=None)`: the latest run's counts, whether it is going, the
+  remote jobs still out and an `IndexEta`; `wait=True` blocks until the run and its remote jobs are
+  done (collecting results as they arrive). `IndexRun.eta` is set on what `run()` returns.
+- The ETA is worked out from history: seconds per OCR page by file type (`usage_daily`, last 30 days,
+  else all time), pages per file and the share needing OCR, and the time the remote tier's jobs took.
+  `IndexEta.complete` says whether every part had history.
+
 ### Added (image file types)
 - The image file types are free add-ons that are not installed with VethuQ: `vethuq-addon-png`,
   `-jpg` and `-tiff`. `pip install vethuq[images]` (or `vethuq-bundle-image`) installs the three.

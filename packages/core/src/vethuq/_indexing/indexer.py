@@ -661,6 +661,11 @@ class _Indexer:
             time.sleep(min(self.POLL_SECONDS, max(deadline - time.monotonic(), 0)))
             self.remote.collect()
 
+    def wait_minutes(self) -> float:
+        """How long, in minutes, remote jobs are waited for when the caller gives no time."""
+        with self.database.session() as session:
+            return _TierSettings.get_wait_timeout_minutes(session)
+
     def collect(
         self, run_id: int | None = None, wait: bool = False, timeout: float | None = None
     ) -> list[int]:
