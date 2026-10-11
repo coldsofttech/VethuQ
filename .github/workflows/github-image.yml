@@ -6,7 +6,7 @@
 # those repositories is logged or uploaded except as compiled wheels inside the image.
 #
 # It prints a compatibility row for the job summary; a person adds it to
-# the compatibility table in VethuQ-premium (packages/github/src/vethuq_addon_github/_compat.py);
+# the compatibility table in VethuQ-premium (packages/add-ons/github/src/vethuq_addon_github/_compat.py);
 # rows are never rewritten by automation.
 name: github-image
 
@@ -36,9 +36,9 @@ permissions:
 
 env:
   IMAGE: ghcr.io/coldsofttech/vethuq-worker
-  # Premium add-ons the image carries (folders under VethuQ-premium/packages; a grouped add-on's
+  # Premium add-ons the image carries (folders under VethuQ-premium/packages/add-ons; a grouped add-on's
   # folder includes its group, for example search/engines/like).
-  PREMIUM_ADDONS: "english pdf paddle ocr-quick search/engines/like search/engines/exact search/normalisers/case search/normalisers/unicode"
+  PREMIUM_ADDONS: "languages/english file-types/pdf ocr/engines/paddle ocr/modes/quick search/engines/like search/engines/exact search/normalisers/case search/normalisers/unicode"
 
 jobs:
   image:
@@ -98,7 +98,7 @@ jobs:
             python -m build --wheel --outdir context/wheels "$package"
           done
           for addon in $PREMIUM_ADDONS; do
-            python -m build --wheel --outdir context/wheels "VethuQ-premium/packages/$addon"
+            python -m build --wheel --outdir context/wheels "VethuQ-premium/packages/add-ons/$addon"
           done
           python VethuQ-premium/scripts/wheel_gate.py --wheel context/wheels/vethuq_addon_*.whl
           # The administration package must never ship.

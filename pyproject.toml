@@ -24,15 +24,15 @@ vethuq-addon-api = { workspace = true }
 vethuq-worker = { workspace = true }
 # English is built in the premium repository; resolve it from a sibling checkout until it is
 # published (clone VethuQ and VethuQ-premium next to each other).
-vethuq-addon-english = { path = "../VethuQ-premium/packages/english" }
-vethuq-addon-pdf = { path = "../VethuQ-premium/packages/pdf" }
-vethuq-addon-paddle = { path = "../VethuQ-premium/packages/paddle" }
-vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/ocr-quick" }
-vethuq-addon-github = { path = "../VethuQ-premium/packages/github" }
-vethuq-addon-like = { path = "../VethuQ-premium/packages/search/engines/like" }
-vethuq-addon-exact = { path = "../VethuQ-premium/packages/search/engines/exact" }
-vethuq-addon-case = { path = "../VethuQ-premium/packages/search/normalisers/case" }
-vethuq-addon-unicode = { path = "../VethuQ-premium/packages/search/normalisers/unicode" }
+vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/english" }
+vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf" }
+vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
+vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
+vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/github" }
+vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like" }
+vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact" }
+vethuq-addon-case = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/case" }
+vethuq-addon-unicode = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" }
 
 [dependency-groups]
 dev = [
