@@ -36,6 +36,18 @@ def languages(self) -> list[LanguageSpec]:
 `default=True` marks the system default language (every install has exactly one). A language that
 exists but can't be used right now (a lapsed licence) is returned with `available=False` and a `reason`.
 
+## File types, OCR engines and phases
+
+- `file_types()` returns `FileTypeSpec`s: an id, the extensions, and a `DocumentReader` that yields
+  each page's native text, its large image regions and a way to render it.
+- `ocr_engines()` returns `OcrEngineProvider`s: they build an `OcrEngine` for a language and a model
+  profile, and say which models that needs, where they are kept and how to download them. VethuQ
+  passes the folder to keep models in.
+- `ocr_phases()` returns `OcrPhaseSpec`s: an order, the angles to read and the model profile.
+
+The reader and engine types are in this package, so an add-on and VethuQ share them; the heavy
+libraries stay inside the add-ons.
+
 ## Rules
 
 - Hooks are best effort. VethuQ logs a failing hook and carries on.
