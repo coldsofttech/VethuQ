@@ -5,7 +5,13 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.10.0.
+The add-on API version (`API_VERSION`) is 0.11.0.
+
+### Added (API 0.11.0)
+- Command-line commands: `Addon.cli()` returns a `CliGroup` (commands, nested groups, settings) that the
+  `vethuq` CLI mounts as `vethuq <name> ...` and `vethuq settings addons <name> ...`. `CliCommand`,
+  `CliParam`, `CliResult` and `CliSetting` describe it without any CLI library; `licence_commands()`
+  builds `licence show|set|remove` for a licensed add-on's public class.
 
 ### Added (API 0.10.0)
 - Worker scheduling: `Addon.worker_scheduler()` returns a `WorkerScheduler` (or `None`), whose

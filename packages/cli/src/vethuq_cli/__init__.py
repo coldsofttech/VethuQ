@@ -1,0 +1,1 @@
+"""The `vethuq` command line."""

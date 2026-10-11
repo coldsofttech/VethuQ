@@ -140,3 +140,21 @@ class TestAPhaseWhoseModelsAreMissing:
         assert len(notes) == 1
         assert fp.STATE.downloads.count("det-server") == 1  # tried once, not for each page
         assert len(client.search.run("scanned").matches) >= 1  # the quick pass is untouched
+
+
+class TestTextOnlyRuns:
+    def test_a_run_of_text_files_never_fetches_the_models(self, client, root):
+        fp.STATE.download_fails = {"det-mobile", "rec-en"}
+        (root / "a.txt").write_text("plain text")
+        (root / "b.csv").write_text("a,b\n1,2")
+        client.sources.create(root)
+        run = client.index.run()
+        assert run.status is IndexRunStatus.COMPLETED
+        assert fp.STATE.downloads == []
+
+    def test_a_scanned_file_still_does(self, client, root):
+        (root / "a.txt").write_text("plain text")
+        write(root, "s.pdf", fp.scanned_page("scanned words"))
+        client.sources.create(root)
+        client.index.run()
+        assert sorted(fp.STATE.downloads) == ["det-mobile", "rec-en"]

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from vethuq_addon_api.cli import CliGroup
     from vethuq_addon_api.ocr import OcrEngineProvider
     from vethuq_addon_api.readers import FileTypeSpec
     from vethuq_addon_api.scheduling import WorkerScheduler
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.10.0"
+API_VERSION = "0.11.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -242,6 +243,14 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
     def processing_tiers(self) -> list[TierSpec]:
         """The processing tiers this add-on provides (none, unless it is a tier add-on)."""
         return []
+
+    def cli(self) -> CliGroup | None:
+        """The commands and settings this add-on adds to the `vethuq` command line, or `None`.
+
+        The group is mounted as `vethuq <group name> ...`, its settings under
+        `vethuq settings addons <group name> ...`. Describe them with `CliGroup`; no CLI library is
+        needed."""
+        return None
 
     def worker_scheduler(self) -> WorkerScheduler | None:
         """A scheduler that sets how many files are read at once, or `None` (the default).

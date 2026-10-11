@@ -105,6 +105,9 @@ class DocumentReader(ABC):
     """
 
     processing_weight: float = 1.0
+    # False for a type that never OCRs a page in the quick phase (text read straight from the file).
+    # VethuQ then doesn't fetch the OCR models for a run that only has such files.
+    may_ocr: bool = True
 
     @abstractmethod
     def read(self, file_path: Path, page_number: int | None = None) -> Iterator[ReadPage]:

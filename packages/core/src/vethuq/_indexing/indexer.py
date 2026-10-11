@@ -806,7 +806,6 @@ class _Indexer:
             target=self._heartbeat, args=(run_id, beating), name="vethuq-heartbeat", daemon=True
         ).start()
         try:
-            self._preflight(sources)
             self.remote.collect()  # jobs left by earlier runs that have finished since
             with self.database.session() as session:
                 chosen = [session.get(_Source, s.id) for s in sources]
@@ -814,6 +813,8 @@ class _Indexer:
                 todo = self._select(session, mode, chosen, only_file, todo)
                 session.get(_IndexRun, run_id).unsupported_files = self._unsupported_seen
             todo = self._settle(todo, seconds)
+            if self._may_ocr(todo):
+                self._preflight(sources)
             self._phase("quick")
             with self.database.session() as session:
                 session.get(_IndexRun, run_id).total_files = len(todo)
@@ -913,6 +914,19 @@ class _Indexer:
                 "It must be a file inside an active source that has been seen by a run.",
             )
         return path
+
+    def _may_ocr(self, todo: list[int]) -> bool:
+        """Whether any of these files is of a type that can OCR a page in the quick phase (a run
+        of text files alone never needs the models)."""
+        with self.database.session() as session:
+            paths = session.scalars(
+                select(_DocumentIndex.file_path).where(_DocumentIndex.id.in_(todo))
+            ).all()
+        for path in paths:
+            reader = self.file_types.reader_for(path)
+            if reader is None or getattr(reader, "may_ocr", True):
+                return True
+        return False
 
     def _preflight(self, sources: list[_Source]) -> None:
         """Fetch the quick phase's models for each source's first language before any file is

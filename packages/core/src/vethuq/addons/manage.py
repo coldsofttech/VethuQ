@@ -10,6 +10,7 @@ from typing import Any
 
 from vethuq._addons import _AddonManager, _AddonSettingsStore
 from vethuq.enums import AddonStatus
+from vethuq_addon_api import CliGroup
 
 __all__ = ["AddonInfo", "AddonSettings", "Addons"]
 
@@ -88,6 +89,11 @@ class Addons:
     def settings(self, addon_id: str) -> AddonSettings:
         """The settings of one add-on."""
         return AddonSettings(_AddonSettingsStore(self._db_path, addon_id), self._open_database)
+
+    def cli(self) -> list[tuple[str, CliGroup]]:
+        """`(add-on id, command group)` of every running add-on that adds commands to the `vethuq`
+        command line (see `Addon.cli()`)."""
+        return self._manager.cli_groups()
 
     def reload(self) -> None:
         """Look for installed add-ons again (after installing one in a running process)."""

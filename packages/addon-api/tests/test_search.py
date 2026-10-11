@@ -125,7 +125,7 @@ class TestAddonHooks:
         assert SearchEngineSpec("a", "A", None, badge="Exact").badge == "Exact"
 
     def test_the_api_version(self):
-        assert API_VERSION == "0.10.0"
+        assert API_VERSION == "0.11.0"
 
 
 class TestSixthApi:

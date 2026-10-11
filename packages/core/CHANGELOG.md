@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (command line support)
+- `client.addons.cli()`: the command groups installed add-ons describe (`Addon.cli()`, add-on API 0.11.0).
+- `DocumentReader.may_ocr` (add-on API): a run of files whose readers never OCR in the quick phase no longer
+  fetches the OCR models first (a text-only run used to wait on the download).
+
 ### Added (run health)
 - A run's heartbeat: `IndexStatus.heartbeat_at` and `IndexStatus.stalled` (alive but quiet for two minutes).
 - A full integrity check before a run that follows a left-behind one; `errors.DatabaseIntegrityError`.

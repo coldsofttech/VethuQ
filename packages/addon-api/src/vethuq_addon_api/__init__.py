@@ -13,6 +13,14 @@ from vethuq_addon_api.api import (
     MigrationInfo,
     OcrPhaseSpec,
 )
+from vethuq_addon_api.cli import (
+    CliCommand,
+    CliGroup,
+    CliParam,
+    CliResult,
+    CliSetting,
+    licence_commands,
+)
 from vethuq_addon_api.errors import AddonError, AddonLicenceError, CreditsExhaustedError
 from vethuq_addon_api.ocr import (
     ModelProgress,
@@ -59,6 +67,11 @@ __all__ = [
     "AddonError",
     "AddonLicenceError",
     "CorruptedFileError",
+    "CliCommand",
+    "CliGroup",
+    "CliParam",
+    "CliResult",
+    "CliSetting",
     "Credits",
     "CreditsExhaustedError",
     "DocumentReader",
@@ -100,4 +113,5 @@ __all__ = [
     "WorkPlan",
     "WorkerScheduler",
     "extended_path",
+    "licence_commands",
 ]
