@@ -278,6 +278,76 @@ class _MarkdownPage(_Base):
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local images linked
 
 
+class _HtmlPage(_Base):
+    """What the HTML type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "html_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lang: Mapped[str | None] = mapped_column(Text, nullable=True)  # `<html lang>`
+    link_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local pictures used
+
+
+class _XmlPage(_Base):
+    """What the XML type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "xml_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    root: Mapped[str | None] = mapped_column(Text, nullable=True)  # the root element's name
+    element_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    attribute_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    well_formed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
+class _CssPage(_Base):
+    """What the CSS type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "css_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rule_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local pictures used
+
+
+class _JsPage(_Base):
+    """What the JavaScript type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "js_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _JsonPage(_Base):
+    """What the JSON type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "json_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str | None] = mapped_column(Text, nullable=True)  # object, array or scalar
+    value_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # leaves flattened
+    max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class _PdfPagePhase(_Base):
     """A deeper OCR phase (`moderate`, `deep`) read on a page in one language: the angles it read.
     The quick read of a page is `pdf_pages_quick`."""

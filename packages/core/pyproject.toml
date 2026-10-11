@@ -40,6 +40,8 @@ semantic = ["vethuq-addon-semantic~=0.1"]
 images = ["vethuq-bundle-image~=0.1"]
 # The deeper OCR phases, moderate and deep (quick is installed with VethuQ): `vethuq-bundle-deep-scan`.
 deep-scan = ["vethuq-bundle-deep-scan~=0.1"]
+# The web file types (HTML, XML, CSS, JavaScript, JSON; licensed): `vethuq-bundle-web`.
+web = ["vethuq-bundle-web~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

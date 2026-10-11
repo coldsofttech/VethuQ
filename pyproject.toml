@@ -36,6 +36,12 @@ vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
 vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
 vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
 vethuq-bundle-deep-scan = { path = "../VethuQ-premium/packages/bundles/deep-scan" }
+vethuq-addon-html = { path = "../VethuQ-premium/packages/add-ons/file-types/html" }
+vethuq-addon-xml = { path = "../VethuQ-premium/packages/add-ons/file-types/xml" }
+vethuq-addon-css = { path = "../VethuQ-premium/packages/add-ons/file-types/css" }
+vethuq-addon-js = { path = "../VethuQ-premium/packages/add-ons/file-types/js" }
+vethuq-addon-json = { path = "../VethuQ-premium/packages/add-ons/file-types/json" }
+vethuq-bundle-web = { path = "../VethuQ-premium/packages/bundles/web" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick", editable = true }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }

@@ -6,6 +6,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (web file types)
+- Tables for the HTML, XML, CSS, JavaScript and JSON file types (`html_pages`, `xml_pages`, `css_pages`,
+  `js_pages`, `json_pages`), filled from `ReadPage.details`; `vethuq[web]` installs the licensed web pack.
+
 ### Added (formatting)
 - `vethuq.formatting.Formatting`: sizes, durations and timestamps for front ends; exports use it for file sizes.
 

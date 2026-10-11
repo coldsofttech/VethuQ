@@ -7,7 +7,17 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from vethuq._db.models import _Base, _CsvPage, _MarkdownPage, _TxtPage
+from vethuq._db.models import (
+    _Base,
+    _CssPage,
+    _CsvPage,
+    _HtmlPage,
+    _JsonPage,
+    _JsPage,
+    _MarkdownPage,
+    _TxtPage,
+    _XmlPage,
+)
 
 
 class _PageDetails:
@@ -19,6 +29,11 @@ class _PageDetails:
         "txt": _TxtPage,
         "csv": _CsvPage,
         "markdown": _MarkdownPage,
+        "html": _HtmlPage,
+        "xml": _XmlPage,
+        "css": _CssPage,
+        "js": _JsPage,
+        "json": _JsonPage,
     }
 
     @staticmethod
