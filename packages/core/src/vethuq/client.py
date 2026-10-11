@@ -8,12 +8,19 @@ from types import TracebackType
 
 from vethuq._addons import _AddonManager
 from vethuq._db import _Database
+from vethuq._filetypes import _FileTypeCatalog
+from vethuq._indexing import _Indexer
 from vethuq._languages import _LanguageCatalog
 from vethuq._maintenance import _Maintenance
+from vethuq._ocr import _Models, _Ocr
+from vethuq._paths import _Paths
 from vethuq.addons import Addons
 from vethuq.db import Db
+from vethuq.file_types import FileTypes
+from vethuq.index import Index
 from vethuq.languages import Languages
 from vethuq.logs import Logs
+from vethuq.ocr import Ocr
 from vethuq.paths import Paths
 from vethuq.policy import PolicyClient
 from vethuq.settings import Settings
@@ -46,6 +53,10 @@ class VethuQ:
         self._checks: Db | None = None
         self._addon_manager: _AddonManager | None = None
         self._addons: Addons | None = None
+        self._file_types: FileTypes | None = None
+        self._index: Index | None = None
+        self._ocr: Ocr | None = None
+        self._ocr_runtime: _Ocr | None = None
         self._lock = threading.Lock()
 
     @property
@@ -61,6 +72,20 @@ class VethuQ:
 
     def _catalog(self) -> _LanguageCatalog:
         return _LanguageCatalog(self._manager().language_specs)
+
+    def _file_type_catalog(self) -> _FileTypeCatalog:
+        return _FileTypeCatalog(self._manager().file_type_specs)
+
+    def _runtime(self) -> _Ocr:
+        manager = self._manager()
+        with self._lock:
+            if self._ocr_runtime is None:
+                self._ocr_runtime = _Ocr(
+                    manager.ocr_engine_providers,
+                    manager.ocr_phase_specs,
+                    lambda: _Paths.models_dir(self.db_path),
+                )
+            return self._ocr_runtime
 
     def _release_database(self) -> None:
         """Close the connections (used by add-ons, e.g. before replacing the database file)."""
@@ -86,7 +111,7 @@ class VethuQ:
     def sources(self) -> Sources:
         """Register and manage sources."""
         if self._sources is None:
-            self._sources = Sources(self._db(), self._catalog())
+            self._sources = Sources(self._db(), self._catalog(), self._file_type_catalog())
         return self._sources
 
     @property
@@ -95,6 +120,43 @@ class VethuQ:
         if self._languages is None:
             self._languages = Languages(self._db(), self._catalog())
         return self._languages
+
+    @property
+    def file_types(self) -> FileTypes:
+        """The kinds of file VethuQ can read."""
+        if self._file_types is None:
+            self._file_types = FileTypes(self._file_type_catalog())
+        return self._file_types
+
+    @property
+    def index(self) -> Index:
+        """Index sources: read their files into pages."""
+        if self._index is None:
+            manager = self._manager()
+            indexer = _Indexer(
+                self._db(),
+                self._file_type_catalog(),
+                manager.language_specs,
+                self._runtime(),
+            )
+            self._index = Index(self._db(), indexer)
+        return self._index
+
+    @property
+    def ocr(self) -> Ocr:
+        """The OCR engines, phases and models."""
+        if self._ocr is None:
+            manager = self._manager()
+            runtime = self._runtime()
+            models = _Models(
+                manager.ocr_engine_providers,
+                manager.language_specs,
+                lambda: [p.profile for p in manager.ocr_phase_specs() if p.profile],
+                runtime.models_dir,
+                runtime.forget,
+            )
+            self._ocr = Ocr(runtime, models)
+        return self._ocr
 
     @property
     def settings(self) -> Settings:
@@ -157,6 +219,9 @@ class VethuQ:
             self._updates = None
             self._checks = None
             self._addons = None
+            self._file_types = None
+            self._index = None
+            self._ocr = None
 
     def __enter__(self) -> VethuQ:
         return self

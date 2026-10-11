@@ -16,8 +16,11 @@ from vethuq_addon_api import (
     API_VERSION,
     ENTRY_POINT_GROUP,
     Addon,
+    FileTypeSpec,
     LanguageSpec,
     MigrationInfo,
+    OcrEngineProvider,
+    OcrPhaseSpec,
 )
 
 
@@ -97,23 +100,37 @@ class _AddonManager:
         with self._lock:
             self._loaded = None
 
-    def language_specs(self) -> list[LanguageSpec]:
-        """The languages the running add-ons provide, the system default first, then by id.
-
-        An add-on that fails when asked is logged and skipped; the first add-on (by id) to offer a
-        language id wins."""
-        found: dict[str, LanguageSpec] = {}
+    def _collect(self, method: str) -> list:
+        """What the running add-ons return from `method`, de-duplicated by `id` (the first add-on,
+        by id, to offer an id wins). An add-on that fails when asked is logged and skipped."""
+        found: dict[str, object] = {}
         for item in self.loaded().values():
             if item.addon is None:
                 continue
             try:
-                specs = list(item.addon.languages())
+                offered = list(getattr(item.addon, method)())
             except Exception:  # noqa: BLE001 - a broken add-on must not break VethuQ
-                self._logger.warning("Add-on %s failed in languages", item.id, exc_info=True)
+                self._logger.warning("Add-on %s failed in %s", item.id, method, exc_info=True)
                 continue
-            for spec in specs:
+            for spec in offered:
                 found.setdefault(spec.id, spec)
-        return sorted(found.values(), key=lambda spec: (not spec.default, spec.id))
+        return list(found.values())
+
+    def language_specs(self) -> list[LanguageSpec]:
+        """The languages the running add-ons provide, the system default first, then by id."""
+        return sorted(self._collect("languages"), key=lambda spec: (not spec.default, spec.id))
+
+    def file_type_specs(self) -> list[FileTypeSpec]:
+        """The file types the running add-ons can read, by id."""
+        return sorted(self._collect("file_types"), key=lambda spec: spec.id)
+
+    def ocr_engine_providers(self) -> list[OcrEngineProvider]:
+        """The OCR engines the running add-ons provide, by id."""
+        return sorted(self._collect("ocr_engines"), key=lambda provider: provider.id)
+
+    def ocr_phase_specs(self) -> list[OcrPhaseSpec]:
+        """The OCR phases the running add-ons provide, in the order they run."""
+        return sorted(self._collect("ocr_phases"), key=lambda spec: (spec.order, spec.id))
 
     # ----- hooks (the interface `_Database` calls) ------------------------------------------
 

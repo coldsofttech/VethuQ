@@ -11,6 +11,10 @@ dependencies = [
     "sqlalchemy~=2.0",
     "vethuq-addon-api~=0.1",
     "vethuq-addon-english~=0.1",
+    "vethuq-addon-pdf~=0.1",
+    "vethuq-addon-paddle~=0.1",
+    "vethuq-addon-ocr-quick~=0.1",
+    "psutil>=5.9",
 ]
 
 [build-system]

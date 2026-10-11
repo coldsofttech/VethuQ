@@ -9,6 +9,7 @@ from vethuq._languages import _LanguageCatalog, _Languages
 from vethuq._logs import _Log, _Logs
 from vethuq._settings import (
     _DatabaseSettings,
+    _IndexSettings,
     _LanguageSettings,
     _LogSettings,
     _SourceSettings,
@@ -18,6 +19,7 @@ from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
 
 __all__ = [
     "DatabaseSettings",
+    "IndexSettings",
     "LanguageSettings",
     "LogSettings",
     "Settings",
@@ -54,6 +56,71 @@ class SourceSettings:
         """Back to the default retention (7 days)."""
         with self._database.session() as session:
             _SourceSettings.reset_removed_retention_minutes(session)
+
+
+class IndexSettings:
+    """Settings for indexing.
+
+    Not created directly: use `VethuQ().settings.index`.
+    """
+
+    MAX_WORKERS = _IndexSettings.MAX_WORKERS
+    DEFAULT_RETRY_ATTEMPTS = _IndexSettings.DEFAULT_RETRY_ATTEMPTS
+    DEFAULT_STABILITY_CHECK_SECONDS = _IndexSettings.DEFAULT_STABILITY_CHECK_SECONDS
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_workers(self) -> int | str:
+        """How many files are indexed at once: `"auto"` (sized to the machine) unless changed."""
+        with self._database.session() as session:
+            return _IndexSettings.get_workers(session)
+
+    def set_workers(self, workers: int | str) -> None:
+        """Index `workers` files at once: `"auto"`, or 0 to 8 (0 uses the calling thread alone).
+
+        Raises `InvalidSettingValueError` for anything else.
+        """
+        with self._database.session() as session:
+            _IndexSettings.set_workers(session, workers)
+
+    def reset_workers(self) -> None:
+        with self._database.session() as session:
+            _IndexSettings.reset_workers(session)
+
+    def get_retry_attempts(self) -> int:
+        """How many times a failed file is tried again within a run. 3 unless changed."""
+        with self._database.session() as session:
+            return _IndexSettings.get_retry_attempts(session)
+
+    def set_retry_attempts(self, attempts: int) -> None:
+        """Try a failed file again up to `attempts` times; 0 tries each file once.
+
+        Raises `InvalidSettingValueError` unless it is a whole number of 0 or more.
+        """
+        with self._database.session() as session:
+            _IndexSettings.set_retry_attempts(session, attempts)
+
+    def reset_retry_attempts(self) -> None:
+        with self._database.session() as session:
+            _IndexSettings.reset_retry_attempts(session)
+
+    def get_stability_check_seconds(self) -> float:
+        """How long a run waits to be sure files have stopped changing. 1 second unless changed."""
+        with self._database.session() as session:
+            return _IndexSettings.get_stability_check_seconds(session)
+
+    def set_stability_check_seconds(self, seconds: float) -> None:
+        """Wait `seconds` before indexing files that may still be being written; 0 turns it off.
+
+        Raises `InvalidSettingValueError` unless it is 0 or more.
+        """
+        with self._database.session() as session:
+            _IndexSettings.set_stability_check_seconds(session, seconds)
+
+    def reset_stability_check_seconds(self) -> None:
+        with self._database.session() as session:
+            _IndexSettings.reset_stability_check_seconds(session)
 
 
 class LanguageSettings:
@@ -271,6 +338,7 @@ class Settings:
     def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
+        self.index = IndexSettings(database)
         self.logs = LogSettings(database)
         self.updates = UpdateSettings(database)
         self.database = DatabaseSettings(database)

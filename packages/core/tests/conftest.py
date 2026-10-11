@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+from tests import fake_pipeline
 from tests.language_addons import ENGLISH, LanguageAddonFactory
 from vethuq._paths import _Paths
 
@@ -41,3 +42,17 @@ def _english_addon(tmp_path_factory, monkeypatch):
     module = LanguageAddonFactory.install(folder, "english", [ENGLISH])
     yield
     LanguageAddonFactory.forget(module)
+
+
+@pytest.fixture(autouse=True)
+def _pipeline_addons(tmp_path_factory, monkeypatch):
+    """Install stand-ins for the PDF, Paddle and quick OCR add-ons, as VethuQ always has them.
+    `fake_pipeline.STATE` records what they did and switches them on and off."""
+    fake_pipeline.reset()
+    folder = tmp_path_factory.mktemp("pipeline_addons")
+    monkeypatch.setattr(sys, "path", [str(folder), *sys.path])
+    fake_pipeline.install(folder)
+    yield
+    for name in [n for n in sys.modules if n.startswith("vethuq.addons.")]:
+        if name.rsplit(".", 1)[-1] in {"pdf", "paddle", "ocr_quick", "ocr-quick"}:
+            del sys.modules[name]

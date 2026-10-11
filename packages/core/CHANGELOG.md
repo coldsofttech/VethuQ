@@ -38,6 +38,24 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - **Settings** (`client.settings`): source retention for removed sources (7 days by default), log
   level and retention (`LogLevel`, 15 days by default), and update-check settings
   (`UpdateCheckMode`, snooze and skip). Changes to the log settings apply at once.
+- **Indexing** (`client.index`, types in `vethuq.index`): `run(target=None, workers=None)`
+  indexes every source, one source, or one file in a source, and returns an `IndexRun`; `get` and
+  `history` (filter by target, status and time; sort; page). Native text first, then OCR: native
+  pages need none, mixed pages read only their images, scanned pages are read whole. Files with
+  the same content share their pages; a document read in a new language is merged. Failed files are
+  retried and picked up again by later runs, password-protected files are `UNSUPPORTED`, and a run
+  whose process died is failed at the next run. `IndexRunStatus`, `IndexRunSortBy`,
+  `IndexAlreadyRunningError` and `IndexRunNotFoundError`. Purging a source deletes its runs.
+- **Index settings** (`client.settings.index`): workers (`auto` or 0 to 8), retry attempts (3) and
+  the stability check (1 second).
+- **File types** (`client.file_types`), from add-ons (add-on API 0.3.0); PDF is `vethuq-addon-pdf`
+  (pypdfium2). `list_files(detailed=True)` now also shows each file's pages, confidence, languages
+  and file type.
+- **OCR** (`client.ocr`): `engines`, `phases` and `models` (list, download, redownload, clear,
+  clean). The engine is `vethuq-addon-paddle` (PaddleOCR, models in `<data root>/models`) and the
+  phase `vethuq-addon-ocr-quick` (mobile models, upright pages). These three add-ons are free and
+  installed with VethuQ.
+- Internal tables `pdf_pages`, `pdf_pages_quick`, `document_languages` and `index_runs`.
 - **Logs** (`client.logs`, types in `vethuq.logs`): one class per log (`DatabaseLog`, `IndexLog`,
   `UiLog`, `CliLog`, `PolicyLog`) with `file`, `tail`, `read` (filter by level, day and text; sort by
   time), `follow`, `export` and `logger`. Daily files with retention and safe rotation;
@@ -66,6 +84,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   | 20 to 24 | `SourceError`, `SourcePathError`, `SourceAlreadyExistsError`, `SourceNotFoundError`, `SourceNotRemovedError` |
   | 30, 31 | `SettingsError`, `InvalidSettingValueError` |
   | 40 to 42 | `LogError`, `LogNotFoundError`, `InvalidLogRequestError` |
+  | 50 to 52 | `IndexingError`, `IndexAlreadyRunningError`, `IndexRunNotFoundError` |
 
 - **Database integrity check** (`client.db`, types in `vethuq.db`): `integrity_check(quick=False)` and
   `integrity_status()`, with `IntegrityCheckResult` and `IntegrityCheckMode`. The check runs by itself

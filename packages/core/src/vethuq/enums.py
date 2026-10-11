@@ -7,6 +7,8 @@ from enum import StrEnum
 __all__ = [
     "FileStatus",
     "AddonStatus",
+    "IndexRunSortBy",
+    "IndexRunStatus",
     "IntegrityCheckMode",
     "LogComponent",
     "LogLevel",
@@ -66,6 +68,27 @@ class SourceSortBy(StrEnum):
     SOURCE_TYPE = "source_type"
     ADDED_AT = "added_at"
     LAST_SCANNED_AT = "last_scanned_at"
+
+
+class IndexRunStatus(StrEnum):
+    """Where an index run is."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"  # it ran to the end (some files may have failed: see its counts)
+    STOPPED = "stopped"  # it was interrupted
+    FAILED = "failed"  # it could not run, or its process died
+
+
+class IndexRunSortBy(StrEnum):
+    """What a list of index runs can be sorted by."""
+
+    ID = "id"
+    STARTED_AT = "started_at"
+    COMPLETED_AT = "completed_at"
+    STATUS = "status"
+    FILES_TOTAL = "files_total"
+    FILES_PROCESSED = "files_processed"
+    FILES_FAILED = "files_failed"
 
 
 class LogComponent(StrEnum):

@@ -43,7 +43,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -63,6 +63,9 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `SourceNotFoundError` | 23 | Sources | No source matches the id or path (or it is removed, when only active ones are searched) |
 | `SourceNotRemovedError` | 24 | Sources | The source is still active, so it can't be purged |
 | `SourceOverlapError` | 25 | Sources | The path lies inside an active source, or contains one |
+| `IndexingError` | 50 | Indexing | Root of the indexing errors below |
+| `IndexAlreadyRunningError` | 51 | Indexing | An index run is already going |
+| `IndexRunNotFoundError` | 52 | Indexing | There is no index run with that id |
 | `LogError` | 40 | Logs | Root of the log errors below |
 | `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
 | `InvalidLogRequestError` | 42 | Logs | A log request had a bad `lines`, `day`, `level`, `order` or component |
@@ -572,6 +575,89 @@ client.settings.logs.set_retention_days(30)
 
 A level that isn't a `LogLevel`, or a retention that isn't a whole number of at least 1, raises `InvalidSettingValueError` and changes nothing. A change applies at once to logs that are already being written.
 
+## Indexing
+
+`client.index` reads sources into pages. A run finds the files of the sources, reads each one's text, and returns when it is over.
+
+```python
+run = client.index.run()  # every active source
+run = client.index.run(source.id)  # one source (its id or its path)
+run = client.index.run("~/docs/report.pdf")  # one file inside an active source
+print(run.status, run.files_processed, "of", run.files_total, "files,", run.files_failed, "failed")
+```
+
+`run(target=None, *, workers=None)` is synchronous. It picks up new and modified files, files that failed before, and files that couldn't be read until an add-on was installed; files already indexed are left alone. A file that fails never stops the run: it becomes `FileStatus.ERROR` with its message in `list_files(..., detailed=True)`. A damaged file isn't retried; any other failure is retried `retry_attempts` times. A password-protected file is `UNSUPPORTED` until it changes.
+
+Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process died is found and marked failed at the next run, and the files it was reading are put back.
+
+**How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. OCR is the quick phase (upright pages, mobile models) and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
+
+### Index runs
+
+An `IndexRun` has `id`, `source_id`, `target` (the source's path, or the file's; `None` for a run of every source), `file_path`, `status` (`IndexRunStatus`: running, completed, stopped, failed), `files_total`, `files_processed`, `files_failed`, `workers`, `started_at`, `completed_at`, `error`, and `to_dict()` / `to_json()`.
+
+```python
+client.index.get(run.id)
+client.index.history()  # newest first
+client.index.history(source.id, status="failed", limit=10)
+client.index.history(
+    started_after=datetime(2026, 1, 1),  # naive means UTC; ISO strings work too
+    sort_by=IndexRunSortBy.FILES_FAILED,
+    order=SortOrder.DESC,
+)
+```
+
+`history(target=None, status=None, started_after=None, started_before=None, sort_by=IndexRunSortBy.STARTED_AT, order=SortOrder.DESC, limit=None, offset=0)`. `target` is a source (id or path) or a file. `get` raises `IndexRunNotFoundError`. Purging a source deletes its runs.
+
+### What list_files shows
+
+`client.sources.list_files(source, detailed=True)` adds to each file's `FileIndex` the `pages` read, their average `confidence` (0 to 1), the `languages` it was read in and its `file_type`.
+
+### Index settings
+
+```python
+client.settings.index.set_workers("auto")  # "auto" (the default) or 0 to 8; 0 = this thread
+client.settings.index.set_retry_attempts(3)  # the default
+client.settings.index.set_stability_check_seconds(1.0)
+```
+
+Each also has a `get_...` and `reset_...`. The stability check waits once per run so files still being written are read as they end up; 0 turns it off.
+
+## File types
+
+`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`) is installed with VethuQ.
+
+```python
+client.file_types.list()  # [FileType(id="pdf", label="PDF", extensions=(".pdf",), available=True, reason="")]
+client.file_types.get("pdf")  # a FileType, or None
+```
+
+## OCR
+
+`client.ocr` shows what reads scanned pages, all provided by add-ons installed with VethuQ: the engine (`vethuq-addon-paddle`) and the quick phase (`vethuq-addon-ocr-quick`). None of them can be switched off.
+
+```python
+client.ocr.engines.list()  # [OcrEngine(id="paddle", profiles=("mobile",), available=True, ...)]
+client.ocr.phases.list()  # [OcrPhase(id="quick", angles=(0,), profile="mobile", ...)]
+```
+
+### OCR models
+
+Models are downloaded automatically the first time a page needs them, into `<data root>/models`. `client.ocr.models` lets you see and manage them; `languages` is a list of language ids (left out: all).
+
+```python
+models = client.ocr.models
+models.cache_dir  # where they are kept
+models.list()  # [OcrModel(name, engine, kind, shared, languages, installed, path, size_bytes)]
+models.download(on_progress=lambda name, state: print(name, state))  # fetch ahead of time
+models.redownload(["PP-OCRv5_mobile_det"])  # delete and fetch again
+models.clear(["te"])  # delete the models only Telugu uses
+models.clear(["te"], include_shared=True)  # ... and the shared ones
+models.clean()  # delete models no installed language needs
+```
+
+`download` and `redownload` raise `OcrModelMissingError` for any model that couldn't be fetched.
+
 ## Logs
 
 VethuQ keeps a log for each of its parts. They are plain text files in the `logs` folder of the data folder (`Paths.logs_dir()`), one file per day. Old days are kept for the retention set in the [log settings](#log-settings) (15 days by default).
@@ -904,7 +990,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

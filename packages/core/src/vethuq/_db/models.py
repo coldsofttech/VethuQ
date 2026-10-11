@@ -4,10 +4,21 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Text
+from sqlalchemy import (
+    Boolean,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from vethuq.enums import FileStatus, SourceStatus, SourceType
+from vethuq._db.values import _PageSource, _PassSource, _PassStatus
+from vethuq.enums import FileStatus, IndexRunStatus, SourceStatus, SourceType
 
 
 def _enum(enum_class: type[StrEnum], name: str) -> Enum:
@@ -154,3 +165,115 @@ class _DocumentIndex(_Base):
     indexed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     removed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+
+class _PdfPage(_Base):
+    """One page of a PDF document: its text, whichever way it was produced.
+
+    Pages belong to the logical document, so files with the same content share them.
+    """
+
+    __tablename__ = "pdf_pages"
+    __table_args__ = (
+        UniqueConstraint("document_id", "page_number", name="uq_pdf_pages_document_page"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[_PageSource] = mapped_column(
+        _enum(_PageSource, "ck_pdf_pages_source"), nullable=False
+    )
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _PdfPageQuick(_Base):
+    """The quick OCR read of a PDF page in one language. Native pages have none."""
+
+    __tablename__ = "pdf_pages_quick"
+    __table_args__ = (
+        UniqueConstraint("page_id", "language_id", name="uq_pdf_pages_quick_page_language"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), nullable=False)
+    # The images read on a mixed page; 0 when the whole page was read.
+    region_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    engine: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class _DocumentLanguage(_Base):
+    """A language a document was read in, and how that read went."""
+
+    __tablename__ = "document_languages"
+
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
+    )
+    language_id: Mapped[int] = mapped_column(ForeignKey("languages.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[_PassStatus] = mapped_column(
+        _enum(_PassStatus, "ck_document_languages_status"),
+        nullable=False,
+        default=_PassStatus.PENDING,
+    )
+    source: Mapped[_PassSource] = mapped_column(
+        _enum(_PassSource, "ck_document_languages_source"),
+        nullable=False,
+        default=_PassSource.DEFAULT,
+    )
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _IndexRun(_Base):
+    """One run of the indexer. A run of one source (or one file of it) goes with that source."""
+
+    __tablename__ = "index_runs"
+    __table_args__ = (
+        # Only one run can be going at a time.
+        Index(
+            "uq_index_runs_running",
+            text("1"),
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[IndexRunStatus] = mapped_column(
+        _enum(IndexRunStatus, "ck_index_runs_status"),
+        nullable=False,
+        default=IndexRunStatus.RUNNING,
+    )
+    total_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    processed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[str] = mapped_column(Text, nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

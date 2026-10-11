@@ -121,12 +121,13 @@ class TestManager:
     def test_reload_looks_again(self, tmp_path, monkeypatch, db_path):
         monkeypatch.setattr(sys, "path", list(sys.path))
         manager = _AddonManager(db_path, lambda: None)
-        assert set(manager.loaded()) == {"english"}
+        always = {"english", "ocr-quick", "paddle", "pdf"}  # installed with VethuQ
+        assert set(manager.loaded()) == always
         folder = tmp_path / "site"
         folder.mkdir()
         try:
             AddonFactory.install(folder)
-            assert set(manager.loaded()) == {"english"}
+            assert set(manager.loaded()) == always
             manager.reload()
             assert "dummy" in manager.loaded()
         finally:

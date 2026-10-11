@@ -11,7 +11,7 @@ dependencies = []
 [tool.uv]
 package = false
 default-groups = ["dev"]
-# The English add-on (a path dependency from the premium repository) asks for vethuq-addon-api
+# The free add-ons (English, PDF, Paddle, quick OCR) are built in the premium repository; resolve them from a sibling checkout until they are
 # from its own workspace; use this workspace's copy.
 override-dependencies = ["vethuq-addon-api~=0.1"]
 
@@ -24,6 +24,9 @@ vethuq-addon-api = { workspace = true }
 # English is built in the premium repository; resolve it from a sibling checkout until it is
 # published (clone VethuQ and VethuQ-premium next to each other).
 vethuq-addon-english = { path = "../VethuQ-premium/packages/english" }
+vethuq-addon-pdf = { path = "../VethuQ-premium/packages/pdf" }
+vethuq-addon-paddle = { path = "../VethuQ-premium/packages/paddle" }
+vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/ocr-quick" }
 
 [dependency-groups]
 dev = [

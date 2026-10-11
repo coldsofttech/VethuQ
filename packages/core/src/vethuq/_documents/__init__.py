@@ -3,6 +3,5 @@
 from __future__ import annotations
 
 from vethuq._documents.documents import _Documents
-from vethuq._documents.types import _FileTypes
 
-__all__ = ["_Documents", "_FileTypes"]
+__all__ = ["_Documents"]

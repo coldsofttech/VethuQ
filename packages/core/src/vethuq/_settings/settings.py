@@ -73,6 +73,105 @@ class _SourceSettings:
         _Settings.reset(session, _SourceSettings.REMOVED_RETENTION_MINUTES_KEY)
 
 
+class _IndexSettings:
+    WORKERS_KEY = "index_workers"
+    RETRY_ATTEMPTS_KEY = "index_retry_attempts"
+    STABILITY_CHECK_KEY = "index_stability_check_seconds"
+    AUTO = "auto"
+    MAX_WORKERS = 8
+    DEFAULT_RETRY_ATTEMPTS = 3
+    DEFAULT_STABILITY_CHECK_SECONDS = 1.0
+
+    @staticmethod
+    def parse_workers(value: object) -> int | str:
+        """`"auto"`, or a whole number from 0 to 8 (0 works on the calling thread alone)."""
+        if isinstance(value, str) and value.strip().lower() == _IndexSettings.AUTO:
+            return _IndexSettings.AUTO
+        try:
+            if isinstance(value, bool) or isinstance(value, float):
+                raise ValueError
+            number = int(value)  # type: ignore[call-overload]
+        except (TypeError, ValueError):
+            number = -1
+        if not 0 <= number <= _IndexSettings.MAX_WORKERS:
+            raise _InvalidSettingValueError(
+                f"The number of workers must be 'auto' or a whole number from 0 to "
+                f"{_IndexSettings.MAX_WORKERS}, not {value!r}.",
+                "Use 0 to index one file at a time on the calling thread.",
+            )
+        return number
+
+    @staticmethod
+    def get_workers(session: Session) -> int | str:
+        """How many files are indexed at once: `auto` unless changed."""
+        value = _Settings.get(session, _IndexSettings.WORKERS_KEY)
+        if value is None:
+            return _IndexSettings.AUTO
+        try:
+            return _IndexSettings.parse_workers(value)
+        except _InvalidSettingValueError:
+            return _IndexSettings.AUTO
+
+    @staticmethod
+    def set_workers(session: Session, value: object) -> None:
+        _Settings.set(session, _IndexSettings.WORKERS_KEY, str(_IndexSettings.parse_workers(value)))
+
+    @staticmethod
+    def reset_workers(session: Session) -> None:
+        _Settings.reset(session, _IndexSettings.WORKERS_KEY)
+
+    @staticmethod
+    def get_retry_attempts(session: Session) -> int:
+        """How many times a failed file is tried again within a run. 3 unless changed."""
+        value = _Settings.get(session, _IndexSettings.RETRY_ATTEMPTS_KEY)
+        try:
+            number = int(value) if value is not None else _IndexSettings.DEFAULT_RETRY_ATTEMPTS
+        except ValueError:
+            return _IndexSettings.DEFAULT_RETRY_ATTEMPTS
+        return number if number >= 0 else _IndexSettings.DEFAULT_RETRY_ATTEMPTS
+
+    @staticmethod
+    def set_retry_attempts(session: Session, attempts: int) -> None:
+        if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 0:
+            raise _InvalidSettingValueError(
+                f"The retry attempts must be a whole number of 0 or more, not {attempts!r}.",
+                "Use 0 to try each file once.",
+            )
+        _Settings.set(session, _IndexSettings.RETRY_ATTEMPTS_KEY, str(attempts))
+
+    @staticmethod
+    def reset_retry_attempts(session: Session) -> None:
+        _Settings.reset(session, _IndexSettings.RETRY_ATTEMPTS_KEY)
+
+    @staticmethod
+    def get_stability_check_seconds(session: Session) -> float:
+        """How long to wait to be sure a file has stopped changing before indexing it. 1 second
+        unless changed; 0 skips the check."""
+        value = _Settings.get(session, _IndexSettings.STABILITY_CHECK_KEY)
+        try:
+            seconds = (
+                float(value)
+                if value is not None
+                else _IndexSettings.DEFAULT_STABILITY_CHECK_SECONDS
+            )
+        except ValueError:
+            return _IndexSettings.DEFAULT_STABILITY_CHECK_SECONDS
+        return seconds if seconds >= 0 else _IndexSettings.DEFAULT_STABILITY_CHECK_SECONDS
+
+    @staticmethod
+    def set_stability_check_seconds(session: Session, seconds: float) -> None:
+        if isinstance(seconds, bool) or not isinstance(seconds, int | float) or seconds < 0:
+            raise _InvalidSettingValueError(
+                f"The stability check must be a number of seconds of 0 or more, not {seconds!r}.",
+                "Use 0 to turn the check off.",
+            )
+        _Settings.set(session, _IndexSettings.STABILITY_CHECK_KEY, repr(float(seconds)))
+
+    @staticmethod
+    def reset_stability_check_seconds(session: Session) -> None:
+        _Settings.reset(session, _IndexSettings.STABILITY_CHECK_KEY)
+
+
 class _LanguageSettings:
     DISABLED_KEY = "languages_disabled"
     DEFAULT_KEY = "languages_default"

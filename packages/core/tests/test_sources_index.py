@@ -71,7 +71,7 @@ class TestDetailedListing:
             "notes.txt": FileStatus.UNSUPPORTED,
             "sub/c.pdf": FileStatus.PENDING,
         }
-        assert files["a.pdf"].index == FileIndex(FileStatus.PENDING)
+        assert files["a.pdf"].index == FileIndex(FileStatus.PENDING, file_type="pdf")
 
     def test_each_state_is_reported(self, client, root):
         source = client.sources.create(root)

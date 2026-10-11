@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from vethuq._db import _Database, _DocumentIndex, _Source
 from vethuq._documents import _Documents
 from vethuq._errors import _SourceAlreadyExistsError
+from vethuq._filetypes import _FileTypeCatalog
 from vethuq._languages import _LanguageCatalog
 from vethuq._settings import _SourceSettings
 from vethuq._sources import _FileEntry, _Files, _Sources
@@ -139,6 +140,11 @@ class FileIndex:
     retry_count: int = 0
     # For a file whose content is the same as an earlier file's: that original's path.
     duplicate_of: str | None = None
+    # What was read, once the file is indexed.
+    pages: int | None = None
+    confidence: float | None = None  # the average over the pages, 0 to 1
+    languages: list[str] | None = None  # the language ids it was read in
+    file_type: str | None = None  # the kind of file, e.g. "pdf"; None if no add-on reads it
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -149,6 +155,10 @@ class FileIndex:
             "indexed_at": self.indexed_at,
             "retry_count": self.retry_count,
             "duplicate_of": self.duplicate_of,
+            "pages": self.pages,
+            "confidence": self.confidence,
+            "languages": list(self.languages) if self.languages is not None else None,
+            "file_type": self.file_type,
         }
 
     def to_json(self, indent: int | None = None) -> str:
@@ -204,9 +214,12 @@ class Sources:
     or its path (a `str` or `Path`).
     """
 
-    def __init__(self, database: _Database, catalog: _LanguageCatalog) -> None:
+    def __init__(
+        self, database: _Database, catalog: _LanguageCatalog, file_types: _FileTypeCatalog
+    ) -> None:
         self._database = database
         self._catalog = catalog
+        self._file_types = file_types
 
     def create(
         self, source: Source | str | Path, *, languages: Sequence[str] | None = None
@@ -294,10 +307,10 @@ class Sources:
         With `detailed=True` each file also has an `index` (a `FileIndex`) saying where it is in
         indexing: `PENDING` (not processed yet), `PROCESSING`, `INDEXED`, `ERROR`, `MODIFIED`
         (changed since it was indexed, so it will be processed again) or `UNSUPPORTED` (not a
-        kind VethuQ reads; only PDF is, for now). Files that were indexed and have since gone
-        from disk are listed too, as `REMOVED`, until the source is purged. `status` keeps only
-        the files with that `FileStatus` and needs `detailed=True`. Reading never changes
-        anything.
+        kind an installed add-on reads, or needing a password). Files that were indexed and have
+        since gone from disk are listed too, as `REMOVED`, until the source is purged. `status`
+        keeps only the files with that `FileStatus` and needs `detailed=True`. Reading never
+        changes anything.
 
         Raises `SourceNotFoundError` if no active source matches and `SourcePathError` if
         the source's path is no longer on disk.
@@ -314,22 +327,28 @@ class Sources:
             files = self._with_index(session, path, source_id, entries)
         return [f for f in files if wanted is None or (f.index and f.index.status is wanted)]
 
-    @staticmethod
     def _with_index(
-        session: Session, source_path: str, source_id: int, entries: list[_FileEntry]
+        self, session: Session, source_path: str, source_id: int, entries: list[_FileEntry]
     ) -> list[SourceFile]:
         """The files on disk joined with the document index, plus the indexed files now gone."""
         rows = {row.file_path: row for row in _Documents.rows(session, source_id)}
         originals = _Documents.original_paths(
             session, {r.document_id for r in rows.values() if r.document_id is not None}
         )
+        facts = _Documents.page_facts(session, set(originals))
         files: list[SourceFile] = []
 
-        def index_for(row: _DocumentIndex | None, status: FileStatus, on_disk: bool) -> FileIndex:
+        def index_for(
+            row: _DocumentIndex | None, status: FileStatus, on_disk: bool, path: str
+        ) -> FileIndex:
             duplicate_of = None
+            pages = confidence = languages = None
             if row is not None and row.document_id is not None:
                 original_id, original_path = originals[row.document_id]
                 duplicate_of = original_path if original_id != row.id else None
+                if row.status is FileStatus.INDEXED:
+                    pages, confidence, languages = facts[row.document_id]
+            spec = self._file_types.for_path(path)
             return FileIndex(
                 status=status,
                 on_disk=on_disk,
@@ -338,11 +357,16 @@ class Sources:
                 indexed_at=row.indexed_at if row else None,
                 retry_count=row.retry_count if row else 0,
                 duplicate_of=duplicate_of,
+                pages=pages,
+                confidence=confidence,
+                languages=languages,
+                file_type=spec.id if spec is not None else None,
             )
 
         for entry in entries:
             row = rows.pop(entry.path, None)
-            status = _Sources.file_status(row, entry)
+            spec = self._file_types.for_path(entry.path)
+            status = _Sources.file_status(row, entry, spec is not None)
             files.append(
                 SourceFile(
                     path=entry.path,
@@ -350,7 +374,7 @@ class Sources:
                     name=entry.name,
                     size_bytes=entry.size_bytes,
                     modified_at=entry.modified_at,
-                    index=index_for(row, status, True),
+                    index=index_for(row, status, True, entry.path),
                 )
             )
         root = Path(source_path)
@@ -369,7 +393,7 @@ class Sources:
                     name=Path(gone.file_path).name,
                     size_bytes=gone.size_bytes,
                     modified_at=gone.modified_at,
-                    index=index_for(gone, FileStatus.REMOVED, False),
+                    index=index_for(gone, FileStatus.REMOVED, False, gone.file_path),
                 )
             )
         files.sort(key=lambda f: (f.relative_path.casefold(), f.relative_path))

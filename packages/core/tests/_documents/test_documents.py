@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select
 
 from vethuq._db import _Database, _Document, _DocumentIndex, _Source
-from vethuq._documents import _Documents, _FileTypes
+from vethuq._documents import _Documents
 from vethuq._sources import _Sources
 from vethuq.enums import FileStatus, SourceStatus
 
@@ -36,16 +36,6 @@ def source(session, folder):
 
 def add(session, source, name, size=1, modified="2026-01-01T00:00:00+00:00"):
     return _Documents.register(session, source, f"{source.path}/{name}", size, modified)
-
-
-class TestFileTypes:
-    @pytest.mark.parametrize("name", ["a.pdf", "A.PDF", "dir/x.Pdf"])
-    def test_pdf_is_supported(self, name):
-        assert _FileTypes.is_supported(name)
-
-    @pytest.mark.parametrize("name", ["a.txt", "a.png", "pdf", "a.pdf.bak", ""])
-    def test_everything_else_is_not(self, name):
-        assert not _FileTypes.is_supported(name)
 
 
 class TestRegister:

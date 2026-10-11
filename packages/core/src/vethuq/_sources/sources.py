@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from vethuq._db import _DocumentIndex, _Language, _Source, _SourceLanguage
-from vethuq._documents import _Documents, _FileTypes
+from vethuq._documents import _Documents
 from vethuq._errors import (
     _LanguageUnavailableError,
     _SourceAlreadyExistsError,
@@ -266,13 +266,16 @@ class _Sources:
         return list(session.scalars(statement))
 
     @staticmethod
-    def file_status(row: _DocumentIndex | None, entry: _FileEntry) -> FileStatus:
-        """Where a file on disk is in indexing, from its index row (None if it has none)."""
-        if not _FileTypes.is_supported(entry.path):
+    def file_status(row: _DocumentIndex | None, entry: _FileEntry, supported: bool) -> FileStatus:
+        """Where a file on disk is in indexing, from its index row (None if it has none).
+        `supported` is whether an installed add-on reads this kind of file."""
+        if not supported:
             return FileStatus.UNSUPPORTED
         if row is None or row.status is FileStatus.REMOVED:
             return FileStatus.PENDING  # not seen yet, or back after it was removed
         changed = row.size_bytes != entry.size_bytes or row.modified_at != entry.modified_at
+        if changed and row.status is FileStatus.UNSUPPORTED:
+            return FileStatus.PENDING  # it changed, so it will be looked at again
         if changed and row.status in (
             FileStatus.INDEXED,
             FileStatus.ERROR,

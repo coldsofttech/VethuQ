@@ -12,7 +12,16 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _Document, _DocumentIndex, _Source
+from vethuq._db import (
+    _Document,
+    _DocumentIndex,
+    _DocumentLanguage,
+    _IndexRun,
+    _Language,
+    _PdfPage,
+    _Source,
+)
+from vethuq._db.values import _PassStatus
 from vethuq.enums import FileStatus, SourceStatus
 
 
@@ -71,11 +80,53 @@ class _Documents:
         )
         return {document_id: (row_id, path) for document_id, row_id, path in rows}
 
+    @staticmethod
+    def page_facts(
+        session: Session, document_ids: set[int]
+    ) -> dict[int, tuple[int, float | None, list[str]]]:
+        """For each document: its page count, the average confidence of its pages, and the
+        languages it was read in."""
+        if not document_ids:
+            return {}
+        facts = {
+            document_id: (count, average)
+            for document_id, count, average in session.execute(
+                select(_PdfPage.document_id, func.count(), func.avg(_PdfPage.confidence))
+                .where(_PdfPage.document_id.in_(document_ids))
+                .group_by(_PdfPage.document_id)
+            )
+        }
+        languages: dict[int, list[str]] = {}
+        for document_id, code in session.execute(
+            select(_DocumentLanguage.document_id, _Language.language)
+            .join(_Language, _Language.id == _DocumentLanguage.language_id)
+            .where(
+                _DocumentLanguage.document_id.in_(document_ids),
+                _DocumentLanguage.status == _PassStatus.DONE,
+            )
+            .order_by(_DocumentLanguage.document_id, _Language.id)
+        ):
+            languages.setdefault(document_id, []).append(code)
+        return {
+            document_id: (
+                facts.get(document_id, (0, None))[0],
+                facts.get(document_id, (0, None))[1],
+                languages.get(document_id, []),
+            )
+            for document_id in document_ids
+        }
+
     # ----- writing --------------------------------------------------------------------------
 
     @staticmethod
     def register(
-        session: Session, source: _Source, file_path: str, size_bytes: int, modified_at: str
+        session: Session,
+        source: _Source,
+        file_path: str,
+        size_bytes: int,
+        modified_at: str,
+        *,
+        refresh: bool = True,
     ) -> _DocumentIndex:
         """Record that a source holds this file, as it is now. Safe to repeat.
 
@@ -99,11 +150,14 @@ class _Documents:
             changed = row.size_bytes != size_bytes or row.modified_at != modified_at
             if row.status is FileStatus.REMOVED:
                 row.status, row.removed_at = FileStatus.PENDING, None
+            elif changed and row.status is FileStatus.UNSUPPORTED:
+                row.status, row.error_message = FileStatus.PENDING, None
             elif changed and row.status in (*_Documents.DONE, FileStatus.PROCESSING):
                 row.status = FileStatus.MODIFIED
             row.size_bytes, row.modified_at = size_bytes, modified_at
         session.flush()
-        _Documents.refresh_source(session, source.id)
+        if refresh:
+            _Documents.refresh_source(session, source.id)
         return row
 
     @staticmethod
@@ -113,8 +167,9 @@ class _Documents:
         _Documents._changed(session, row)
 
     @staticmethod
-    def finish(session: Session, row: _DocumentIndex, sha256: str) -> None:
+    def finish(session: Session, row: _DocumentIndex, sha256: str) -> _Document:
         """The file is indexed. Files with the same content share one document."""
+        previous = row.document_id
         document = session.scalars(select(_Document).where(_Document.sha256 == sha256)).first()
         if document is None:
             document = _Document(sha256=sha256, created_at=_Documents._now())
@@ -124,6 +179,17 @@ class _Documents:
         row.document_id, row.sha256 = document.id, sha256
         row.status, row.error_message = FileStatus.INDEXED, None
         row.completed_at = row.indexed_at = now
+        _Documents._changed(session, row)
+        if previous is not None and previous != document.id:
+            _Documents.drop_orphans(session)
+        return document
+
+    @staticmethod
+    def mark_unsupported(session: Session, row: _DocumentIndex, message: str) -> None:
+        """The file can't be indexed as it is (for example it needs a password). It is looked at
+        again if it changes."""
+        row.status, row.error_message = FileStatus.UNSUPPORTED, message
+        row.completed_at = _Documents._now()
         _Documents._changed(session, row)
 
     @staticmethod
@@ -187,10 +253,18 @@ class _Documents:
 
     @staticmethod
     def purge_source(session: Session, source_id: int) -> None:
-        """Delete a source's file rows, and the documents no file refers to any more."""
+        """Delete a source's index runs and file rows, and the documents no file refers to any
+        more."""
+        for run in session.scalars(select(_IndexRun).where(_IndexRun.source_id == source_id)):
+            session.delete(run)
         for row in _Documents.rows(session, source_id):
             session.delete(row)
         session.flush()
+        _Documents.drop_orphans(session)
+
+    @staticmethod
+    def drop_orphans(session: Session) -> None:
+        """Delete the documents no file refers to any more, with their pages."""
         orphans = select(_Document).where(
             ~select(_DocumentIndex.id).where(_DocumentIndex.document_id == _Document.id).exists()
         )

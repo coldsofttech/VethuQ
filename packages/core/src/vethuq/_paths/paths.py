@@ -39,6 +39,7 @@ class _Paths:
     RUN_DIRNAME = "run"
     LOGS_DIRNAME = "logs"
     POLICY_DIRNAME = "policy"
+    MODELS_DIRNAME = "models"
 
     ENV_VAR = "VETHUQ_HOME"
     LOCATION_FILENAME = "db.json"
@@ -260,6 +261,14 @@ class _Paths:
     def policy_dir(db_path: Path, *, create: bool = True) -> Path:
         """Folder for the cached policy and its state; created on demand unless not `create`."""
         path = _Paths.data_root(db_path) / _Paths.POLICY_DIRNAME
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def models_dir(db_path: Path, *, create: bool = True) -> Path:
+        """Folder for the OCR models; created on demand unless not `create`."""
+        path = _Paths.data_root(db_path) / _Paths.MODELS_DIRNAME
         if create:
             path.mkdir(parents=True, exist_ok=True)
         return path
