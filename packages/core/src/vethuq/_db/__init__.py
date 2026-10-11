@@ -35,6 +35,7 @@ from vethuq._db.models import (
     _UsageDaily,
     _UsageFailure,
     _XmlPage,
+    _YamlPage,
 )
 from vethuq._db.schema import _Schema
 from vethuq._db.search_index import _SearchDdl
@@ -50,6 +51,7 @@ __all__ = [
     "_JsPage",
     "_JsonPage",
     "_XmlPage",
+    "_YamlPage",
     "_Database",
     "_Document",
     "_DocumentIndex",

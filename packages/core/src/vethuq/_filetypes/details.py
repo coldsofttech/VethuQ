@@ -17,6 +17,7 @@ from vethuq._db.models import (
     _MarkdownPage,
     _TxtPage,
     _XmlPage,
+    _YamlPage,
 )
 
 
@@ -34,6 +35,7 @@ class _PageDetails:
         "css": _CssPage,
         "js": _JsPage,
         "json": _JsonPage,
+        "yaml": _YamlPage,
     }
 
     @staticmethod

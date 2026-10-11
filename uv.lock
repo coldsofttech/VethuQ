@@ -2650,6 +2650,9 @@ dependencies = [
 deep-scan = [
     { name = "vethuq-bundle-deep-scan" },
 ]
+developer = [
+    { name = "vethuq-bundle-developer" },
+]
 github = [
     { name = "vethuq-addon-github" },
 ]
@@ -2691,10 +2694,11 @@ requires-dist = [
     { name = "vethuq-addon-txt", directory = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
     { name = "vethuq-bundle-deep-scan", marker = "extra == 'deep-scan'", directory = "../VethuQ-premium/packages/bundles/deep-scan" },
+    { name = "vethuq-bundle-developer", marker = "extra == 'developer'", directory = "../VethuQ-premium/packages/bundles/developer" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", directory = "../VethuQ-premium/packages/bundles/image" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", directory = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["deep-scan", "github", "images", "semantic", "web"]
+provides-extras = ["deep-scan", "developer", "github", "images", "semantic", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -3134,6 +3138,25 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-yaml"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/yaml" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "pyyaml" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
+
+[[package]]
 name = "vethuq-bundle-deep-scan"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/bundles/deep-scan" }
@@ -3148,6 +3171,21 @@ requires-dist = [
     { name = "vethuq-addon-ocr-deep", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" },
     { name = "vethuq-addon-ocr-moderate", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" },
     { name = "vethuq-addon-ocr-quick", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" },
+]
+
+[[package]]
+name = "vethuq-bundle-developer"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/bundles/developer" }
+dependencies = [
+    { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-yaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-yaml", editable = "../VethuQ-premium/packages/add-ons/file-types/yaml" },
 ]
 
 [[package]]

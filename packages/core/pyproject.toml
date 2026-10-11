@@ -42,6 +42,8 @@ images = ["vethuq-bundle-image~=0.1"]
 deep-scan = ["vethuq-bundle-deep-scan~=0.1"]
 # The web file types (HTML, XML, CSS, JavaScript, JSON; licensed): `vethuq-bundle-web`.
 web = ["vethuq-bundle-web~=0.1"]
+# The developer file types (YAML, JSON; licensed): `vethuq-bundle-developer`.
+developer = ["vethuq-bundle-developer~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

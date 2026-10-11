@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (YAML)
+- `yaml_pages` table for the YAML file type; `vethuq[developer]` installs the licensed developer pack.
+
 ### Added (web file types)
 - Tables for the HTML, XML, CSS, JavaScript and JSON file types (`html_pages`, `xml_pages`, `css_pages`,
   `js_pages`, `json_pages`), filled from `ReadPage.details`; `vethuq[web]` installs the licensed web pack.

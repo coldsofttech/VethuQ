@@ -1,4 +1,4 @@
-"""The per-type tables of the web file types (html, xml, css, js, json) keep what a reader says."""
+"""The per-type tables of the licensed file types (html, xml, css, js, json, yaml)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 import tests.fake_pipeline as fp
 import vethuq
-from vethuq._db import _CssPage, _HtmlPage, _JsonPage, _JsPage, _PdfPage, _XmlPage
+from vethuq._db import _CssPage, _HtmlPage, _JsonPage, _JsPage, _PdfPage, _XmlPage, _YamlPage
 from vethuq._filetypes import _PageDetails
 
 CASES = [
@@ -30,6 +30,11 @@ CASES = [
     ("css", _CssPage, {"encoding": "utf-8", "rule_count": 3, "image_count": 1}),
     ("js", _JsPage, {"encoding": "utf-8", "line_count": 40, "comment_lines": 6}),
     ("json", _JsonPage, {"encoding": "utf-8", "kind": "object", "value_count": 9, "max_depth": 3}),
+    (
+        "yaml",
+        _YamlPage,
+        {"encoding": "utf-8", "document_count": 2, "value_count": 9, "max_depth": 3},
+    ),
 ]
 
 

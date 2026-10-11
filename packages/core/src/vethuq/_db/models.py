@@ -348,6 +348,20 @@ class _JsonPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _YamlPage(_Base):
+    """What the YAML type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "yaml_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # `---` documents
+    value_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # leaves flattened
+    max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class _PdfPagePhase(_Base):
     """A deeper OCR phase (`moderate`, `deep`) read on a page in one language: the angles it read.
     The quick read of a page is `pdf_pages_quick`."""

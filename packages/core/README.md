@@ -689,6 +689,10 @@ client.index.history(
 
 HTML (`.html`, `.htm`, `.xhtml`), XML (`.xml`, `.xsd`, `.xsl`, `.xslt`, `.rss`, `.atom`), CSS, JavaScript (`.js`, `.mjs`, `.cjs`) and JSON come from licensed add-ons (`vethuq-addon-html`, `-xml`, `-css`, `-js`, `-json`), not installed with VethuQ: `pip install vethuq[web]` installs the web pack bundle (`vethuq-bundle-web`). They are read straight from disk, never OCR'd and never charged for. Until a licence is installed (`Html(client).set_licence(token)`; one web pack licence unlocks all five) the types are listed in `client.file_types` as unavailable with the reason and their files are not indexed; they are picked up as newly readable once it is. Each type keeps its own facts in a table beside `pdf_pages`: `html_pages` (encoding, title, lang, link and local image counts), `xml_pages` (root, element and attribute counts, whether it was well formed), `css_pages` (rules, local images), `js_pages` (lines, comment lines) and `json_pages` (kind, values, depth). HTML and CSS point at the local pictures they use, which the moderate OCR phase reads.
 
+### Developer file types (licensed)
+
+YAML (`.yaml`, `.yml`) comes from the licensed `vethuq-addon-yaml`, which `pip install vethuq[developer]` installs with JSON in the developer pack bundle (`vethuq-bundle-developer`; JSON is also in the web pack). Every document of a YAML stream is read with the safe loader and flattened into `path: value` lines (`server.ports[0]: 8080`); `on`, `off`, `yes` and `no` stay words, and an alias bomb is refused. Its table is `yaml_pages` (encoding, document, value and depth counts). Licensing works as for the web file types: one developer pack licence unlocks both.
+
 ### Formatting
 
 `vethuq.formatting.Formatting` has the small formatters front ends and reports share: `size(bytes)` (`1.5 KB`), `seconds(s)` (`2.5s`), `duration(s)` (`3m 5s`), `timestamp(iso)` (local time, `2026-10-04 12:30:05`) and `short_timestamp(iso)` (`4 Oct 2026 12:30`). A missing value renders as `-`. HTML exports use it for file sizes.
