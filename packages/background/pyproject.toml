@@ -1,0 +1,43 @@
+[project]
+name = "vethuq-background"
+dynamic = ["version"]
+description = "VethuQ background indexing service: works the index queue, installed as a systemd user unit or a Windows service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "vethuq",
+    "vethuq-cli",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+# Needed to install and run the Windows service (`pip install vethuq-background[windows]`).
+windows = ["pywin32>=306; sys_platform == 'win32'"]
+
+[project.scripts]
+vethuq-background = "vethuq_background.host:main"
+
+# `vethuq background ...` appears in the vethuq command line when this package is installed.
+[project.entry-points."vethuq.cli"]
+background = "vethuq_background.cli:app"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_background"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# This package lives in a subdirectory of the repo, not at its root.
+root = "../.."
+# Released on its own with tags `background-vX.Y.Z` (or `-dev.N`).
+tag_regex = "^background-v(?P<version>\\d+\\.\\d+\\.\\d+(-dev\\.\\d+)?)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "background-v*"]
+
+[tool.uv.sources]
+vethuq = { workspace = true }
+vethuq-cli = { workspace = true }

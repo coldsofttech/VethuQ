@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import typer
@@ -60,6 +61,23 @@ def _main(
     raise typer.Exit()
 
 
+def _mount_plugins(app: typer.Typer) -> None:
+    """Commands other packages add: an entry point in the `vethuq.cli` group, named for the command
+    group, that is (or returns) a typer app. A plugin that cannot load is skipped with a warning."""
+    taken = {g.name for g in app.registered_groups}
+    for point in entry_points(group="vethuq.cli"):
+        if point.name in taken:
+            continue
+        try:
+            plugin = point.load()
+            sub = plugin() if callable(plugin) and not isinstance(plugin, typer.Typer) else plugin
+            app.add_typer(sub, name=point.name)
+        except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the CLI
+            error_console.print(
+                f"Warning: commands '{point.name}' skipped ({exc}).", style=Theme.WARN
+            )
+
+
 def build_app() -> typer.Typer:
     """The whole command tree: the built-in groups, the settings hierarchy (it lists the installed
     engines and add-ons) and the commands installed add-ons describe."""
@@ -70,6 +88,7 @@ def build_app() -> typer.Typer:
     commands.register(app)
     client = State.client()
     app.add_typer(settings.build(client), name="settings")
+    _mount_plugins(app)
     try:
         addons.mount(app, client.addons.cli())
     except Exception as exc:  # noqa: BLE001 - never block the built-in commands

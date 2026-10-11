@@ -41,4 +41,6 @@ An installed add-on may add commands (`Addon.cli()`, add-on API 0.11.0): `vethuq
 `vethuq autoscale licence set TOKEN`, `vethuq telugu licence show` ... They appear only while the
 add-on is installed. `vethuq addons list` shows what is installed.
 
+`vethuq index submit` and `vethuq index queue list|show|cancel` follow queued requests. With `vethuq-background` installed, `vethuq background install|start|stop|status ...` appears (packages add commands through the `vethuq.cli` entry-point group), and while its service runs, `index run|restart|reindex` queue their work (`--one-off` runs one here).
+
 Errors print `Error: ...` and `What to do: ...` and exit with the error's own code.

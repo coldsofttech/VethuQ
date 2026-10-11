@@ -67,3 +67,11 @@ class SearchQueryError(SearchError):
 class DatabaseIntegrityError(IndexingError, CorruptDatabaseError):
     """The database failed its integrity check when a run started after an earlier run had been
     left behind by a process that ended. Nothing was changed; repair or restore the database."""
+
+
+class IndexJobNotFoundError(IndexingError):
+    """There is no queued index request with that id."""
+
+
+class IndexJobStateError(IndexingError):
+    """The request is not in a state that allows that (only a queued request can be cancelled)."""

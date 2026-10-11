@@ -16,6 +16,7 @@ __all__ = [
     "StatsGroupBy",
     "StatsSortBy",
     "IndexRunSortBy",
+    "IndexJobStatus",
     "IndexRunStatus",
     "IntegrityCheckMode",
     "LogComponent",
@@ -83,6 +84,16 @@ class SourceSortBy(StrEnum):
     SOURCE_TYPE = "source_type"
     ADDED_AT = "added_at"
     LAST_SCANNED_AT = "last_scanned_at"
+
+
+class IndexJobStatus(StrEnum):
+    """Where a queued index request is."""
+
+    QUEUED = "queued"  # waiting for a worker (the background service)
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"  # taken out before it started, or its run was stopped
 
 
 class IndexRunStatus(StrEnum):

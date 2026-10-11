@@ -102,10 +102,36 @@ Workers = Annotated[str, typer.Option("--workers", help="auto, or 0 to 8.")]
 Tier = Annotated[str, typer.Option("--tier", help="local, github, hybrid ...")]
 Wait = Annotated[bool, typer.Option("--wait/--no-wait", help="Wait for remote jobs.")]
 Timeout = Annotated[float, typer.Option("--timeout", help="Minutes to wait for remote jobs.")]
+OneOff = Annotated[
+    bool, typer.Option("--one-off", help="Run it here, even if a background service is running.")
+]
 
 
 def _workers(value: str | None) -> int | str | None:
     return None if value is None else int(value) if value.isdigit() else value
+
+
+def _queued(mode: str, target, one_off: bool, workers, tier, wait, timeout, language) -> bool:
+    """With a background service running for this data folder, ask it to do the work and say so
+    (True); otherwise, or with `--one-off`, the caller runs it itself (False)."""
+    if one_off or not client().index.queue.service_running():
+        return False
+    job = client().index.queue.submit(
+        target,
+        mode=mode,
+        workers=_workers(workers),
+        tier=tier,
+        wait=wait,
+        timeout=timeout,
+        languages=language or None,
+    )
+    say(
+        f"Queued request {job.id} for the background service. "
+        "Follow it with: vethuq index queue show " + str(job.id),
+        style=Theme.OK,
+        data=job,
+    )
+    return True
 
 
 def _run_report(run) -> None:
@@ -124,8 +150,13 @@ def index_run(
     wait: Wait = None,
     timeout: Timeout = None,
     language: Languages = None,
+    one_off: OneOff = False,
 ) -> None:
     """Index new, modified and failed files."""
+    if _queued(
+        "run", _ident(target) if target else None, one_off, workers, tier, wait, timeout, language
+    ):
+        return
     _run_report(
         client().index.run(
             _ident(target) if target else None,
@@ -146,8 +177,20 @@ def index_restart(
     wait: Wait = None,
     timeout: Timeout = None,
     language: Languages = None,
+    one_off: OneOff = False,
 ) -> None:
     """Index only the files that failed."""
+    if _queued(
+        "restart",
+        _ident(target) if target else None,
+        one_off,
+        workers,
+        tier,
+        wait,
+        timeout,
+        language,
+    ):
+        return
     _run_report(
         client().index.restart(
             _ident(target) if target else None,
@@ -166,9 +209,15 @@ index_app.add_typer(reindex_app, name="reindex")
 
 @reindex_app.command("source")
 def reindex_source(
-    source: str, workers: Workers = None, tier: Tier = None, language: Languages = None
+    source: str,
+    workers: Workers = None,
+    tier: Tier = None,
+    language: Languages = None,
+    one_off: OneOff = False,
 ) -> None:
     """Read every file of a source again."""
+    if _queued("reindex", _ident(source), one_off, workers, tier, None, None, language):
+        return
     _run_report(
         client().index.reindex(
             _ident(source), workers=_workers(workers), tier=tier, languages=language or None
@@ -178,14 +227,69 @@ def reindex_source(
 
 @reindex_app.command("file")
 def reindex_file(
-    file: str, workers: Workers = None, tier: Tier = None, language: Languages = None
+    file: str,
+    workers: Workers = None,
+    tier: Tier = None,
+    language: Languages = None,
+    one_off: OneOff = False,
 ) -> None:
     """Read one file again (by path or file id)."""
+    if _queued("file", _ident(file), one_off, workers, tier, None, None, language):
+        return
     _run_report(
         client().index.reindex_file(
             _ident(file), workers=_workers(workers), tier=tier, languages=language or None
         )
     )
+
+
+@index_app.command("submit")
+def index_submit(
+    target: str = typer.Argument(None, help="A source id or path, or a file; all when omitted."),
+    mode: str = typer.Option("run", "--mode", help="run, restart, reindex or file."),
+    workers: Workers = None,
+    tier: Tier = None,
+    language: Languages = None,
+) -> None:
+    """Queue indexing for a background worker, whether or not one is running yet."""
+    job = client().index.queue.submit(
+        _ident(target) if target else None,
+        mode=mode,
+        workers=_workers(workers),
+        tier=tier,
+        languages=language or None,
+    )
+    say(f"Queued request {job.id}.", style=Theme.OK, data=job)
+
+
+queue_app = typer.Typer(help="Requests waiting for a background worker.", no_args_is_help=True)
+index_app.add_typer(queue_app, name="queue")
+JOB_COLUMNS = ["id", "mode", "target", "status", "run_id", "requested_at", "error"]
+
+
+@queue_app.command("list")
+def queue_list(
+    status: str = typer.Option(None, "--status", help="queued, running, completed ..."),
+    limit: int = typer.Option(20, "--limit"),
+) -> None:
+    """The requests, newest first."""
+    table(
+        client().index.queue.list(status, limit),
+        JOB_COLUMNS,
+        empty="No index requests.",
+    )
+
+
+@queue_app.command("show")
+def queue_show(job: int) -> None:
+    """One request."""
+    facts(client().index.queue.get(job))
+
+
+@queue_app.command("cancel")
+def queue_cancel(job: int) -> None:
+    """Take a waiting request out."""
+    say(f"Cancelled request {client().index.queue.cancel(job).id}.", style=Theme.OK)
 
 
 @index_app.command("status")

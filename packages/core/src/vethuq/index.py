@@ -22,10 +22,13 @@ from vethuq._indexing import _Indexer, _Runs
 from vethuq._indexing.eta import _Eta, _EtaResult
 from vethuq._metrics import _Metrics
 from vethuq.enums import IndexRunSortBy, IndexRunStatus, RemoteJobStatus, SortOrder
+from vethuq.jobs import IndexJob, IndexQueue
 
 __all__ = [
     "Index",
     "IndexEta",
+    "IndexJob",
+    "IndexQueue",
     "IndexRun",
     "IndexRunSortBy",
     "IndexRunStatus",
@@ -170,6 +173,7 @@ class IndexStatus:
     workers_active: int = 0
     deepened_pages: int = 0  # pages the deeper phases have read in this run
     unsupported_files: int = 0  # files under the run's target that no add-on reads
+    queued_jobs: int = 0  # requests waiting for a worker (see `index.queue`)
     heartbeat_at: str | None = None  # when the running run last said it was still going (UTC)
     # The run's process is alive but has been quiet for two minutes or more: it is hung. Stop it
     # from the outside (kill the process), then `clear_stale()`.
@@ -203,6 +207,7 @@ class IndexStatus:
             "workers_active": self.workers_active,
             "deepened_pages": self.deepened_pages,
             "unsupported_files": self.unsupported_files,
+            "queued_jobs": self.queued_jobs,
             "heartbeat_at": self.heartbeat_at,
             "stalled": self.stalled,
             "eta": self.eta.to_dict(),
@@ -263,6 +268,14 @@ class Index:
         self._database = database
         self._indexer = indexer
         self._metrics = metrics
+        self._queue: IndexQueue | None = None
+
+    @property
+    def queue(self) -> IndexQueue:
+        """Requests to index that wait for a worker such as the background service."""
+        if self._queue is None:
+            self._queue = IndexQueue(self._database, self)
+        return self._queue
 
     def run(
         self,
@@ -497,6 +510,7 @@ class Index:
                 workers_active=model.workers_active if active else 0,
                 deepened_pages=model.deepened_pages,
                 unsupported_files=model.unsupported_files,
+                queued_jobs=self.queue.queued(),
                 heartbeat_at=model.heartbeat_at if active else None,
                 stalled=active
                 and _Runs.stalled(model, limit=self._indexer.STALE_HEARTBEAT_SECONDS),

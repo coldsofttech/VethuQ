@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from vethuq_cli.state import State
+
 
 def test_help_lists_the_groups(run):
     result = run("--help")
@@ -113,3 +115,34 @@ class TestOthers:
     def test_a_vethuq_error_is_reported_cleanly(self, run):
         result = run("source", "remove", "99")
         assert result.exit_code != 0
+
+
+class TestQueueAndService:
+    def test_submit_list_show_cancel(self, run, run_json, docs):
+        run("source", "add", str(docs))
+        assert "Queued request 1" in run("index", "submit").output
+        assert run_json("index", "queue", "list")[0]["status"] == "queued"
+        assert run_json("index", "queue", "show", "1")["mode"] == "run"
+        assert "Cancelled request 1" in run("index", "queue", "cancel", "1").output
+        assert run_json("index", "queue", "list", "--status", "cancelled")[0]["id"] == 1
+
+    def test_an_unknown_request_is_a_clean_error(self, run):
+        assert run("index", "queue", "show", "9").exit_code != 0
+
+    def test_with_a_service_running_index_run_queues_its_work(self, run, run_json, docs):
+        run("source", "add", str(docs))
+        State.client().index.queue.announce_service()
+        out = run("index", "run").output
+        assert "Queued request 1 for the background service" in out
+        assert run_json("index", "history") == []
+        assert run_json("index", "queue", "list")[0]["mode"] == "run"
+
+    def test_one_off_runs_here_even_with_a_service(self, run, run_json, docs):
+        run("source", "add", str(docs))
+        State.client().index.queue.announce_service()
+        assert "completed" in run("index", "run", "--one-off").output
+        assert run_json("index", "queue", "list") == []
+
+    def test_without_a_service_nothing_is_queued(self, run, docs):
+        run("source", "add", str(docs))
+        assert "completed" in run("index", "run").output

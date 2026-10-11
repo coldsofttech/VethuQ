@@ -522,6 +522,28 @@ class _DocumentLanguage(_Base):
     candidates: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
 
 
+class _IndexJob(_Base):
+    """A request to index, waiting for a worker (the background service) or done."""
+
+    __tablename__ = "index_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)  # a source id/path, a file
+    mode: Mapped[str] = mapped_column(Text, nullable=False, default="run")
+    languages: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
+    workers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tier: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wait: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    timeout: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued", index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    requested_at: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    finished_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class _IndexRun(_Base):
     """One run of the indexer. A run of one source (or one file of it) goes with that source."""
 

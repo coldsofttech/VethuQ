@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (index queue)
+- `index.queue`: `submit`, `list`, `get`, `cancel`, `claim_next`, `run_next`, `finish`, `reconcile`, `wait`, and the
+  service marker (`announce_service`, `clear_service`, `service_running`); `IndexJob`, `IndexJobStatus`,
+  `IndexJobNotFoundError`, `IndexJobStateError`; `IndexStatus.queued_jobs`. The `index_jobs` table.
+
 ### Added (command line support)
 - `client.addons.cli()`: the command groups installed add-ons describe (`Addon.cli()`, add-on API 0.11.0).
 - `DocumentReader.may_ocr` (add-on API): a run of files whose readers never OCR in the quick phase no longer

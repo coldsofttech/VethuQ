@@ -30,6 +30,14 @@ class _DatabaseIntegrityError(_IndexingError, errors.DatabaseIntegrityError):
     exit_code = 55
 
 
+class _IndexJobNotFoundError(_IndexingError, errors.IndexJobNotFoundError):
+    exit_code = 56
+
+
+class _IndexJobStateError(_IndexingError, errors.IndexJobStateError):
+    exit_code = 57
+
+
 class _CreditsError(_VethuQError, errors.CreditsError):
     exit_code = 60
 

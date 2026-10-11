@@ -701,6 +701,10 @@ Word (`.docx`, `.doc`), Excel (`.xlsx`, `.xls`), PowerPoint (`.pptx`, `.ppt`), R
 
 `client.addons.cli()` lists the command groups installed add-ons describe with `Addon.cli()` (add-on API 0.11.0); the `vethuq-cli` package mounts them as `vethuq <group> ...` and their settings under `vethuq settings addons <group> ...`. A file type's reader can say `may_ocr = False` (text read straight from the file): a run that only has such files never fetches the OCR models.
 
+### Queued requests and the background service
+
+`index.queue.submit(target, mode="run"|"restart"|"reindex"|"file", ...)` writes a request that a worker takes later; `list()`, `get()` and `cancel()` look after it (`IndexJob`, `IndexJobStatus`). A worker calls `claim_next()` / `run_next()`, which runs the oldest request with the same `index.run(...)` a person calls, closes it (`completed`, `failed`, `cancelled`) and records the run; a request a dead worker had taken is put back. A worker marks that it serves the data folder (`announce_service()`), so `service_running()` tells index commands to queue their work. `status().queued_jobs` counts the waiting ones. The `vethuq-background` package is such a worker: a systemd user unit or a Windows service.
+
 ### Run health, and rebuilding the search index
 
 A running run refreshes a heartbeat every few seconds. `index.status()` carries `heartbeat_at` and `stalled`: `stalled` is true when the run's process is alive but has been quiet for two minutes, i.e. it is hung (end the process from outside, then `index.clear_stale()`). A run that starts after another was left behind by a process that ended first runs a full database integrity check, whatever the integrity schedule says; a damaged database raises `DatabaseIntegrityError` (a `CorruptDatabaseError`) and nothing is changed. `search.rebuild()` rebuilds the search index from the stored page text (no file is read again). It raises `IndexAlreadyRunningError` while a run is going and returns a `SearchIndexRebuildResult` (`pages`, `seconds`, `ok`, `error`); a failure is in the result, not raised.
