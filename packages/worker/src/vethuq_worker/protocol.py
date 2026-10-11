@@ -13,31 +13,36 @@ from typing import Any
 
 import jsonschema
 
+from vethuq_addon_api import OcrResult
 from vethuq_worker.errors import JobError
 
-PROTOCOL = 1
-MAX_PAGES = 200
-MAX_BYTES = 200 * 1024 * 1024
 
+class Protocol:
+    """The protocol's version, its caps and its schemas."""
 
-def schema(name: str) -> dict[str, Any]:
-    """`manifest` or `result`."""
-    text = resources.files("vethuq_worker").joinpath(f"schemas/{name}.schema.json").read_text()
-    return json.loads(text)
+    VERSION = 1
+    MAX_PAGES = 200
+    MAX_BYTES = 200 * 1024 * 1024
 
+    @staticmethod
+    def schema(name: str) -> dict[str, Any]:
+        """`manifest` or `result`."""
+        text = resources.files("vethuq_worker").joinpath(f"schemas/{name}.schema.json").read_text()
+        return json.loads(text)
 
-def validate(name: str, document: Any) -> None:
-    """Raise `JobError` if `document` isn't a valid manifest/result of this protocol."""
-    if isinstance(document, dict) and document.get("protocol") not in (None, PROTOCOL):
-        raise JobError(
-            "unsupported_protocol", f"Protocol {document.get('protocol')!r} isn't supported."
-        )
-    code = "bad_manifest" if name == "manifest" else "bad_result"
-    try:
-        jsonschema.validate(document, schema(name))
-    except jsonschema.ValidationError as error:
-        where = "/".join(str(part) for part in error.absolute_path) or "document"
-        raise JobError(code, f"Invalid {name} at {where}: {error.message}") from None
+    @classmethod
+    def validate(cls, name: str, document: Any) -> None:
+        """Raise `JobError` if `document` isn't a valid manifest/result of this protocol."""
+        if isinstance(document, dict) and document.get("protocol") not in (None, cls.VERSION):
+            raise JobError(
+                "unsupported_protocol", f"Protocol {document.get('protocol')!r} isn't supported."
+            )
+        code = "bad_manifest" if name == "manifest" else "bad_result"
+        try:
+            jsonschema.validate(document, cls.schema(name))
+        except jsonschema.ValidationError as error:
+            where = "/".join(str(part) for part in error.absolute_path) or "document"
+            raise JobError(code, f"Invalid {name} at {where}: {error.message}") from None
 
 
 @dataclass(frozen=True)
@@ -53,15 +58,15 @@ class PageSpec:
 class Manifest:
     job_id: str
     pages: tuple[PageSpec, ...]
-    max_pages: int = MAX_PAGES
-    max_bytes: int = MAX_BYTES
+    max_pages: int = Protocol.MAX_PAGES
+    max_bytes: int = Protocol.MAX_BYTES
     addon_settings: dict[str, dict[str, str]] = field(default_factory=dict)
     created: str = ""
     client: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "protocol": PROTOCOL,
+            "protocol": Protocol.VERSION,
             "job_id": self.job_id,
             "created": self.created,
             "client": self.client,
@@ -81,7 +86,7 @@ class Manifest:
 
     @staticmethod
     def from_dict(document: Any) -> Manifest:
-        validate("manifest", document)
+        Protocol.validate("manifest", document)
         return Manifest(
             job_id=document["job_id"],
             pages=tuple(
@@ -164,7 +169,7 @@ class JobResult:
 
     def to_dict(self) -> dict[str, Any]:
         document: dict[str, Any] = {
-            "protocol": PROTOCOL,
+            "protocol": Protocol.VERSION,
             "job_id": self.job_id,
             "status": self.status,
             "worker": self.worker,
@@ -175,9 +180,25 @@ class JobResult:
             document["error"] = {"code": self.error_code, "message": self.error_message}
         return document
 
+    def to_ocr_results(self) -> dict[str, OcrResult]:
+        """The pages that were read, by request key (failed pages are left out)."""
+        return {
+            page.key: OcrResult(
+                text=page.text,
+                confidence=page.confidence,
+                engine=page.engine,
+                language=page.language,
+                image_width=page.image_width,
+                image_height=page.image_height,
+                lines=page.lines,
+            )
+            for page in self.pages
+            if page.ok
+        }
+
     @staticmethod
     def from_dict(document: Any) -> JobResult:
-        validate("result", document)
+        Protocol.validate("result", document)
         error = document.get("error") or {}
         return JobResult(
             job_id=document["job_id"],

@@ -35,8 +35,11 @@ class TestDockerfile:
 
     def test_the_addons_the_workflow_builds_are_installed(self):
         installed = set(re.findall(r"vethuq-addon-[a-z-]+", DOCKERFILE))
+        # A folder is named after the add-on, less the prefix its group drops (`ocr/modes/quick`
+        # is `ocr-quick`).
         built = {
-            f"vethuq-addon-{a.rsplit('/', 1)[-1]}" for a in BUILD["env"]["PREMIUM_ADDONS"].split()
+            "vethuq-addon-" + ("ocr-" if a.startswith("ocr/modes/") else "") + a.rsplit("/", 1)[-1]
+            for a in BUILD["env"]["PREMIUM_ADDONS"].split()
         }
         assert installed == built
 

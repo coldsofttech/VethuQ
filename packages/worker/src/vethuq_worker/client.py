@@ -7,19 +7,12 @@ import secrets
 from datetime import UTC, datetime
 from typing import Any
 
-from vethuq_addon_api import OcrRequest, OcrResult
-from vethuq_worker import container, crypto, images
+from vethuq_addon_api import OcrRequest
+from vethuq_worker.container import Container
+from vethuq_worker.crypto import JobCrypto
 from vethuq_worker.errors import JobError
-from vethuq_worker.protocol import (
-    MAX_BYTES,
-    MAX_PAGES,
-    JobResult,
-    Manifest,
-    PageSpec,
-)
-
-PAYLOAD = "payload"
-RESULT = "result"
+from vethuq_worker.images import Images
+from vethuq_worker.protocol import JobResult, Manifest, PageSpec, Protocol
 
 
 class JobBuilder:
@@ -39,16 +32,15 @@ class JobBuilder:
         *,
         job_id: str | None = None,
         addon_settings: dict[str, dict[str, str]] | None = None,
-        max_pages: int = MAX_PAGES,
-        max_bytes: int = MAX_BYTES,
+        max_pages: int = Protocol.MAX_PAGES,
+        max_bytes: int = Protocol.MAX_BYTES,
         client: str = "",
     ) -> None:
-        crypto.decode_key(master_key)
-        self._key = master_key
+        self._crypto = JobCrypto(master_key)
         self.job_id = job_id or secrets.token_urlsafe(12)
         self._addon_settings = addon_settings or {}
-        self._max_pages = min(max_pages, MAX_PAGES)
-        self._max_bytes = min(max_bytes, MAX_BYTES)
+        self._max_pages = min(max_pages, Protocol.MAX_PAGES)
+        self._max_bytes = min(max_bytes, Protocol.MAX_BYTES)
         self._client = client
         self._pages: list[PageSpec] = []
         self._images: dict[str, bytes] = {}
@@ -67,7 +59,7 @@ class JobBuilder:
         return len(self._pages) < self._max_pages and self._bytes + image_bytes <= self._max_bytes
 
     def add(self, request: OcrRequest) -> None:
-        png = images.to_png(request.image)
+        png = Images.to_png(request.image)
         if len(self._pages) >= self._max_pages:
             raise JobError("too_many_pages", f"A job holds at most {self._max_pages} pages.")
         if self._bytes + len(png) > self._max_bytes:
@@ -98,33 +90,23 @@ class JobBuilder:
         manifest = self.manifest()
         entries = {"manifest.json": json.dumps(manifest.to_dict()).encode()}
         entries.update(self._images)
-        return crypto.seal(self._key, PAYLOAD, self.job_id, container.pack(entries))
+        return self._crypto.seal(JobCrypto.PAYLOAD, self.job_id, Container.pack(entries))
 
 
-def open_result(master_key: str, job_id: str, data: bytes) -> JobResult:
-    """Decrypt and check a result file. Raises `JobError` for a result that isn't this job's."""
-    try:
-        document: Any = json.loads(crypto.open_sealed(master_key, RESULT, job_id, data))
-    except ValueError as error:
-        raise JobError("bad_result", "The result isn't valid JSON.") from error
-    result = JobResult.from_dict(document)
-    if result.job_id != job_id:
-        raise JobError("bad_result", "The result belongs to another job.")
-    return result
+class ResultReader:
+    """Opens the sealed results of jobs built with one master key."""
 
+    def __init__(self, master_key: str) -> None:
+        self._crypto = JobCrypto(master_key)
 
-def to_ocr_results(result: JobResult) -> dict[str, OcrResult]:
-    """The pages that were read, by request key (failed pages are left out)."""
-    return {
-        page.key: OcrResult(
-            text=page.text,
-            confidence=page.confidence,
-            engine=page.engine,
-            language=page.language,
-            image_width=page.image_width,
-            image_height=page.image_height,
-            lines=page.lines,
-        )
-        for page in result.pages
-        if page.ok
-    }
+    def read(self, job_id: str, data: bytes) -> JobResult:
+        """Decrypt and check a result file. Raises `JobError` for a result that isn't this
+        job's."""
+        try:
+            document: Any = json.loads(self._crypto.open(JobCrypto.RESULT, job_id, data))
+        except ValueError as error:
+            raise JobError("bad_result", "The result isn't valid JSON.") from error
+        result = JobResult.from_dict(document)
+        if result.job_id != job_id:
+            raise JobError("bad_result", "The result belongs to another job.")
+        return result

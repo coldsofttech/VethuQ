@@ -17,7 +17,7 @@ images = ["pillow>=10", "numpy>=1.26"]
 run = ["VethuQ", "pillow>=10", "numpy>=1.26"]
 
 [project.scripts]
-vethuq-worker = "vethuq_worker.cli:main"
+vethuq-worker = "vethuq_worker.cli:WorkerCli.main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

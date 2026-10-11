@@ -131,8 +131,8 @@ jobs:
             -e VETHUQ_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 \
             -v "$RUNNER_TEMP/out:/out:ro" ${{ env.IMAGE }}:candidate -c "
           import os
-          from vethuq_worker import open_result
-          r = open_result(os.environ['VETHUQ_MASTER_KEY'], 'fixture-job-0001', open('/out/result.bin','rb').read())
+          from vethuq_worker import ResultReader
+          r = ResultReader(os.environ['VETHUQ_MASTER_KEY']).read('fixture-job-0001', open('/out/result.bin','rb').read())
           assert r.status == 'done' and len(r.pages) == 2, r.status
           print('smoke test ok')
           "

@@ -9,23 +9,25 @@ from worker_helpers import EN, TE, UNAVAILABLE, request
 from vethuq_addon_api.testing import FakeExecutor
 from vethuq_worker import (
     JobBuilder,
+    JobCrypto,
     JobError,
+    Manifest,
+    Protocol,
+    ResultReader,
     StaticEngine,
-    crypto,
-    generate_key,
-    open_result,
-    run_job,
-    to_ocr_results,
-    using,
+    Worker,
 )
-from vethuq_worker.protocol import MAX_PAGES, Manifest, validate
-from vethuq_worker.worker import PAYLOAD_FILE, RESULT_FILE
+from vethuq_worker.container import Container
 
-KEY = generate_key()
+PAYLOAD_FILE = Worker.PAYLOAD_FILE
+RESULT_FILE = Worker.RESULT_FILE
+KEY = JobCrypto.generate_key()
 
 
-def engine(executor=None, languages=(EN, TE, UNAVAILABLE)):
-    return using(StaticEngine(executor or FakeExecutor(default="read"), list(languages)))
+def worker(executor=None, languages=(EN, TE, UNAVAILABLE)):
+    return Worker.with_engine(
+        StaticEngine(executor or FakeExecutor(default="read"), list(languages))
+    )
 
 
 def send(tmp_path, builder, key=KEY):
@@ -41,8 +43,8 @@ class TestRoundTrip:
         builder.add(request("d1.l1.1:0"))
         builder.add(request("d1.l1.2:0", TE, phase="quick", size_factor=2.5))
         executor = FakeExecutor({"d1.l1.1:0": "first page", "d1.l1.2:0": "రెండవ"})
-        result = run_job(
-            builder.job_id, send(tmp_path, builder), tmp_path / "out", KEY, engine(executor)
+        result = worker(executor).run(
+            builder.job_id, send(tmp_path, builder), tmp_path / "out", KEY
         )
         assert result.status == "done"
         assert [r.key for r in executor.seen] == ["d1.l1.1:0", "d1.l1.2:0"]
@@ -51,9 +53,9 @@ class TestRoundTrip:
         assert executor.seen[0].image.shape == (30, 40, 3)
 
         sealed = (tmp_path / "out" / RESULT_FILE).read_bytes()
-        read = open_result(KEY, builder.job_id, sealed)
+        read = ResultReader(KEY).read(builder.job_id, sealed)
         assert read.status == "done"
-        found = to_ocr_results(read)
+        found = read.to_ocr_results()
         assert found["d1.l1.1:0"].text == "first page"
         assert found["d1.l1.2:0"].text == "రెండవ"
         assert found["d1.l1.1:0"].lines[0][0] == "first page"
@@ -69,7 +71,7 @@ class TestRoundTrip:
 
         builder = JobBuilder(KEY)
         builder.add(request("a", shade=7))
-        run_job(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY, engine(Spy()))
+        worker(Spy()).run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
         assert (seen[0] == 7).all()
 
     def test_the_payload_holds_no_readable_content(self, tmp_path):
@@ -86,7 +88,7 @@ class TestPartialAndFailures:
         builder.add(request("ok"))
         builder.add(request("gone", UNAVAILABLE))
         builder.add(request("missing-lang", type(EN)("zz", "Nope")))
-        result = run_job(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY, engine())
+        result = worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
         assert result.status == "partial"
         errors = {p.key: p.error_code for p in result.pages if not p.ok}
         assert errors == {"gone": "language_unavailable", "missing-lang": "language_unavailable"}
@@ -98,9 +100,7 @@ class TestPartialAndFailures:
 
         builder = JobBuilder(KEY)
         builder.add(request("a"))
-        result = run_job(
-            builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY, engine(Boom())
-        )
+        result = worker(Boom()).run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
         assert result.status == "failed"
         assert result.pages[0].error_code == "ocr_failed"
         assert "private text" not in json.dumps(result.to_dict())
@@ -113,7 +113,7 @@ class TestPartialAndFailures:
         builder = JobBuilder(KEY)
         builder.add(request("secret-key"))
         with caplog.at_level("DEBUG"):
-            run_job(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY, engine(Boom()))
+            worker(Boom()).run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
         assert "private text" not in caplog.text and "secret-key" not in caplog.text
 
 
@@ -122,45 +122,43 @@ class TestEnforcement:
         builder = JobBuilder(KEY)
         builder.add(request("a"))
         folder = send(tmp_path, builder)
-        other = generate_key()
-        result = run_job(builder.job_id, folder, tmp_path / "o", other, engine())
+        other = JobCrypto.generate_key()
+        result = worker().run(builder.job_id, folder, tmp_path / "o", other)
         assert result.status == "failed" and result.error_code == "bad_payload"
         with pytest.raises(JobError):  # sealed for the other key, so the owner can't open it
-            open_result(KEY, builder.job_id, (tmp_path / "o" / RESULT_FILE).read_bytes())
+            ResultReader(KEY).read(builder.job_id, (tmp_path / "o" / RESULT_FILE).read_bytes())
 
     def test_failures_are_sealed_for_the_client(self, tmp_path):
         folder = tmp_path / "in"
         folder.mkdir()
         (folder / PAYLOAD_FILE).write_bytes(b"garbage")
-        run_job("job-00000001", folder, tmp_path / "o", KEY, engine())
-        read = open_result(KEY, "job-00000001", (tmp_path / "o" / RESULT_FILE).read_bytes())
+        worker().run("job-00000001", folder, tmp_path / "o", KEY)
+        read = ResultReader(KEY).read("job-00000001", (tmp_path / "o" / RESULT_FILE).read_bytes())
         assert read.status == "failed" and read.error_code == "bad_payload"
 
     def test_missing_payload_is_a_failed_result(self, tmp_path):
         (tmp_path / "in").mkdir()
-        result = run_job("job-00000001", tmp_path / "in", tmp_path / "o", KEY, engine())
+        result = worker().run("job-00000001", tmp_path / "in", tmp_path / "o", KEY)
         assert result.status == "failed"
 
     def test_payload_for_another_job_id_is_refused(self, tmp_path):
         builder = JobBuilder(KEY)
         builder.add(request("a"))
-        result = run_job("other-job-id", send(tmp_path, builder), tmp_path / "o", KEY, engine())
+        result = worker().run("other-job-id", send(tmp_path, builder), tmp_path / "o", KEY)
         assert result.error_code == "bad_payload"
 
     def test_worker_caps_win_over_the_manifest(self, tmp_path):
-        builder = JobBuilder(KEY, max_pages=MAX_PAGES)
+        builder = JobBuilder(KEY, max_pages=Protocol.MAX_PAGES)
         builder.add(request("a"))
         builder.add(request("b"))
         manifest = builder.manifest().to_dict()
         manifest["limits"]["max_pages"] = 1  # the job itself asks for less
-        from vethuq_worker import container
-
         entries = {"manifest.json": json.dumps(manifest).encode()}
         entries.update(builder._images)
-        blob = crypto.seal(KEY, "payload", builder.job_id, container.pack(entries))
+        blob = JobCrypto(KEY).seal("payload", builder.job_id, Container.pack(entries))
         (tmp_path / "in").mkdir()
         (tmp_path / "in" / PAYLOAD_FILE).write_bytes(blob)
-        result = run_job(builder.job_id, tmp_path / "in", tmp_path / "o", KEY, engine())
+        result = worker().run(builder.job_id, tmp_path / "in", tmp_path / "o", KEY)
         assert result.error_code == "too_many_pages"
 
     def test_manifest_for_another_job_is_refused(self, tmp_path):
@@ -168,7 +166,7 @@ class TestEnforcement:
         builder.add(request("a"))
         folder = send(tmp_path, builder)
         # the payload was sealed for job-aaaaaaaa; asking for another id can't open it at all
-        result = run_job("job-bbbbbbbb", folder, tmp_path / "o", KEY, engine())
+        result = worker().run("job-bbbbbbbb", folder, tmp_path / "o", KEY)
         assert result.status == "failed"
 
     def test_unknown_protocol_is_refused(self, tmp_path):
@@ -176,17 +174,14 @@ class TestEnforcement:
         builder.add(request("a"))
         manifest = builder.manifest().to_dict()
         manifest["protocol"] = 2
-        from vethuq_worker import container
-
-        blob = crypto.seal(
-            KEY,
+        blob = JobCrypto(KEY).seal(
             "payload",
             builder.job_id,
-            container.pack({"manifest.json": json.dumps(manifest).encode(), **builder._images}),
+            Container.pack({"manifest.json": json.dumps(manifest).encode(), **builder._images}),
         )
         (tmp_path / "in").mkdir()
         (tmp_path / "in" / PAYLOAD_FILE).write_bytes(blob)
-        result = run_job(builder.job_id, tmp_path / "in", tmp_path / "o", KEY, engine())
+        result = worker().run(builder.job_id, tmp_path / "in", tmp_path / "o", KEY)
         assert result.error_code == "unsupported_protocol"
 
     def test_unknown_manifest_fields_are_ignored(self):
@@ -215,7 +210,7 @@ class TestBuilder:
 
     def test_caps_never_exceed_the_protocol_limits(self):
         builder = JobBuilder(KEY, max_pages=10_000)
-        assert builder.manifest().max_pages == MAX_PAGES
+        assert builder.manifest().max_pages == Protocol.MAX_PAGES
 
     def test_duplicate_keys_and_empty_jobs_are_refused(self):
         builder = JobBuilder(KEY)
@@ -248,25 +243,27 @@ class TestResult:
     def test_result_for_another_job_is_refused(self, tmp_path):
         builder = JobBuilder(KEY)
         builder.add(request("a"))
-        run_job(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY, engine())
+        worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
         sealed = (tmp_path / "o" / RESULT_FILE).read_bytes()
         with pytest.raises(JobError):
-            open_result(KEY, "someone-elses-job", sealed)
+            ResultReader(KEY).read("someone-elses-job", sealed)
 
     def test_result_that_breaks_the_schema_is_refused(self):
-        sealed = crypto.seal(KEY, "result", "job-00000001", json.dumps({"protocol": 1}).encode())
+        sealed = JobCrypto(KEY).seal("result", "job-00000001", json.dumps({"protocol": 1}).encode())
         with pytest.raises(JobError) as caught:
-            open_result(KEY, "job-00000001", sealed)
+            ResultReader(KEY).read("job-00000001", sealed)
         assert caught.value.code == "bad_result"
 
     def test_result_with_an_unknown_protocol_is_refused(self):
         document = {"protocol": 9, "job_id": "job-00000001", "status": "done", "pages": []}
-        sealed = crypto.seal(KEY, "result", "job-00000001", json.dumps(document).encode())
+        sealed = JobCrypto(KEY).seal("result", "job-00000001", json.dumps(document).encode())
         with pytest.raises(JobError) as caught:
-            open_result(KEY, "job-00000001", sealed)
+            ResultReader(KEY).read("job-00000001", sealed)
         assert caught.value.code == "unsupported_protocol"
 
     def test_validate_names_the_failing_place(self):
         with pytest.raises(JobError) as caught:
-            validate("manifest", {"protocol": 1, "job_id": "short", "limits": {}, "pages": []})
+            Protocol.validate(
+                "manifest", {"protocol": 1, "job_id": "short", "limits": {}, "pages": []}
+            )
         assert caught.value.code == "bad_manifest"

@@ -13,7 +13,7 @@ import numpy
 
 from vethuq_addon_api import LanguageSpec, OcrRequest
 from vethuq_addon_api.testing import FakeExecutor
-from vethuq_worker import JobBuilder, StaticEngine, run_job, using
+from vethuq_worker import JobBuilder, StaticEngine, Worker
 
 ROOT = Path(__file__).resolve().parents[3] / "github" / "protocol" / "v1"
 KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
@@ -33,9 +33,8 @@ def main() -> None:
     manifest["created"] = "2026-01-01T00:00:00+00:00"
     (ROOT / "examples" / "manifest.example.json").write_text(json.dumps(manifest, indent=2) + "\n")
     executor = FakeExecutor({"d1.l1.1:0": "Hello world", "d1.l1.2:0": "Second page"})
-    result = run_job(
-        JOB_ID, payload, ROOT / "fixtures" / "out", KEY, using(StaticEngine(executor, [EN]))
-    )
+    worker = Worker.with_engine(StaticEngine(executor, [EN]))
+    result = worker.run(JOB_ID, payload, ROOT / "fixtures" / "out", KEY)
     document = result.to_dict()
     document["billable_seconds"] = 0.1
     for page in document["pages"]:
