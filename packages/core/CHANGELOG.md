@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (formatting)
+- `vethuq.formatting.Formatting`: sizes, durations and timestamps for front ends; exports use it for file sizes.
+
 ### Added (settings)
 - `settings.search.get_option/set_option/reset_option(engine, name)`: saved defaults for any engine's
   declared options (fuzzy threshold, semantic limit, proximity distance, ...), applied to a search

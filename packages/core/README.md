@@ -685,6 +685,10 @@ client.index.history(
 
 `client.sources.list_files(source, detailed=True)` adds to each file's `FileIndex` the `pages` read, their average `confidence` (0 to 1), the `languages` it was read in and its `file_type`.
 
+### Formatting
+
+`vethuq.formatting.Formatting` has the small formatters front ends and reports share: `size(bytes)` (`1.5 KB`), `seconds(s)` (`2.5s`), `duration(s)` (`3m 5s`), `timestamp(iso)` (local time, `2026-10-04 12:30:05`) and `short_timestamp(iso)` (`4 Oct 2026 12:30`). A missing value renders as `-`. HTML exports use it for file sizes.
+
 ### Search option defaults
 
 An engine declares its own options (`client.search.engines()` lists them with their defaults and choices). `client.settings.search.set_option("fuzzy", "threshold", "loose")` saves a default for one; `get_option` returns it (the engine's own default until one is saved) and `reset_option` forgets it. A search's own `options=` always wins, and a saved value the engine no longer allows is ignored. Core knows no engine by name: whichever engine add-on is installed (fuzzy, semantic, proximity, noise-fuzzy) gets this for its options.

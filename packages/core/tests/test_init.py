@@ -27,6 +27,7 @@ class TestPublicApi:
             "db",
             "errors",
             "file_types",
+            "formatting",
             "index",
             "logs",
             "metrics",

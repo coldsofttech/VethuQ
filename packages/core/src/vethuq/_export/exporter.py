@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from vethuq._export.languages import _ExportLanguages
 from vethuq._export.page import _Page
+from vethuq.formatting import Formatting
 
 if TYPE_CHECKING:
     from vethuq.search import SearchMatch, SearchResult
@@ -266,15 +267,6 @@ class _Exporter:
         )
 
     @staticmethod
-    def _size(count: int) -> str:
-        size = float(count)
-        for unit in ("B", "KB", "MB", "GB"):
-            if size < 1024 or unit == "GB":
-                return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-            size /= 1024
-        return f"{count} B"
-
-    @staticmethod
     def _percent(value: float | None) -> str:
         return f"{value:.0%}" if value is not None else "-"
 
@@ -315,7 +307,7 @@ class _Exporter:
             row = [
                 f'<a href="{html.escape(self._file_uri(file.path))}">'
                 f"{self._tagged(file.relative_path)}</a>",
-                html.escape(self._size(file.size_bytes)),
+                html.escape(Formatting.size(file.size_bytes)),
                 html.escape(file.modified_at),
             ]
             if detailed:
