@@ -6,6 +6,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (adaptive workers)
+- With `workers` set to `auto`, an add-on that provides a worker scheduler (`Addon.worker_scheduler()`,
+  add-on API 0.10.0) sets how many files are read at once while a run goes: a gate in front of the
+  workers for the first read, the language passes and the deeper phases. One file always runs, a
+  failing scheduler means the static estimate, and a fixed number of workers is never changed.
+- `file_footprints` table: size, pages, seconds and files at once for each file read (no names or
+  paths), the history the scheduler plans from. The newest 500 are kept.
+
 ### Added (controlling and repeating runs)
 - `index.pause()`, `resume()` and `stop(wait=True)`: the request is kept on the run's row and the
   workers look at it between files, pages and angle passes, so it works from another thread or

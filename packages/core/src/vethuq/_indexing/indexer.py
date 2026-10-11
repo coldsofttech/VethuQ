@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from vethuq._credits import _Clock, _Credits, _PageMeter, _PageTooLarge
@@ -23,6 +23,7 @@ from vethuq._db import (
     _DocumentLanguage,
     _IndexRun,
     _Language,
+    _PdfPage,
     _Source,
 )
 from vethuq._db.values import _PageSource, _PageState
@@ -35,6 +36,7 @@ from vethuq._errors import (
     _SourcePathError,
 )
 from vethuq._filetypes import _FileTypeCatalog
+from vethuq._indexing.autoscale import _Governor
 from vethuq._indexing.deepening import _Deepener
 from vethuq._indexing.gate import _ContentGate, _Scheduler
 from vethuq._indexing.languages import _LanguagePlan
@@ -55,6 +57,7 @@ from vethuq_addon_api import (
     OcrPhaseSpec,
     PasswordProtectedError,
     UnreadableFileError,
+    WorkerScheduler,
 )
 
 
@@ -146,7 +149,9 @@ class _Indexer:
         after_pages: Callable[[], object] | None = None,
         phases: Callable[[], list[OcrPhaseSpec]] = list,
         prepare: Callable[[LanguageSpec, str | None], str | None] | None = None,
+        scheduler: Callable[[], WorkerScheduler | None] | None = None,
     ) -> None:
+        self._scheduler = scheduler  # the add-on that sets the workers, if one is installed
         self._prepare = prepare  # makes the OCR models ready; returns why it can't
         self._after_pages = after_pages
         self.database = database
@@ -166,6 +171,7 @@ class _Indexer:
         self._warned: set[tuple[str, str]] = set()  # (phase, language) already complained about
         self._languages_override: list[str] | None = None  # the run's `languages=`
         self._stopped = threading.Event()  # a stop was asked for
+        self._governor: _Governor | None = None  # the worker scheduler's gate, in `auto` only
         self._control = "run"
         self._control_read = 0.0
         self._control_lock = threading.Lock()
@@ -719,10 +725,10 @@ class _Indexer:
         `timeout` minutes."""
         with self.database.session() as session:
             sources, only_file = self._resolve(session, target)
-            count = _Scheduler.resolve(
-                workers if workers is None else _IndexSettings.parse_workers(workers),
-                _IndexSettings.get_workers(session),
-            )
+            wanted = workers if workers is None else _IndexSettings.parse_workers(workers)
+            configured = _IndexSettings.get_workers(session)
+            count = _Scheduler.resolve(wanted, configured)
+            automatic = (wanted if wanted is not None else configured) == "auto"
             retries = _IndexSettings.get_retry_attempts(session)
             seconds = _IndexSettings.get_stability_check_seconds(session)
             source_id = sources[0].id if target is not None else None
@@ -754,6 +760,10 @@ class _Indexer:
         self._stopped.clear()
         self._control, self._control_read = "run", 0.0
         self._forced = set()
+        self._governor = None
+        scheduler = self._scheduler() if self._scheduler is not None and automatic else None
+        if scheduler is not None and count > 0:
+            self._governor = _Governor(self.database, scheduler, count, self._workers_active)
         with self._current_lock:
             self._current.clear()
         counts = {"processed": 0, "failed": 0}
@@ -775,7 +785,7 @@ class _Indexer:
             def work(row_id: int) -> None:
                 if self._paused.is_set() or self._checkpoint():
                     return
-                outcome = self._process(row_id, retries)
+                outcome = self._governed(self._timed, row_id, retries)
                 if outcome in ("paused", "staged"):
                     return  # paused: waiting for credits; staged: the pages are away
                 with lock:
@@ -793,6 +803,8 @@ class _Indexer:
                     for row_id in rows:
                         work(row_id)
                 else:
+                    if self._governor is not None:
+                        self._governor.queue(len(rows))
                     with ThreadPoolExecutor(
                         max_workers=count, thread_name_prefix="vethuq-index"
                     ) as pool:
@@ -987,7 +999,8 @@ class _Indexer:
                         max_workers=count, thread_name_prefix="vethuq-language"
                     ) as pool:
                         for future in [
-                            pool.submit(self._pass_one, run_id, unit) for unit in passes
+                            pool.submit(self._governed, self._pass_one, run_id, unit)
+                            for unit in passes
                         ]:
                             future.result()
                 continue
@@ -1012,9 +1025,50 @@ class _Indexer:
                     max_workers=count, thread_name_prefix="vethuq-deepen"
                 ) as pool:
                     for future in [
-                        pool.submit(self._deepen_one, run_id, spec, unit) for spec, unit in batch
+                        pool.submit(self._governed, self._deepen_one, run_id, spec, unit)
+                        for spec, unit in batch
                     ]:
                         future.result()
+
+    def _governed(self, fn: Callable, *args):
+        """Run `fn` in a turn the worker scheduler gave (at once when none is installed)."""
+        governor = self._governor
+        if governor is None:
+            return fn(*args)
+        with governor.slot():
+            return fn(*args)
+
+    def _timed(self, row_id: int, retries: int) -> str:
+        """`_process`, noting what the file took when a worker scheduler is listening."""
+        governor = self._governor
+        started, workers = time.monotonic(), governor.active if governor else 1
+        outcome = self._process(row_id, retries)
+        if governor is not None and outcome == "ok":
+            with self.database.session() as session:
+                row = session.get(_DocumentIndex, row_id)
+                size = row.size_bytes if row is not None else 0
+                pages = 0
+                if row is not None and row.document_id is not None:
+                    pages = (
+                        session.scalar(
+                            select(func.count())
+                            .select_from(_PdfPage)
+                            .where(_PdfPage.document_id == row.document_id)
+                        )
+                        or 0
+                    )
+            governor.record(size, pages, time.monotonic() - started, workers)
+        return outcome
+
+    def _workers_active(self, active: int) -> None:
+        """Show the files being read at once (`status().workers_active`)."""
+        run_id = self._run_id
+        if run_id is None:
+            return
+        with self.database.session() as session:
+            record = session.get(_IndexRun, run_id)
+            if record is not None:
+                record.workers_active = active
 
     def _pass_one(self, run_id: int, unit) -> None:
         """One file, one more language. A file that can't be read now keeps the pass for later."""

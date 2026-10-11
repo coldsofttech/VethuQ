@@ -5,7 +5,14 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.9.0.
+The add-on API version (`API_VERSION`) is 0.10.0.
+
+### Added (API 0.10.0)
+- Worker scheduling: `Addon.worker_scheduler()` returns a `WorkerScheduler` (or `None`), whose
+  `allowed(WorkPlan)` says how many files are read at once while a run is going. VethuQ asks only
+  when the `workers` setting is `auto`, clamps the answer to 1..`plan.ceiling` and always lets one
+  file run. `Footprint` is what reading a file took (size, pages, seconds, files at once).
+  `FakeScheduler` in `vethuq_addon_api.testing`.
 
 ### Added (API 0.9.0)
 - Deeper OCR phases (`moderate`, `deep`): `OcrRequest.angle` (the rotation to read an image at; the

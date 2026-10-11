@@ -181,6 +181,7 @@ class VethuQ:
                     after_pages=index.sync,
                     phases=manager.ocr_phase_specs,
                     prepare=runtime.prepare,
+                    scheduler=manager.worker_scheduler,
                 )
             return self._indexer
 

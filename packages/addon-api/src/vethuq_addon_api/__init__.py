@@ -32,6 +32,7 @@ from vethuq_addon_api.readers import (
     UnreadableFileError,
     extended_path,
 )
+from vethuq_addon_api.scheduling import Footprint, WorkerScheduler, WorkPlan
 from vethuq_addon_api.search import (
     Folded,
     Hit,
@@ -63,6 +64,7 @@ __all__ = [
     "DocumentReader",
     "FileRemovedError",
     "Folded",
+    "Footprint",
     "FileTypeSpec",
     "Hit",
     "Hook",
@@ -95,5 +97,7 @@ __all__ = [
     "SyncReport",
     "TierSpec",
     "UnreadableFileError",
+    "WorkPlan",
+    "WorkerScheduler",
     "extended_path",
 ]

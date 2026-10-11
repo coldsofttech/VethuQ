@@ -25,6 +25,7 @@ from vethuq_addon_api import (
     OcrPhaseSpec,
     SearchEngineSpec,
     TierSpec,
+    WorkerScheduler,
 )
 
 
@@ -149,6 +150,20 @@ class _AddonManager:
     def ocr_phase_specs(self) -> list[OcrPhaseSpec]:
         """The OCR phases the running add-ons provide, in the order they run."""
         return sorted(self._collect("ocr_phases"), key=lambda spec: (spec.order, spec.id))
+
+    def worker_scheduler(self) -> WorkerScheduler | None:
+        """The worker scheduler of the first running add-on (by id) that offers one, if any."""
+        for item in sorted(self.loaded().values(), key=lambda i: i.id):
+            if item.addon is None:
+                continue
+            try:
+                scheduler = item.addon.worker_scheduler()
+            except Exception:  # noqa: BLE001 - a broken add-on must not break VethuQ
+                self._logger.warning("Add-on %s failed in worker_scheduler", item.id, exc_info=True)
+                continue
+            if scheduler is not None:
+                return scheduler
+        return None
 
     # ----- hooks (the interface `_Database` calls) ------------------------------------------
 

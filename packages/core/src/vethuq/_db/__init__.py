@@ -13,6 +13,7 @@ from vethuq._db.models import (
     _Document,
     _DocumentIndex,
     _DocumentLanguage,
+    _FileFootprint,
     _IndexRun,
     _Language,
     _MarkdownPage,
@@ -63,4 +64,5 @@ __all__ = [
     "_TxtPage",
     "_UsageDaily",
     "_UsageFailure",
+    "_FileFootprint",
 ]

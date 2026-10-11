@@ -10,6 +10,7 @@ from vethuq_addon_api.api import API_VERSION
 from vethuq_addon_api.errors import CreditsExhaustedError
 from vethuq_addon_api.ocr import OcrResult
 from vethuq_addon_api.readers import DocumentReader, ReadPage
+from vethuq_addon_api.scheduling import WorkerScheduler, WorkPlan
 from vethuq_addon_api.search import Folded, Normalizer, PageText, SearchCorpus
 from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest
 
@@ -268,3 +269,16 @@ class FakeCorpus(SearchCorpus):
     def candidates(self, query: str | None = None) -> Iterator[PageText]:
         self.queries.append(query)
         yield from self.pages
+
+
+class FakeScheduler(WorkerScheduler):
+    """A `WorkerScheduler` answering from a list (the last repeats); the plans it saw are kept."""
+
+    def __init__(self, *answers: int) -> None:
+        self.answers = list(answers) or [1]
+        self.plans: list[WorkPlan] = []
+
+    def allowed(self, plan: WorkPlan) -> int:
+        self.plans.append(plan)
+        index = min(len(self.plans), len(self.answers)) - 1
+        return self.answers[index]

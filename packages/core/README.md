@@ -608,9 +608,9 @@ Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process di
 A run is synchronous, but it can be paused, resumed and stopped from another thread or another process: the request is kept on the run's database row, and the workers look at it between files, pages and angle passes.
 
 ```python
-client.index.pause()   # stops taking new work at the next checkpoint and waits
+client.index.pause()  # stops taking new work at the next checkpoint and waits
 client.index.resume()  # carries on
-client.index.stop()    # after the file it is on; returns once the run is over (wait=False to not wait)
+client.index.stop()  # after the file it is on; returns once the run is over (wait=False to not wait)
 status = client.index.status()
 status.paused, status.stopping, status.phase, status.current_files, status.workers_active
 status.deepened_pages, status.unsupported_files
@@ -692,6 +692,8 @@ client.settings.index.set_workers("auto")  # "auto" (the default) or 0 to 8; 0 =
 client.settings.index.set_retry_attempts(3)  # the default
 client.settings.index.set_stability_check_seconds(1.0)
 ```
+
+With `auto`, VethuQ reads as many files at once as it estimates the machine can carry. The licensed `vethuq-addon-autoscale` add-on does better: it watches the machine's CPU and memory while the run goes, learns from what earlier files took (kept, without names or paths, in `file_footprints`) and raises or lowers the number as the run goes, never above VethuQ's estimate and never to zero. It is asked only when `workers` is `auto`; with a number set, or without a licence, the static estimate is used and nothing changes. `status().workers_active` shows how many files are being read now.
 
 Each also has a `get_...` and `reset_...`. The stability check waits once per run so files still being written are read as they end up; 0 turns it off.
 

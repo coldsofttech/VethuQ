@@ -496,6 +496,19 @@ class _UsageDaily(_Base):
     credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class _FileFootprint(_Base):
+    """What reading one file took (no name or path): the history a worker scheduler plans from."""
+
+    __tablename__ = "file_footprints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recorded_at: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    pages: Mapped[int] = mapped_column(Integer, nullable=False)
+    seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    workers: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class _UsageFailure(_Base):
     """Files that failed on a UTC day, by reason code."""
 

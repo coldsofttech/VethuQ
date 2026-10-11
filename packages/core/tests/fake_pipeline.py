@@ -315,6 +315,19 @@ class FakeOcrQuickAddon(Addon):
 
 
 # Not installed unless a test asks (`install(folder, DEEPER)`): the deeper phases are optional.
+class FakeScaleAddon(Addon):
+    """`vethuq-addon-autoscale`: sets the workers from `SCALE`, a `FakeScheduler` the test chooses
+    (none: unlicensed, so no scheduler)."""
+
+    manifest = Manifest(id="autoscale", name="vethuq-addon-autoscale", version="0.1.0")
+    SCALE = None
+
+    def worker_scheduler(self):
+        return FakeScaleAddon.SCALE
+
+
+SCALING = {"autoscale": ("vethuq_addon_autoscale", "FakeScaleAddon")}
+
 DEEPER = {
     "ocr-moderate": ("vethuq_addon_ocr_moderate", "FakeOcrModerateAddon"),
     "ocr-deep": ("vethuq_addon_ocr_deep", "FakeOcrDeepAddon"),
