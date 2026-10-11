@@ -205,6 +205,9 @@ class _PdfPage(_Base):
     # For a page whose text is all native but that has pictures the quick phase left alone (a
     # Markdown file's): the phase (`moderate`) from which they are read. NULL otherwise.
     deepen_from: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # While the file's language is being judged (several candidate languages): what OCR read, line
+    # by line with its score (JSON), so the lines the first language made up can be dropped.
+    read_lines: Mapped[str | None] = mapped_column(Text, nullable=True)
     # `done` once its text is final; a page whose OCR is still to come (or away) says so.
     status: Mapped[_PageState] = mapped_column(
         _enum(_PageState, "ck_pdf_pages_status"),
@@ -328,6 +331,9 @@ class _DocumentLanguage(_Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # On the first language's row: the languages the file may be read in (their ids, comma
+    # separated, the first one first, e.g. `en,te`), kept until the first read has been judged.
+    candidates: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
 
 
 class _IndexRun(_Base):
@@ -365,6 +371,28 @@ class _IndexRun(_Base):
     ocr_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits_milli: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # How the run was asked for: `run`, `restart` (failed files only), `reindex` (every file under
+    # the target, read again) or `file` (one file, read again).
+    mode: Mapped[str] = mapped_column(Text, nullable=False, default="run", server_default="run")
+    # What the caller asks of the run: `run`, `pause` or `stop`. Workers look at it between files,
+    # pages and angle passes, so it works from another thread or process.
+    control: Mapped[str] = mapped_column(Text, nullable=False, default="run", server_default="run")
+    # Where the run is: the OCR phase it is working on, the files being read right now (a JSON list
+    # of paths), how many workers are active, and how many pages the deeper phases have read.
+    phase: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    current_files: Mapped[str] = mapped_column(
+        Text, nullable=False, default="[]", server_default="[]"
+    )
+    workers_active: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    deepened_pages: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Files under the target that no installed add-on reads (found when the run looked at the disk).
+    unsupported_files: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[str] = mapped_column(Text, nullable=False)
     completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -127,13 +127,24 @@ def self_render(page: dict, region: tuple | None) -> tuple:
     confidence = page.get("confidence", 0.8)
     if region is None:
         angles = {int(a): t for a, t in page.get("ocr_at", {}).items()}
-        return ("page", page.get("ocr", ""), confidence, angles)
+        return ("page", page.get("ocr", ""), confidence, angles, by_language(page))
     texts = page.get("region_ocr", [])
     index = int(region[0])
     angles = {
         int(a): t for a, t in (page.get("region_ocr_at") or [{}] * (index + 1))[index].items()
     }
-    return ("region", texts[index] if index < len(texts) else "", confidence, angles)
+    return ("region", texts[index] if index < len(texts) else "", confidence, angles, {})
+
+
+def by_language(page: dict) -> dict:
+    """What the fake engine reads in other languages: `{"te": ("text", confidence)}`."""
+    return {code: tuple(value) for code, value in page.get("by_language", {}).items()}
+
+
+def in_languages(page: dict, **read: tuple[str, float]) -> dict:
+    """`page` that reads differently in other languages (`te=("text", 0.9)`); the language the
+    page is first read in uses the page's own `ocr` and `confidence`."""
+    return {**page, "by_language": {**page.get("by_language", {}), **read}}
 
 
 def at_angles(page: dict, **by_angle: str) -> dict:
@@ -161,6 +172,8 @@ class FakeEngine:
             seen = image[3] if isinstance(image, tuple) and len(image) > 3 else {}
             text = seen.get(angle, "")
         confidence = image[2] if isinstance(image, tuple) and len(image) > 2 else 0.8
+        if not angle and isinstance(image, tuple) and len(image) > 4:
+            text, confidence = image[4].get(self._language, (text, confidence))
         lines = tuple((line, confidence) for line in text.splitlines())
         return OcrResult(
             text=text,

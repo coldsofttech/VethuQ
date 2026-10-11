@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _DocumentLanguage, _PdfPage, _PdfPageQuick
+from vethuq._db import _DocumentLanguage, _PdfPage, _PdfPagePhase, _PdfPageQuick
 from vethuq._db.values import _PageSource, _PageState, _PassSource, _PassStatus
 from vethuq._filetypes import _PageDetails
 from vethuq._ocr import _PageResult
@@ -96,7 +97,12 @@ class _PageStore:
 
     @staticmethod
     def begin_pass(
-        session: Session, document_id: int, language_id: int, *, manual: bool
+        session: Session,
+        document_id: int,
+        language_id: int,
+        *,
+        manual: bool,
+        candidates: str = "",
     ) -> _DocumentLanguage:
         row = _PageStore.pass_row(session, document_id, language_id)
         if row is None:
@@ -106,6 +112,7 @@ class _PageStore:
             row.started_at = _now()
         row.status = _PassStatus.PROCESSING
         row.source = _PassSource.MANUAL if manual else _PassSource.DEFAULT
+        row.candidates = candidates
         row.error_message, row.completed_at = None, None
         session.flush()
         return row
@@ -129,6 +136,21 @@ class _PageStore:
         row.error_message = None
         session.flush()
         return average
+
+    @staticmethod
+    def _lines(result: _PageResult) -> str | None:
+        return json.dumps(result.lines) if result.lines else None
+
+    @staticmethod
+    def trim(session: Session, document_id: int, last_page: int) -> None:
+        """Drop the pages after `last_page`: the file has fewer pages than the last time."""
+        for page in session.scalars(
+            select(_PdfPage).where(
+                _PdfPage.document_id == document_id, _PdfPage.page_number > last_page
+            )
+        ):
+            session.delete(page)
+        session.flush()
 
     # ----- one page ---------------------------------------------------------------------------
 
@@ -157,9 +179,13 @@ class _PageStore:
         result: _PageResult,
         language_id: int,
         file_type: str = "",
+        replace: bool = False,
+        keep_lines: bool = False,
     ) -> _PdfPage:
         """Save a page as read. A page the document already has (read in another language, or
-        staged) keeps its text, with this language's added when it isn't there already."""
+        staged) keeps its text, with this language's added when it isn't there already. With
+        `replace` (the file is being read again) the page's text is overwritten instead, and what
+        the earlier read recorded about it (quick read, deeper phases, details) is cleared."""
         page = session.scalars(
             select(_PdfPage).where(
                 _PdfPage.document_id == document_id, _PdfPage.page_number == result.page_number
@@ -176,9 +202,22 @@ class _PageStore:
                 image_width=result.image_width,
                 image_height=result.image_height,
                 deepen_from=result.deepen_from or None,
+                read_lines=_PageStore._lines(result) if keep_lines else None,
                 status=_PageState.WAITING if result.pending else _PageState.DONE,
             )
             session.add(page)
+            session.flush()
+            _PageDetails.save(session, file_type, page.id, result.details)
+        elif replace:
+            session.execute(delete(_PdfPageQuick).where(_PdfPageQuick.page_id == page.id))
+            session.execute(delete(_PdfPagePhase).where(_PdfPagePhase.page_id == page.id))
+            _PageDetails.clear(session, page.id)
+            page.text, page.char_count = result.text, len(result.text)
+            page.confidence, page.source = result.confidence, result.source
+            page.image_width, page.image_height = result.image_width, result.image_height
+            page.deepen_from = result.deepen_from or None
+            page.read_lines = _PageStore._lines(result) if keep_lines else None
+            page.status = _PageState.WAITING if result.pending else _PageState.DONE
             session.flush()
             _PageDetails.save(session, file_type, page.id, result.details)
         elif not result.pending and result.quick is not None:
@@ -189,6 +228,7 @@ class _PageStore:
                     page.char_count = len(page.text)
             else:  # this page was waiting for its first read
                 page.text, page.char_count = result.text, len(result.text)
+                page.read_lines = _PageStore._lines(result) if keep_lines else None
                 page.confidence, page.source = result.confidence, result.source
                 page.image_width = result.image_width or page.image_width
                 page.image_height = result.image_height or page.image_height

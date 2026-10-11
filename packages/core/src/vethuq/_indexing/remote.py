@@ -18,6 +18,7 @@ from vethuq._credits import _Clock, _Credits, _Pricing
 from vethuq._db import (
     _Database,
     _DocumentIndex,
+    _DocumentLanguage,
     _IndexRun,
     _Language,
     _PdfPage,
@@ -123,6 +124,8 @@ class _Remote:
         self.language_of = language_of
         self.file_type_of = file_type_of
         self.deepener: _Deepener | None = None  # set by the indexer: merges deeper phases
+        # Set by the indexer: judges the first language's read once a document's pages are all in.
+        self.settle: Callable[[Session, int, int], None] | None = None
 
     # ----- staging ----------------------------------------------------------------------------
 
@@ -387,7 +390,9 @@ class _Remote:
             sum(i.size_factor_milli for i in images[:1]) / 1000,
             sum(i.credits_milli for i in images),
         )
-        _PageStore.save_page(session, document_id, result, language_id)
+        first = session.get(_DocumentLanguage, (document_id, language_id))
+        detecting = bool(first and first.candidates)
+        _PageStore.save_page(session, document_id, result, language_id, keep_lines=detecting)
         first = session.scalars(
             select(_DocumentIndex).where(_DocumentIndex.document_id == document_id)
         ).first()
@@ -427,6 +432,8 @@ class _Remote:
             return set()
         if _PageStore.pass_row(session, document_id, language_id) is None:
             return set()
+        if self.settle is not None:
+            self.settle(session, document_id, language_id)
         _PageStore.finish_pass(session, document_id, language_id)
         runs: set[int | None] = set()
         rows = session.scalars(

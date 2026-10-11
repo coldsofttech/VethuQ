@@ -169,7 +169,7 @@ class VethuQ:
     def _indexer_engine(self) -> _Indexer:
         credits, tiers = self._credit_engine(), self._tier_engine()
         db, types, manager = self._db(), self._file_type_catalog(), self._manager()
-        index = self._search_indexer()
+        index, runtime = self._search_indexer(), self._runtime()
         with self._lock:
             if self._indexer is None:
                 self._indexer = _Indexer(
@@ -180,6 +180,7 @@ class VethuQ:
                     credits,
                     after_pages=index.sync,
                     phases=manager.ocr_phase_specs,
+                    prepare=runtime.prepare,
                 )
             return self._indexer
 

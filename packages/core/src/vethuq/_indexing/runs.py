@@ -91,6 +91,7 @@ class _Runs:
         file_path: str | None,
         workers: int,
         tier: str = "local",
+        mode: str = "run",
     ) -> _IndexRun:
         if _Runs.recover(session):
             raise _IndexAlreadyRunningError(
@@ -101,7 +102,9 @@ class _Runs:
             file_path=file_path,
             status=IndexRunStatus.RUNNING,
             workers=workers,
+            workers_active=workers,
             tier=tier,
+            mode=mode,
             pid=os.getpid(),
             started_at=_stamp(),
         )
@@ -121,6 +124,18 @@ class _Runs:
     def end(run_id: int) -> None:
         with _Runs._guard:
             _Runs._active.discard(run_id)
+
+    # ----- control ----------------------------------------------------------------------------
+
+    @staticmethod
+    def going(session: Session) -> _IndexRun | None:
+        """The run that is going (here or in another process), or None."""
+        for run in session.scalars(
+            select(_IndexRun).where(_IndexRun.status == IndexRunStatus.RUNNING)
+        ):
+            if _Runs._alive(run):
+                return run
+        return None
 
     # ----- reading ----------------------------------------------------------------------------
 

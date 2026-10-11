@@ -22,6 +22,14 @@ class _PageDetails:
     }
 
     @staticmethod
+    def clear(session: Session, page_id: int) -> None:
+        """Forget what every file type kept about a page (it is being read again)."""
+        for table in _PageDetails.TABLES.values():
+            row = session.get(table, page_id)
+            if row is not None:
+                session.delete(row)
+
+    @staticmethod
     def save(
         session: Session, file_type: str, page_id: int, details: Mapping[str, Any] | None
     ) -> None:

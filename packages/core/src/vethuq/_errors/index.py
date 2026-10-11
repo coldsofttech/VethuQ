@@ -18,6 +18,14 @@ class _IndexRunNotFoundError(_IndexingError, errors.IndexRunNotFoundError):
     exit_code = 52
 
 
+class _IndexNotRunningError(_IndexingError, errors.IndexNotRunningError):
+    exit_code = 53
+
+
+class _FileNotTrackedError(_IndexingError, errors.FileNotTrackedError):
+    exit_code = 54
+
+
 class _CreditsError(_VethuQError, errors.CreditsError):
     exit_code = 60
 

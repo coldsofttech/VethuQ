@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
 from vethuq._db import _Database, _IndexRun, _RemoteJob
+from vethuq._errors import _IndexNotRunningError
 from vethuq._indexing import _Indexer, _Runs
 from vethuq._indexing.eta import _Eta, _EtaResult
 from vethuq._metrics import _Metrics
@@ -96,6 +98,7 @@ class IndexRun:
     credits_charged: float  # what the run cost
     workers: int
     tier: str  # the processing tier it ran with
+    mode: str  # how it was asked for: run, restart, reindex or file
     started_at: str  # UTC, ISO 8601
     completed_at: str | None
     error: str | None
@@ -119,6 +122,7 @@ class IndexRun:
             credits_charged=model.credits_milli / 1000,
             workers=model.workers,
             tier=model.tier,
+            mode=model.mode,
             started_at=model.started_at,
             completed_at=model.completed_at,
             error=model.error,
@@ -139,6 +143,7 @@ class IndexRun:
             "credits_charged": self.credits_charged,
             "workers": self.workers,
             "tier": self.tier,
+            "mode": self.mode,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "error": self.error,
@@ -158,6 +163,23 @@ class IndexStatus:
     active: bool  # the run is going now (here, or in another process)
     remote_jobs_open: int  # batches still out on a remote tier
     eta: IndexEta
+    # What the caller asked of the run: `run`, `pause` or `stop`.
+    control: str = "run"
+    phase: str = ""  # the OCR phase it is on (`quick`, `moderate`, `deep`); empty when over
+    current_files: tuple[str, ...] = ()  # the files being read right now
+    workers_active: int = 0
+    deepened_pages: int = 0  # pages the deeper phases have read in this run
+    unsupported_files: int = 0  # files under the run's target that no add-on reads
+
+    @property
+    def paused(self) -> bool:
+        """The run is waiting to be resumed."""
+        return self.active and self.control == "pause"
+
+    @property
+    def stopping(self) -> bool:
+        """A stop was asked for and the run is finishing the file it is on."""
+        return self.active and self.control == "stop"
 
     @property
     def finished(self) -> bool:
@@ -170,6 +192,13 @@ class IndexStatus:
             "active": self.active,
             "remote_jobs_open": self.remote_jobs_open,
             "finished": self.finished,
+            "paused": self.paused,
+            "stopping": self.stopping,
+            "phase": self.phase,
+            "current_files": list(self.current_files),
+            "workers_active": self.workers_active,
+            "deepened_pages": self.deepened_pages,
+            "unsupported_files": self.unsupported_files,
             "eta": self.eta.to_dict(),
         }
 
@@ -237,6 +266,7 @@ class Index:
         tier: str | None = None,
         wait: bool | None = None,
         timeout: float | None = None,
+        languages: str | Sequence[str] | None = None,
     ) -> IndexRun:
         """Index files and wait until the run is over; return it.
 
@@ -250,6 +280,12 @@ class Index:
         batch of anonymous metrics is sent (see `metrics`). A file that
         fails doesn't stop the run: see its `files_failed` and the file's `index.error`.
 
+        `languages` (a language id, or a list: `["en", "te"]`) reads the files in those languages
+        for this run, instead of each source's own languages or the default languages setting.
+        With one, that is the language. With several, the first (English, unless it is not among
+        them) reads each file, and the others read it as well only if that read was doubted.
+        `LanguageUnavailableError` if one can't be used.
+
         `tier` is the processing tier that reads the pages needing OCR (a `ProcessingTier` or its
         id); left out, the default from `tiers` applies. `wait` and `timeout` (minutes) are for
         tiers whose work finishes later; the local tier ignores them.
@@ -258,15 +294,128 @@ class Index:
         `IndexAlreadyRunningError` if a run is going, `SourceNotFoundError` if `target`
         isn't a source or a file in one, and `SourcePathError` if the source is gone from disk.
         """
+        return self._start("run", target, workers, tier, wait, timeout, languages)
+
+    def restart(
+        self,
+        target: int | str | Path | None = None,
+        *,
+        workers: int | str | None = None,
+        tier: str | None = None,
+        wait: bool | None = None,
+        timeout: float | None = None,
+        languages: str | Sequence[str] | None = None,
+    ) -> IndexRun:
+        """Try again only the files that failed last time. New and already indexed files are left
+        alone. Same arguments, errors and result as `run`."""
+        return self._start("restart", target, workers, tier, wait, timeout, languages)
+
+    def reindex(
+        self,
+        target: int | str | Path,
+        *,
+        workers: int | str | None = None,
+        tier: str | None = None,
+        wait: bool | None = None,
+        timeout: float | None = None,
+        languages: str | Sequence[str] | None = None,
+    ) -> IndexRun:
+        """Read every file under `target` (a source, or a file in one) again, whether or not it
+        was indexed: the way to use a new OCR phase or add-on, or new models, on what is already
+        indexed. Each file's old pages stay searchable until the file has been read again, and its
+        status stays `INDEXED`; a file that fails to read again keeps the pages it had (see its
+        `index.error`). It costs credits again. Same arguments, errors and result as `run`."""
+        if target is None or isinstance(target, bool):
+            raise TypeError("reindex needs a source or a file; use run() for new files.")
+        return self._start("reindex", target, workers, tier, wait, timeout, languages)
+
+    def reindex_file(
+        self,
+        file: int | str | Path,
+        *,
+        workers: int | str | None = None,
+        tier: str | None = None,
+        wait: bool | None = None,
+        timeout: float | None = None,
+        languages: str | Sequence[str] | None = None,
+    ) -> IndexRun:
+        """Read one file again: a path, or a document id (see `list_files`). Like `reindex`, the
+        old pages stay searchable until it is done. Raises `FileNotTrackedError` if VethuQ doesn't
+        track the file; otherwise as `run`."""
+        path = self._indexer.file_target(file)
+        return self._start("file", path, workers, tier, wait, timeout, languages)
+
+    @staticmethod
+    def _languages(languages: str | Sequence[str] | None) -> list[str] | None:
+        if languages is None:
+            return None
+        if isinstance(languages, str):
+            languages = [part for part in languages.replace(",", " ").split() if part]
+        elif isinstance(languages, bool) or not isinstance(languages, Sequence):
+            raise TypeError('languages is a language id or a list of them, e.g. ["en", "te"]')
+        return [str(code) for code in languages] or None
+
+    def _start(self, mode, target, workers, tier, wait, timeout, languages=None) -> IndexRun:
         if timeout is not None and (
             isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
         ):
             raise ValueError("timeout must be a number of minutes above 0.")
         if wait is not None and not isinstance(wait, bool):
             raise TypeError("wait is True, False or None.")
-        run_id = self._indexer.run(target, workers, tier, wait, timeout)
+        run_id = self._indexer.run(
+            target, workers, tier, wait, timeout, mode, self._languages(languages)
+        )
         self._metrics.send()  # if you opted in; at most once a day; never raises
         return replace(self.get(run_id), eta=self._eta(run_id))
+
+    # ----- control ----------------------------------------------------------------------------
+
+    def _ask(self, state: str, allowed: tuple[str, ...]) -> int:
+        with self._database.session() as session:
+            _Runs.recover(session)
+            run = _Runs.going(session)
+            if run is None:
+                raise _IndexNotRunningError(
+                    "No index run is going.", "Start one with run(), or see status()."
+                )
+            if run.control not in allowed:
+                return run.id
+            run.control = state
+            return run.id
+
+    def pause(self) -> None:
+        """Pause the run that is going. It stops taking new work at the next checkpoint (between
+        files, pages and angle passes) and waits to be resumed. Works from another thread or
+        process. Raises `IndexNotRunningError` if no run is going."""
+        self._ask("pause", ("run",))
+
+    def resume(self) -> None:
+        """Carry on a paused run. Raises `IndexNotRunningError` if no run is going."""
+        self._ask("run", ("pause",))
+
+    def stop(self, *, wait: bool = True, timeout: float | None = None) -> IndexStatus | None:
+        """Stop the run that is going, after the file it is on: that file waits for the next run
+        with the pages it already has, and the run ends as `STOPPED`. With `wait` (the default)
+        this returns once the run is over, or after `timeout` minutes. Pages already sent to a
+        remote tier still come back. Raises `IndexNotRunningError` if no run is going."""
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
+        ):
+            raise ValueError("timeout must be a number of minutes above 0.")
+        run_id = self._ask("stop", ("run", "pause"))
+        if not wait:
+            return self._status()
+        deadline = time.monotonic() + timeout * 60 if timeout is not None else None
+        while True:
+            with self._database.session() as session:
+                _Runs.recover(session)
+                running = _Runs.going(session)
+            if running is None or running.id != run_id:
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            time.sleep(0.05)
+        return self._status()
 
     def _eta(self, run_id: int) -> IndexEta:
         with self._database.session() as session:
@@ -329,6 +478,12 @@ class Index:
                 active=active,
                 remote_jobs_open=len(self._indexer.remote.open_jobs(session, model.id)),
                 eta=IndexEta._from_result(estimate),
+                control=model.control if active else "run",
+                phase=model.phase if active else "",
+                current_files=tuple(json.loads(model.current_files or "[]")) if active else (),
+                workers_active=model.workers_active if active else 0,
+                deepened_pages=model.deepened_pages,
+                unsupported_files=model.unsupported_files,
             )
 
     def get(self, run_id: int) -> IndexRun:

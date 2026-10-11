@@ -29,6 +29,7 @@ from vethuq._credits import _Clock, _PageMeter, _Pricing
 from vethuq._db import (
     _Database,
     _DocumentIndex,
+    _IndexRun,
     _Language,
     _PdfPage,
     _PdfPagePhase,
@@ -39,7 +40,7 @@ from vethuq._db import (
 from vethuq._db.values import _JobPageState, _PageSource, _PageState
 from vethuq._errors import _OcrModelMissingError
 from vethuq._filetypes import _FileTypeCatalog
-from vethuq._ocr import _PageOcr
+from vethuq._ocr import _LanguageDetector, _PageOcr
 from vethuq._settings import _ConfidenceSettings
 from vethuq._stats import _PageFact, _Usage
 from vethuq._tiers import HYBRID, _Router, _Tiers, _TierView
@@ -114,9 +115,11 @@ class _Merge:
         reads: list[tuple[int, OcrResult]],
         regions: int,
         duration_ms: int,
+        keep: Callable[[str, float], bool] | None = None,
     ) -> int:
         """Merge the answers (one per angle and image) into `page` and record the phase as done
-        for the language. Returns the number of lines added."""
+        for the language. `keep` says whether a line is believable in the language (see
+        `_Deepener.keeper`). Returns the number of lines added."""
         found: list[tuple[str, float]] = []
         for angle, result in reads:
             lines = result.lines or tuple(
@@ -124,6 +127,8 @@ class _Merge:
             )
             for line, score in lines:
                 if angle % 360 and score < _Merge.MIN_ROTATED_SCORE:
+                    continue
+                if keep is not None and not keep(line, float(score)):
                     continue
                 found.append((line, float(score)))
         text, added = _Merge.lines(page.text, [line for line, _ in found])
@@ -179,6 +184,17 @@ class _Deepener:
         self.remote = remote
         self.phases = phases
         self.languages = languages
+        self.passes = None  # set by the indexer: merges the language passes that come back
+
+    @staticmethod
+    def keeper(language: LanguageSpec, multi: bool) -> Callable[[str, float], bool] | None:
+        """How a rotated read keeps only believable lines: a language that is not the default, or
+        a page read in several languages, makes up characters for what it does not know, and
+        rotated reads make that more likely, so a line must also be in the language's script. A
+        page read in the default language alone is read exactly as it was."""
+        if not language.script_ranges or (language.default and not multi):
+            return None
+        return lambda line, score: _LanguageDetector.keep_line(line, score, language)
 
     # ----- which phases ------------------------------------------------------------------------
 
@@ -376,6 +392,12 @@ class _Deepener:
             earlier = session.scalars(
                 select(_PdfPagePhase.id).where(_PdfPagePhase.page_id == unit.page_id)
             ).first()
+            languages_read = len(
+                session.scalars(
+                    select(_PdfPageQuick.id).where(_PdfPageQuick.page_id == unit.page_id)
+                ).all()
+            )
+        keep = self.keeper(language, languages_read > 1)
         if unit.deferred and earlier is None and 0 not in angles:
             angles = [0, *angles]  # the quick phase never read these pictures upright
         covered = 1.0 if regions == [None] else _PageOcr.covered(page)
@@ -452,7 +474,7 @@ class _Deepener:
             meter.release(held)
             raise
         charged = meter.commit(held, cost, unit.page_number, factor, spec.id, count_page=False)
-        self._save(unit, spec, reads, len(regions), duration, charged, factor, len(angles))
+        self._save(unit, spec, reads, len(regions), duration, charged, factor, len(angles), keep)
         return "done"
 
     @staticmethod
@@ -471,12 +493,15 @@ class _Deepener:
         credits_milli: int,
         factor: float,
         passes: int,
+        keep: Callable[[str, float], bool] | None = None,
     ) -> None:
         with self.database.session() as session:
             page = session.get(_PdfPage, unit.page_id)
             if page is None:
                 return
-            _Merge.reads(session, page, unit.language_id, spec.id, reads, regions, duration_ms)
+            _Merge.reads(
+                session, page, unit.language_id, spec.id, reads, regions, duration_ms, keep
+            )
             self._record(
                 session, unit.source_id, unit.file_type, unit.language_code, page, spec.id,
                 reads, duration_ms, credits_milli, factor, passes,
@@ -591,7 +616,12 @@ class _Deepener:
         images: list[_RemoteJobPage],
         answers: list[OcrResult],
     ) -> None:
-        """A deeper page's images came back from a remote tier: merge them into the page."""
+        """A deeper page's images came back from a remote tier: merge them into the page (or, for
+        a language pass, into the page in that language)."""
+        if phase == "language":
+            if self.passes is not None:
+                self.passes.complete(session, document_id, number, language_id, images, answers)
+            return
         page = session.scalars(
             select(_PdfPage).where(
                 _PdfPage.document_id == document_id, _PdfPage.page_number == number
@@ -601,7 +631,24 @@ class _Deepener:
             return
         reads = [(row.angle, answer) for row, answer in zip(images, answers, strict=True)]
         regions = len({row.region for row in images})
-        _Merge.reads(session, page, language_id, phase, reads, regions, 0)
+        language_row = session.get(_Language, language_id)
+        language = next(
+            (s for s in self.languages() if language_row and s.id == language_row.language), None
+        )
+        multi = (
+            len(
+                session.scalars(
+                    select(_PdfPageQuick.id).where(_PdfPageQuick.page_id == page.id)
+                ).all()
+            )
+            > 1
+        )
+        keep = self.keeper(language, multi) if language is not None else None
+        _Merge.reads(session, page, language_id, phase, reads, regions, 0, keep)
+        if images[0].run_id is not None:
+            run = session.get(_IndexRun, images[0].run_id)
+            if run is not None:
+                run.deepened_pages += 1
         first = session.scalars(
             select(_DocumentIndex).where(_DocumentIndex.document_id == document_id)
         ).first()

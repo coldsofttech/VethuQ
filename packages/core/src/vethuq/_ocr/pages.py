@@ -52,6 +52,9 @@ class _PageResult:
     details: Mapping[str, Any] = field(default_factory=dict)
     # The phase from which the page has pictures this read left alone (see `ReadPage.region_phase`).
     deepen_from: str = ""
+    # What OCR read, line by line with its score (a scanned page only): the language detection
+    # keeps the believable ones when the language it read the page in is doubted.
+    lines: tuple[tuple[str, float], ...] = ()
 
 
 class _PageOcr:
@@ -203,9 +206,12 @@ class _PageOcr:
                 width, height, quick, charged, factor,
             )  # fmt: skip
         # A scanned page: the OCR text, or whatever little native text there was if OCR found none.
+        read_lines = tuple(
+            (line, float(score)) for r in results for line, score in r.lines if line.strip()
+        )
         return _PageResult(
             number, ocr_text or native, confidence, _PageSource.OCR, width, height, quick,
-            charged, factor,
+            charged, factor, lines=read_lines,
         )  # fmt: skip
 
     @staticmethod

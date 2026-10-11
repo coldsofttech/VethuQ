@@ -6,6 +6,21 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (controlling and repeating runs)
+- `index.pause()`, `resume()` and `stop(wait=True)`: the request is kept on the run's row and the
+  workers look at it between files, pages and angle passes, so it works from another thread or
+  process. A stopped run ends as `STOPPED` and its file waits with the pages it has.
+- `index.restart()` (failed files), `index.reindex(target)` and `index.reindex_file(file)` (read
+  again; old pages stay searchable until replaced; a failed re-read keeps them). `IndexRun.mode`.
+- `IndexStatus` adds `paused`, `stopping`, `phase`, `current_files`, `workers_active`,
+  `deepened_pages` and `unsupported_files`. Errors `IndexNotRunningError` and `FileNotTrackedError`.
+- Languages: `languages=` on every run method; with several candidates the first language's read is
+  judged (confidence and script) and the others are queued as passes if it was unsure; a file with
+  a text layer is tagged with the languages its text is in; rotated reads of a page in another
+  language keep only lines in that language's script.
+- The OCR models for each source's first language are fetched before the first file is read; a
+  failed download is remembered for 30 seconds and said once.
+
 ### Added (OCR phases)
 - The moderate and deep OCR phases (`vethuq-addon-ocr-moderate`, `-deep`): pages that needed OCR are
   read again at 90/180/270 degrees, then at every other multiple of 15, with the server models, and

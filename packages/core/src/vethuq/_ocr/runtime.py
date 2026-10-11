@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -25,6 +26,9 @@ class _Ocr:
     """
 
     PHASE = "quick"
+    # After models couldn't be fetched, how long (seconds) before another attempt is made: a run
+    # with many files should try once, not once per file.
+    RETRY_SECONDS = 30.0
     _logger = logging.getLogger("vethuq.ocr")
 
     def __init__(
@@ -39,6 +43,7 @@ class _Ocr:
         self._local = threading.local()
         self._lock = threading.Lock()
         self._ensured: set[tuple[str, str, str]] = set()
+        self._failed: dict[tuple[str, str, str], tuple[float, _OcrModelMissingError]] = {}
 
     # ----- choosing ---------------------------------------------------------------------------
 
@@ -74,24 +79,39 @@ class _Ocr:
         with self._lock:
             if key in self._ensured:
                 return
-            models_dir = self.models_dir()
+            failure = self._failed.get(key)
+            if failure is not None and time.monotonic() - failure[0] < self.RETRY_SECONDS:
+                raise failure[1]
             try:
-                needed = list(provider.required_models(language, profile))
-            except AddonError as exc:
-                raise _OcrModelMissingError(str(exc)) from exc
-            missing = [
-                m.name for m in needed if not provider.model_path(models_dir, m.name).exists()
-            ]
-            if missing:
-                self._logger.info("Downloading OCR models: %s", ", ".join(missing))
-                failed = provider.download(models_dir, missing)
-                if failed:
-                    names = ", ".join(sorted(failed))
-                    raise _OcrModelMissingError(
-                        f"Couldn't download the OCR models: {names}.",
-                        "Check the internet connection, or use client.ocr.models.download().",
-                    )
-            self._ensured.add(key)
+                self._ensure(provider, language, profile, key)
+            except _OcrModelMissingError as exc:
+                self._failed[key] = (time.monotonic(), exc)
+                raise
+            self._failed.pop(key, None)
+
+    def _ensure(
+        self,
+        provider: OcrEngineProvider,
+        language: LanguageSpec,
+        profile: str,
+        key: tuple[str, str, str],
+    ) -> None:
+        models_dir = self.models_dir()
+        try:
+            needed = list(provider.required_models(language, profile))
+        except AddonError as exc:
+            raise _OcrModelMissingError(str(exc)) from exc
+        missing = [m.name for m in needed if not provider.model_path(models_dir, m.name).exists()]
+        if missing:
+            self._logger.info("Downloading OCR models: %s", ", ".join(missing))
+            failed = provider.download(models_dir, missing)
+            if failed:
+                names = ", ".join(sorted(failed))
+                raise _OcrModelMissingError(
+                    f"Couldn't download the OCR models: {names}.",
+                    "Check the internet connection, or use client.ocr.models.download().",
+                )
+        self._ensured.add(key)
 
     def engine(
         self, language: LanguageSpec, phase_id: str | None = None
@@ -111,7 +131,18 @@ class _Ocr:
             cache[key] = engine
         return engine, phase
 
+    def prepare(self, language: LanguageSpec, phase_id: str | None = None) -> str | None:
+        """Make the models ready to read `language` in the phase ahead of time. Returns why they
+        can't be, or None when they are ready."""
+        try:
+            phase = self.phase(phase_id)
+            self.ensure_models(self.provider(phase.profile), language, phase.profile)
+        except _OcrModelMissingError as exc:
+            return str(exc)
+        return None
+
     def forget(self) -> None:
         """Make the next use check the models again (after they were cleared or redownloaded)."""
         with self._lock:
             self._ensured.clear()
+            self._failed.clear()

@@ -17,6 +17,14 @@ class IndexRunNotFoundError(IndexingError):
     """There is no index run with that id."""
 
 
+class IndexNotRunningError(IndexingError):
+    """There is no index run going to pause, resume or stop."""
+
+
+class FileNotTrackedError(IndexingError):
+    """The file is not one VethuQ tracks: it isn't under an active source, or hasn't been seen."""
+
+
 class CreditsError(VethuQError):
     """Base class for credit errors."""
 

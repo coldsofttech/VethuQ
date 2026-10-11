@@ -66,6 +66,8 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `IndexingError` | 50 | Indexing | Root of the indexing errors below |
 | `IndexAlreadyRunningError` | 51 | Indexing | An index run is already going |
 | `IndexRunNotFoundError` | 52 | Indexing | There is no index run with that id |
+| `IndexNotRunningError` | 53 | Indexing | `pause()`, `resume()` or `stop()` was called with no run going |
+| `FileNotTrackedError` | 54 | Indexing | `reindex_file()` was given a file VethuQ doesn't track |
 | `CreditsError` | 60 | Credits | Root of the credit errors below |
 | `InvalidGrantError` | 61 | Credits | A credit grant or licence can't be redeemed |
 | `TierError` | 80 | Tiers | Root of the processing tier errors below |
@@ -600,6 +602,42 @@ print(run.status, run.files_processed, "of", run.files_total, "files,", run.file
 Only one run goes at a time (`IndexAlreadyRunningError`). A run whose process died is found and marked failed at the next run, and the files it was reading are put back.
 
 **How a page is read.** The file's own text comes first. A page with enough text (20 characters, 3 words) and no images worth reading is *native*: no OCR. A page with enough text and images is *mixed*: only the images are read, and their text is added. A page without enough text is *scanned*: the whole page is read. Text, CSV and Markdown files are one page of text each and are always native, however short: the page itself is never OCR'd. A picture a Markdown file links to on disk is read like the images of a mixed page, from the moderate phase on (the quick phase leaves it), and only if an installed add-on reads that format; otherwise it is skipped with a warning in the log and the text is indexed anyway. OCR is in phases (see *OCR*): quick reads upright pages with the mobile models, and its models are downloaded the first time they're needed. Files with the same content (SHA-256) are read once and share their pages, also across sources; a document read in another language is read again for its image pages and the text is merged. A source is read in its first language (its own, otherwise the default languages setting).
+
+### Controlling a run
+
+A run is synchronous, but it can be paused, resumed and stopped from another thread or another process: the request is kept on the run's database row, and the workers look at it between files, pages and angle passes.
+
+```python
+client.index.pause()   # stops taking new work at the next checkpoint and waits
+client.index.resume()  # carries on
+client.index.stop()    # after the file it is on; returns once the run is over (wait=False to not wait)
+status = client.index.status()
+status.paused, status.stopping, status.phase, status.current_files, status.workers_active
+status.deepened_pages, status.unsupported_files
+```
+
+A stopped run ends as `IndexRunStatus.STOPPED` (`error` is `"Stopped."`). The file it was on goes back to pending with the pages it already has, so the next run carries on after them; pages already sent to a remote tier still come back. A stopped run is never started again by itself. All three raise `IndexNotRunningError` when no run is going. `status().phase` is the part of the run it is in: `quick`, `languages` (the other candidate languages), `moderate` or `deep`.
+
+### Running again
+
+| Method | What it does |
+|---|---|
+| `run(target=None)` | New, modified and failed files, and files an add-on can read now. |
+| `restart(target=None)` | Only the files that failed last time (a file that changed counts as modified, not failed). |
+| `reindex(target)` | Every file under `target` (a source, or a file in one), read again. |
+| `reindex_file(file)` | One file, by path or document id, read again. Raises `FileNotTrackedError` for a file VethuQ doesn't track. |
+
+All take `workers=`, `tier=`, `wait=`, `timeout=` and `languages=`, and return an `IndexRun` (`run.mode` is `run`, `restart`, `reindex` or `file`). Reading a file again replaces its pages as they are read and clears what the earlier read recorded about them (its quick read, its deeper phases and its details). The old pages stay searchable until they are replaced, and the file stays `INDEXED`; if reading it again fails, it keeps the pages it had and says so in its `index.error`. It costs credits again. It is how to use a new OCR phase, new models or another language on what is already indexed.
+
+### Languages
+
+`languages=` on a run (a language id or a list: `["en", "te"]`) reads the files in those languages for that run, instead of each source's own languages or the default languages setting; it is the way to redo a file whose language was guessed wrongly (`reindex_file(file, languages=["te"])`). An unknown or unusable language raises `LanguageUnavailableError` before anything is read.
+
+With one candidate language that is the language. With several, the first (English, unless it is not among them) reads each file and its read is judged: it must be at least 0.80 confident (weighted by how much text each page has) and at least 0.60 of what it read must be in its own script (`LanguageSpec.script_ranges`), with at least 12 letters to judge by. A confident or empty read settles the language and the others are skipped. An unsure one keeps only its believable lines (at least 0.60 confident and half in its script) and queues the other candidates as passes. The passes run after every file's quick read and before the deeper phases (`status().phase == "languages"`): each reads the file's pages that needed OCR again in its language, upright, adds the lines that language read believably, and is charged at the additional-language rate. A page read in several languages is read by the deeper phases in each, keeping the lines in that language's script.
+
+A file with a text layer is in the languages whose script its text contains, so a search by language (`search.run(..., languages=["te"])`) finds a native Telugu PDF too.
+
+**Models.** The quick phase's models for each source's first language are fetched before the first file is read, so a missing connection is said once, up front; the run goes on (files with a text layer need no models, and the others fail with the reason). A failed download is remembered for 30 seconds, so a run does not try once per file or page. A deeper phase whose models can't be fetched is skipped for that language with a single warning.
 
 ### Progress and ETA
 
