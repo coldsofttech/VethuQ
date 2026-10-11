@@ -1,0 +1,177 @@
+# Builds the worker image (github/image/Dockerfile) and publishes it to GHCR as a public package.
+#
+# The image holds the premium add-ons' compiled wheels, so the build checks out the private
+# repositories with PREMIUM_READ_TOKEN (a fine-grained token with read-only Contents access to
+# VethuQ-premium and VethuQ-entitlements) and then gates every wheel for shipping. Nothing from
+# those repositories is logged or uploaded except as compiled wheels inside the image.
+#
+# It prints a compatibility row for the job summary; a person adds it to
+# packages/core/src/vethuq/_github/compatibility.json (rows are never rewritten by automation).
+name: github-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image version, X.Y.Z (the image tag; matches a github-tier-vX.Y.Z workflow tag)"
+        required: true
+        type: string
+      push:
+        description: "Publish the image (off: build and smoke-test only)"
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "worker-image-v*"
+  pull_request:
+    paths:
+      - "github/image/**"
+      - ".github/workflows/github-image.yml"
+      - "packages/worker/**"
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/coldsofttech/vethuq-worker
+  # Premium add-ons the image carries (directory names under VethuQ-premium/packages).
+  PREMIUM_ADDONS: "english pdf paddle ocr-quick"
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$EVENT" in
+            workflow_dispatch) version="$INPUT_VERSION" ;;
+            push) version="${REF_NAME#worker-image-v}" ;;
+            *) version="0.0.0-pr" ;;
+          esac
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-pr)?$ ]] || { echo "bad version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The three repositories sit side by side, as the workspaces' path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          repository: coldsofttech/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          path: work/VethuQ-premium
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          path: work/VethuQ-entitlements
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build and gate the wheels
+        working-directory: work
+        run: |
+          python -m pip install build setuptools wheel "Cython>=3.0"
+          mkdir -p context/wheels
+          cp VethuQ/github/image/Dockerfile context/Dockerfile
+          for package in VethuQ/packages/addon-api VethuQ/packages/core VethuQ/packages/worker \
+                         VethuQ-entitlements/packages/entitlements; do
+            python -m build --wheel --outdir context/wheels "$package"
+          done
+          for addon in $PREMIUM_ADDONS; do
+            python -m build --wheel --outdir context/wheels "VethuQ-premium/packages/$addon"
+          done
+          python VethuQ-premium/scripts/wheel_gate.py --wheel context/wheels/vethuq_addon_*.whl
+          # The administration package must never ship.
+          if ls context/wheels | grep -qi admin; then echo "admin wheel present"; exit 1; fi
+          ls -l context/wheels
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: work/context
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE }}:candidate
+
+      - name: Smoke test (no network, the repository's synthetic job)
+        working-directory: work/VethuQ
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            -e VETHUQ_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 \
+            -v "$PWD/github/protocol/v1/fixtures/payload:/payload:ro" \
+            -v "$RUNNER_TEMP/out:/out" \
+            ${{ env.IMAGE }}:candidate \
+            run --job-id fixture-job-0001 --payload /payload --out /out
+          test -s "$RUNNER_TEMP/out/result.bin"
+          docker run --rm --network none --entrypoint python \
+            -e VETHUQ_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 \
+            -v "$RUNNER_TEMP/out:/out:ro" ${{ env.IMAGE }}:candidate -c "
+          import os
+          from vethuq_worker import open_result
+          r = open_result(os.environ['VETHUQ_MASTER_KEY'], 'fixture-job-0001', open('/out/result.bin','rb').read())
+          assert r.status == 'done' and len(r.pages) == 2, r.status
+          print('smoke test ok')
+          "
+
+      - name: Publish
+        id: publish
+        if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.push)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        id: push
+        if: steps.publish.outcome == 'success'
+        uses: docker/build-push-action@v6
+        with:
+          context: work/context
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+
+      - name: Compatibility row
+        if: steps.push.outcome == 'success'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Add this row to compatibility.json"
+            echo
+            echo '```json'
+            echo "{"
+            echo "  \"workflow_ref\": \"github-tier-v$VERSION\","
+            echo "  \"image\": \"$IMAGE:$VERSION@$DIGEST\","
+            echo "  \"protocol\": 1,"
+            echo "  \"min_client\": \"$VERSION\","
+            echo "  \"status\": \"current\""
+            echo "}"
+            echo '```'
+            echo
+            echo "Make the package public in the GitHub package settings the first time."
+          } >> "$GITHUB_STEP_SUMMARY"

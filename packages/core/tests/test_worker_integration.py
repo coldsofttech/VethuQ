@@ -55,3 +55,47 @@ class TestCoreEngine:
             folder = engine._client.db_path.parent.parent
             assert folder.exists()
         assert not folder.exists()
+
+
+class TestBake:
+    def test_models_are_downloaded_and_engines_checked(self, tmp_path):
+        from vethuq_worker.bake import bake
+
+        models = tmp_path / "models"
+        assert bake(models, say=lambda _line: None) == 1
+        assert (models / "fake" / "rec-en" / "model.bin").is_file()
+        assert fake_pipeline.STATE.engines_created == ["en"]
+
+    def test_a_second_bake_downloads_nothing(self, tmp_path):
+        from vethuq_worker.bake import bake
+
+        bake(tmp_path / "m", say=lambda _line: None)
+        fake_pipeline.STATE.downloads.clear()
+        bake(tmp_path / "m", say=lambda _line: None)
+        assert fake_pipeline.STATE.downloads == []
+
+    def test_a_failed_download_fails_the_bake(self, tmp_path):
+        import pytest
+
+        from vethuq_worker.bake import BakeError, bake
+
+        fake_pipeline.STATE.download_fails.add("rec-en")
+        with pytest.raises(BakeError):
+            bake(tmp_path / "m", say=lambda _line: None)
+
+    def test_no_engine_means_no_image(self, tmp_path):
+        import pytest
+
+        from vethuq_worker.bake import BakeError, bake
+
+        fake_pipeline.STATE.engine_available = False
+        with pytest.raises(BakeError):
+            bake(tmp_path / "m", say=lambda _line: None)
+
+    def test_cli_reports_the_outcome(self, tmp_path, capsys):
+        from vethuq_worker.cli import main
+
+        assert main(["bake-models", "--models", str(tmp_path / "m")]) == 0
+        assert "1 engine(s) ready" in capsys.readouterr().out
+        fake_pipeline.STATE.download_fails.add("rec-en")
+        assert main(["bake-models", "--models", str(tmp_path / "m2")]) == 1

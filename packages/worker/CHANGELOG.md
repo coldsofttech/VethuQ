@@ -15,3 +15,8 @@ tags named `vethuq-worker-vX.Y.Z` (through hatch-vcs), not from this file.
   `VETHUQ_MASTER_KEY`). It reads the pages with VethuQ's local OCR over the installed add-ons,
   applies the add-on settings (licences) from the manifest, enforces the caps, fails single pages
   without failing the job, logs nothing from the documents, and always seals a result.
+- `vethuq-worker bake-models --models DIR`: downloads the OCR models for every installed language
+  and phase and proves each engine loads, so the image needs no network at run time.
+- The image: `github/image/Dockerfile` and `.github/workflows/github-image.yml` (builds the wheels
+  from the three repositories, gates the add-on wheels, builds, smoke-tests with no network, pushes
+  to GHCR and prints the compatibility row).

@@ -28,7 +28,7 @@ sequenceDiagram
 | `packages/core/src/vethuq/_github/templates/vethuq-ocr.yml` | The caller workflow `setup()` writes into the user's repository. It ships inside the package, so it always matches the client |
 | `packages/core/src/vethuq/_github/compatibility.json` | Which workflow tags, images and job protocol versions this VethuQ may set up |
 | `github/protocol/v1/` | The job protocol (manifest and result), shared by client and worker tests |
-| `github/image/` | The worker image (planned) |
+| `github/image/` | The worker image: `Dockerfile` and how it is built and published |
 
 There is **no template repository**. GitHub copies a template whole, which would put this monorepo
 in every user's account, so the client writes the one file instead.

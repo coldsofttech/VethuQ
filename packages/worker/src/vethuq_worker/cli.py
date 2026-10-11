@@ -22,7 +22,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--job-id", required=True)
     run.add_argument("--payload", required=True, type=Path, help="folder holding payload.bin")
     run.add_argument("--out", required=True, type=Path, help="folder to write result.bin to")
+    bake = commands.add_parser("bake-models", help="download the OCR models (image build)")
+    bake.add_argument("--models", required=True, type=Path)
     args = parser.parse_args(argv)
+    if args.command == "bake-models":
+        return _bake(args.models)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
     key = os.environ.get(KEY_VARIABLE, "")
@@ -37,3 +41,15 @@ def main(argv: list[str] | None = None) -> int:
     ok = sum(1 for page in result.pages if page.ok)
     print(f"job {args.job_id}: {result.status}, {ok}/{len(result.pages)} pages read")
     return EXIT_FAILED if result.status == "failed" else EXIT_OK
+
+
+def _bake(models: Path) -> int:
+    from vethuq_worker.bake import BakeError, bake
+
+    try:
+        count = bake(models)
+    except BakeError as error:
+        print(str(error), file=sys.stderr)
+        return EXIT_FAILED
+    print(f"{count} engine(s) ready in {models}")
+    return EXIT_OK

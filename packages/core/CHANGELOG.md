@@ -154,7 +154,8 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   `vethuq-addon-api~=0.1`, `vethuq-addon-english~=0.1`.
 - Job protocol v1 and the worker (package `vethuq-worker`, see `github/protocol/v1`): the format
   the GitHub processing tier will use to send pages to a runner and read the answer. No change to
-  VethuQ's own API.
+  VethuQ's own API. Also the worker image's Dockerfile and build workflow
+  (`github/image`, `.github/workflows/github-image.yml`).
 
 ### Notes
 - The production policy signing keys are not built in yet, so `client.policy.refresh()` makes no

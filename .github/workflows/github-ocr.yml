@@ -68,10 +68,11 @@ jobs:
           JOB_ID: ${{ inputs.job_id }}
           VETHUQ_MASTER_KEY: ${{ secrets.master_key }}
         run: |
-          docker run --rm --network none \
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp \
             -e VETHUQ_MASTER_KEY \
             -v "$RUNNER_TEMP/payload:/payload:ro" -v "$RUNNER_TEMP/out:/out" \
-            "$IMAGE" vethuq-worker run --job-id "$JOB_ID" --payload /payload --out /out
+            "$IMAGE" run --job-id "$JOB_ID" --payload /payload --out /out
 
       - name: Upload the encrypted result
         if: always()
