@@ -100,7 +100,7 @@ jobs:
           for addon in $PREMIUM_ADDONS; do
             python -m build --wheel --outdir context/wheels "VethuQ-premium/packages/add-ons/$addon"
           done
-          python VethuQ-premium/scripts/wheel_gate.py --wheel context/wheels/vethuq_addon_*.whl
+          python VethuQ-premium/scripts/add-ons/wheel_gate.py --wheel context/wheels/vethuq_addon_*.whl
           # The administration package must never ship.
           if ls context/wheels | grep -qi admin; then echo "admin wheel present"; exit 1; fi
           ls -l context/wheels
