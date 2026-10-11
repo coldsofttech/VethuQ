@@ -8,13 +8,16 @@ so highlights always show the original text. Only pages of files that are `index
 from __future__ import annotations
 
 import json
+import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from vethuq._db import _Database
-from vethuq._errors import _SearchOptionError
+from vethuq._errors import _IndexAlreadyRunningError, _SearchOptionError
 from vethuq._export import _Exporter
+from vethuq._indexing.runs import _Runs
 from vethuq._search import HYBRID, _Engines, _Search, _SearchIndex
 from vethuq._search.service import _Match, _Synced
 from vethuq._settings import _SearchSettings
@@ -24,6 +27,7 @@ __all__ = [
     "NormalizerInfo",
     "Search",
     "SearchEngineInfo",
+    "SearchIndexRebuildResult",
     "SearchIndexStatus",
     "SearchMatch",
     "SearchResult",
@@ -151,6 +155,28 @@ class SearchEngineInfo:
 
     def to_json(self, indent: int | None = None) -> str:
         """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+_logger = logging.getLogger("vethuq.search")
+
+
+@dataclass(frozen=True)
+class SearchIndexRebuildResult:
+    """What `search.rebuild()` did."""
+
+    pages: int  # pages in the rebuilt index
+    seconds: float
+    error: str | None = None  # why it failed; None when it worked
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+    def to_dict(self) -> dict[str, object]:
+        return {"pages": self.pages, "seconds": self.seconds, "ok": self.ok, "error": self.error}
+
+    def to_json(self, indent: int | None = None) -> str:
         return json.dumps(self.to_dict(), indent=indent)
 
 
@@ -432,7 +458,24 @@ class Search:
         indexed, total = self._index.counts()
         return SearchIndexStatus(indexed, total, self._index.is_current(), self._index.has_fts())
 
-    def rebuild(self) -> int:
-        """Throw the search index away and build it again from the stored page text. It is also
-        rebuilt by itself when the installed normalizers change. Returns the pages indexed."""
-        return self._index.rebuild()
+    def rebuild(self) -> SearchIndexRebuildResult:
+        """Throw the search index away and build it again from the stored page text. No file is
+        read again. It is also rebuilt by itself when the installed normalizers change.
+
+        Raises `IndexAlreadyRunningError` while an index run is going. A failure is reported in
+        the result (`ok` is False, `error` says why) rather than raised."""
+        with self._database.session() as session:
+            if _Runs.recover(session):
+                raise _IndexAlreadyRunningError(
+                    "An index run is going, so the search index can't be rebuilt now.",
+                    "Wait for it to finish, then rebuild.",
+                )
+        started = time.monotonic()
+        try:
+            pages = self._index.rebuild()
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            _logger.error("Search index rebuild failed: %s", exc)
+            return SearchIndexRebuildResult(0, time.monotonic() - started, str(exc))
+        seconds = time.monotonic() - started
+        _logger.info("Search index rebuilt: %d pages in %.1fs", pages, seconds)
+        return SearchIndexRebuildResult(pages, seconds)

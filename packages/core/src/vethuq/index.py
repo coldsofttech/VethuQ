@@ -170,6 +170,10 @@ class IndexStatus:
     workers_active: int = 0
     deepened_pages: int = 0  # pages the deeper phases have read in this run
     unsupported_files: int = 0  # files under the run's target that no add-on reads
+    heartbeat_at: str | None = None  # when the running run last said it was still going (UTC)
+    # The run's process is alive but has been quiet for two minutes or more: it is hung. Stop it
+    # from the outside (kill the process), then `clear_stale()`.
+    stalled: bool = False
 
     @property
     def paused(self) -> bool:
@@ -199,6 +203,8 @@ class IndexStatus:
             "workers_active": self.workers_active,
             "deepened_pages": self.deepened_pages,
             "unsupported_files": self.unsupported_files,
+            "heartbeat_at": self.heartbeat_at,
+            "stalled": self.stalled,
             "eta": self.eta.to_dict(),
         }
 
@@ -491,6 +497,9 @@ class Index:
                 workers_active=model.workers_active if active else 0,
                 deepened_pages=model.deepened_pages,
                 unsupported_files=model.unsupported_files,
+                heartbeat_at=model.heartbeat_at if active else None,
+                stalled=active
+                and _Runs.stalled(model, limit=self._indexer.STALE_HEARTBEAT_SECONDS),
             )
 
     def get(self, run_id: int) -> IndexRun:

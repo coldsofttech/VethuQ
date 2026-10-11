@@ -26,6 +26,10 @@ class _FileNotTrackedError(_IndexingError, errors.FileNotTrackedError):
     exit_code = 54
 
 
+class _DatabaseIntegrityError(_IndexingError, errors.DatabaseIntegrityError):
+    exit_code = 55
+
+
 class _CreditsError(_VethuQError, errors.CreditsError):
     exit_code = 60
 

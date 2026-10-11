@@ -6,6 +6,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (run health)
+- A run's heartbeat: `IndexStatus.heartbeat_at` and `IndexStatus.stalled` (alive but quiet for two minutes).
+- A full integrity check before a run that follows a left-behind one; `errors.DatabaseIntegrityError`.
+- `search.rebuild()` refuses while a run is going and returns a `SearchIndexRebuildResult` (it returned the page
+  count).
+
 ### Added (office file types)
 - Tables for the Word, Excel, PowerPoint, RTF and email file types (`docx_pages`, `doc_pages`, `xlsx_pages`,
   `xls_pages`, `pptx_pages`, `ppt_pages`, `rtf_pages`, `eml_pages`); `vethuq[office]` installs the licensed office pack.

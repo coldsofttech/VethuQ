@@ -72,6 +72,31 @@ class _Runs:
         )
 
     @staticmethod
+    def crashed(session: Session) -> bool:
+        """Whether starting a run would clear one left behind by a process that ended (so the
+        database should be checked first). Not with the stale-lock mode `disable`: that run keeps
+        the lock and the start is refused."""
+        return _IndexSettings.get_stale_lock(session) != "disable" and _Runs.has_stale(session)
+
+    @staticmethod
+    def beat(session: Session, run_id: int) -> None:
+        """Note that the run is still going."""
+        run = session.get(_IndexRun, run_id)
+        if run is not None:
+            run.heartbeat_at = _stamp()
+
+    @staticmethod
+    def stalled(run: _IndexRun, now: datetime | None = None, limit: float = 120.0) -> bool:
+        """A run whose process is alive but has not refreshed its heartbeat for `limit` seconds."""
+        if run.status is not IndexRunStatus.RUNNING or not run.heartbeat_at:
+            return False
+        try:
+            last = datetime.fromisoformat(run.heartbeat_at)
+        except ValueError:
+            return False
+        return ((now or datetime.now(UTC)) - last).total_seconds() > limit
+
+    @staticmethod
     def clear_stale(session: Session) -> int:
         """Fail the runs whose process is gone and put back their files, whatever the stale-lock
         setting says. Returns how many runs were failed."""
@@ -144,6 +169,7 @@ class _Runs:
             mode=mode,
             pid=os.getpid(),
             started_at=_stamp(),
+            heartbeat_at=_stamp(),
         )
         session.add(run)
         try:

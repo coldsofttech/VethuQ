@@ -580,6 +580,8 @@ class _IndexRun(_Base):
         Integer, nullable=False, default=0, server_default="0"
     )
     pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Refreshed every few seconds while the run goes; a live process that stops is hung.
+    heartbeat_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[str] = mapped_column(Text, nullable=False)
     completed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -416,7 +416,8 @@ class TestIndex:
         assert not client.search.run("some", engine="like").index_rebuilt
 
     def test_rebuild_builds_it_again(self, indexed):
-        assert indexed.search.rebuild() == 4
+        result = indexed.search.rebuild()
+        assert result.ok and result.pages == 4 and result.seconds >= 0
         assert indexed.search.status().pages_indexed == 4
 
     def test_without_the_trigram_index_searches_still_work(self, indexed, monkeypatch):

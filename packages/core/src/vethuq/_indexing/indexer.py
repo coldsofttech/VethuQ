@@ -22,6 +22,7 @@ from vethuq._db import (
     _DocumentIndex,
     _DocumentLanguage,
     _IndexRun,
+    _IntegrityCheck,
     _Language,
     _PdfPage,
     _Source,
@@ -30,6 +31,7 @@ from vethuq._db.values import _PageSource, _PageState
 from vethuq._documents import _Documents
 from vethuq._errors import (
     _CreditsExhaustedError,
+    _DatabaseIntegrityError,
     _FileNotTrackedError,
     _OcrModelMissingError,
     _SourceNotFoundError,
@@ -706,6 +708,33 @@ class _Indexer:
 
     # ----- a run ------------------------------------------------------------------------------
 
+    # How often, in seconds, a run says it is still going; a run that is alive but quiet for much
+    # longer than this is reported as stalled.
+    HEARTBEAT_SECONDS = 5.0
+    STALE_HEARTBEAT_SECONDS = 120.0
+
+    def _verify_integrity(self) -> None:
+        """Check the database right after a run was found left behind by a process that ended:
+        whatever the schedule says, the file may be damaged. Raises `DatabaseIntegrityError`."""
+        result = _IntegrityCheck.run(self.database.db_path)
+        if result.ok:
+            self._logger.info("Database integrity verified after a run was left behind")
+            return
+        self._logger.error("Database integrity check failed: %s", "; ".join(result.errors))
+        raise _DatabaseIntegrityError(
+            "The database failed its integrity check after an index run was left behind by a "
+            "process that ended.",
+            "See db.integrity_check() for details, then repair or restore the database.",
+        )
+
+    def _heartbeat(self, run_id: int, stop: threading.Event) -> None:
+        while not stop.wait(self.HEARTBEAT_SECONDS):
+            try:
+                with self.database.session() as session:
+                    _Runs.beat(session, run_id)
+            except Exception:  # noqa: BLE001 - a missed beat only makes the run look quiet
+                self._logger.warning("Could not refresh the index heartbeat")
+
     def run(
         self,
         target: int | str | Path | None,
@@ -747,6 +776,10 @@ class _Indexer:
             elif view.asynchronous:
                 remote_tier = view
             self.credits.sync(session, view.wallet)  # today's allowance, before the workers start
+            crashed = _Runs.crashed(session)
+        if crashed:
+            self._verify_integrity()
+        with self.database.session() as session:
             run = _Runs.begin(session, source_id, only_file, count, view.id, mode)
             run_id = run.id
             self.remote.recover(session)
@@ -768,6 +801,10 @@ class _Indexer:
             self._current.clear()
         counts = {"processed": 0, "failed": 0}
         lock = threading.Lock()
+        beating = threading.Event()
+        threading.Thread(
+            target=self._heartbeat, args=(run_id, beating), name="vethuq-heartbeat", daemon=True
+        ).start()
         try:
             self._preflight(sources)
             self.remote.collect()  # jobs left by earlier runs that have finished since
@@ -844,6 +881,7 @@ class _Indexer:
             self._finish(run_id, IndexRunStatus.FAILED, str(exc) or type(exc).__name__, counts)
             raise
         finally:
+            beating.set()
             _Runs.end(run_id)
             self._run_id = None
             self._tier = self._remote_tier = self._router = None

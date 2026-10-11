@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vethuq.errors.generic import VethuQError
+from vethuq.errors.generic import CorruptDatabaseError, VethuQError
 
 
 class IndexingError(VethuQError):
@@ -62,3 +62,8 @@ class SearchOptionError(SearchError):
 
 class SearchQueryError(SearchError):
     """The query can't be searched by the engine."""
+
+
+class DatabaseIntegrityError(IndexingError, CorruptDatabaseError):
+    """The database failed its integrity check when a run started after an earlier run had been
+    left behind by a process that ended. Nothing was changed; repair or restore the database."""

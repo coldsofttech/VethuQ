@@ -17,6 +17,7 @@ from vethuq._errors.generic import (
 from vethuq._errors.index import (
     _CreditsError,
     _CreditsExhaustedError,
+    _DatabaseIntegrityError,
     _FileNotTrackedError,
     _IndexAlreadyRunningError,
     _IndexingError,
@@ -49,6 +50,7 @@ __all__ = [
     "_CreditsExhaustedError",
     "_InvalidGrantError",
     "_DataFolderNotWritableError",
+    "_DatabaseIntegrityError",
     "_FileNotTrackedError",
     "_IndexAlreadyRunningError",
     "_IndexNotRunningError",
