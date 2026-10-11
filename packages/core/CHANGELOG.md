@@ -15,8 +15,8 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   Remote tiers (GitHub, hybrid) take the deeper reads too. `pdf_pages_phases` records each read.
 - Add-on API 0.9.0: `OcrRequest.angle`, `OcrEngine.recognize(image, angle=0)`, `ReadPage.region_phase`.
 - A Markdown file's linked pictures are read from the moderate phase (quick leaves them).
-- The OCR phases are explicit installs, like the other optional add-ons: `vethuq-addon-ocr-quick` is
-  no longer a dependency of VethuQ. `pip install vethuq[deep-scan]` installs all three phases.
+- The quick phase stays installed with VethuQ; moderate and deep are optional installs:
+  `pip install vethuq[deep-scan]` (the `vethuq-bundle-deep-scan` bundle) adds them.
 - The ETA counts the deeper phases (`IndexEta.by_phase`); the quick pace no longer blends in the
   rotated reads.
 

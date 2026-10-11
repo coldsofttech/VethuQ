@@ -16,6 +16,7 @@ dependencies = [
     "vethuq-addon-csv~=0.1",
     "vethuq-addon-markdown~=0.1",
     "vethuq-addon-paddle~=0.1",
+    "vethuq-addon-ocr-quick~=0.1",
     "vethuq-addon-like~=0.1",
     "vethuq-addon-exact~=0.1",
     "vethuq-addon-lexical~=0.1",
@@ -37,7 +38,7 @@ semantic = ["vethuq-addon-semantic~=0.1"]
 # Read image files (PNG, JPG, TIFF) and the pictures Markdown files link to: the image bundle, which
 # installs the three free image add-ons.
 images = ["vethuq-bundle-image~=0.1"]
-# OCR for scanned pages and images: the quick, moderate and deep phases (`vethuq-bundle-deep-scan`).
+# The deeper OCR phases, moderate and deep (quick is installed with VethuQ): `vethuq-bundle-deep-scan`.
 deep-scan = ["vethuq-bundle-deep-scan~=0.1"]
 
 [build-system]

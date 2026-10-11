@@ -51,7 +51,7 @@ class _Ocr:
                 return spec
         raise _OcrModelMissingError(
             f"OCR isn't available: the {wanted} OCR phase isn't installed.",
-            f"Install the add-on: vethuq-addon-ocr-{wanted} (or pip install vethuq[deep-scan]).",
+            f"Install the add-on: vethuq-addon-ocr-{wanted}.",
         )
 
     def provider(self, profile: str) -> OcrEngineProvider:

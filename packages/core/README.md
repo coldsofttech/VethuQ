@@ -668,7 +668,7 @@ client.file_types.get("pdf")  # a FileType, or None
 
 ## OCR
 
-`client.ocr` shows what reads scanned pages, all provided by add-ons: the engine (`vethuq-addon-paddle`, installed with VethuQ) and the OCR phases, which are explicit installs: `vethuq-addon-ocr-quick`, `vethuq-addon-ocr-moderate` and `vethuq-addon-ocr-deep`, or all three with `pip install vethuq[deep-scan]` (the `vethuq-bundle-deep-scan` bundle). Without the quick phase VethuQ reads native text but cannot OCR.
+`client.ocr` shows what reads scanned pages, all provided by add-ons: the engine (`vethuq-addon-paddle`) and the quick phase (`vethuq-addon-ocr-quick`) are installed with VethuQ; the deeper phases, `vethuq-addon-ocr-moderate` and `vethuq-addon-ocr-deep`, are optional installs (`pip install vethuq[deep-scan]`, the `vethuq-bundle-deep-scan` bundle).
 
 ```python
 client.ocr.engines.list()  # [OcrEngine(id="paddle", profiles=("mobile", "server"), available=True, ...)]
