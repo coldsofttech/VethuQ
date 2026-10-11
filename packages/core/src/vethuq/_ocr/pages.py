@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import time
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from vethuq._credits import _PageMeter
 from vethuq._db.values import _PageSource
@@ -46,6 +48,8 @@ class _PageResult:
     pending: bool = False
     requests: tuple[OcrRequest, ...] = ()
     ledger_ids: tuple[int, ...] = ()
+    # What the file type keeps about the page beside its text (`ReadPage.details`).
+    details: Mapping[str, Any] = field(default_factory=dict)
 
 
 class _PageOcr:
@@ -55,7 +59,12 @@ class _PageOcr:
       images worth reading: its text is used and no OCR runs.
     - **mixed**: enough text, plus images: only the images are read, and appended.
     - **scanned**: not enough text: the whole page is read.
+
+    A page that sets `ReadPage.ocr` to False (a text file) is never read whole: its text is final,
+    and only its image regions, if it has any, are read, as on a mixed page.
     """
+
+    _logger = logging.getLogger("vethuq.indexing")
 
     MIN_CHARS = 20
     MIN_WORDS = 3
@@ -68,12 +77,42 @@ class _PageOcr:
     @staticmethod
     def needs_ocr(page: ReadPage) -> bool:
         if not page.ocr:
-            return False
+            return bool(page.image_regions)
         return not _PageOcr.has_text(page.native_text) or bool(page.image_regions)
 
     @staticmethod
-    def pages(reader: DocumentReader, path: Path) -> Iterator[tuple[int, ReadPage]]:
-        yield from enumerate(reader.read(path), start=1)
+    def pages(
+        reader: DocumentReader,
+        path: Path,
+        readable: Callable[[Path], bool] | None = None,
+        warn: bool = True,
+    ) -> Iterator[tuple[int, ReadPage]]:
+        """The pages of `path`. With `readable` (whether an installed add-on reads an image file),
+        a region taken from an image file nothing can read is dropped, and logged if `warn`."""
+        for number, page in enumerate(reader.read(path), start=1):
+            yield number, _PageOcr.readable_regions(page, path, readable, warn)
+
+    @staticmethod
+    def readable_regions(
+        page: ReadPage, path: Path, readable: Callable[[Path], bool] | None, warn: bool
+    ) -> ReadPage:
+        if readable is None or not page.region_files:
+            return page
+        keep = [i for i, file in enumerate(page.region_files) if readable(file)]
+        if len(keep) == len(page.region_files):
+            return page
+        if warn:
+            for i, file in enumerate(page.region_files):
+                if i not in keep:
+                    _PageOcr._logger.warning(
+                        "%s: the image %s was not read: no installed add-on reads %s files",
+                        path, file, file.suffix.lower() or "such",
+                    )  # fmt: skip
+        return replace(
+            page,
+            image_regions=tuple(page.image_regions[i] for i in keep),
+            region_files=tuple(page.region_files[i] for i in keep),
+        )
 
     @staticmethod
     def covered(page: ReadPage) -> float:
@@ -132,6 +171,19 @@ class _PageOcr:
         meter: _PageMeter | None = None,
         key_prefix: str = "",
     ) -> _PageResult:
+        """Read one page (see `_read`), carrying the page's details along."""
+        result = _PageOcr._read(number, page, executor, language, meter, key_prefix)
+        return replace(result, details=dict(page.details)) if page.details else result
+
+    @staticmethod
+    def _read(
+        number: int,
+        page: ReadPage,
+        executor: OcrExecutor | None,
+        language: LanguageSpec | None = None,
+        meter: _PageMeter | None = None,
+        key_prefix: str = "",
+    ) -> _PageResult:
         """Read one page. `executor` reads the images that need OCR (None: no OCR is possible, so
         a page that needs it raises `LookupError`) in `language`. With a `meter`, the page is
         paid for before it is read; a page that can't be paid for raises
@@ -144,7 +196,7 @@ class _PageOcr:
             return _PageResult(number, native, 1.0, _PageSource.NATIVE)
         if executor is None or language is None:
             raise LookupError("OCR isn't available")
-        has_text = _PageOcr.has_text(native)
+        has_text = not page.ocr or _PageOcr.has_text(native)
         regions = list(page.image_regions) if has_text else [None]
         factor, cost, held = 1.0, 0, 0
         if meter is not None:

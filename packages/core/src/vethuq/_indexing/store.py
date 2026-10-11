@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from vethuq._db import _DocumentLanguage, _PdfPage, _PdfPageQuick
 from vethuq._db.values import _PageSource, _PageState, _PassSource, _PassStatus
+from vethuq._filetypes import _PageDetails
 from vethuq._ocr import _PageResult
 
 
@@ -151,7 +152,11 @@ class _PageStore:
 
     @staticmethod
     def save_page(
-        session: Session, document_id: int, result: _PageResult, language_id: int
+        session: Session,
+        document_id: int,
+        result: _PageResult,
+        language_id: int,
+        file_type: str = "",
     ) -> _PdfPage:
         """Save a page as read. A page the document already has (read in another language, or
         staged) keeps its text, with this language's added when it isn't there already."""
@@ -173,6 +178,8 @@ class _PageStore:
                 status=_PageState.WAITING if result.pending else _PageState.DONE,
             )
             session.add(page)
+            session.flush()
+            _PageDetails.save(session, file_type, page.id, result.details)
         elif not result.pending and result.quick is not None:
             if page.status is _PageState.DONE:  # an earlier language's text: add to it
                 added = result.text

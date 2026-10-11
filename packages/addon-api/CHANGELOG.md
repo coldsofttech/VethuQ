@@ -8,9 +8,13 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 The add-on API version (`API_VERSION`) is 0.8.0.
 
 ### Added (API 0.8.0)
-- `ReadPage.ocr` (default `True`): a reader sets it to `False` for a page that is text through and
-  through (a text, CSV or Markdown file). Its `native_text` is final however short, and the page is
-  never OCR'd or priced.
+- `ReadPage.ocr` (default `True`): a reader sets it to `False` for a page whose `native_text` is
+  final however short (a text, CSV or Markdown file). The page itself is never OCR'd; its
+  `image_regions`, if any, still are.
+- `ReadPage.region_files`: the image file each region is read from (a picture a Markdown file points
+  to). VethuQ skips, with a warning in the log, a region no installed add-on can read the format of.
+- `ReadPage.details`: facts about the file (`encoding`, a CSV's `delimiter`...) that VethuQ keeps in
+  the file type's own table.
 
 ### Added (API 0.7.0)
 - `LanguageSpec.script_ranges`: the code point ranges of a language's writing system, so VethuQ can

@@ -37,8 +37,16 @@ permissions:
 env:
   IMAGE: ghcr.io/coldsofttech/vethuq-worker
   # Premium add-ons the image carries (folders under VethuQ-premium/packages/add-ons; a grouped add-on's
-  # folder includes its group, for example search/engines/like).
-  PREMIUM_ADDONS: "languages/english file-types/pdf ocr/engines/paddle ocr/modes/quick search/engines/like search/engines/exact search/normalisers/case search/normalisers/unicode"
+  # folder includes its group, for example search/engines/like). These are the free add-ons VethuQ
+  # itself depends on. Not here: backup (licensed, not part of reading pages), github (the tier
+  # that sends jobs to this image) and semantic (an optional extra that brings ONNX Runtime).
+  PREMIUM_ADDONS: >-
+    languages/english
+    file-types/pdf file-types/txt file-types/csv file-types/markdown
+    ocr/engines/paddle ocr/modes/quick
+    search/engines/like search/engines/exact search/engines/lexical search/engines/full-text
+    search/engines/proximity search/engines/fuzzy search/engines/noise-fuzzy
+    search/normalisers/case search/normalisers/unicode search/normalisers/leetspeak
 
 jobs:
   image:

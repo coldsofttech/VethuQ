@@ -10,7 +10,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - The `.txt`, `.csv` and `.md`/`.markdown` file types, as the free add-ons `vethuq-addon-txt`,
   `vethuq-addon-csv` and `vethuq-addon-markdown`, installed with VethuQ. These files are read
   straight from disk as one page of text each; they are never OCR'd and cost no credits.
-- Add-on API 0.8.0: `ReadPage.ocr`. A page that sets it to `False` is final as it is, however short.
+- Add-on API 0.8.0: `ReadPage.ocr` (a page whose text is final however short is never OCR'd whole),
+  `ReadPage.region_files` (the image file a region comes from) and `ReadPage.details`.
+- Each text file type keeps what it knows about a page in a table of its own beside the text in
+  `pdf_pages`: `txt_pages` (encoding), `csv_pages` (encoding, delimiter, row and column counts) and
+  `markdown_pages` (encoding, number of linked pictures).
+- A Markdown file's linked pictures are read with OCR when an installed add-on reads their format.
+  Without one (the image pack is to come) the picture is skipped with a warning in the
+  `vethuq.indexing` log and the text is indexed anyway.
 
 ### Added (export)
 - `client.search.export(result, path, format=None)`, `client.sources.export(sources, path, format=None)`

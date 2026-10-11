@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -82,9 +82,16 @@ class ReadPage:
     # reader doesn't know. VethuQ prices a page by its size.
     width_pt: float | None = None
     height_pt: float | None = None
-    # False for a page that is text through and through (a text file): `native_text` is final,
-    # however short, and the page is never OCR'd, priced or sent to a tier.
+    # False for a page whose `native_text` is final however short (a text file): the page itself
+    # is never OCR'd. Its `image_regions`, if it has any, are still read and added to the text.
     ocr: bool = True
+    # The file each `image_regions` entry is read from, one per region, when a region is a
+    # separate image file rather than part of the page (a picture a Markdown file points to).
+    # VethuQ skips a region whose file no installed add-on can read, and says so in the log.
+    region_files: tuple[Path, ...] = ()
+    # Facts about the file that its file type keeps beside the text, such as `{"encoding":
+    # "utf-8"}`. VethuQ stores the keys it has a column for and ignores the rest.
+    details: Mapping[str, Any] = field(default_factory=dict)
 
 
 class DocumentReader(ABC):

@@ -289,7 +289,9 @@ class _Indexer:
 
             prefix = f"d{document_id}.l{plan.language_id}."
             try:
-                for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
+                for number, page in _PageOcr.pages(
+                    file_type.reader, Path(plan.path), self.file_types.is_supported
+                ):
                     if self._skip(number, pages, read, staged):
                         continue
                     result = self._read(number, page, plan, meter_for, prefix)
@@ -354,7 +356,7 @@ class _Indexer:
         page whose OCR is away is saved waiting, with its images staged to be sent."""
         ids: list[int] = []
         with self.database.session() as session:
-            _PageStore.save_page(session, document_id, result, plan.language_id)
+            _PageStore.save_page(session, document_id, result, plan.language_id, plan.file_type)
             if result.pending:
                 ids = self.remote.stage(
                     session, document_id, plan.language_id, result, self._run_id,
@@ -503,7 +505,11 @@ class _Indexer:
                     additional = True
             file_type = self.file_types.for_path(path)
             try:
-                found = list(_PageOcr.pages(file_type.reader, Path(path)))
+                found = list(
+                    _PageOcr.pages(
+                        file_type.reader, Path(path), self.file_types.is_supported, False
+                    )
+                )
             except Exception:  # noqa: BLE001
                 self._logger.debug("Couldn't read %s to estimate it", path)
                 continue  # an unreadable file costs nothing

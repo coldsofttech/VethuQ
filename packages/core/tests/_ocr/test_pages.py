@@ -84,3 +84,52 @@ class TestReadPage:
         executor = FakeExecutor()
         _PageOcr.read_page(1, page(LOTS), executor, EN)
         assert executor.seen == []
+
+
+class TestTextOnlyPageWithPictures:
+    def picture_page(self, files, readable=None):
+        return ReadPage(
+            native_text="Hi",
+            image_regions=tuple((float(i), 0.0, float(i) + 1.0, 1.0) for i in range(len(files))),
+            render=lambda region: f"img-{int(region[0])}",
+            ocr=False,
+            region_files=tuple(files),
+            details={"encoding": "utf-8"},
+        )
+
+    def test_only_the_pictures_are_read_and_added_to_the_text(self):
+        from pathlib import Path
+
+        read = self.picture_page([Path("a.png"), Path("b.png")])
+        assert _PageOcr.needs_ocr(read)
+        executor = FakeExecutor({"1:0": "first", "1:1": "second"}, confidence=0.9)
+        result = _PageOcr.read_page(1, read, executor, EN)
+        assert result.source is _PageSource.MIXED
+        assert result.text == "Hi\nfirst\nsecond"
+        assert result.details == {"encoding": "utf-8"}
+
+    def test_a_picture_nothing_can_read_is_dropped_and_logged(self, caplog):
+        from pathlib import Path
+
+        read = self.picture_page([Path("a.png"), Path("b.tif")])
+        with caplog.at_level("WARNING", logger="vethuq.indexing"):
+            kept = _PageOcr.readable_regions(
+                read, Path("n.md"), lambda f: f.suffix == ".png", warn=True
+            )
+        assert kept.region_files == (Path("a.png"),) and len(kept.image_regions) == 1
+        assert kept.render(kept.image_regions[0]) == "img-0"
+        assert [r.getMessage() for r in caplog.records if "b.tif" in r.getMessage()]
+
+    def test_with_no_picture_left_the_page_is_native(self):
+        from pathlib import Path
+
+        read = self.picture_page([Path("a.png")])
+        kept = _PageOcr.readable_regions(read, Path("n.md"), lambda f: False, warn=False)
+        assert not _PageOcr.needs_ocr(kept)
+        assert _PageOcr.read_page(1, kept, None).source is _PageSource.NATIVE
+
+    def test_without_a_filter_the_page_is_unchanged(self):
+        from pathlib import Path
+
+        read = self.picture_page([Path("a.png")])
+        assert _PageOcr.readable_regions(read, Path("n.md"), None, warn=True) is read

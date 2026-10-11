@@ -23,7 +23,7 @@ publishing (the private checkouts need the secret, so they only run for branches
    **Contents** access to just those two repositories. Create it, then add it as a repository
    secret here.
 2. Build the wheels (`addon-api`, `core`, `worker`, `entitlements`, and the add-ons named in the
-   workflow's `PREMIUM_ADDONS`) and run `wheel_gate.py` over the add-ons: stable-ABI, compiled, no
+   workflow's `PREMIUM_ADDONS`: every free add-on VethuQ depends on, so the image resolves them all) and run `wheel_gate.py` over the add-ons: stable-ABI, compiled, no
    source, no key material. An `admin` wheel fails the build. Add a language pack to the image by
    adding its directory name to `PREMIUM_ADDONS` and its wheel name to the `Dockerfile`; a test
    keeps the two lists equal.

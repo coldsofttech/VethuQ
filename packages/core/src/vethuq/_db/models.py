@@ -235,6 +235,43 @@ class _PdfPageQuick(_Base):
     completed_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class _TxtPage(_Base):
+    """What a plain-text file's type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "txt_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class _CsvPage(_Base):
+    """What the CSV type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "csv_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delimiter: Mapped[str | None] = mapped_column(Text, nullable=True)
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty rows
+    column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # widest row
+
+
+class _MarkdownPage(_Base):
+    """What the Markdown type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "markdown_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local images linked
+
+
 class _DocumentLanguage(_Base):
     """A language a document was read in, and how that read went."""
 
