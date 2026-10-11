@@ -18,7 +18,7 @@ from vethuq.enums import FileStatus, IndexRunStatus
 from vethuq_addon_api.testing import FakeExecutor
 from vethuq_worker import StaticEngine
 
-PREMIUM = Path(__file__).resolve().parents[4] / "VethuQ-premium" / "packages" / "github"
+PREMIUM = Path(__file__).resolve().parents[4] / "VethuQ-premium" / "packages" / "add-ons" / "github"
 pytestmark = pytest.mark.skipif(
     not PREMIUM.is_dir(), reason="VethuQ-premium isn't checked out next to this repository"
 )
