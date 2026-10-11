@@ -36,7 +36,9 @@ class _Ocr:
         providers: Callable[[], list[OcrEngineProvider]],
         phases: Callable[[], list[OcrPhaseSpec]],
         models_dir: Callable[[], Path],
+        gpu: Callable[[], bool] = lambda: False,
     ) -> None:
+        self.gpu = gpu
         self.providers = providers
         self.phases = phases
         self.models_dir = models_dir
@@ -120,14 +122,23 @@ class _Ocr:
         phase = self.phase(phase_id)
         provider = self.provider(phase.profile)
         cache: dict = self._local.__dict__.setdefault("engines", {})
-        key = (provider.id, language.id, phase.profile)
+        use_gpu = self.gpu()
+        key = (provider.id, language.id, phase.profile, use_gpu)
         engine = cache.get(key)
         if engine is None:
             self.ensure_models(provider, language, phase.profile)
             try:
-                engine = provider.create(language, phase.profile, self.models_dir())
+                engine = provider.create(language, phase.profile, self.models_dir(), use_gpu)
             except AddonError as exc:
-                raise _OcrModelMissingError(f"The OCR engine couldn't start: {exc}") from exc
+                if not use_gpu:
+                    raise _OcrModelMissingError(f"The OCR engine couldn't start: {exc}") from exc
+                self._logger.warning("The GPU can't be used (%s); reading on the CPU.", exc)
+                try:
+                    engine = provider.create(language, phase.profile, self.models_dir(), False)
+                except AddonError as again:
+                    raise _OcrModelMissingError(
+                        f"The OCR engine couldn't start: {again}"
+                    ) from again
             cache[key] = engine
         return engine, phase
 

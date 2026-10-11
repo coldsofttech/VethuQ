@@ -368,6 +368,13 @@ class Index:
         self._metrics.send()  # if you opted in; at most once a day; never raises
         return replace(self.get(run_id), eta=self._eta(run_id))
 
+    def clear_stale(self) -> int:
+        """Fail the runs left behind by a process that ended, and put their files back to be
+        read. It is what a new run does by itself unless the stale-lock setting is `disable`.
+        Returns how many runs were cleared. A run that is really going is never touched."""
+        with self._database.session() as session:
+            return _Runs.clear_stale(session)
+
     # ----- control ----------------------------------------------------------------------------
 
     def _ask(self, state: str, allowed: tuple[str, ...]) -> int:

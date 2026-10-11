@@ -128,6 +128,7 @@ class _Search:
         languages: Sequence[str] | None,
         options: Mapping[str, Mapping[str, str]] | None = None,
         combine: str | None = None,
+        defaults: Mapping[str, Mapping[str, str]] | None = None,
     ) -> _Outcome:
         chosen = self.engines.choose(engine, combine)
         self.engines.check_explicit(explicit)
@@ -150,9 +151,8 @@ class _Search:
         corpus = _Corpus(self.index, language_ids, self.index.has_fts())
         found: dict[PageKey, list[_Found]] = {}
         for view in chosen:
-            request = SearchRequest(
-                query, self.engines.pipeline(levels[view.id]), dict(options.get(view.id, {}))
-            )
+            values = {**self.engines.saved_options(view, defaults), **options.get(view.id, {})}
+            request = SearchRequest(query, self.engines.pipeline(levels[view.id]), values)
             # One engine named, or the semantic half of `hybrid`: its failure is the search's.
             must = strict or (hybrid and view.id == SEMANTIC)
             try:

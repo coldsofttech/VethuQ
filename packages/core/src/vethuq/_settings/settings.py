@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from vethuq._db import _IntegrityCheck, _Setting
@@ -81,6 +82,23 @@ class _OcrSettings:
     # How far a run reads: each phase also does the ones before it. The phases come from add-ons.
     ENGINES = ("quick", "moderate", "deep")
     DEFAULT_ENGINE = "quick"
+    GPU_KEY = "gpu_enabled"
+
+    @staticmethod
+    def get_gpu(session: Session) -> bool:
+        """Whether OCR engines are asked to use the GPU. Off unless changed."""
+        return (_Settings.get(session, _OcrSettings.GPU_KEY) or "false").lower() == "true"
+
+    @staticmethod
+    def set_gpu(session: Session, enabled: object) -> bool:
+        if not isinstance(enabled, bool):
+            raise _InvalidSettingValueError(f"gpu must be True or False, not {enabled!r}.")
+        _Settings.set(session, _OcrSettings.GPU_KEY, "true" if enabled else "false")
+        return enabled
+
+    @staticmethod
+    def reset_gpu(session: Session) -> None:
+        _Settings.reset(session, _OcrSettings.GPU_KEY)
 
     @staticmethod
     def parse_engine(value: object) -> str:
@@ -120,6 +138,33 @@ class _IndexSettings:
     MAX_WORKERS = 8
     DEFAULT_RETRY_ATTEMPTS = 3
     DEFAULT_STABILITY_CHECK_SECONDS = 1.0
+    STALE_LOCK_KEY = "index_stale_lock"
+    STALE_LOCK_VALUES = ("auto", "enable", "disable")
+    DEFAULT_STALE_LOCK = "auto"
+
+    @staticmethod
+    def get_stale_lock(session: Session) -> str:
+        """What happens to a run left behind by a process that ended. `auto` unless changed."""
+        value = _Settings.get(session, _IndexSettings.STALE_LOCK_KEY)
+        return (
+            value
+            if value in _IndexSettings.STALE_LOCK_VALUES
+            else _IndexSettings.DEFAULT_STALE_LOCK
+        )
+
+    @staticmethod
+    def set_stale_lock(session: Session, value: object) -> str:
+        if value not in _IndexSettings.STALE_LOCK_VALUES:
+            raise _InvalidSettingValueError(
+                "The stale-lock mode must be one of "
+                f"{', '.join(_IndexSettings.STALE_LOCK_VALUES)}, not {value!r}."
+            )
+        _Settings.set(session, _IndexSettings.STALE_LOCK_KEY, value)  # type: ignore[arg-type]
+        return value  # type: ignore[return-value]
+
+    @staticmethod
+    def reset_stale_lock(session: Session) -> None:
+        _Settings.reset(session, _IndexSettings.STALE_LOCK_KEY)
 
     @staticmethod
     def parse_workers(value: object) -> int | str:
@@ -685,12 +730,42 @@ class _SearchSettings:
     EXPORT_FORMATS = ("json", "html")
     DEFAULT_EXPORT_FORMAT = "json"
     NORMALIZER_PREFIX = "search_normalize_"
+    OPTION_PREFIX = "search_option_"
+    OPTION_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
     ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
     LEVEL_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
     DEFAULT_ENGINE = "all"
     DEFAULT_CONTEXT = 80
     MAX_CONTEXT = 2000
     AUTO = "auto"
+
+    @staticmethod
+    def option_key(engine: str, name: str) -> str:
+        return f"{_SearchSettings.OPTION_PREFIX}{engine}.{name}"
+
+    @staticmethod
+    def get_option(session: Session, engine: str, name: str) -> str | None:
+        """The default saved for an engine's option, or None (the engine's own applies)."""
+        return _Settings.get(session, _SearchSettings.option_key(engine, name))
+
+    @staticmethod
+    def set_option(session: Session, engine: str, name: str, value: str) -> None:
+        _Settings.set(session, _SearchSettings.option_key(engine, name), value)
+
+    @staticmethod
+    def reset_option(session: Session, engine: str, name: str) -> None:
+        _Settings.reset(session, _SearchSettings.option_key(engine, name))
+
+    @staticmethod
+    def saved_options(session: Session) -> dict[str, dict[str, str]]:
+        """Every saved engine option default, by engine id."""
+        prefix = _SearchSettings.OPTION_PREFIX
+        found: dict[str, dict[str, str]] = {}
+        for row in session.scalars(select(_Setting).where(_Setting.key.like(f"{prefix}%"))):
+            engine, _, name = row.key[len(prefix) :].partition(".")
+            if engine and name:
+                found.setdefault(engine, {})[name] = row.value
+        return found
 
     @staticmethod
     def get_engine(session: Session) -> str:

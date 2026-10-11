@@ -138,6 +138,20 @@ class _Engines:
 
     # ----- engine options ---------------------------------------------------------------------
 
+    @staticmethod
+    def saved_options(
+        view: _EngineView, defaults: Mapping[str, Mapping[str, str]] | None
+    ) -> dict[str, str]:
+        """The saved defaults of `view`'s options that are still valid (an engine may have changed
+        its options since): the ones it declares, with a value inside its choices."""
+        declared = {option.name: option for option in view.spec.options}
+        values = {}
+        for name, value in (defaults or {}).get(view.id, {}).items():
+            option = declared.get(name)
+            if option is not None and (not option.choices or value in option.choices):
+                values[name] = value
+        return values
+
     def check_options(
         self, options: Mapping[str, Mapping[str, str]], chosen: list[_EngineView]
     ) -> None:

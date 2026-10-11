@@ -685,6 +685,10 @@ client.index.history(
 
 `client.sources.list_files(source, detailed=True)` adds to each file's `FileIndex` the `pages` read, their average `confidence` (0 to 1), the `languages` it was read in and its `file_type`.
 
+### Search option defaults
+
+An engine declares its own options (`client.search.engines()` lists them with their defaults and choices). `client.settings.search.set_option("fuzzy", "threshold", "loose")` saves a default for one; `get_option` returns it (the engine's own default until one is saved) and `reset_option` forgets it. A search's own `options=` always wins, and a saved value the engine no longer allows is ignored. Core knows no engine by name: whichever engine add-on is installed (fuzzy, semantic, proximity, noise-fuzzy) gets this for its options.
+
 ### Index settings
 
 ```python
@@ -692,6 +696,10 @@ client.settings.index.set_workers("auto")  # "auto" (the default) or 0 to 8; 0 =
 client.settings.index.set_retry_attempts(3)  # the default
 client.settings.index.set_stability_check_seconds(1.0)
 ```
+
+`settings.index.set_stale_lock(mode)` decides what a new run does about a run left behind by a process that ended: `auto` (the default) and `enable` fail it, put its files back and carry on; `disable` refuses to start with `IndexAlreadyRunningError` until `index.clear_stale()` clears it (it returns how many runs it cleared and never touches a run that is really going).
+
+`settings.ocr.set_gpu(True)` asks OCR engines to use the GPU (off by default; `get_gpu`, `reset_gpu`). An engine that can't falls back to the CPU and the log says so. It applies to engines started after the change.
 
 With `auto`, VethuQ reads as many files at once as it estimates the machine can carry. The licensed `vethuq-addon-autoscale` add-on does better: it watches the machine's CPU and memory while the run goes, learns from what earlier files took (kept, without names or paths, in `file_footprints`) and raises or lowers the number as the run goes, never above VethuQ's estimate and never to zero. It is asked only when `workers` is `auto`; with a number set, or without a licence, the static estimate is used and nothing changes. `status().workers_active` shows how many files are being read now.
 

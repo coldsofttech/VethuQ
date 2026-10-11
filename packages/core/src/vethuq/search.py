@@ -279,6 +279,7 @@ class Search:
                 if context_chars is not None
                 else _SearchSettings.get_context_chars(session)
             )
+            saved = _SearchSettings.saved_options(session)
         if isinstance(languages, str):
             languages = [languages]
         name = name.strip().lower() if isinstance(name, str) else name
@@ -293,6 +294,7 @@ class Search:
             list(languages) if languages is not None else None,
             asked,
             combine.strip().lower() if combine is not None else None,
+            saved,
         )
         matches = outcome.matches
         if sort_by is None:

@@ -23,6 +23,7 @@ from vethuq._settings import (
     _UpdateSettings,
 )
 from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
+from vethuq_addon_api import SearchOption
 
 __all__ = [
     "ConfidenceSettings",
@@ -100,6 +101,22 @@ class IndexSettings:
         with self._database.session() as session:
             _IndexSettings.reset_workers(session)
 
+    def get_stale_lock(self) -> str:
+        """What a new run does about a run left behind by a process that ended without finishing:
+        `auto` (the default) and `enable` fail it and carry on; `disable` refuses to start (the
+        run stays, with its files, until `index.clear_stale()`)."""
+        with self._database.session() as session:
+            return _IndexSettings.get_stale_lock(session)
+
+    def set_stale_lock(self, mode: str) -> str:
+        """Raises `InvalidSettingValueError` unless `mode` is `auto`, `enable` or `disable`."""
+        with self._database.session() as session:
+            return _IndexSettings.set_stale_lock(session, mode)
+
+    def reset_stale_lock(self) -> None:
+        with self._database.session() as session:
+            _IndexSettings.reset_stale_lock(session)
+
     def get_retry_attempts(self) -> int:
         """How many times a failed file is tried again within a run. 3 unless changed."""
         with self._database.session() as session:
@@ -164,6 +181,23 @@ class OcrSettings:
     def reset_engine(self) -> None:
         with self._database.session() as session:
             _OcrSettings.reset_engine(session)
+
+    def get_gpu(self) -> bool:
+        """Whether OCR engines are asked to use the GPU. `False` unless changed. An engine that
+        can't use one reads on the CPU instead (and VethuQ says so in the log). Takes effect for
+        engines started after the change."""
+        with self._database.session() as session:
+            return _OcrSettings.get_gpu(session)
+
+    def set_gpu(self, enabled: bool) -> bool:
+        """Ask OCR engines to use the GPU (or not). Raises `InvalidSettingValueError` unless
+        `enabled` is `True` or `False`."""
+        with self._database.session() as session:
+            return _OcrSettings.set_gpu(session, enabled)
+
+    def reset_gpu(self) -> None:
+        with self._database.session() as session:
+            _OcrSettings.reset_gpu(session)
 
 
 class LanguageSettings:
@@ -518,10 +552,12 @@ class SearchSettings:
         database: _Database,
         engines: Callable[[], list[str]],
         normalizers: Callable[[], dict[str, tuple[str, ...]]],
+        options: Callable[[], dict[str, tuple[SearchOption, ...]]] = dict,
     ) -> None:
         self._database = database
         self._engines = engines
         self._normalizers = normalizers
+        self._options = options
 
     def get_engine(self) -> str:
         """The engine a search uses when it doesn't name one: `all`, or an engine id."""
@@ -570,6 +606,49 @@ class SearchSettings:
     def reset_export_format(self) -> None:
         with self._database.session() as session:
             _SearchSettings.reset(session, _SearchSettings.EXPORT_FORMAT_KEY)
+
+    def _option(self, engine: str, name: str) -> SearchOption:
+        declared = self._options()
+        if engine not in declared:
+            known = ", ".join(sorted(declared)) or "none"
+            raise _InvalidSettingValueError(
+                f"The {engine!r} engine has no options.", f"Engines with options: {known}."
+            )
+        found = next((o for o in declared[engine] if o.name == name), None)
+        if found is None:
+            names = ", ".join(o.name for o in declared[engine])
+            raise _InvalidSettingValueError(
+                f"The {engine} engine has no option {name!r}.", f"Options: {names}."
+            )
+        return found
+
+    def get_option(self, engine: str, name: str) -> str:
+        """The default an engine option has in searches: the value saved, else the engine's own.
+        Raises `InvalidSettingValueError` for an engine or option that isn't installed."""
+        option = self._option(engine, name)
+        with self._database.session() as session:
+            saved = _SearchSettings.get_option(session, engine, name)
+        return saved if saved is not None else option.default
+
+    def set_option(self, engine: str, name: str, value: str) -> None:
+        """Save a default for an engine's option (`fuzzy`, `threshold`, `loose`). A search's own
+        `options=` still wins. Raises `InvalidSettingValueError` for an engine or option that
+        isn't installed, or a value outside the option's choices."""
+        option = self._option(engine, name)
+        if not isinstance(value, str) or not value:
+            raise _InvalidSettingValueError(f"{engine}.{name} needs a value, not {value!r}.")
+        if option.choices and value not in option.choices:
+            raise _InvalidSettingValueError(
+                f"{engine}.{name} must be one of {', '.join(option.choices)}, not {value!r}."
+            )
+        with self._database.session() as session:
+            _SearchSettings.set_option(session, engine, name, value)
+
+    def reset_option(self, engine: str, name: str) -> None:
+        """Back to the engine's own default."""
+        self._option(engine, name)
+        with self._database.session() as session:
+            _SearchSettings.reset_option(session, engine, name)
 
     def get_normalizer(self, normalizer: str) -> str:
         """The level saved for a normalizer (`case`, `unicode`, ...), or `auto`."""
@@ -630,8 +709,9 @@ class Settings:
         catalog: _LanguageCatalog,
         engines: Callable[[], list[str]] = list,
         normalizers: Callable[[], dict[str, tuple[str, ...]]] = dict,
+        options: Callable[[], dict[str, tuple[SearchOption, ...]]] = dict,
     ) -> None:
-        self.search = SearchSettings(database, engines, normalizers)
+        self.search = SearchSettings(database, engines, normalizers, options)
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
         self.index = IndexSettings(database)

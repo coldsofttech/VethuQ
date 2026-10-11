@@ -18,7 +18,7 @@ from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
 from vethuq._search import _Engines, _Search, _SearchIndex
-from vethuq._settings import _SearchSettings
+from vethuq._settings import _OcrSettings, _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq.addons import Addons
 from vethuq.credits import Credits
@@ -109,8 +109,13 @@ class VethuQ:
                     manager.ocr_engine_providers,
                     manager.ocr_phase_specs,
                     lambda: _Paths.models_dir(self.db_path),
+                    self._gpu_enabled,
                 )
             return self._ocr_runtime
+
+    def _gpu_enabled(self) -> bool:
+        with self._db().session() as session:
+            return _OcrSettings.get_gpu(session)
 
     def _credit_engine(self) -> _Credits:
         db = self._db()
@@ -302,6 +307,7 @@ class VethuQ:
                 self._catalog(),
                 lambda: [view.id for view in engines.views()],
                 lambda: {n.id: tuple(n.levels) for n in engines.normalizers().values()},
+                lambda: {v.id: tuple(v.spec.options) for v in engines.views() if v.spec.options},
             )
         return self._settings
 

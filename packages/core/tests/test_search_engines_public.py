@@ -490,3 +490,71 @@ class TestPreparing:
         install(indexed, monkeypatch, SearchEngineSpec("prep", "Prep", engine), keep_others=False)
         indexed.search.rebuild()
         assert indexed.search.status().pages_indexed == indexed.search.status().pages_total
+
+
+class TestSavedOptionDefaults:
+    @staticmethod
+    def probe(client, monkeypatch, seen):
+        install(
+            client,
+            monkeypatch,
+            SearchEngineSpec(
+                "probe",
+                "Probe",
+                Finds(["museum"], seen=seen),
+                options=(SearchOption("depth", default="1", choices=("1", "2", "3")),),
+            ),
+        )
+
+    def test_the_engine_default_applies_until_one_is_saved(self, indexed, monkeypatch):
+        self.probe(indexed, monkeypatch, [])
+        assert indexed.settings.search.get_option("probe", "depth") == "1"
+        indexed.settings.search.set_option("probe", "depth", "3")
+        assert indexed.settings.search.get_option("probe", "depth") == "3"
+        indexed.settings.search.reset_option("probe", "depth")
+        assert indexed.settings.search.get_option("probe", "depth") == "1"
+
+    def test_a_saved_default_reaches_the_engine_and_a_call_wins(self, indexed, monkeypatch):
+        seen = []
+        self.probe(indexed, monkeypatch, seen)
+        indexed.settings.search.set_option("probe", "depth", "3")
+        indexed.search.run("museum", engine="probe")
+        indexed.search.run("museum", engine="probe", options="probe.depth=2")
+        assert [dict(r.options) for r in seen] == [{"depth": "3"}, {"depth": "2"}]
+
+    def test_nothing_saved_sends_no_options(self, indexed, monkeypatch):
+        seen = []
+        self.probe(indexed, monkeypatch, seen)
+        indexed.search.run("museum", engine="probe")
+        assert [dict(r.options) for r in seen] == [{}]
+
+    def test_a_default_for_another_engine_is_not_sent(self, indexed, monkeypatch):
+        seen = []
+        self.probe(indexed, monkeypatch, seen)
+        indexed.settings.search.set_option("probe", "depth", "2")
+        indexed.search.run("museum", engine="like")
+        assert seen == []
+
+    @pytest.mark.parametrize(
+        ("engine", "name", "value", "match"),
+        [
+            ("nope", "depth", "1", "has no options"),
+            ("probe", "width", "1", "no option 'width'"),
+            ("probe", "depth", "9", "must be one of"),
+            ("probe", "depth", "", "needs a value"),
+        ],
+    )
+    def test_bad_settings_are_refused(self, indexed, monkeypatch, engine, name, value, match):
+        self.probe(indexed, monkeypatch, [])
+        with pytest.raises(errors.InvalidSettingValueError, match=match):
+            indexed.settings.search.set_option(engine, name, value)
+
+    def test_a_saved_value_the_engine_no_longer_allows_is_ignored(self, indexed, monkeypatch):
+        seen = []
+        self.probe(indexed, monkeypatch, seen)
+        with indexed._db().session() as session:  # noqa: SLF001
+            from vethuq._settings import _SearchSettings
+
+            _SearchSettings.set_option(session, "probe", "depth", "9")
+        indexed.search.run("museum", engine="probe")
+        assert [dict(r.options) for r in seen] == [{}]

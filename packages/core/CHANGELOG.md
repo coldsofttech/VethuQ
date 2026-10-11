@@ -6,6 +6,15 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (settings)
+- `settings.search.get_option/set_option/reset_option(engine, name)`: saved defaults for any engine's
+  declared options (fuzzy threshold, semantic limit, proximity distance, ...), applied to a search
+  unless its own `options=` says otherwise.
+- `settings.ocr.get_gpu/set_gpu/reset_gpu`: ask OCR engines for the GPU (off by default); an engine
+  that can't use it reads on the CPU.
+- `settings.index.get_stale_lock/set_stale_lock/reset_stale_lock` (`auto`, `enable`, `disable`) and
+  `index.clear_stale()`.
+
 ### Added (adaptive workers)
 - With `workers` set to `auto`, an add-on that provides a worker scheduler (`Addon.worker_scheduler()`,
   add-on API 0.10.0) sets how many files are read at once while a run goes: a gate in front of the

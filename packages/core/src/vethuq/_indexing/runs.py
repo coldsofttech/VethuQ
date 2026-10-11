@@ -17,6 +17,7 @@ from vethuq._db import _DocumentIndex, _IndexRun, _RemoteJobPage, _Source
 from vethuq._db.values import _JobPageState
 from vethuq._documents import _Documents
 from vethuq._errors import _IndexAlreadyRunningError, _IndexRunNotFoundError
+from vethuq._settings import _IndexSettings
 from vethuq.enums import FileStatus, IndexRunSortBy, IndexRunStatus, SortOrder
 
 
@@ -61,9 +62,40 @@ class _Runs:
         )
 
     @staticmethod
+    def has_stale(session: Session) -> bool:
+        """Whether a run is marked running whose process is gone."""
+        return any(
+            not _Runs._alive(run)
+            for run in session.scalars(
+                select(_IndexRun).where(_IndexRun.status == IndexRunStatus.RUNNING)
+            )
+        )
+
+    @staticmethod
+    def clear_stale(session: Session) -> int:
+        """Fail the runs whose process is gone and put back their files, whatever the stale-lock
+        setting says. Returns how many runs were failed."""
+        count = sum(1 for run in _Runs._running(session) if not _Runs._alive(run))
+        _Runs._recover(session)
+        return count
+
+    @staticmethod
+    def _running(session: Session) -> list[_IndexRun]:
+        return list(
+            session.scalars(select(_IndexRun).where(_IndexRun.status == IndexRunStatus.RUNNING))
+        )
+
+    @staticmethod
     def recover(session: Session) -> bool:
-        """Fail the runs whose process is gone, and put back the files they were reading.
-        Returns whether a run is really going."""
+        """Fail the runs whose process is gone, and put back the files they were reading, unless
+        the stale-lock setting is `disable` (then a left-behind run keeps the lock until
+        `clear_stale`). Returns whether a run is really going."""
+        if _IndexSettings.get_stale_lock(session) == "disable" and _Runs.has_stale(session):
+            return True
+        return _Runs._recover(session)
+
+    @staticmethod
+    def _recover(session: Session) -> bool:
         live = False
         for run in session.scalars(
             select(_IndexRun).where(_IndexRun.status == IndexRunStatus.RUNNING)
@@ -94,6 +126,11 @@ class _Runs:
         mode: str = "run",
     ) -> _IndexRun:
         if _Runs.recover(session):
+            if _Runs.has_stale(session):
+                raise _IndexAlreadyRunningError(
+                    "An index run was left behind by a process that ended.",
+                    "Clear it with index.clear_stale(), or set the stale-lock mode to auto.",
+                )
             raise _IndexAlreadyRunningError(
                 "An index run is already going.", "Wait for it to finish, then run again."
             )
