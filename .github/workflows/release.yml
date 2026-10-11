@@ -1,0 +1,252 @@
+# Releases a package to PyPI when its tag is pushed.
+#
+#   vethuq-addon-api-vX.Y.Z   vethuq-addon-api   pure Python
+#   vethuq-worker-vX.Y.Z      vethuq-worker      pure Python
+#   vethuq-vX.Y.Z             vethuq             a wheel per platform (Linux x86_64 / arm64, Windows
+#                                                amd64) with the compiled `vethuq_entitlements`
+#                                                runtime built in; no sdist
+#
+# The command line, interactive shell and background service are not released here (they will ship
+# as binaries). Add `-rcN` for a release candidate: it goes to TestPyPI only. Versions are
+# independent and come from the tag (hatch-vcs). Nothing is published until a reviewer approves the
+# `pypi` (or `testpypi`) environment; publishing uses PyPI Trusted Publishing, so no token is stored.
+#
+# `vethuq` takes the runtime from a release of the private VethuQ-entitlements repository, the
+# version named in packages/core/ENTITLEMENTS_VERSION (read with PREMIUM_READ_TOKEN). See
+# docs/releasing.md for the one-time set-up.
+name: release
+
+on:
+  push:
+    tags:
+      - "vethuq-addon-api-v*"
+      - "vethuq-worker-v*"
+      - "vethuq-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      dist: ${{ steps.plan.outputs.dist }}
+      directory: ${{ steps.plan.outputs.directory }}
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      platform_wheels: ${{ steps.plan.outputs.platform_wheels }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$GITHUB_REF_NAME"
+
+  verify:
+    needs: plan
+    runs-on: ubuntu-latest
+    steps:
+      # The three repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: work/VethuQ
+        run: uv sync --all-packages
+      - name: Lint
+        working-directory: work/VethuQ
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Test ${{ needs.plan.outputs.dist }}
+        working-directory: work/VethuQ
+        run: uv run pytest "${{ needs.plan.outputs.directory }}/tests" -m "not integration"
+
+  build-pure:
+    needs: [plan, verify]
+    if: needs.plan.outputs.platform_wheels == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # hatch-vcs reads the tag
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build (workspace path sources are ignored)
+        run: uv build --no-sources --out-dir dist "${{ needs.plan.outputs.directory }}"
+      - name: The built version is the tag's
+        run: |
+          python -m pip install packaging
+          python scripts/release/plan.py "$GITHUB_REF_NAME" --wheels dist/*.whl
+      - run: uvx twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-pure
+          path: dist/*
+          if-no-files-found: error
+
+  entitlements:
+    needs: [plan, verify]
+    if: needs.plan.outputs.platform_wheels == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the pinned runtime from the private release
+        env:
+          GH_TOKEN: ${{ secrets.PREMIUM_READ_TOKEN }}
+        run: |
+          version="$(tr -d '[:space:]' < packages/core/ENTITLEMENTS_VERSION)"
+          gh release download "vethuq-entitlements-v${version}" \
+            --repo coldsofttech/VethuQ-entitlements --dir entitlements
+          (cd entitlements && sha256sum --check SHA256SUMS)
+          ls -l entitlements
+      - uses: actions/upload-artifact@v4
+        with:
+          name: entitlements
+          path: entitlements/*.whl
+          if-no-files-found: error
+
+  build-platform:
+    needs: [plan, entitlements]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: entitlements
+          path: entitlements
+      - name: Build the pure wheel
+        run: uv build --wheel --no-sources --out-dir pure "${{ needs.plan.outputs.directory }}"
+      - name: One wheel per platform, with the compiled runtime inside
+        run: |
+          python -m pip install packaging
+          mkdir -p dist
+          for runtime in entitlements/*.whl; do
+            python scripts/release/merge_wheel.py pure/*.whl "$runtime" --out dist
+          done
+          ls -l dist
+          python scripts/release/plan.py "$GITHUB_REF_NAME" --wheels dist/*.whl
+      - run: uvx twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-platform
+          path: dist/*
+          if-no-files-found: error
+
+  smoke:
+    # Install the wheel of this platform and import both packages. It also proves the free add-ons
+    # `vethuq` depends on are already on PyPI.
+    needs: [plan, build-platform]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-platform
+          path: dist
+      - name: Install and import
+        shell: bash
+        run: |
+          python -m pip install --pre --find-links dist "vethuq==${{ needs.plan.outputs.version }}"
+          python -c "import vethuq, vethuq_entitlements; print(vethuq.__version__, vethuq_entitlements.Licences)"
+
+  publish:
+    needs: [plan, build-pure, smoke]
+    if: always() && needs.plan.result == 'success' && (needs.build-pure.result == 'success' || needs.smoke.result == 'success')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.plan.outputs.prerelease == 'true' && 'testpypi' || 'pypi' }}
+      url: https://${{ needs.plan.outputs.prerelease == 'true' && 'test.' || '' }}pypi.org/project/${{ needs.plan.outputs.dist }}/
+    permissions:
+      id-token: write # Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Publish to TestPyPI
+        if: needs.plan.outputs.prerelease == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish to PyPI
+        if: needs.plan.outputs.prerelease != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: [plan, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Notes from the CHANGELOG
+        run: |
+          python - "${{ needs.plan.outputs.directory }}/CHANGELOG.md" "${{ needs.plan.outputs.version }}" > notes.md <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          for heading in (re.escape(sys.argv[2]), "Unreleased"):
+              m = re.search(rf"^## \[{heading}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.S | re.M)
+              if m and m.group(1).strip():
+                  print(m.group(1).strip())
+                  break
+          else:
+              print(sys.argv[2])
+          PY
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}" \
+            --title "${{ needs.plan.outputs.dist }} ${{ needs.plan.outputs.version }}" \
+            --notes-file notes.md

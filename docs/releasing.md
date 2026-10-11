@@ -1,0 +1,56 @@
+# Releasing to PyPI
+
+Three packages are released from this repository, each by pushing its own tag. Versions are independent
+and come from the tag (hatch-vcs).
+
+| Tag | Package | Wheels |
+|---|---|---|
+| `vethuq-addon-api-vX.Y.Z` | `vethuq-addon-api` | one pure-Python wheel and an sdist |
+| `vethuq-worker-vX.Y.Z` | `vethuq-worker` | one pure-Python wheel and an sdist |
+| `vethuq-vX.Y.Z` | `vethuq` | a wheel per platform: Linux x86_64 and arm64, Windows amd64 (no sdist) |
+
+    git tag vethuq-worker-v1.2.0 && git push origin vethuq-worker-v1.2.0
+
+Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
+
+The command line, the interactive shell and the background service are not released here. They will
+ship as binaries.
+
+## What the workflow does (`.github/workflows/release.yml`)
+
+1. **plan** reads the tag (`scripts/release/plan.py`);
+2. **verify** runs ruff and the package's tests against the sibling premium and entitlements checkouts;
+3. **build**: `uv build --no-sources`, so the workspace's path sources never reach the published
+   metadata; the built version must equal the tag's. For `vethuq`, see below;
+4. **smoke** (`vethuq` only) installs the wheel of each platform and imports `vethuq` and
+   `vethuq_entitlements`. Because it installs from PyPI, it also proves the free add-ons `vethuq`
+   depends on are already published;
+5. **publish** waits for approval of the `pypi` (or `testpypi`) environment, then uploads with Trusted
+   Publishing (no token is stored);
+6. **github-release** attaches the files to a release with the CHANGELOG section as notes.
+
+## `vethuq` carries the entitlements runtime
+
+Licensed add-ons check their licence with `vethuq_entitlements`, which is not on PyPI. They do not
+depend on it; the `vethuq` wheel provides it. For each platform, the workflow downloads the matching
+compiled `vethuq-entitlements` wheel from the private VethuQ-entitlements release named in
+`packages/core/ENTITLEMENTS_VERSION` (checking `SHA256SUMS`) and merges it into the pure `vethuq` wheel
+(`scripts/release/merge_wheel.py`), giving `vethuq-X-cp311-abi3-<platform>.whl`. So `vethuq` has
+platform wheels only: no macOS, and no sdist.
+
+To pick up a new runtime: release it in VethuQ-entitlements, change `ENTITLEMENTS_VERSION`, then release
+`vethuq`.
+
+## Order
+
+`vethuq-addon-api` first; then the add-ons and bundles in VethuQ-premium that `vethuq` depends on and
+that its extras name (see that repository's `docs/releasing.md`); then `vethuq`; `vethuq-worker`
+whenever the GitHub tier's protocol changes.
+
+## One-time set-up
+
+- PyPI and TestPyPI: for `vethuq`, `vethuq-addon-api` and `vethuq-worker`, add a trusted publisher
+  (this repository, workflow `release.yml`, environment `pypi`, or `testpypi` on TestPyPI).
+- Repository settings: create the `pypi` and `testpypi` environments with required reviewers.
+- Secret `PREMIUM_READ_TOKEN`: read access to VethuQ-premium and VethuQ-entitlements (it is already used
+  by the test workflow).

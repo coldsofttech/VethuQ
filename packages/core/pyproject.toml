@@ -62,5 +62,5 @@ source = "vcs"
 root = "../.."
 # Versions come from git tags `vethuq-vX.Y.Z`; with no tag yet the version is 0.1.0.
 fallback_version = "0.1.0"
-tag_regex = "^vethuq-v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+tag_regex = "^vethuq-v(?P<version>\\d+\\.\\d+\\.\\d+(?:-?rc\\d+)?)$"
 git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "vethuq-v*"]

@@ -2839,14 +2839,12 @@ source = { editable = "../VethuQ-premium/packages/add-ons/file-types/css" }
 dependencies = [
     { name = "charset-normalizer" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -2874,7 +2872,6 @@ dependencies = [
     { name = "olefile" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -2883,7 +2880,6 @@ requires-dist = [
     { name = "olefile", specifier = ">=0.46" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -2896,7 +2892,6 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -2905,7 +2900,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -2914,14 +2908,10 @@ version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/eml" }
 dependencies = [
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
-]
+requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
 name = "vethuq-addon-english"
@@ -2997,14 +2987,12 @@ source = { editable = "../VethuQ-premium/packages/add-ons/file-types/html" }
 dependencies = [
     { name = "charset-normalizer" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3032,14 +3020,12 @@ source = { editable = "../VethuQ-premium/packages/add-ons/file-types/js" }
 dependencies = [
     { name = "charset-normalizer" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3049,14 +3035,12 @@ source = { editable = "../VethuQ-premium/packages/add-ons/file-types/json" }
 dependencies = [
     { name = "charset-normalizer" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3223,7 +3207,6 @@ dependencies = [
     { name = "olefile" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3232,7 +3215,6 @@ requires-dist = [
     { name = "olefile", specifier = ">=0.46" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3245,7 +3227,6 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3254,7 +3235,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3282,7 +3262,6 @@ dependencies = [
     { name = "pillow" },
     { name = "striprtf" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3291,7 +3270,6 @@ requires-dist = [
     { name = "pillow", specifier = ">=10" },
     { name = "striprtf", specifier = ">=0.0.26" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3370,7 +3348,6 @@ dependencies = [
     { name = "olefile" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
     { name = "xlrd" },
 ]
 
@@ -3380,7 +3357,6 @@ requires-dist = [
     { name = "olefile", specifier = ">=0.46" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
     { name = "xlrd", specifier = ">=2" },
 ]
 
@@ -3394,7 +3370,6 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pillow" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3403,7 +3378,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3414,7 +3388,6 @@ dependencies = [
     { name = "charset-normalizer" },
     { name = "defusedxml" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3422,7 +3395,6 @@ requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "defusedxml", specifier = ">=0.7" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3433,7 +3405,6 @@ dependencies = [
     { name = "charset-normalizer" },
     { name = "pyyaml" },
     { name = "vethuq-addon-api" },
-    { name = "vethuq-entitlements" },
 ]
 
 [package.metadata]
@@ -3441,7 +3412,6 @@ requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
-    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3579,17 +3549,6 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "vethuq", editable = "packages/core" },
 ]
-
-[[package]]
-name = "vethuq-entitlements"
-version = "0.1.0"
-source = { directory = "../VethuQ-entitlements/packages/entitlements" }
-dependencies = [
-    { name = "cryptography" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "cryptography", specifier = "~=50.0" }]
 
 [[package]]
 name = "vethuq-interactive-cli"
