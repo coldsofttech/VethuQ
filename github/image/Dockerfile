@@ -27,6 +27,7 @@ RUN pip install --pre --find-links /wheels "vethuq-worker[run]" \
         vethuq-addon-ocr-quick vethuq-addon-ocr-moderate vethuq-addon-ocr-deep \
         vethuq-addon-like vethuq-addon-exact vethuq-addon-lexical vethuq-addon-full-text \
         vethuq-addon-proximity vethuq-addon-fuzzy vethuq-addon-noise-fuzzy \
+        vethuq-addon-semantic vethuq-addon-autoscale \
         vethuq-addon-case vethuq-addon-unicode vethuq-addon-leetspeak \
     && rm -rf /wheels
 
