@@ -2622,7 +2622,7 @@ requires-dist = [
     { name = "vethuq-addon-exact", directory = "../VethuQ-premium/packages/add-ons/search/engines/exact" },
     { name = "vethuq-addon-full-text", directory = "../VethuQ-premium/packages/add-ons/search/engines/full-text" },
     { name = "vethuq-addon-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" },
-    { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/add-ons/github" },
+    { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/add-ons/tiers/github" },
     { name = "vethuq-addon-leetspeak", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
     { name = "vethuq-addon-lexical", directory = "../VethuQ-premium/packages/add-ons/search/engines/lexical" },
     { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/add-ons/search/engines/like" },
@@ -2702,7 +2702,7 @@ requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 [[package]]
 name = "vethuq-addon-github"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/add-ons/github" }
+source = { directory = "../VethuQ-premium/packages/add-ons/tiers/github" }
 dependencies = [
     { name = "packaging" },
     { name = "pynacl" },

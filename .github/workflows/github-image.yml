@@ -6,7 +6,7 @@
 # those repositories is logged or uploaded except as compiled wheels inside the image.
 #
 # It prints a compatibility row for the job summary; a person adds it to
-# the compatibility table in VethuQ-premium (packages/add-ons/github/src/vethuq_addon_github/_compat.py);
+# the compatibility table in VethuQ-premium (packages/add-ons/tiers/github/src/vethuq_addon_github/_compat.py);
 # rows are never rewritten by automation.
 name: github-image
 

@@ -28,7 +28,7 @@ vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/en
 vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" }
-vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/github" }
+vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }
 vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like" }
 vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact" }
 vethuq-addon-lexical = { path = "../VethuQ-premium/packages/add-ons/search/engines/lexical" }
