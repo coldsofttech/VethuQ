@@ -159,7 +159,7 @@ class Credits:
 
     def balance(self, wallet: str = "local") -> CreditBalance:
         """What a wallet holds now, brought up to date with today's allowance. `wallet` is one of
-        `wallets()`: `local`, `github` once that tier can be used, or an add-on's own (`semantic`)."""
+        `wallets()`: `local`, `github` once that tier can be used, or an add-on's (`semantic`)."""
         name = self._wallet(wallet)
         with self._database.session() as session:
             balance, _terms, reset = self._credits.balance(session, name)
