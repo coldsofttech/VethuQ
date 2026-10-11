@@ -11,6 +11,7 @@ from vethuq._settings.settings import (
     _MetricsSettings,
     _Settings,
     _SourceSettings,
+    _TierSettings,
     _UpdateSettings,
     _UpdateView,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "_LogSettings",
     "_Settings",
     "_SourceSettings",
+    "_TierSettings",
     "_UpdateSettings",
     "_UpdateView",
 ]

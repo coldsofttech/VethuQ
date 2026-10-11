@@ -17,6 +17,7 @@ from vethuq._maintenance import _Maintenance
 from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
+from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq.addons import Addons
 from vethuq.credits import Credits
 from vethuq.db import Db
@@ -32,6 +33,7 @@ from vethuq.policy import PolicyClient
 from vethuq.settings import Settings
 from vethuq.sources import Sources
 from vethuq.stats import Stats
+from vethuq.tiers import Tiers
 from vethuq.updates import Updates
 from vethuq.version import VersionDetails
 
@@ -71,6 +73,8 @@ class VethuQ:
         self._metrics: Metrics | None = None
         self._stats: Stats | None = None
         self._github: GitHub | None = None
+        self._tier_catalog: _Tiers | None = None
+        self._tiers: Tiers | None = None
         self._github_transport = None  # replaced in tests
         self._lock = threading.Lock()
 
@@ -118,12 +122,19 @@ class VethuQ:
                 self._metrics_service = _Metrics(db, credits, version)
             return self._metrics_service
 
+    def _tier_engine(self) -> _Tiers:
+        runtime, manager = self._runtime(), self._manager()
+        with self._lock:
+            if self._tier_catalog is None:
+                self._tier_catalog = _Tiers(manager.tier_specs, _LocalExecutor(runtime))
+            return self._tier_catalog
+
     def _indexer_engine(self) -> _Indexer:
-        credits, runtime = self._credit_engine(), self._runtime()
+        credits, tiers = self._credit_engine(), self._tier_engine()
         db, types, manager = self._db(), self._file_type_catalog(), self._manager()
         with self._lock:
             if self._indexer is None:
-                self._indexer = _Indexer(db, types, manager.language_specs, runtime, credits)
+                self._indexer = _Indexer(db, types, manager.language_specs, tiers, credits)
             return self._indexer
 
     def _release_database(self) -> None:
@@ -175,11 +186,23 @@ class VethuQ:
         return self._index
 
     @property
+    def tiers(self) -> Tiers:
+        """The processing tiers: where pages that need OCR are read (local by default)."""
+        if self._tiers is None:
+            self._tiers = Tiers(self._db(), self._tier_engine())
+        return self._tiers
+
+    @property
     def credits(self) -> Credits:
         """What reading pages costs, and what you have left."""
         if self._credits is None:
             indexer = self._indexer_engine()
-            self._credits = Credits(self._db(), self._credit_engine(), indexer.estimate)
+            tiers = self._tier_engine()
+
+            def wallets() -> list[str]:
+                return list(dict.fromkeys(v.wallet for v in tiers.views() if v.available))
+
+            self._credits = Credits(self._db(), self._credit_engine(), indexer.estimate, wallets)
         return self._credits
 
     @property
@@ -296,6 +319,8 @@ class VethuQ:
             self._metrics = None
             self._stats = None
             self._github = None
+            self._tier_catalog = None
+            self._tiers = None
 
     def __enter__(self) -> VethuQ:
         return self

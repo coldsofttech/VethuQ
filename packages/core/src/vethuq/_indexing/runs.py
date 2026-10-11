@@ -72,7 +72,11 @@ class _Runs:
 
     @staticmethod
     def begin(
-        session: Session, source_id: int | None, file_path: str | None, workers: int
+        session: Session,
+        source_id: int | None,
+        file_path: str | None,
+        workers: int,
+        tier: str = "local",
     ) -> _IndexRun:
         if _Runs.recover(session):
             raise _IndexAlreadyRunningError(
@@ -83,6 +87,7 @@ class _Runs:
             file_path=file_path,
             status=IndexRunStatus.RUNNING,
             workers=workers,
+            tier=tier,
             pid=os.getpid(),
             started_at=_stamp(),
         )

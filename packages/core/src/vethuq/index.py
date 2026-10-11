@@ -38,6 +38,7 @@ class IndexRun:
     ocr_pages: int  # of those, the pages that needed OCR
     credits_charged: float  # what the run cost
     workers: int
+    tier: str  # the processing tier it ran with
     started_at: str  # UTC, ISO 8601
     completed_at: str | None
     error: str | None
@@ -57,6 +58,7 @@ class IndexRun:
             ocr_pages=model.ocr_pages,
             credits_charged=model.credits_milli / 1000,
             workers=model.workers,
+            tier=model.tier,
             started_at=model.started_at,
             completed_at=model.completed_at,
             error=model.error,
@@ -76,6 +78,7 @@ class IndexRun:
             "ocr_pages": self.ocr_pages,
             "credits_charged": self.credits_charged,
             "workers": self.workers,
+            "tier": self.tier,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "error": self.error,
@@ -98,7 +101,13 @@ class Index:
         self._metrics = metrics
 
     def run(
-        self, target: int | str | Path | None = None, *, workers: int | str | None = None
+        self,
+        target: int | str | Path | None = None,
+        *,
+        workers: int | str | None = None,
+        tier: str | None = None,
+        wait: bool | None = None,
+        timeout: float | None = None,
     ) -> IndexRun:
         """Index files and wait until the run is over; return it.
 
@@ -112,10 +121,19 @@ class Index:
         batch of anonymous metrics is sent (see `metrics`). A file that
         fails doesn't stop the run: see its `files_failed` and the file's `index.error`.
 
-        Raises `IndexAlreadyRunningError` if a run is going, `SourceNotFoundError` if `target`
+        `tier` is the processing tier that reads the pages needing OCR (a `ProcessingTier` or its
+        id); left out, the default from `tiers` applies. `wait` and `timeout` (minutes) are for
+        tiers whose work finishes later; the local tier ignores them.
+
+        Raises `TierUnavailableError` if the tier isn't known or can't be used,
+        `IndexAlreadyRunningError` if a run is going, `SourceNotFoundError` if `target`
         isn't a source or a file in one, and `SourcePathError` if the source is gone from disk.
         """
-        run_id = self._indexer.run(target, workers)
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0
+        ):
+            raise ValueError("timeout must be a number of minutes above 0.")
+        run_id = self._indexer.run(target, workers, tier)
         self._metrics.send()  # if you opted in; at most once a day; never raises
         return self.get(run_id)
 

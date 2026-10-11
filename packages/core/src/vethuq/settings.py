@@ -15,6 +15,7 @@ from vethuq._settings import (
     _LogSettings,
     _MetricsSettings,
     _SourceSettings,
+    _TierSettings,
     _UpdateSettings,
 )
 from vethuq.enums import IntegrityCheckMode, LogLevel, UpdateCheckMode
@@ -28,6 +29,7 @@ __all__ = [
     "LogSettings",
     "Settings",
     "SourceSettings",
+    "TierSettings",
     "UpdateSettings",
 ]
 
@@ -385,6 +387,86 @@ class ConfidenceSettings:
             _ConfidenceSettings.reset_bands(session)
 
 
+class TierSettings:
+    """Settings for processing tiers.
+
+    Not created directly: use `VethuQ().settings.tiers`. The default tier itself is chosen with
+    `VethuQ().tiers.use(...)`; these are the rest.
+    """
+
+    def __init__(self, database: _Database) -> None:
+        self._database = database
+
+    def get_min_size_factor(self) -> float:
+        """From what page size, against A4, hybrid sends a page to GitHub. 2 (A3) unless
+        changed; 0 turns the size rule off."""
+        with self._database.session() as session:
+            return _TierSettings.get_min_size_factor(session)
+
+    def set_min_size_factor(self, factor: float) -> None:
+        """Raises `InvalidSettingValueError` unless it is a number of 0 or more."""
+        with self._database.session() as session:
+            _TierSettings.set_min_size_factor(session, factor)
+
+    def reset_min_size_factor(self) -> None:
+        with self._database.session() as session:
+            _TierSettings.reset(session, _TierSettings.MIN_SIZE_KEY)
+
+    def get_phases(self) -> list[str]:
+        """The OCR phases hybrid sends to GitHub (`moderate`, `deep`). None unless changed."""
+        with self._database.session() as session:
+            return _TierSettings.get_phases(session)
+
+    def set_phases(self, phases: list[str]) -> list[str]:
+        """Choose the phases (`quick`, `moderate`, `deep`) hybrid sends to GitHub and return
+        them. Raises `InvalidSettingValueError` for anything else."""
+        with self._database.session() as session:
+            return _TierSettings.set_phases(session, phases)
+
+    def reset_phases(self) -> None:
+        with self._database.session() as session:
+            _TierSettings.reset(session, _TierSettings.PHASES_KEY)
+
+    def get_wait_timeout_minutes(self) -> int:
+        """How long `index.run(wait=True)` waits for remote jobs. 60 minutes unless changed."""
+        with self._database.session() as session:
+            return _TierSettings.get_wait_timeout_minutes(session)
+
+    def set_wait_timeout_minutes(self, minutes: int) -> None:
+        with self._database.session() as session:
+            _TierSettings.set_wait_timeout_minutes(session, minutes)
+
+    def reset_wait_timeout_minutes(self) -> None:
+        with self._database.session() as session:
+            _TierSettings.reset(session, _TierSettings.WAIT_KEY)
+
+    def get_max_job_pages(self) -> int:
+        """The most pages one remote job holds. 200 unless changed."""
+        with self._database.session() as session:
+            return _TierSettings.get_max_job_pages(session)
+
+    def set_max_job_pages(self, pages: int) -> None:
+        with self._database.session() as session:
+            _TierSettings.set_max_job_pages(session, pages)
+
+    def reset_max_job_pages(self) -> None:
+        with self._database.session() as session:
+            _TierSettings.reset(session, _TierSettings.JOB_PAGES_KEY)
+
+    def get_max_job_megabytes(self) -> int:
+        """The most payload, in MB, one remote job holds. 200 unless changed."""
+        with self._database.session() as session:
+            return _TierSettings.get_max_job_megabytes(session)
+
+    def set_max_job_megabytes(self, megabytes: int) -> None:
+        with self._database.session() as session:
+            _TierSettings.set_max_job_megabytes(session, megabytes)
+
+    def reset_max_job_megabytes(self) -> None:
+        with self._database.session() as session:
+            _TierSettings.reset(session, _TierSettings.JOB_MB_KEY)
+
+
 class Settings:
     """VethuQ's settings, grouped by feature.
 
@@ -395,6 +477,7 @@ class Settings:
         self.sources = SourceSettings(database)
         self.languages = LanguageSettings(database, catalog)
         self.index = IndexSettings(database)
+        self.tiers = TierSettings(database)
         self.metrics = MetricsSettings(database)
         self.confidence = ConfidenceSettings(database)
         self.logs = LogSettings(database)

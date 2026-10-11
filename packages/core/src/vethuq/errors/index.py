@@ -47,3 +47,11 @@ class GitHubNotSetUpError(GitHubError):
 
 class GitHubUnavailableError(GitHubError):
     """The GitHub tier isn't available: the policy has it off, or it needs a newer VethuQ."""
+
+
+class TierError(VethuQError):
+    """Base class for processing tier errors."""
+
+
+class TierUnavailableError(TierError):
+    """The processing tier asked for can't be used now (unknown, not installed, or not ready)."""

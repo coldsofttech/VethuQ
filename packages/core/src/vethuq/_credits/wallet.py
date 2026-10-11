@@ -1,4 +1,4 @@
-"""The local wallet: the day's grants, what is left, and spending it in order."""
+"""A wallet (local, github): the day's grants, what is left, and spending it in order."""
 
 from __future__ import annotations
 
@@ -136,28 +136,30 @@ class _Wallet:
             now=_Clock.now(session),
         )
 
-    def sync(self, session: Session, terms: _Terms, bonus_active: bool) -> None:
+    def sync(
+        self, session: Session, terms: _Terms, bonus_active: bool, private: bool = True
+    ) -> None:
         """Bring the wallet up to now: expire what lapsed and add today's grants (each once)."""
         with self._lock:
             now = _Clock.now(session)
             today = now.date()
             self._expire(session, now)
-            if terms.local_starter > 0:
+            if terms.starter_for(self.name) > 0:
                 self._add(
                     session,
                     _GrantKind.ONE_OFF,
                     "starter",
                     "starter",
-                    milli(terms.local_starter),
+                    milli(terms.starter_for(self.name)),
                     expires=None,
                     now=now,
                 )
-            base = milli(terms.local_daily)
+            base = milli(terms.daily_for(self.name, private))
             end = next_midnight(today)
             borrowed = self._borrowed(session, today, terms)
             bonus = round(base * min(terms.bonus_percent, terms.bonus_cap_percent) / 100)
             bonus = bonus if bonus_active else 0
-            promo = terms.best_promotion(today, base)
+            promo = terms.best_promotion(today, base, self.name)
             promo_amount = promo[1] if promo else 0
             ceiling = milli(terms.device_daily_ceiling) if terms.device_daily_ceiling else None
             if ceiling is not None:  # a safety net: promotion first, then bonus, give way

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 from vethuq._credits import _PageMeter
 from vethuq._db.values import _PageSource
-from vethuq_addon_api import DocumentReader, OcrEngine, ReadPage
+from vethuq_addon_api import DocumentReader, LanguageSpec, OcrExecutor, OcrRequest, ReadPage
 
 
 @dataclass(frozen=True)
@@ -74,16 +74,18 @@ class _PageOcr:
     def read_page(
         number: int,
         page: ReadPage,
-        engine_for: Callable[[], OcrEngine] | None,
+        executor: OcrExecutor | None,
+        language: LanguageSpec | None = None,
         meter: _PageMeter | None = None,
     ) -> _PageResult:
-        """Read one page. `engine_for` gives the OCR engine when one is needed (None: no OCR is
-        possible, so a page that needs it raises `LookupError`). With a `meter`, the page is paid
-        for before it is read; a page that can't be paid for raises `CreditsExhaustedError`."""
+        """Read one page. `executor` reads the images that need OCR (None: no OCR is possible, so
+        a page that needs it raises `LookupError`) in `language`. With a `meter`, the page is
+        paid for before it is read; a page that can't be paid for raises
+        `CreditsExhaustedError`."""
         native = page.native_text.strip()
         if not _PageOcr.needs_ocr(page):
             return _PageResult(number, native, 1.0, _PageSource.NATIVE)
-        if engine_for is None:
+        if executor is None or language is None:
             raise LookupError("OCR isn't available")
         has_text = _PageOcr.has_text(native)
         regions = list(page.image_regions) if has_text else [None]
@@ -94,14 +96,23 @@ class _PageOcr:
             )
             held = meter.reserve(cost)
         try:
-            engine = engine_for()
+            engine_name = ""
             texts: list[str] = []
             confidences: list[float] = []
             lines = 0
             width = height = None
             started = time.perf_counter()
-            for region in regions:
-                result = engine.recognize(page.render(region))
+            for index, region in enumerate(regions):
+                result = executor.recognize(
+                    OcrRequest(
+                        key=f"{number}:{index}",
+                        image=page.render(region),
+                        language=language,
+                        phase="quick",
+                        size_factor=factor,
+                    )
+                )
+                engine_name = result.engine or engine_name
                 if result.text.strip():
                     texts.append(result.text.strip())
                     confidences.append(result.confidence)
@@ -120,7 +131,7 @@ class _PageOcr:
             charged = meter.commit(held, actual, number, factor, "quick")
         quick = _QuickRead(
             region_count=len(regions) if has_text else 0,
-            engine=engine.name,
+            engine=engine_name,
             confidence=confidence,
             line_count=lines,
             char_count=len(ocr_text),

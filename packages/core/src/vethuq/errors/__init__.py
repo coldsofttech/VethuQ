@@ -31,6 +31,8 @@ from vethuq.errors.index import (
     IndexingError,
     IndexRunNotFoundError,
     InvalidGrantError,
+    TierError,
+    TierUnavailableError,
 )
 from vethuq.errors.logs import InvalidLogRequestError, LogError, LogNotFoundError
 from vethuq.errors.settings import InvalidSettingValueError, SettingsError
@@ -46,6 +48,8 @@ from vethuq.errors.sources import (
 __all__ = [
     "CorruptDatabaseError",
     "CreditsError",
+    "TierError",
+    "TierUnavailableError",
     "GitHubAuthError",
     "GitHubError",
     "GitHubNotSetUpError",

@@ -43,7 +43,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, `GitHubError` for the GitHub runner errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, `GitHubError` for the GitHub runner errors, `TierError` for the processing tier errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -68,6 +68,8 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `IndexRunNotFoundError` | 52 | Indexing | There is no index run with that id |
 | `CreditsError` | 60 | Credits | Root of the credit errors below |
 | `InvalidGrantError` | 61 | Credits | A credit grant or licence can't be redeemed |
+| `TierError` | 80 | Tiers | Root of the processing tier errors below |
+| `TierUnavailableError` | 81 | Tiers | The tier asked for is unknown, not installed, not ready, or can't run in this version |
 | `GitHubError` | 70 | GitHub | Root of the GitHub runner errors below |
 | `GitHubAuthError` | 71 | GitHub | The token is missing, rejected, or lacks a permission |
 | `GitHubSetupError` | 72 | GitHub | The runner repository couldn't be set up, updated or reached |
@@ -666,6 +668,36 @@ models.clean()  # delete models no installed language needs
 
 `download` and `redownload` raise `OcrModelMissingError` for any model that couldn't be fetched.
 
+## Processing tiers
+
+VethuQ always extracts a file's pages and decides, on your computer, which need OCR. A **processing tier** decides where that OCR runs.
+
+| Tier | Where | Wallet |
+|---|---|---|
+| `local` (the default, always there) | on this computer | `local` |
+| `github` | in your own GitHub account (the GitHub add-on) | `github` |
+| `hybrid` | local first; the pages the settings pick (large ones, later the deeper OCR phases) go to GitHub | `local` and `github` |
+
+```python
+client.tiers.list()  # [TierInfo(id="local", available=True, selected=True, ...), ...]
+client.tiers.use("github")  # make it the default (it must be a tier VethuQ knows)
+client.tiers.current()
+client.tiers.reset()  # back to local
+client.index.run(tier="local")  # or name it for one run
+client.credits.wallets()  # ["local", "github"]: the wallets of the tiers you can use
+client.credits.balance("github")
+```
+
+A `TierInfo` has `id`, `label`, `wallet`, `available`, `reason` (why not), `selected` and `remote` (its work finishes later). An unavailable tier can be chosen, but a run with it raises `TierUnavailableError` saying why; nothing falls back silently. `hybrid` is available when `github` is. `IndexRun.tier` records the tier a run used.
+
+Tiers come from add-ons (`Addon.processing_tiers()` in the add-on API 0.4.0): each brings an `OcrExecutor` that reads images, either at once (`recognize`) or as a batch that finishes later (`submit`, `poll`, `collect`). Each tier is paid from its own wallet; the GitHub wallet gets 20 credits a day for a private runner repository and 200 for a public one, and the metrics bonus applies to it as it does to `local`.
+
+**Not in this version yet:** running a remote tier (`github`) or `hybrid`; a run with either raises `TierUnavailableError`. They arrive with the GitHub add-on.
+
+### Tier settings
+
+`client.settings.tiers`: `get/set/reset_min_size_factor` (from what page size, against A4, hybrid sends a page to GitHub; 2 = A3; 0 turns the rule off), `get/set/reset_phases` (the OCR phases hybrid sends: `moderate`, `deep`; none by default), `get/set/reset_wait_timeout_minutes` (60), `get/set/reset_max_job_pages` (200) and `get/set/reset_max_job_megabytes` (200).
+
 ## Credits
 
 Reading pages costs credits; searching and everything else is free. **One credit is the work of reading one A4 page once, upright, in one language.** Pages that need no OCR (native text), duplicate files and unchanged files cost nothing. A page's price is its size against A4 (reduced by 5%, rounded up to a quarter, at least 0.25, and nothing above A0), times the pass rate. A page that is partly text is charged for the share of it the images cover (at least 0.25), a blank page costs 0.25, and a file that fails is refunded. The numbers come from the signed policy (`rate_card`, `wallets`, `caps`) and fall back to built-in defaults offline; a policy change applies from the next UTC day. The full rules are in `docs/credits.md` of the support repository.
@@ -673,7 +705,7 @@ Reading pages costs credits; searching and everything else is free. **One credit
 The free **local wallet** gets 500 credits a day (reset at 00:00 UTC, no rollover) and a one-off 2,000 starter, plus a 2% free grace used only when everything else is gone. Spending order: promotional, daily (with the metrics bonus), scoped one-off, general one-off, grace.
 
 ```python
-balance = client.credits.balance()
+balance = client.credits.balance()  # a wallet: balance("github")
 print(balance.daily, balance.one_off, balance.total, balance.next_reset)
 
 estimate = client.credits.estimate("~/docs")  # reads the files, changes nothing
@@ -1087,7 +1119,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-The GitHub runner is in `vethuq.github`, credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Processing tiers are in `vethuq.tiers`, the GitHub runner is in `vethuq.github`, credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

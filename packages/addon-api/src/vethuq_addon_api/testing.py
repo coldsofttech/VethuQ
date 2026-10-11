@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from vethuq_addon_api.api import API_VERSION
 from vethuq_addon_api.ocr import OcrResult
 from vethuq_addon_api.readers import DocumentReader, ReadPage
+from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest
 
 
 class FakeHost:
@@ -127,3 +128,74 @@ class FakeReader(DocumentReader):
             yield self.pages[page_number - 1]
             return
         yield from self.pages
+
+
+class FakeExecutor(OcrExecutor):
+    """An `OcrExecutor` for testing code that uses one.
+
+    Synchronous by default: `recognize` returns the text in `texts` for the request's key (else
+    `default`). With `asynchronous=True` it behaves like a remote tier: `submit` keeps the batch,
+    `poll` answers with `state`, and `collect` returns the results. Every request is in `seen`.
+    """
+
+    def __init__(
+        self,
+        texts: dict[str, str] | None = None,
+        *,
+        default: str = "",
+        confidence: float = 0.9,
+        asynchronous: bool = False,
+        state: JobState = JobState.DONE,
+        where: str = "a test executor",
+    ) -> None:
+        self.texts = texts or {}
+        self.default = default
+        self.confidence = confidence
+        self.asynchronous = asynchronous
+        self.state = state
+        self.where = where
+        self.seen: list[OcrRequest] = []
+        self.jobs: dict[str, list[OcrRequest]] = {}
+        self.cancelled: list[str] = []
+
+    def describe(self) -> str:
+        return self.where
+
+    def _read(self, request: OcrRequest) -> OcrResult:
+        text = self.texts.get(request.key, self.default)
+        return OcrResult(
+            text=text,
+            confidence=self.confidence if text else 0.0,
+            engine="fake-executor 1.0",
+            language=request.language.id,
+            lines=tuple((line, self.confidence) for line in text.splitlines()),
+        )
+
+    def recognize(self, request: OcrRequest) -> OcrResult:
+        if self.asynchronous:
+            return super().recognize(request)
+        self.seen.append(request)
+        return self._read(request)
+
+    def submit(self, requests: Sequence[OcrRequest]) -> str:
+        if not self.asynchronous:
+            return super().submit(requests)
+        handle = f"job-{len(self.jobs) + 1}"
+        self.jobs[handle] = list(requests)
+        self.seen.extend(requests)
+        return handle
+
+    def poll(self, handle: str) -> JobState:
+        if not self.asynchronous:
+            return super().poll(handle)
+        return self.state
+
+    def collect(self, handle: str) -> dict[str, OcrResult]:
+        if not self.asynchronous:
+            return super().collect(handle)
+        return {r.key: self._read(r) for r in self.jobs[handle]}
+
+    def cancel(self, handle: str) -> None:
+        if not self.asynchronous:
+            return super().cancel(handle)
+        self.cancelled.append(handle)

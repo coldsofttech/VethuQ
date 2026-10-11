@@ -31,6 +31,7 @@ from vethuq_addon_api.readers import (
     UnreadableFileError,
     extended_path,
 )
+from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest, TierSpec
 
 ENTRY_POINT_GROUP = "vethuq.addons"
 
@@ -46,18 +47,22 @@ __all__ = [
     "FileTypeSpec",
     "Hook",
     "Host",
+    "JobState",
     "LanguageSpec",
     "Manifest",
     "MigrationInfo",
     "ModelProgress",
     "OcrEngine",
     "OcrEngineProvider",
+    "OcrExecutor",
     "OcrModelSpec",
     "OcrPhaseSpec",
+    "OcrRequest",
     "OcrResult",
     "PasswordProtectedError",
     "ReadPage",
     "Region",
+    "TierSpec",
     "UnreadableFileError",
     "extended_path",
 ]

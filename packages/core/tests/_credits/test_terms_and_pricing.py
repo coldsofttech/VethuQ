@@ -111,9 +111,9 @@ class TestTermsFromPolicy:
         assert t.metrics_endpoint == "https://example.com/metrics"
         assert t.metrics_max_batch_bytes == 65536
         (promotion,) = t.promotions
-        assert (promotion.id, promotion.percent, promotion.start) == (
+        assert (promotion.id, promotion.uplift, promotion.start) == (
             "launch-week",
-            50,
+            {"local": {"percent": 50}, "github": {"absolute": 10}},
             "2026-11-01",
         )
 
@@ -186,8 +186,14 @@ class TestPromotions:
     def terms(self, version="1.0.0"):
         return _Terms.from_policy(self.RAW, version)
 
-    def test_only_local_promotions_are_read(self):
-        assert [p.id for p in self.terms().promotions] == ["a", "b"]
+    def test_promotions_for_the_local_and_github_wallets_are_read(self):
+        assert [p.id for p in self.terms().promotions] == ["a", "b", "other-wallet"]
+
+    def test_each_wallet_gets_its_own_uplift(self):
+        t = self.terms()
+        assert t.best_promotion(date(2026, 11, 6), 20_000, "github")[1] == 5_000  # b: 5 credits
+        assert t.best_promotion(date(2026, 11, 2), 20_000, "github")[0].id == "other-wallet"
+        assert t.best_promotion(date(2026, 11, 2), 20_000, "elsewhere") is None
 
     def test_the_biggest_uplift_wins_they_do_not_stack(self):
         t = self.terms()
@@ -205,4 +211,4 @@ class TestPromotions:
         assert t.best_promotion(date(2026, 11, 6), 500_000)[1] == 100_000
 
     def test_a_promotion_for_a_newer_client_is_skipped(self):
-        assert [p.id for p in self.terms("0.5.0").promotions] == ["a"]
+        assert [p.id for p in self.terms("0.5.0").promotions] == ["a", "other-wallet"]

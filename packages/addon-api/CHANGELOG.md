@@ -5,7 +5,13 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.3.0.
+The add-on API version (`API_VERSION`) is 0.4.0.
+
+### Added (API 0.4.0)
+- Processing tiers: `TierSpec`, `Addon.processing_tiers()`, and the executor contract (`OcrExecutor`,
+  `OcrRequest`, `JobState`). A tier decides where pages that need OCR are read; a synchronous
+  executor implements `recognize`, an asynchronous one `submit`, `poll`, `collect` and `cancel`.
+- Testing: `FakeExecutor`.
 
 ### Added (API 0.3.0)
 - File types: `FileTypeSpec`, `Addon.file_types()`, and the reader contract (`DocumentReader`,

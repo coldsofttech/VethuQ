@@ -271,6 +271,8 @@ class _IndexRun(_Base):
         nullable=False,
         default=IndexRunStatus.RUNNING,
     )
+    # The processing tier it ran with.
+    tier: Mapped[str] = mapped_column(Text, nullable=False, default="local", server_default="local")
     total_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     processed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

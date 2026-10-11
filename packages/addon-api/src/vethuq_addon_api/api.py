@@ -13,10 +13,11 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from vethuq_addon_api.ocr import OcrEngineProvider
     from vethuq_addon_api.readers import FileTypeSpec
+    from vethuq_addon_api.tiers import TierSpec
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.3.0"
+API_VERSION = "0.4.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -196,6 +197,10 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
 
     def ocr_phases(self) -> list[OcrPhaseSpec]:
         """The OCR phases this add-on provides (none, unless it is a phase add-on)."""
+        return []
+
+    def processing_tiers(self) -> list[TierSpec]:
+        """The processing tiers this add-on provides (none, unless it is a tier add-on)."""
         return []
 
     def languages(self) -> list[LanguageSpec]:

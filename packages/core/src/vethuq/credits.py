@@ -43,8 +43,9 @@ def _credits(milli: int | None) -> float | None:
 
 @dataclass(frozen=True)
 class CreditBalance:
-    """What the local wallet holds now. Amounts are in credits."""
+    """What a wallet holds now. Amounts are in credits."""
 
+    wallet: str  # for example "local" or "github"
     daily: float  # what is left of today's allowance, with any metrics bonus
     promotional: float  # what is left of a promotion running today
     one_off: float  # starter and licence credits
@@ -69,6 +70,7 @@ class CreditEntry:
 
     id: int
     at: str  # UTC, ISO 8601
+    wallet: str
     kind: CreditEntryKind
     amount: float
     source_id: int | None
@@ -85,6 +87,7 @@ class CreditEntry:
         return cls(
             id=row.id,
             at=row.at,
+            wallet=row.wallet,
             kind=CreditEntryKind(row.kind.value),
             amount=row.amount_milli / 1000,
             source_id=row.source_id,
@@ -136,17 +139,32 @@ class Credits:
         database: _Database,
         credits: _Credits,
         estimate: Callable[[int | str | Path | None], tuple[int, int, int, int]],
+        wallets: Callable[[], list[str]],
     ) -> None:
         self._database = database
         self._credits = credits
         self._estimate = estimate
+        self._wallets = wallets
 
-    def balance(self) -> CreditBalance:
-        """What the wallet holds now, brought up to date with today's allowance."""
+    def wallets(self) -> list[str]:
+        """The wallets of the processing tiers that can be used now (`local` is always there)."""
+        return self._wallets()
+
+    def _wallet(self, wallet: str) -> str:
+        name = str(wallet).strip().lower()
+        if name not in self._wallets():
+            raise ValueError(f"No wallet {wallet!r}. Wallets: {', '.join(self._wallets())}.")
+        return name
+
+    def balance(self, wallet: str = "local") -> CreditBalance:
+        """What a wallet holds now, brought up to date with today's allowance. `wallet` is one
+        of `wallets()`: `local`, or `github` once that tier can be used."""
+        name = self._wallet(wallet)
         with self._database.session() as session:
-            balance, _terms, reset = self._credits.balance(session)
-            base, bonus, promo = self._credits.today_allowance(session)
+            balance, _terms, reset = self._credits.balance(session, name)
+            base, bonus, promo = self._credits.today_allowance(session, name)
         return CreditBalance(
+            wallet=name,
             daily=balance.daily_milli / 1000,
             promotional=balance.promo_milli / 1000,
             one_off=balance.one_off_milli / 1000,
@@ -159,13 +177,14 @@ class Credits:
         )
 
     def next_reset(self) -> str:
-        """When the daily allowance resets: 00:00 UTC, as an ISO 8601 string."""
+        """When the daily allowances reset: 00:00 UTC, as an ISO 8601 string."""
         return self.balance().next_reset
 
     def history(
         self,
         kind: CreditEntryKind | str | None = None,
         source: int | None = None,
+        wallet: str | None = None,
         run_id: int | None = None,
         since: datetime | str | None = None,
         until: datetime | str | None = None,
@@ -176,9 +195,10 @@ class Credits:
     ) -> list[CreditEntry]:
         """The ledger, newest first unless sorted otherwise.
 
-        `kind` keeps one `CreditEntryKind`; `source` (an id) and `run_id` keep what was spent for
-        them; `since` / `until` bound the time (a `datetime`, naive meaning UTC, or an ISO 8601
-        string). Charges for a source are deleted when the source is purged. Raises `ValueError`
+        `kind` keeps one `CreditEntryKind`; `wallet` keeps one wallet; `source` (an id) and
+        `run_id` keep what was spent for them; `since` / `until` bound the time (a `datetime`,
+        naive meaning UTC, or an ISO 8601 string). Charges for a source are deleted when the
+        source is purged. Raises `ValueError`
         for a value that isn't valid.
         """
         with self._database.session() as session:
@@ -186,6 +206,7 @@ class Credits:
             rows = self._credits.history(
                 session,
                 kind=kind,
+                wallet=None if wallet is None else self._wallet(wallet),
                 source_id=source,
                 run_id=run_id,
                 since=since,

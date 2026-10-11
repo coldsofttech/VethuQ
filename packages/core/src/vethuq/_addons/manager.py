@@ -21,6 +21,7 @@ from vethuq_addon_api import (
     MigrationInfo,
     OcrEngineProvider,
     OcrPhaseSpec,
+    TierSpec,
 )
 
 
@@ -123,6 +124,10 @@ class _AddonManager:
     def file_type_specs(self) -> list[FileTypeSpec]:
         """The file types the running add-ons can read, by id."""
         return sorted(self._collect("file_types"), key=lambda spec: spec.id)
+
+    def tier_specs(self) -> list[TierSpec]:
+        """The processing tiers the running add-ons provide, by id."""
+        return sorted(self._collect("processing_tiers"), key=lambda spec: spec.id)
 
     def ocr_engine_providers(self) -> list[OcrEngineProvider]:
         """The OCR engines the running add-ons provide, by id."""

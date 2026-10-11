@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -36,7 +37,8 @@ class _Credits:
         self.database = database
         self.policy = policy
         self.client_version = client_version
-        self.wallet = _Wallet(LOCAL)
+        self.wallets: dict[str, _Wallet] = {LOCAL: _Wallet(LOCAL)}
+        self.wallet = self.wallets[LOCAL]  # the local wallet
 
     # ----- the day's terms --------------------------------------------------------------------
 
@@ -82,35 +84,57 @@ class _Credits:
             last is not None and last < today and (today - last).days <= _Credits.BONUS_LAPSE_DAYS
         )
 
-    def sync(self, session: Session) -> _Terms:
-        """Bring the wallet up to now and return today's terms."""
+    WALLET_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+    GITHUB_PRIVATE_KEY = "credits_github_private"
+    BONUS_WALLETS = ("local", "github")  # the metrics bonus doesn't touch add-on sub-wallets
+
+    def wallet_for(self, name: str) -> _Wallet:
+        """The wallet called `name`."""
+        if not isinstance(name, str) or not self.WALLET_RE.match(name):
+            raise ValueError(f"{name!r} isn't a wallet name.")
+        return self.wallets.setdefault(name, _Wallet(name))
+
+    @staticmethod
+    def github_private(session: Session) -> bool:
+        """Whether the GitHub runner repo is private (which sets the GitHub daily amount)."""
+        return _Settings.get(session, _Credits.GITHUB_PRIVATE_KEY) != "0"
+
+    @staticmethod
+    def set_github_private(session: Session, private: bool) -> None:
+        _Settings.set(session, _Credits.GITHUB_PRIVATE_KEY, "1" if private else "0")
+
+    def sync(self, session: Session, wallet: str = LOCAL) -> _Terms:
+        """Bring a wallet up to now and return today's terms."""
         terms = self.terms(session)
-        self.wallet.sync(session, terms, self.bonus_active(session, _Clock.today(session)))
+        bonus = wallet in self.BONUS_WALLETS and self.bonus_active(session, _Clock.today(session))
+        self.wallet_for(wallet).sync(session, terms, bonus, self.github_private(session))
         return terms
 
-    def pricing(self, session: Session) -> _Pricing:
-        return _Pricing(self.sync(session))
+    def pricing(self, session: Session, wallet: str = LOCAL) -> _Pricing:
+        return _Pricing(self.sync(session, wallet))
 
     # ----- reading ----------------------------------------------------------------------------
 
-    def balance(self, session: Session) -> tuple[_Balance, _Terms, datetime]:
-        terms = self.sync(session)
+    def balance(self, session: Session, wallet: str = LOCAL) -> tuple[_Balance, _Terms, datetime]:
+        terms = self.sync(session, wallet)
         return (
-            self.wallet.balance(session),
+            self.wallet_for(wallet).balance(session),
             terms,
             next_midnight(_Clock.today(session)),
         )
 
-    def today_allowance(self, session: Session) -> tuple[int, int, int]:
-        """Today's baseline, bonus and promotion grants, in milli-credits."""
+    def today_allowance(self, session: Session, wallet: str = LOCAL) -> tuple[int, int, int]:
+        """Today's baseline, bonus and promotion grants of a wallet, in milli-credits."""
         today = _Clock.today(session)
         out = []
         for ref in (f"daily:{today}", f"bonus:{today}"):
-            grant = session.scalars(select(_CreditGrant).where(_CreditGrant.ref == ref)).first()
+            grant = session.scalars(
+                select(_CreditGrant).where(_CreditGrant.wallet == wallet, _CreditGrant.ref == ref)
+            ).first()
             out.append(grant.amount_milli if grant else 0)
         promo = session.scalars(
             select(func.coalesce(func.sum(_CreditGrant.amount_milli), 0)).where(
-                _CreditGrant.ref.like(f"promo:%:{today}")
+                _CreditGrant.wallet == wallet, _CreditGrant.ref.like(f"promo:%:{today}")
             )
         ).one()
         return out[0], out[1], int(promo)
@@ -133,6 +157,7 @@ class _Credits:
         session: Session,
         *,
         kind: CreditEntryKind | str | None = None,
+        wallet: str | None = None,
         source_id: int | None = None,
         run_id: int | None = None,
         since: datetime | str | None = None,
@@ -150,6 +175,8 @@ class _Credits:
         if kind is not None:
             wanted = _Sources._coerce(CreditEntryKind, kind, "kind")  # type: ignore[type-var]
             statement = statement.where(_CreditLedger.kind == _LedgerKind(wanted.value))
+        if wallet is not None:
+            statement = statement.where(_CreditLedger.wallet == wallet)
         if source_id is not None:
             statement = statement.where(_CreditLedger.source_id == source_id)
         if run_id is not None:
@@ -235,8 +262,11 @@ class _PageMeter:
         language: str,
         additional_language: bool,
         scope: str | None = None,
+        wallet: str = LOCAL,
     ) -> None:
         self.credits = credits
+        self.wallet_name = wallet
+        self.wallet = credits.wallet_for(wallet)
         self.source_id, self.run_id = source_id, run_id
         self.label, self.language = label, language
         self.additional_language = additional_language
@@ -249,7 +279,7 @@ class _PageMeter:
     def pricing(self) -> _Pricing:
         if self._pricing is None:
             with self.credits.database.session() as session:
-                self._terms = self.credits.sync(session)
+                self._terms = self.credits.sync(session, self.wallet_name)
             self._pricing = _Pricing(self._terms)
         return self._pricing
 
@@ -264,17 +294,17 @@ class _PageMeter:
 
     def reserve(self, cost_milli: int) -> int:
         with self.credits.database.session() as session:
-            self.credits.sync(session)
-            return self.credits.wallet.reserve(session, cost_milli, self.scope)
+            self.credits.sync(session, self.wallet_name)
+            return self.wallet.reserve(session, cost_milli, self.scope)
 
     def release(self, held: int) -> None:
-        self.credits.wallet.release(held)
+        self.wallet.release(held)
 
     def commit(
         self, held: int, actual_milli: int, page_number: int, factor: float, phase: str
     ) -> int:
-        with self.credits.wallet.lock, self.credits.database.session() as session:
-            ids = self.credits.wallet.commit(
+        with self.wallet.lock, self.credits.database.session() as session:
+            ids = self.wallet.commit(
                 session,
                 held,
                 actual_milli,
@@ -301,8 +331,8 @@ class _PageMeter:
     def refund_all(self, note: str = "the file was not indexed") -> None:
         if not self.ledger_ids:
             return
-        with self.credits.wallet.lock, self.credits.database.session() as session:
-            self.credits.wallet.refund(session, self.ledger_ids, note)
+        with self.wallet.lock, self.credits.database.session() as session:
+            self.wallet.refund(session, self.ledger_ids, note)
             if self.run_id is not None:
                 run = session.get(_IndexRun, self.run_id)
                 if run is not None:

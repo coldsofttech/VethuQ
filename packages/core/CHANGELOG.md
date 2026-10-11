@@ -73,6 +73,17 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   `send` and `delete_data`. A content-free batch of the daily totals goes to the policy's collector
   at the end of an index run, at most once a day; sharing earns +10% daily credits. The batch
   schema and the collector (a Cloudflare Worker with D1) are in `metrics/`.
+- **Processing tiers** (`client.tiers`, types in `vethuq.tiers`): where pages that need OCR are
+  read. `local` (the default, on this computer), `github` (the GitHub add-on) and `hybrid`;
+  `list`, `get`, `current`, `use` and `reset`. Tiers come from add-ons
+  (`Addon.processing_tiers()`, add-on API 0.4.0) as an `OcrExecutor`; local OCR now runs through
+  one. `index.run(tier=, wait=, timeout=)`, `IndexRun.tier` and the run status `WAITING_REMOTE`
+  (remote tiers can't run yet). `TierError` and `TierUnavailableError`.
+- **Tier settings** (`client.settings.tiers`): hybrid size rule and phases, wait timeout and remote
+  job limits.
+- **Wallets by tier**: `credits.wallets()`, `credits.balance(wallet)`, `history(wallet=)`; the
+  GitHub wallet (20 a day for a private runner repository, 200 for a public one), with promotions
+  and the metrics bonus. `CreditBalance` and `CreditEntry` carry their wallet.
 - **GitHub runner** (`client.github`, types in `vethuq.github`): `setup`, `status`, `update`,
   `remove`, `runner` and `versions`. Creates (or adopts) a private repository you own, writes the
   caller workflow, and sets the master key as a secret (sealed with the repository's public key;
@@ -113,6 +124,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   | 40 to 42 | `LogError`, `LogNotFoundError`, `InvalidLogRequestError` |
   | 50 to 52 | `IndexingError`, `IndexAlreadyRunningError`, `IndexRunNotFoundError` |
   | 60 to 62 | `CreditsError`, `InvalidGrantError`, `CreditsExhaustedError` |
+  | 80, 81 | `TierError`, `TierUnavailableError` |
   | 70 to 74 | `GitHubError`, `GitHubAuthError`, `GitHubSetupError`, `GitHubNotSetUpError`, `GitHubUnavailableError` |
 
 - **Database integrity check** (`client.db`, types in `vethuq.db`): `integrity_check(quick=False)` and

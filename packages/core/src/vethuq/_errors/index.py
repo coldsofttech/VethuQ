@@ -48,3 +48,11 @@ class _GitHubNotSetUpError(_GitHubError, errors.GitHubNotSetUpError):
 
 class _GitHubUnavailableError(_GitHubError, errors.GitHubUnavailableError):
     exit_code = 74
+
+
+class _TierError(_VethuQError, errors.TierError):
+    exit_code = 80
+
+
+class _TierUnavailableError(_TierError, errors.TierUnavailableError):
+    exit_code = 81

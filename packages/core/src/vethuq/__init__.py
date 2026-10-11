@@ -17,6 +17,7 @@ from vethuq import (
     policy,
     sources,
     stats,
+    tiers,
     updates,
 )
 from vethuq._brand import _Brand
@@ -52,6 +53,7 @@ __all__ = [
     "policy",
     "sources",
     "stats",
+    "tiers",
     "updates",
     "Language",
     "Paths",

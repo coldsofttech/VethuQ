@@ -8,6 +8,7 @@ __all__ = [
     "FileStatus",
     "AddonStatus",
     "CreditEntryKind",
+    "ProcessingTier",
     "CreditSortBy",
     "ConfidenceBand",
     "StatsGroupBy",
@@ -83,6 +84,7 @@ class IndexRunStatus(StrEnum):
     STOPPED = "stopped"  # it was interrupted
     FAILED = "failed"  # it could not run, or its process died
     WAITING_CREDITS = "waiting_credits"  # it ran out of credits; run again after they reset
+    WAITING_REMOTE = "waiting_remote"  # work was sent to a remote tier; collect the results later
 
 
 class IndexRunSortBy(StrEnum):
@@ -219,3 +221,11 @@ class StatsSortBy(StrEnum):
     DURATION = "duration_ms"
     CREDITS = "credits"
     FAILURES = "failures"
+
+
+class ProcessingTier(StrEnum):
+    """Where pages that need OCR are read. Add-ons can provide tiers with other ids."""
+
+    LOCAL = "local"  # on this computer (always there)
+    GITHUB = "github"  # in your own GitHub account (the GitHub add-on)
+    HYBRID = "hybrid"  # local first, with some pages sent to GitHub

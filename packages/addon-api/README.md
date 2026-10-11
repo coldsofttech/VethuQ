@@ -43,6 +43,9 @@ exists but can't be used right now (a lapsed licence) is returned with `availabl
 - `ocr_engines()` returns `OcrEngineProvider`s: they build an `OcrEngine` for a language and a model
   profile, and say which models that needs, where they are kept and how to download them. VethuQ
   passes the folder to keep models in.
+- `processing_tiers()` returns `TierSpec`s: an id, the credit wallet its work is paid from, and an
+  `OcrExecutor` that reads images somewhere (`recognize` for a synchronous executor; `submit`,
+  `poll`, `collect` and `cancel` for one whose batches finish later).
 - `ocr_phases()` returns `OcrPhaseSpec`s: an order, the angles to read and the model profile.
 
 The reader and engine types are in this package, so an add-on and VethuQ share them; the heavy

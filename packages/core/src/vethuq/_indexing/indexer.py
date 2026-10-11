@@ -29,10 +29,11 @@ from vethuq._indexing.gate import _ContentGate, _Scheduler
 from vethuq._indexing.runs import _Runs
 from vethuq._indexing.store import _PageStore
 from vethuq._languages import _Languages
-from vethuq._ocr import _Ocr, _PageOcr, _PageResult
-from vethuq._settings import _ConfidenceSettings, _IndexSettings
+from vethuq._ocr import _PageOcr, _PageResult
+from vethuq._settings import _ConfidenceSettings, _IndexSettings, _TierSettings
 from vethuq._sources import _Files, _Sources
 from vethuq._stats import _ErrorCode, _PageFact, _Usage
+from vethuq._tiers import _Tiers, _TierView
 from vethuq.enums import FileStatus, IndexRunStatus
 from vethuq_addon_api import (
     FileRemovedError,
@@ -65,13 +66,14 @@ class _Indexer:
         database: _Database,
         file_types: _FileTypeCatalog,
         languages: Callable[[], list[LanguageSpec]],
-        ocr: _Ocr,
+        tiers: _Tiers,
         credits: _Credits,
     ) -> None:
         self.database = database
         self.file_types = file_types
         self.languages = languages
-        self.ocr = ocr
+        self.tiers = tiers
+        self._tier: _TierView | None = None
         self.credits = credits
         self._run_id: int | None = None
         self._paused = threading.Event()
@@ -225,18 +227,11 @@ class _Indexer:
         if file_type is None:
             raise UnreadableFileError(plan.path, "no add-on reads this kind of file")
         results: list[_PageResult] = []
-        engine = None
-
-        def engine_for():
-            nonlocal engine
-            if engine is None:
-                engine = self.ocr.engine(plan.language)[0]
-            return engine
-
+        executor = self._tier.executor if self._tier else None
         for number, page in _PageOcr.pages(file_type.reader, Path(plan.path)):
             if only is not None and only.get(number, _PageSource.NATIVE) is _PageSource.NATIVE:
                 continue
-            results.append(_PageOcr.read_page(number, page, engine_for, meter))
+            results.append(_PageOcr.read_page(number, page, executor, plan.language, meter))
         return results
 
     def _attempt(self, plan: _Plan) -> None:
@@ -263,6 +258,7 @@ class _Indexer:
                 label=plan.path,
                 language=plan.language.id,
                 additional_language=only is not None,
+                wallet=self._tier.wallet if self._tier else "local",
             )
             try:
                 results = self._read(plan, only, meter)
@@ -461,7 +457,12 @@ class _Indexer:
 
     # ----- a run ------------------------------------------------------------------------------
 
-    def run(self, target: int | str | Path | None, workers: int | str | None) -> int:
+    def run(
+        self,
+        target: int | str | Path | None,
+        workers: int | str | None,
+        tier: str | None = None,
+    ) -> int:
         """Index `target` (a source, a file in one, or every source) and return the run's id."""
         with self.database.session() as session:
             sources, only_file = self._resolve(session, target)
@@ -473,10 +474,12 @@ class _Indexer:
             seconds = _IndexSettings.get_stability_check_seconds(session)
             source_id = sources[0].id if target is not None else None
             _Languages.ensure_rows(session, self.languages())  # once, before the workers start
-            self.credits.sync(session)  # today's allowance, before the workers start
-            run = _Runs.begin(session, source_id, only_file, count)
+            view = self.tiers.resolve(tier, _TierSettings.get_default(session))
+            self.credits.sync(session, view.wallet)  # today's allowance, before the workers start
+            run = _Runs.begin(session, source_id, only_file, count, view.id)
             run_id = run.id
         self._run_id = run_id
+        self._tier = view
         self._paused.clear()
         counts = {"processed": 0, "failed": 0}
         lock = threading.Lock()
@@ -531,6 +534,7 @@ class _Indexer:
         finally:
             _Runs.end(run_id)
             self._run_id = None
+            self._tier = None
         return run_id
 
     def _finish(self, run_id: int, status: IndexRunStatus, error: str | None, counts: dict) -> None:

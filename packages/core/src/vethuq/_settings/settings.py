@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -508,3 +509,134 @@ class _ConfidenceSettings:
     @staticmethod
     def reset_bands(session: Session) -> None:
         _Settings.reset(session, _ConfidenceSettings.KEY)
+
+
+class _TierSettings:
+    DEFAULT_KEY = "tiers_default"
+    MIN_SIZE_KEY = "tiers_hybrid_min_size_factor"
+    PHASES_KEY = "tiers_hybrid_phases"
+    WAIT_KEY = "tiers_wait_timeout_minutes"
+    JOB_PAGES_KEY = "tiers_max_job_pages"
+    JOB_MB_KEY = "tiers_max_job_megabytes"
+    TIER_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+    PHASES = ("quick", "moderate", "deep")
+    DEFAULT_MIN_SIZE = 2.0
+    DEFAULT_WAIT_MINUTES = 60
+    DEFAULT_JOB_PAGES = 200
+    DEFAULT_JOB_MB = 200
+
+    @staticmethod
+    def get_default(session: Session) -> str:
+        """The processing tier used when a run doesn't name one. `local` unless changed."""
+        value = _Settings.get(session, _TierSettings.DEFAULT_KEY)
+        return value if value and _TierSettings.TIER_RE.match(value) else "local"
+
+    @staticmethod
+    def set_default(session: Session, tier: object) -> None:
+        if not isinstance(tier, str) or not _TierSettings.TIER_RE.match(tier):
+            raise _InvalidSettingValueError(
+                f"{tier!r} isn't a processing tier id.", "For example local, github or hybrid."
+            )
+        _Settings.set(session, _TierSettings.DEFAULT_KEY, tier)
+
+    @staticmethod
+    def reset_default(session: Session) -> None:
+        _Settings.reset(session, _TierSettings.DEFAULT_KEY)
+
+    @staticmethod
+    def _number(session: Session, key: str, default: float, cast, minimum: float) -> float:
+        value = _Settings.get(session, key)
+        try:
+            number = cast(value) if value is not None else default
+        except ValueError:
+            return default
+        return number if number >= minimum else default
+
+    @staticmethod
+    def _check(value: object, name: str, minimum: float, whole: bool) -> None:
+        wrong = isinstance(value, bool) or not isinstance(value, int if whole else int | float)
+        if wrong or value < minimum:
+            kind = "a whole number" if whole else "a number"
+            raise _InvalidSettingValueError(
+                f"{name} must be {kind} of {minimum:g} or more, not {value!r}."
+            )
+
+    @staticmethod
+    def get_min_size_factor(session: Session) -> float:
+        """From what page size (against A4) hybrid sends a page to GitHub. 2 (A3) unless
+        changed; 0 turns the size rule off."""
+        return _TierSettings._number(
+            session, _TierSettings.MIN_SIZE_KEY, _TierSettings.DEFAULT_MIN_SIZE, float, 0
+        )
+
+    @staticmethod
+    def set_min_size_factor(session: Session, factor: float) -> None:
+        _TierSettings._check(factor, "The size factor", 0, False)
+        _Settings.set(session, _TierSettings.MIN_SIZE_KEY, repr(float(factor)))
+
+    @staticmethod
+    def get_phases(session: Session) -> list[str]:
+        """The OCR phases hybrid sends to GitHub. None unless changed."""
+        value = _Settings.get(session, _TierSettings.PHASES_KEY) or ""
+        return [p for p in value.split(",") if p in _TierSettings.PHASES]
+
+    @staticmethod
+    def set_phases(session: Session, phases: object) -> list[str]:
+        if isinstance(phases, str) or not hasattr(phases, "__iter__"):
+            raise _InvalidSettingValueError('Phases are a list, for example ["moderate"].')
+        chosen = [str(p).strip().lower() for p in phases]  # type: ignore[attr-defined]
+        unknown = [p for p in chosen if p not in _TierSettings.PHASES]
+        if unknown:
+            raise _InvalidSettingValueError(
+                f"Unknown phase {', '.join(map(repr, unknown))}.",
+                f"Phases: {', '.join(_TierSettings.PHASES)}.",
+            )
+        chosen = list(dict.fromkeys(chosen))
+        _Settings.set(session, _TierSettings.PHASES_KEY, ",".join(chosen))
+        return chosen
+
+    @staticmethod
+    def get_wait_timeout_minutes(session: Session) -> int:
+        """How long `index.run(wait=True)` waits for remote jobs. 60 minutes unless changed."""
+        return int(
+            _TierSettings._number(
+                session, _TierSettings.WAIT_KEY, _TierSettings.DEFAULT_WAIT_MINUTES, int, 1
+            )
+        )
+
+    @staticmethod
+    def set_wait_timeout_minutes(session: Session, minutes: int) -> None:
+        _TierSettings._check(minutes, "The timeout", 1, True)
+        _Settings.set(session, _TierSettings.WAIT_KEY, str(minutes))
+
+    @staticmethod
+    def get_max_job_pages(session: Session) -> int:
+        """The most pages one remote job holds. 200 unless changed."""
+        return int(
+            _TierSettings._number(
+                session, _TierSettings.JOB_PAGES_KEY, _TierSettings.DEFAULT_JOB_PAGES, int, 1
+            )
+        )
+
+    @staticmethod
+    def set_max_job_pages(session: Session, pages: int) -> None:
+        _TierSettings._check(pages, "The page limit", 1, True)
+        _Settings.set(session, _TierSettings.JOB_PAGES_KEY, str(pages))
+
+    @staticmethod
+    def get_max_job_megabytes(session: Session) -> int:
+        """The most payload (in MB) one remote job holds. 200 unless changed."""
+        return int(
+            _TierSettings._number(
+                session, _TierSettings.JOB_MB_KEY, _TierSettings.DEFAULT_JOB_MB, int, 1
+            )
+        )
+
+    @staticmethod
+    def set_max_job_megabytes(session: Session, megabytes: int) -> None:
+        _TierSettings._check(megabytes, "The size limit", 1, True)
+        _Settings.set(session, _TierSettings.JOB_MB_KEY, str(megabytes))
+
+    @staticmethod
+    def reset(session: Session, key: str) -> None:
+        _Settings.reset(session, key)

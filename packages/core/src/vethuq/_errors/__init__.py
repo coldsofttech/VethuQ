@@ -26,6 +26,8 @@ from vethuq._errors.index import (
     _IndexingError,
     _IndexRunNotFoundError,
     _InvalidGrantError,
+    _TierError,
+    _TierUnavailableError,
 )
 from vethuq._errors.logs import _InvalidLogRequestError, _LogError, _LogNotFoundError
 from vethuq._errors.settings import _InvalidSettingValueError, _SettingsError
@@ -40,6 +42,8 @@ from vethuq._errors.sources import (
 
 __all__ = [
     "_CorruptDatabaseError",
+    "_TierError",
+    "_TierUnavailableError",
     "_GitHubAuthError",
     "_GitHubError",
     "_GitHubNotSetUpError",

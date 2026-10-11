@@ -36,6 +36,7 @@ class TestPublicApi:
             "policy",
             "sources",
             "stats",
+            "tiers",
             "updates",
             "Language",
             "Paths",

@@ -31,15 +31,18 @@ class _Promotion:
     name: str
     start: str  # first UTC day, inclusive (YYYY-MM-DD)
     end: str  # last UTC day, inclusive
-    percent: float | None = None  # of the base daily amount
-    absolute: float | None = None  # credits
+    # Per wallet: {"percent": of the base daily amount} or {"absolute": credits}.
+    uplift: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
     message: str = ""
 
     def active(self, day: date) -> bool:
         return self.start <= day.isoformat() <= self.end
 
-    def uplift_milli(self, base_milli: int, cap_percent: float) -> int:
-        amount = milli(self.absolute or 0) + round(base_milli * (self.percent or 0) / 100)
+    def uplift_milli(self, wallet: str, base_milli: int, cap_percent: float) -> int:
+        entry = self.uplift.get(wallet, {})
+        amount = milli(entry.get("absolute") or 0) + round(
+            base_milli * (entry.get("percent") or 0) / 100
+        )
         return min(amount, round(base_milli * cap_percent / 100))
 
 
@@ -57,6 +60,9 @@ class _Terms:
     fast: float = 1.0
     local_daily: float = 500.0
     local_starter: float = 2000.0
+    github_daily_private: float = 20.0
+    github_daily_public: float = 200.0
+    github_starter: float = 0.0
     grace_percent: float = 2.0
     grace_mode: str = "free"
     bonus_percent: float = 10.0
@@ -142,6 +148,12 @@ class _Terms:
         local = wallets.get("local") if isinstance(wallets.get("local"), Mapping) else {}
         values["local_daily"] = number(local.get("daily"), base.local_daily)
         values["local_starter"] = number(local.get("starter"), base.local_starter)
+        github = wallets.get("github") if isinstance(wallets.get("github"), Mapping) else {}
+        values["github_daily_private"] = number(
+            github.get("daily_private"), base.github_daily_private
+        )
+        values["github_daily_public"] = number(github.get("daily_public"), base.github_daily_public)
+        values["github_starter"] = number(github.get("starter"), base.github_starter)
 
         caps = section("caps")
         values["promotion_cap_percent"] = number(
@@ -183,7 +195,13 @@ class _Terms:
         found: list[_Promotion] = []
         for item in value if isinstance(value, list) else []:
             try:
-                uplift = item["uplift"]["local"]
+                uplift = {
+                    wallet: dict(entry)
+                    for wallet, entry in item["uplift"].items()
+                    if wallet in ("local", "github") and isinstance(entry, Mapping)
+                }
+                if not uplift:
+                    continue
                 if not _Terms._applies(item, None, client_version):
                     continue
                 minimum = item.get("min_client")
@@ -195,8 +213,7 @@ class _Terms:
                         name=str(item["name"]),
                         start=str(item["start_date"]),
                         end=str(item["end_date"]),
-                        percent=uplift.get("percent"),
-                        absolute=uplift.get("absolute"),
+                        uplift=uplift,
                         message=str(item.get("message", "")),
                     )
                 )
@@ -206,12 +223,23 @@ class _Terms:
 
     # ----- derived ----------------------------------------------------------------------------
 
-    def best_promotion(self, day: date, base_milli: int) -> tuple[_Promotion, int] | None:
-        """The active promotion with the biggest uplift for the local wallet (they don't stack)."""
+    def daily_for(self, wallet: str, private: bool = True) -> float:
+        """A wallet's daily allowance. The GitHub one depends on the runner repo's visibility."""
+        if wallet == "github":
+            return self.github_daily_private if private else self.github_daily_public
+        return self.local_daily if wallet == "local" else 0.0
+
+    def starter_for(self, wallet: str) -> float:
+        return {"github": self.github_starter, "local": self.local_starter}.get(wallet, 0.0)
+
+    def best_promotion(
+        self, day: date, base_milli: int, wallet: str = "local"
+    ) -> tuple[_Promotion, int] | None:
+        """The active promotion with the biggest uplift for `wallet` (they don't stack)."""
         best: tuple[_Promotion, int] | None = None
         for promotion in self.promotions:
             if promotion.active(day):
-                amount = promotion.uplift_milli(base_milli, self.promotion_cap_percent)
+                amount = promotion.uplift_milli(wallet, base_milli, self.promotion_cap_percent)
                 if amount > 0 and (best is None or amount > best[1]):
                     best = (promotion, amount)
         return best
