@@ -11,7 +11,7 @@ Tags (one per package, versions independent; `-rcN` is a release candidate, publ
                                                    `vethuq_entitlements` runtime built in
 
 The version of a pure package comes from the tag (hatch-vcs), so `--wheels` confirms that what was
-built carries it. Prints `key=value` lines; under GitHub Actions they are appended to `$GITHUB_OUTPUT`.
+built carries it. Prints `key=value` lines; under GitHub Actions they also go to `$GITHUB_OUTPUT`.
 """
 
 from __future__ import annotations
