@@ -5,6 +5,7 @@ from __future__ import annotations
 from vethuq_addon_api.api import (
     API_VERSION,
     Addon,
+    Credits,
     Hook,
     Host,
     LanguageSpec,
@@ -12,7 +13,7 @@ from vethuq_addon_api.api import (
     MigrationInfo,
     OcrPhaseSpec,
 )
-from vethuq_addon_api.errors import AddonError, AddonLicenceError
+from vethuq_addon_api.errors import AddonError, AddonLicenceError, CreditsExhaustedError
 from vethuq_addon_api.ocr import (
     ModelProgress,
     OcrEngine,
@@ -41,8 +42,10 @@ from vethuq_addon_api.search import (
     SearchCorpus,
     SearchEngine,
     SearchEngineSpec,
+    SearchOption,
     SearchQueryError,
     SearchRequest,
+    SyncReport,
 )
 from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest, TierSpec
 
@@ -55,6 +58,8 @@ __all__ = [
     "AddonError",
     "AddonLicenceError",
     "CorruptedFileError",
+    "Credits",
+    "CreditsExhaustedError",
     "DocumentReader",
     "FileRemovedError",
     "Folded",
@@ -84,8 +89,10 @@ __all__ = [
     "SearchCorpus",
     "SearchEngine",
     "SearchEngineSpec",
+    "SearchOption",
     "SearchQueryError",
     "SearchRequest",
+    "SyncReport",
     "TierSpec",
     "UnreadableFileError",
     "extended_path",

@@ -7,14 +7,37 @@ from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
 from vethuq_addon_api.api import API_VERSION
+from vethuq_addon_api.errors import CreditsExhaustedError
 from vethuq_addon_api.ocr import OcrResult
 from vethuq_addon_api.readers import DocumentReader, ReadPage
 from vethuq_addon_api.search import Folded, Normalizer, PageText, SearchCorpus
 from vethuq_addon_api.tiers import JobState, OcrExecutor, OcrRequest
 
 
+class FakeCredits:
+    """Implements `Credits` in memory. Tests set `balance` (milli-credits) and `rates`, and read
+    `charges` (amount, note)."""
+
+    def __init__(self, balance_milli: int = 0, rates: dict[str, float] | None = None) -> None:
+        self.balance = balance_milli
+        self.rates = rates or {}
+        self.charges: list[tuple[int, str]] = []
+
+    def rate(self, key: str, default: float) -> float:
+        return self.rates.get(key, default)
+
+    def balance_milli(self) -> int:
+        return self.balance
+
+    def charge(self, amount_milli: int, *, note: str = "") -> None:
+        if amount_milli > self.balance:
+            raise CreditsExhaustedError("There aren't enough credits.")
+        self.balance -= amount_milli
+        self.charges.append((amount_milli, note))
+
+
 class FakeHost:
-    """Implements `Host` in memory. Tests can read `settings`, `logs` and `released`."""
+    """Implements `Host` in memory. Tests can read `settings`, `logs`, `released` and `credits`."""
 
     def __init__(
         self,
@@ -33,6 +56,7 @@ class FakeHost:
         self.licences: dict[str, str] = {}
         self.logs: list[tuple[int, str]] = []
         self.released = 0
+        self.credits = FakeCredits()
 
     @property
     def api_version(self) -> str:
@@ -58,6 +82,11 @@ class FakeHost:
 
     def reset_setting(self, key: str) -> None:
         self.settings.pop(key, None)
+
+    def data_dir(self) -> Path:
+        folder = self._db_path.parent / "addon-data"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder
 
     def revoked_licence_ids(self) -> frozenset[str]:
         return self._revoked

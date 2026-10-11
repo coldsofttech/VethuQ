@@ -5,7 +5,17 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
-The add-on API version (`API_VERSION`) is 0.5.0.
+The add-on API version (`API_VERSION`) is 0.6.0.
+
+### Added (API 0.6.0)
+- Search engine options: `SearchOption`, `SearchEngineSpec.options` and `SearchRequest.options`
+  (an engine's own settings for one search, such as `threshold`); `NormalizerUse.optional` (an
+  engine that works without a normalizer being installed).
+- Search engines that prepare pages: `SearchEngine.pending` and `SearchEngine.sync`, and
+  `SyncReport`. Searching never prepares anything.
+- `Host.credits` (`Credits`: `rate`, `balance_milli`, `charge`) for an add-on's own sub-wallet,
+  `CreditsExhaustedError`, and `Host.data_dir()` for files an add-on keeps beside the database.
+- Testing: `FakeCredits`; `FakeHost.credits` and `FakeHost.data_dir()`.
 
 ### Added (API 0.5.0)
 - Search: `Normalizer` (`fold`, `index_form`, levels, `order`, `version`), `Folded`, `Pipeline`,

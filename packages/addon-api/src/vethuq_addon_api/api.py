@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 # The version of this contract, `major.minor.patch`. Add-ons declare the range they work with; a
 # breaking change raises the major (or the minor while it is 0), a compatible addition the minor.
-API_VERSION = "0.5.0"
+API_VERSION = "0.6.0"
 
 
 def _parse(version: str) -> tuple[int, ...]:
@@ -134,6 +134,24 @@ class OcrPhaseSpec:
 
 
 @runtime_checkable
+class Credits(Protocol):
+    """An add-on's own credits (its sub-wallet): for work that costs compute, such as embedding
+    pages for semantic search. They can't be spent on anything else, and OCR credits can't be
+    spent here."""
+
+    def rate(self, key: str, default: float) -> float:
+        """A price from the signed rate card (`semantic` is credits per page embedded), or
+        `default` when the policy doesn't set one."""
+
+    def balance_milli(self) -> int:
+        """What can be spent now, in milli-credits (a credit is 1000), grace included."""
+
+    def charge(self, amount_milli: int, *, note: str = "") -> None:
+        """Spend `amount_milli`. Raises `CreditsExhaustedError` if there isn't enough, spending
+        nothing."""
+
+
+@runtime_checkable
 class Host(Protocol):
     """What VethuQ offers an add-on. Each add-on gets its own host, so settings are its own."""
 
@@ -157,6 +175,14 @@ class Host(Protocol):
     def set_setting(self, key: str, value: str) -> None: ...
 
     def reset_setting(self, key: str) -> None: ...
+
+    @property
+    def credits(self) -> Credits:
+        """This add-on's credits (its sub-wallet)."""
+
+    def data_dir(self) -> Path:
+        """A folder of the add-on's own for files it keeps beside the database (created if
+        missing). Nothing in it is VethuQ's: the add-on owns its layout and its migrations."""
 
     def revoked_licence_ids(self) -> frozenset[str]:
         """Licence ids the signed policy has revoked (from the cached policy; no network)."""

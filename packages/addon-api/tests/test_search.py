@@ -13,10 +13,13 @@ from vethuq_addon_api import (
     Pipeline,
     SearchEngine,
     SearchEngineSpec,
+    SearchOption,
     SearchQueryError,
     SearchRequest,
+    SyncReport,
 )
-from vethuq_addon_api.testing import FakeCorpus, FakeHost, FakeNormalizer
+from vethuq_addon_api import CreditsExhaustedError
+from vethuq_addon_api.testing import FakeCorpus, FakeCredits, FakeHost, FakeNormalizer
 
 
 class Shift(FakeNormalizer):
@@ -118,4 +121,42 @@ class TestAddonHooks:
         assert addon.search_engines() == [] and addon.normalizers() == []
 
     def test_the_api_version(self):
-        assert API_VERSION == "0.5.0"
+        assert API_VERSION == "0.6.0"
+
+
+class TestSixthApi:
+    class Plain(SearchEngine):
+        def search(self, request, corpus):
+            return iter(())
+
+    def test_a_request_has_no_options_unless_it_is_given_some(self):
+        assert SearchRequest("q", Pipeline()).options == {}
+        assert SearchRequest("q", Pipeline(), {"threshold": "0.8"}).options["threshold"] == "0.8"
+
+    def test_a_normalizer_use_is_required_unless_optional(self):
+        assert NormalizerUse("case", "ignore").optional is False
+        assert NormalizerUse("leetspeak", "off", optional=True).optional is True
+
+    def test_an_engine_declares_its_options(self):
+        option = SearchOption("threshold", "how close", default="0.8", choices=("0.7", "0.8"))
+        spec = SearchEngineSpec("fuzzy", "Fuzzy", self.Plain(), options=(option,))
+        assert spec.options[0].name == "threshold" and SearchOption("x").choices == ()
+
+    def test_an_engine_has_nothing_to_prepare_by_default(self):
+        engine = self.Plain()
+        assert engine.pending(FakeCorpus(["a"])) == 0
+        assert engine.sync(FakeCorpus(["a"])) == SyncReport()
+
+    def test_fake_credits_charge_and_run_out(self, tmp_path):
+        host = FakeHost(tmp_path / "v.db")
+        host.credits = FakeCredits(1000, {"semantic": 0.25})
+        assert host.credits.rate("semantic", 0.5) == 0.25 and host.credits.rate("x", 2.0) == 2.0
+        host.credits.charge(400, note="page")
+        assert host.credits.balance_milli() == 600 and host.credits.charges == [(400, "page")]
+        with pytest.raises(CreditsExhaustedError):
+            host.credits.charge(601)
+        assert host.credits.balance_milli() == 600
+
+    def test_the_host_has_a_folder_of_its_own(self, tmp_path):
+        folder = FakeHost(tmp_path / "v.db").data_dir()
+        assert folder.is_dir() and folder.parent == tmp_path

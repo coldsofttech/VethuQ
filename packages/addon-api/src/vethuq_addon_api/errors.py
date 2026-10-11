@@ -17,3 +17,7 @@ class AddonError(Exception):
 
 class AddonLicenceError(AddonError):
     """The add-on has no valid licence."""
+
+
+class CreditsExhaustedError(AddonError):
+    """The add-on's credits ran out. Whatever it was doing can carry on when they are back."""

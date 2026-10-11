@@ -9,12 +9,16 @@ VethuQ keeps an index of each page's text in the coarsest form every installed n
 (`Normalizer.index_form`), and uses it to hand an engine only the pages that can match
 (`SearchCorpus.candidates`). The engine has the final say on its own matches. Raise
 `SearchQueryError` for a query the engine can't search.
+
+An engine that needs to prepare pages before it can search them (semantic search embeds them)
+overrides `SearchEngine.pending` and `SearchEngine.sync`: searching never prepares anything, so it
+is always free and fast, and a page that isn't ready yet is simply not found by that engine.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from vethuq_addon_api.errors import AddonError
@@ -153,10 +157,16 @@ class SearchCorpus(ABC):
 
 @dataclass(frozen=True)
 class SearchRequest:
-    """What an engine is asked to search for."""
+    """What an engine is asked to search for.
+
+    `options` are the engine's own settings for this search (`threshold`, `distance`, ...), only
+    the ones the search set explicitly; anything missing is the engine's to default, from its
+    add-on settings or the `SearchOption.default` it declared.
+    """
 
     query: str
     pipeline: Pipeline
+    options: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def levels(self) -> dict[str, str]:
@@ -175,6 +185,18 @@ class Hit:
     modifiers: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class SyncReport:
+    """What `SearchEngine.sync` did. `pending` is what is still not ready; `paused` says it stopped
+    because credits ran out (it carries on when they are back); `charged_milli` is what it spent."""
+
+    pages: int = 0
+    pending: int = 0
+    charged_milli: int = 0
+    paused: bool = False
+    message: str = ""
+
+
 class SearchEngine(ABC):
     """Finds the query on pages. Implement this and return it in a `SearchEngineSpec`."""
 
@@ -182,6 +204,18 @@ class SearchEngine(ABC):
     def search(self, request: SearchRequest, corpus: SearchCorpus) -> Iterator[Hit]:
         """Every occurrence of `request.query`, applying `request.pipeline` to the query and to
         the page text alike. May raise `SearchQueryError`."""
+
+    def pending(self, corpus: SearchCorpus) -> int:
+        """How many pages this engine can't search yet because they aren't prepared (0 for an
+        engine that works on the text as it is). Cheap: it is asked for after every search."""
+        return 0
+
+    def sync(
+        self, corpus: SearchCorpus, progress: Callable[[int, int], None] | None = None
+    ) -> SyncReport:
+        """Prepare the pages that aren't ready, calling `progress(done, total)` as it goes. Work
+        done stays done if it is stopped. The default prepares nothing."""
+        return SyncReport()
 
 
 @dataclass(frozen=True)
@@ -191,12 +225,27 @@ class NormalizerUse:
     `default` is the level it runs at unless told otherwise. `fixed` means it cannot run at any
     other level (asking for another one is an error). `stored` says whether the user's saved
     setting for that normalizer reaches this engine; when false only an explicit request does.
+    `optional` means the engine works without that normalizer installed (it just can't be asked
+    to use it); otherwise the engine is unavailable until the normalizer is installed.
     """
 
     id: str
     default: str
     fixed: bool = False
     stored: bool = True
+    optional: bool = False
+
+
+@dataclass(frozen=True)
+class SearchOption:
+    """A setting of one engine that a search can override (`threshold` of `fuzzy`). A search that
+    names an option the engine doesn't declare, or a value outside `choices`, is refused before
+    the engine runs."""
+
+    name: str
+    description: str = ""
+    default: str = ""
+    choices: Sequence[str] = ()
 
 
 @dataclass(frozen=True)
@@ -208,6 +257,7 @@ class SearchEngineSpec:
     label: str
     engine: SearchEngine | None
     normalizers: Sequence[NormalizerUse] = field(default_factory=tuple)
+    options: Sequence[SearchOption] = field(default_factory=tuple)
     available: bool = True
     reason: str = ""
     description: str = ""
