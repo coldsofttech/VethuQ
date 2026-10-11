@@ -26,7 +26,7 @@ sequenceDiagram
 |---|---|
 | `.github/workflows/github-ocr.yml` | The reusable workflow (`workflow_call`). Callers pin it by tag: `coldsofttech/VethuQ/.github/workflows/github-ocr.yml@github-tier-vX.Y.Z` |
 | `packages/worker` | The job protocol (`vethuq-worker`): sealed files, the client's `JobBuilder`, and the worker the image runs |
-| `VethuQ-premium/packages/github` | The add-on: `setup()`, the caller workflow it writes (`_compat.py`), the table of versions it may set up, and the executor that sends and collects jobs |
+| `VethuQ-premium/packages/tiers/github` | The add-on: `setup()`, the caller workflow it writes (`_compat.py`), the table of versions it may set up, and the executor that sends and collects jobs |
 | `github/protocol/v1/` | The job protocol (manifest and result), shared by client and worker tests |
 | `github/image/` | The worker image: `Dockerfile` and how it is built and published |
 

@@ -25,7 +25,7 @@ publishing (the private checkouts need the secret, so they only run for branches
 2. Build the wheels (`addon-api`, `core`, `worker`, `entitlements`, and the add-ons named in the
    workflow's `PREMIUM_ADDONS`) and run `wheel_gate.py` over the add-ons: stable-ABI, compiled, no
    source, no key material. An `admin` wheel fails the build. Add a language pack to the image by
-   adding its directory name to `PREMIUM_ADDONS` and its wheel name to the `Dockerfile`; a test
+   adding its folder (with its group, such as `languages/english`) to `PREMIUM_ADDONS` and its wheel name to the `Dockerfile`; a test
    keeps the two lists equal.
 3. Build the image, then smoke-test it with no network on the synthetic job in
    `github/protocol/v1/fixtures`.

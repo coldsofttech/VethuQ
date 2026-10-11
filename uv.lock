@@ -2520,13 +2520,13 @@ requires-dist = [
     { name = "sqlalchemy", specifier = "~=2.0" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
     { name = "vethuq-addon-case", directory = "../VethuQ-premium/packages/search/normalisers/case" },
-    { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/english" },
+    { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/languages/english" },
     { name = "vethuq-addon-exact", directory = "../VethuQ-premium/packages/search/engines/exact" },
-    { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/github" },
+    { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/tiers/github" },
     { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/search/engines/like" },
-    { name = "vethuq-addon-ocr-quick", directory = "../VethuQ-premium/packages/ocr-quick" },
-    { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/paddle" },
-    { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/pdf" },
+    { name = "vethuq-addon-ocr-quick", directory = "../VethuQ-premium/packages/ocr/modes/quick" },
+    { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/ocr/engines/paddle" },
+    { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/file-types/pdf" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/search/normalisers/unicode" },
 ]
 provides-extras = ["github"]
@@ -2549,7 +2549,7 @@ requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 [[package]]
 name = "vethuq-addon-english"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/english" }
+source = { directory = "../VethuQ-premium/packages/languages/english" }
 dependencies = [
     { name = "vethuq-addon-api" },
 ]
@@ -2571,7 +2571,7 @@ requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 [[package]]
 name = "vethuq-addon-github"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/github" }
+source = { directory = "../VethuQ-premium/packages/tiers/github" }
 dependencies = [
     { name = "packaging" },
     { name = "pynacl" },
@@ -2601,7 +2601,7 @@ requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 [[package]]
 name = "vethuq-addon-ocr-quick"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/ocr-quick" }
+source = { directory = "../VethuQ-premium/packages/ocr/modes/quick" }
 dependencies = [
     { name = "vethuq-addon-api" },
 ]
@@ -2612,7 +2612,7 @@ requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 [[package]]
 name = "vethuq-addon-paddle"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/paddle" }
+source = { directory = "../VethuQ-premium/packages/ocr/engines/paddle" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -2632,7 +2632,7 @@ requires-dist = [
 [[package]]
 name = "vethuq-addon-pdf"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/pdf" }
+source = { directory = "../VethuQ-premium/packages/file-types/pdf" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
