@@ -43,7 +43,7 @@ The version is not edited by hand. It comes from git tags named `vethuq-vX.Y.Z` 
 
 ## Errors
 
-Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, or a specific subclass for one failure.
+Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError`. Catch that for any of them, `StartupError` for the failures that stop VethuQ from starting, `SourceError` for the source errors, `SettingsError` for the settings errors, `LogError` for the log errors, `IndexingError` for the indexing errors, `CreditsError` for the credit errors, `GitHubError` for the GitHub runner errors, or a specific subclass for one failure.
 
 | Error | Exit code | Category | Raised when |
 |---|---|---|---|
@@ -68,6 +68,11 @@ Every error VethuQ raises on purpose is a subclass of `vethuq.errors.VethuQError
 | `IndexRunNotFoundError` | 52 | Indexing | There is no index run with that id |
 | `CreditsError` | 60 | Credits | Root of the credit errors below |
 | `InvalidGrantError` | 61 | Credits | A credit grant or licence can't be redeemed |
+| `GitHubError` | 70 | GitHub | Root of the GitHub runner errors below |
+| `GitHubAuthError` | 71 | GitHub | The token is missing, rejected, or lacks a permission |
+| `GitHubSetupError` | 72 | GitHub | The runner repository couldn't be set up, updated or reached |
+| `GitHubNotSetUpError` | 73 | GitHub | No runner has been set up yet |
+| `GitHubUnavailableError` | 74 | GitHub | The policy has the GitHub tier off, or it needs a newer VethuQ |
 | `CreditsExhaustedError` | 62 | Credits | There aren't enough credits for the work (an index run ends as `WAITING_CREDITS` instead of raising it) |
 | `LogError` | 40 | Logs | Root of the log errors below |
 | `LogNotFoundError` | 41 | Logs | There is no log for that component and day |
@@ -726,6 +731,30 @@ client.metrics.delete_data()  # asks the collector to delete everything for this
 
 Only closed UTC days are sent, each once. The schema is in the VethuQ repository (`metrics/schema/v1`) and so is the collector (`metrics/collector`, a Cloudflare Worker); anything not in the schema is refused by both.
 
+## GitHub runner
+
+Run OCR in **your own GitHub account**. `client.github.setup()` creates a private repository you own, writes VethuQ's thin caller workflow into it and gives it a master key as a secret. VethuQ then encrypts the pages that need OCR, uploads them there, and a GitHub Actions job runs the worker image on them; results come back encrypted. Pages with a text layer never leave your computer. There is no template repository: GitHub copies a template whole, so the client writes the one workflow file itself (the caller ships inside the package, so it always matches the client).
+
+```python
+runner = client.github.setup("my-runner", token="github_pat_...")   # or set VETHUQ_GITHUB_TOKEN
+print(runner.url, runner.workflow_ref, runner.key_fingerprint)
+
+client.github.status().problems      # exists? workflow unchanged? secret set? up to date?
+client.github.update()               # move to the newest runner version this VethuQ allows
+client.github.versions()             # what it may set up (workflow tag, image, protocol)
+client.github.remove(delete_repo=True)
+```
+
+`setup(repo="vethuq-runner", *, owner=None, private=True, token=None, master_key=None, workflow_ref=None, create=True, adopt=False)`:
+
+- **Token.** A fine-grained token limited to the runner repository: *Contents*, *Actions*, *Secrets* and *Workflows* (read and write). To create the repository (or delete it) it also needs *Administration*; otherwise create an empty repository yourself and use `create=False, adopt=True`. The token is used for the call and never stored or logged.
+- **Master key.** A random 256-bit key kept in `<data root>/github/master.key` (readable by you only) and set as the secret `VETHUQ_MASTER_KEY`. `master_key=` restores one. Without it, results of past jobs can't be read, and `status()` tells you if it is missing or isn't the one the runner has.
+- **Versions.** Only the combinations of workflow tag, image and job protocol in `versions()` are ever written, because the image gets the key's effects. A repository that wasn't set up by VethuQ is refused unless `adopt=True`. Running `setup` again repairs and refreshes the runner.
+- **Public repositories** are allowed (`private=False`) but show job sizes and timing and have a lower free allowance; `status()` says so.
+- The policy feature `github_tier` is the kill switch (`GitHubUnavailableError`).
+
+`GitHubRunner`, `GitHubStatus` and `GitHubVersion` have `to_dict()` and `to_json()`. The workflow, image and protocol are described in `github/README.md` of the repository. The worker image and the job protocol are not built yet, so the only listed version is `provisional`.
+
 ## Logs
 
 VethuQ keeps a log for each of its parts. They are plain text files in the `logs` folder of the data folder (`Paths.logs_dir()`), one file per day. Old days are kept for the retention set in the [log settings](#log-settings) (15 days by default).
@@ -1058,7 +1087,7 @@ It returns a `VersionDetails`:
 
 The last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+The GitHub runner is in `vethuq.github`, credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

@@ -73,6 +73,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   `send` and `delete_data`. A content-free batch of the daily totals goes to the policy's collector
   at the end of an index run, at most once a day; sharing earns +10% daily credits. The batch
   schema and the collector (a Cloudflare Worker with D1) are in `metrics/`.
+- **GitHub runner** (`client.github`, types in `vethuq.github`): `setup`, `status`, `update`,
+  `remove`, `runner` and `versions`. Creates (or adopts) a private repository you own, writes the
+  caller workflow, and sets the master key as a secret (sealed with the repository's public key;
+  kept in `<data root>/github/master.key`). Only runner versions in the compatibility table are
+  written; the policy feature `github_tier` is the kill switch. Errors `GitHubError`,
+  `GitHubAuthError`, `GitHubSetupError`, `GitHubNotSetUpError`, `GitHubUnavailableError`. The
+  reusable workflow `.github/workflows/github-ocr.yml` and the layout are in `github/`; this
+  replaces the separate `VethuQ-github-tier` repository. The worker image is not built yet.
 - Internal tables `credit_grants`, `credit_ledger`, `usage_daily` and `usage_failures`.
 - Internal tables `pdf_pages`, `pdf_pages_quick`, `document_languages` and `index_runs`.
 - **Logs** (`client.logs`, types in `vethuq.logs`): one class per log (`DatabaseLog`, `IndexLog`,
@@ -105,6 +113,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   | 40 to 42 | `LogError`, `LogNotFoundError`, `InvalidLogRequestError` |
   | 50 to 52 | `IndexingError`, `IndexAlreadyRunningError`, `IndexRunNotFoundError` |
   | 60 to 62 | `CreditsError`, `InvalidGrantError`, `CreditsExhaustedError` |
+  | 70 to 74 | `GitHubError`, `GitHubAuthError`, `GitHubSetupError`, `GitHubNotSetUpError`, `GitHubUnavailableError` |
 
 - **Database integrity check** (`client.db`, types in `vethuq.db`): `integrity_check(quick=False)` and
   `integrity_status()`, with `IntegrityCheckResult` and `IntegrityCheckMode`. The check runs by itself

@@ -40,6 +40,7 @@ class _Paths:
     LOGS_DIRNAME = "logs"
     POLICY_DIRNAME = "policy"
     MODELS_DIRNAME = "models"
+    GITHUB_DIRNAME = "github"
 
     ENV_VAR = "VETHUQ_HOME"
     LOCATION_FILENAME = "db.json"
@@ -269,6 +270,14 @@ class _Paths:
     def models_dir(db_path: Path, *, create: bool = True) -> Path:
         """Folder for the OCR models; created on demand unless not `create`."""
         path = _Paths.data_root(db_path) / _Paths.MODELS_DIRNAME
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @staticmethod
+    def github_dir(db_path: Path, *, create: bool = True) -> Path:
+        """Folder for the GitHub runner's master key; created on demand unless not `create`."""
+        path = _Paths.data_root(db_path) / _Paths.GITHUB_DIRNAME
         if create:
             path.mkdir(parents=True, exist_ok=True)
         return path

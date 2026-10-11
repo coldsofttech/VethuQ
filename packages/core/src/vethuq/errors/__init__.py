@@ -22,6 +22,11 @@ from vethuq.errors.generic import (
 from vethuq.errors.index import (
     CreditsError,
     CreditsExhaustedError,
+    GitHubAuthError,
+    GitHubError,
+    GitHubNotSetUpError,
+    GitHubSetupError,
+    GitHubUnavailableError,
     IndexAlreadyRunningError,
     IndexingError,
     IndexRunNotFoundError,
@@ -41,6 +46,11 @@ from vethuq.errors.sources import (
 __all__ = [
     "CorruptDatabaseError",
     "CreditsError",
+    "GitHubAuthError",
+    "GitHubError",
+    "GitHubNotSetUpError",
+    "GitHubSetupError",
+    "GitHubUnavailableError",
     "CreditsExhaustedError",
     "InvalidGrantError",
     "DataFolderNotWritableError",

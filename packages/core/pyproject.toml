@@ -15,6 +15,7 @@ dependencies = [
     "vethuq-addon-paddle~=0.1",
     "vethuq-addon-ocr-quick~=0.1",
     "psutil>=5.9",
+    "pynacl>=1.5",
 ]
 
 [build-system]

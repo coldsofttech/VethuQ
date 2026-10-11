@@ -10,6 +10,7 @@ from vethuq._addons import _AddonManager
 from vethuq._credits import _Credits
 from vethuq._db import _Database
 from vethuq._filetypes import _FileTypeCatalog
+from vethuq._github import _Runner
 from vethuq._indexing import _Indexer
 from vethuq._languages import _LanguageCatalog
 from vethuq._maintenance import _Maintenance
@@ -20,6 +21,7 @@ from vethuq.addons import Addons
 from vethuq.credits import Credits
 from vethuq.db import Db
 from vethuq.file_types import FileTypes
+from vethuq.github import GitHub
 from vethuq.index import Index
 from vethuq.languages import Languages
 from vethuq.logs import Logs
@@ -68,6 +70,8 @@ class VethuQ:
         self._credits: Credits | None = None
         self._metrics: Metrics | None = None
         self._stats: Stats | None = None
+        self._github: GitHub | None = None
+        self._github_transport = None  # replaced in tests
         self._lock = threading.Lock()
 
     @property
@@ -179,6 +183,19 @@ class VethuQ:
         return self._credits
 
     @property
+    def github(self) -> GitHub:
+        """Run OCR in your own GitHub account: set up and look after the runner repository."""
+        if self._github is None:
+            db, updates, version = self._db(), self.updates, self.version.vethuq
+
+            def tier() -> tuple[bool, str | None]:
+                access = updates.feature("github_tier", default=True)
+                return access.allowed, access.message
+
+            self._github = GitHub(_Runner(db, tier, version, self._github_transport))
+        return self._github
+
+    @property
     def stats(self) -> Stats:
         """Statistics about the work done: processing and confidence."""
         if self._stats is None:
@@ -278,6 +295,7 @@ class VethuQ:
             self._credits = None
             self._metrics = None
             self._stats = None
+            self._github = None
 
     def __enter__(self) -> VethuQ:
         return self

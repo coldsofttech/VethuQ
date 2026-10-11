@@ -1,0 +1,83 @@
+# The reusable workflow behind the GitHub runner (`client.github`). It is called from a user's own
+# runner repository by the thin caller VethuQ writes there (`vethuq-ocr.yml`), pinned to a tag of
+# this repository. It must stay public for that to work.
+#
+# Contract with the worker image (github/README.md): the image's entrypoint is
+#   vethuq-worker run --job-id ID --payload DIR --out DIR
+# It reads the encrypted payload from DIR, decrypts it with VETHUQ_MASTER_KEY, enforces the
+# licence, add-ons, settings and caps in the manifest, and writes the encrypted result to --out.
+# It makes no outbound calls, and nothing it logs names a file or holds OCR text.
+name: github-ocr
+
+on:
+  workflow_call:
+    inputs:
+      job_id:
+        description: "Job id (plain: visible in run metadata)"
+        required: true
+        type: string
+      asset:
+        description: "Payload release asset reference (plain)"
+        required: true
+        type: string
+      image:
+        description: "Worker image, from the compatibility table (tag or digest)"
+        required: true
+        type: string
+    secrets:
+      master_key:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  ocr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check the inputs
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+          ASSET: ${{ inputs.asset }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          [[ "$JOB_ID" =~ ^[A-Za-z0-9_-]{8,64}$ ]] || { echo "bad job id"; exit 1; }
+          [[ "$ASSET" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || { echo "bad asset"; exit 1; }
+          [[ "$IMAGE" =~ ^ghcr\.io/coldsofttech/vethuq-worker(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]{64})?$ ]] \
+            || { echo "image not allowed"; exit 1; }
+
+      - name: Download the encrypted payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_ID: ${{ inputs.job_id }}
+          ASSET: ${{ inputs.asset }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/payload" "$RUNNER_TEMP/out"
+          gh release download "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET" --dir "$RUNNER_TEMP/payload"
+
+      - name: Pull the worker image
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: docker pull "$IMAGE"
+
+      - name: Run the worker
+        env:
+          IMAGE: ${{ inputs.image }}
+          JOB_ID: ${{ inputs.job_id }}
+          VETHUQ_MASTER_KEY: ${{ secrets.master_key }}
+        run: |
+          docker run --rm --network none \
+            -e VETHUQ_MASTER_KEY \
+            -v "$RUNNER_TEMP/payload:/payload:ro" -v "$RUNNER_TEMP/out:/out" \
+            "$IMAGE" vethuq-worker run --job-id "$JOB_ID" --payload /payload --out /out
+
+      - name: Upload the encrypted result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vethuq-result-${{ inputs.job_id }}
+          path: ${{ runner.temp }}/out
+          retention-days: 1
+          if-no-files-found: ignore

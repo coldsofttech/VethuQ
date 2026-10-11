@@ -1,0 +1,12 @@
+{
+  "comment": "Which runner versions this VethuQ may set up. Rows are never rewritten: a withdrawn combination is marked withdrawn. The release process adds a row per release (workflow tag, image, job protocol, minimum client).",
+  "rows": [
+    {
+      "workflow_ref": "github-tier-v0.1.0",
+      "image": "ghcr.io/coldsofttech/vethuq-worker:0.1.0",
+      "protocol": 1,
+      "min_client": "0.1.0",
+      "status": "provisional"
+    }
+  ]
+}

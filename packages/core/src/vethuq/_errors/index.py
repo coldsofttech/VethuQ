@@ -28,3 +28,23 @@ class _InvalidGrantError(_CreditsError, errors.InvalidGrantError):
 
 class _CreditsExhaustedError(_CreditsError, errors.CreditsExhaustedError):
     exit_code = 62
+
+
+class _GitHubError(_VethuQError, errors.GitHubError):
+    exit_code = 70
+
+
+class _GitHubAuthError(_GitHubError, errors.GitHubAuthError):
+    exit_code = 71
+
+
+class _GitHubSetupError(_GitHubError, errors.GitHubSetupError):
+    exit_code = 72
+
+
+class _GitHubNotSetUpError(_GitHubError, errors.GitHubNotSetUpError):
+    exit_code = 73
+
+
+class _GitHubUnavailableError(_GitHubError, errors.GitHubUnavailableError):
+    exit_code = 74
