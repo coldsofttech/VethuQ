@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vethuq.dev/github/protocol/v1/result.schema.json",
+  "title": "VethuQ job result, protocol v1",
+  "type": "object",
+  "required": ["protocol", "job_id", "status", "pages"],
+  "additionalProperties": true,
+  "properties": {
+    "protocol": {"const": 1},
+    "job_id": {"type": "string"},
+    "status": {"enum": ["done", "partial", "failed"]},
+    "worker": {"type": "string"},
+    "billable_seconds": {"type": "number", "minimum": 0},
+    "error": {"$ref": "#/$defs/error"},
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "ok"],
+        "properties": {
+          "key": {"type": "string"},
+          "ok": {"type": "boolean"},
+          "text": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "engine": {"type": "string"},
+          "language": {"type": "string"},
+          "image_width": {"type": ["integer", "null"]},
+          "image_height": {"type": ["integer", "null"]},
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "prefixItems": [{"type": "string"}, {"type": "number"}],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "seconds": {"type": "number", "minimum": 0},
+          "error": {"$ref": "#/$defs/error"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {"code": {"type": "string"}, "message": {"type": "string"}}
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vethuq.dev/github/protocol/v1/manifest.schema.json",
+  "title": "VethuQ job manifest, protocol v1",
+  "type": "object",
+  "required": ["protocol", "job_id", "limits", "pages"],
+  "additionalProperties": true,
+  "properties": {
+    "protocol": {"const": 1},
+    "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
+    "created": {"type": "string"},
+    "client": {"type": "string"},
+    "limits": {
+      "type": "object",
+      "required": ["max_pages", "max_bytes"],
+      "properties": {
+        "max_pages": {"type": "integer", "minimum": 1},
+        "max_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "addon_settings": {
+      "description": "Add-on settings the job needs (licence tokens), by add-on id.",
+      "type": "object",
+      "additionalProperties": {"type": "object", "additionalProperties": {"type": "string"}}
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "file", "language"],
+        "properties": {
+          "key": {"type": "string", "minLength": 1, "maxLength": 256},
+          "file": {"type": "string", "pattern": "^images/[0-9]{1,6}\\.png$"},
+          "language": {"type": "string", "minLength": 1, "maxLength": 32},
+          "phase": {"type": "string", "default": "quick"},
+          "size_factor": {"type": "number", "minimum": 0}
+        }
+      }
+    }
+  }
+}

@@ -21,6 +21,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 VethuQ = { workspace = true }
 vethuq-addon-api = { workspace = true }
+vethuq-worker = { workspace = true }
 # English is built in the premium repository; resolve it from a sibling checkout until it is
 # published (clone VethuQ and VethuQ-premium next to each other).
 vethuq-addon-english = { path = "../VethuQ-premium/packages/english" }
@@ -32,6 +33,7 @@ vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/ocr-quick" }
 dev = [
     "VethuQ",
     "vethuq-addon-api",
+    "vethuq-worker",
     "pytest>=8",
     "ruff>=0.6",
     "pre-commit>=3.8",
@@ -43,7 +45,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["packages/core/src", "packages/addon-api/src", "packages/core", "tools", "scripts"]
+src = ["packages/core/src", "packages/addon-api/src", "packages/worker/src", "packages/core", "tools", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "S"]
@@ -53,5 +55,5 @@ select = ["E", "F", "I", "UP", "B", "S"]
 "tools/**" = ["S101"]
 
 [tool.pytest.ini_options]
-testpaths = ["packages/core/tests", "packages/addon-api/tests", "tools/policy/tests", "scripts"]
+testpaths = ["packages/core/tests", "packages/addon-api/tests", "packages/worker/tests", "tools/policy/tests", "scripts"]
 addopts = "-ra"

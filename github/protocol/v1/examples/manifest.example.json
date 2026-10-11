@@ -1,0 +1,27 @@
+{
+  "protocol": 1,
+  "job_id": "fixture-job-0001",
+  "created": "2026-01-01T00:00:00+00:00",
+  "client": "fixture",
+  "limits": {
+    "max_pages": 200,
+    "max_bytes": 209715200
+  },
+  "addon_settings": {},
+  "pages": [
+    {
+      "key": "d1.l1.1:0",
+      "file": "images/0001.png",
+      "language": "en",
+      "phase": "quick",
+      "size_factor": 1.0
+    },
+    {
+      "key": "d1.l1.2:0",
+      "file": "images/0002.png",
+      "language": "en",
+      "phase": "quick",
+      "size_factor": 1.0
+    }
+  ]
+}

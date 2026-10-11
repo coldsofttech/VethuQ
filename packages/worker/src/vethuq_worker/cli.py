@@ -1,0 +1,39 @@
+"""`vethuq-worker run --job-id ID --payload DIR --out DIR` (key in `VETHUQ_MASTER_KEY`)."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import sys
+from pathlib import Path
+
+from vethuq_worker.errors import JobError
+from vethuq_worker.worker import run_job
+
+KEY_VARIABLE = "VETHUQ_MASTER_KEY"
+EXIT_OK, EXIT_FAILED, EXIT_USAGE = 0, 1, 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="vethuq-worker")
+    commands = parser.add_subparsers(dest="command", required=True)
+    run = commands.add_parser("run", help="read a job's pages")
+    run.add_argument("--job-id", required=True)
+    run.add_argument("--payload", required=True, type=Path, help="folder holding payload.bin")
+    run.add_argument("--out", required=True, type=Path, help="folder to write result.bin to")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
+    key = os.environ.get(KEY_VARIABLE, "")
+    if not key:
+        print(f"{KEY_VARIABLE} is not set.", file=sys.stderr)
+        return EXIT_USAGE
+    try:
+        result = run_job(args.job_id, args.payload, args.out, key)
+    except JobError as error:
+        print(f"{error.code}: {error.message}", file=sys.stderr)
+        return EXIT_USAGE
+    ok = sum(1 for page in result.pages if page.ok)
+    print(f"job {args.job_id}: {result.status}, {ok}/{len(result.pages)} pages read")
+    return EXIT_FAILED if result.status == "failed" else EXIT_OK

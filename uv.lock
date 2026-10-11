@@ -23,6 +23,7 @@ resolution-markers = [
 members = [
     "vethuq",
     "vethuq-addon-api",
+    "vethuq-worker",
     "vethuq-workspace",
 ]
 overrides = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
@@ -2582,6 +2583,41 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-worker"
+source = { editable = "packages/worker" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "jsonschema" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.optional-dependencies]
+images = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+]
+run = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = "~=50.0" },
+    { name = "jsonschema", specifier = ">=4.20" },
+    { name = "numpy", marker = "extra == 'images'", specifier = ">=1.26" },
+    { name = "numpy", marker = "extra == 'run'", specifier = ">=1.26" },
+    { name = "pillow", marker = "extra == 'images'", specifier = ">=10" },
+    { name = "pillow", marker = "extra == 'run'", specifier = ">=10" },
+    { name = "vethuq", marker = "extra == 'run'", editable = "packages/core" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+provides-extras = ["images", "run"]
+
+[[package]]
 name = "vethuq-workspace"
 version = "0.1.0"
 source = { virtual = "." }
@@ -2596,6 +2632,7 @@ dev = [
     { name = "ruff" },
     { name = "vethuq" },
     { name = "vethuq-addon-api" },
+    { name = "vethuq-worker" },
 ]
 
 [package.metadata]
@@ -2610,6 +2647,7 @@ dev = [
     { name = "ruff", specifier = ">=0.6" },
     { name = "vethuq", editable = "packages/core" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-worker", editable = "packages/worker" },
 ]
 
 [[package]]

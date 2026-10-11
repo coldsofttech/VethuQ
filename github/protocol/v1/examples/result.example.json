@@ -1,0 +1,43 @@
+{
+  "protocol": 1,
+  "job_id": "fixture-job-0001",
+  "status": "done",
+  "worker": "vethuq-worker 0.1.1.dev47+g12f26e8e0.d20261011",
+  "billable_seconds": 0.1,
+  "pages": [
+    {
+      "key": "d1.l1.1:0",
+      "ok": true,
+      "seconds": 0.05,
+      "text": "Hello world",
+      "confidence": 0.9,
+      "engine": "fake-executor 1.0",
+      "language": "en",
+      "image_width": null,
+      "image_height": null,
+      "lines": [
+        [
+          "Hello world",
+          0.9
+        ]
+      ]
+    },
+    {
+      "key": "d1.l1.2:0",
+      "ok": true,
+      "seconds": 0.05,
+      "text": "Second page",
+      "confidence": 0.9,
+      "engine": "fake-executor 1.0",
+      "language": "en",
+      "image_width": null,
+      "image_height": null,
+      "lines": [
+        [
+          "Second page",
+          0.9
+        ]
+      ]
+    }
+  ]
+}
