@@ -44,6 +44,8 @@ deep-scan = ["vethuq-bundle-deep-scan~=0.1"]
 web = ["vethuq-bundle-web~=0.1"]
 # The developer file types (YAML, JSON; licensed): `vethuq-bundle-developer`.
 developer = ["vethuq-bundle-developer~=0.1"]
+# The office file types (Word, Excel, PowerPoint, RTF, email; licensed): `vethuq-bundle-office`.
+office = ["vethuq-bundle-office~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

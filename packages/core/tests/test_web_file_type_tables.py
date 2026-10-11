@@ -1,4 +1,4 @@
-"""The per-type tables of the licensed file types (html, xml, css, js, json, yaml)."""
+"""The per-type tables of the licensed file types (web, developer and office)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,23 @@ from sqlalchemy import select
 
 import tests.fake_pipeline as fp
 import vethuq
-from vethuq._db import _CssPage, _HtmlPage, _JsonPage, _JsPage, _PdfPage, _XmlPage, _YamlPage
+from vethuq._db import (
+    _CssPage,
+    _DocPage,
+    _DocxPage,
+    _EmlPage,
+    _HtmlPage,
+    _JsonPage,
+    _JsPage,
+    _PdfPage,
+    _PptPage,
+    _PptxPage,
+    _RtfPage,
+    _XlsPage,
+    _XlsxPage,
+    _XmlPage,
+    _YamlPage,
+)
 from vethuq._filetypes import _PageDetails
 
 CASES = [
@@ -34,6 +50,27 @@ CASES = [
         "yaml",
         _YamlPage,
         {"encoding": "utf-8", "document_count": 2, "value_count": 9, "max_depth": 3},
+    ),
+    ("docx", _DocxPage, {"line_count": 12, "image_count": 2}),
+    ("doc", _DocPage, {"line_count": 12, "image_count": 2}),
+    ("xlsx", _XlsxPage, {"line_count": 12, "image_count": 2}),
+    ("xls", _XlsPage, {"line_count": 12, "image_count": 2}),
+    ("pptx", _PptxPage, {"line_count": 12, "image_count": 2}),
+    ("ppt", _PptPage, {"line_count": 12, "image_count": 2}),
+    ("rtf", _RtfPage, {"line_count": 12, "image_count": 2}),
+    (
+        "eml",
+        _EmlPage,
+        {
+            "subject": "S",
+            "sender": "a@b.c",
+            "recipients_to": "d@e.f",
+            "recipients_cc": None,
+            "recipients_bcc": None,
+            "reply_to": None,
+            "sent_at": "2025-09-02T10:30:00+00:00",
+            "message_id": "<m@x>",
+        },
     ),
 ]
 

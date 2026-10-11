@@ -1117,6 +1117,15 @@ wheels = [
 ]
 
 [[package]]
+name = "olefile"
+version = "0.47"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/1b/077b508e3e500e1629d366249c3ccb32f95e50258b231705c09e3c7a4366/olefile-0.47.zip", hash = "sha256:599383381a0bf3dfbd932ca0ca6515acd174ed48870cbf7fee123d698c192c1c", size = 112240, upload-time = "2023-12-01T16:22:53.025Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-0.47-py2.py3-none-any.whl", hash = "sha256:543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f", size = 114565, upload-time = "2023-12-01T16:22:51.518Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.31.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2411,6 +2420,15 @@ wheels = [
 ]
 
 [[package]]
+name = "striprtf"
+version = "0.0.33"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/3b/c42830804cb2da515d0cb8aa200fb199ce57f7dcc344ff73db9dfe37cf3b/striprtf-0.0.33.tar.gz", hash = "sha256:c2d3d9ff3118df6dab558675f10a31ff8bb999ac1f8921f00c6dc9ea19961f18", size = 8010, upload-time = "2026-08-17T21:11:15.706Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/85/bee751fd2096accfc8b76186d49fbb2871163723e45f1e721e03c3f044ae/striprtf-0.0.33-py3-none-any.whl", hash = "sha256:f9637632a4414de05b1c399ee34d324dc336133ae45769992143a024e0f919ef", size = 8446, upload-time = "2026-08-17T21:11:14.696Z" },
+]
+
+[[package]]
 name = "tokenizers"
 version = "0.23.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2659,6 +2677,9 @@ github = [
 images = [
     { name = "vethuq-bundle-image" },
 ]
+office = [
+    { name = "vethuq-bundle-office" },
+]
 semantic = [
     { name = "vethuq-addon-semantic" },
 ]
@@ -2696,9 +2717,10 @@ requires-dist = [
     { name = "vethuq-bundle-deep-scan", marker = "extra == 'deep-scan'", directory = "../VethuQ-premium/packages/bundles/deep-scan" },
     { name = "vethuq-bundle-developer", marker = "extra == 'developer'", directory = "../VethuQ-premium/packages/bundles/developer" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", directory = "../VethuQ-premium/packages/bundles/image" },
+    { name = "vethuq-bundle-office", marker = "extra == 'office'", directory = "../VethuQ-premium/packages/bundles/office" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", directory = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["deep-scan", "developer", "github", "images", "semantic", "web"]
+provides-extras = ["deep-scan", "developer", "github", "images", "office", "semantic", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -2745,6 +2767,65 @@ dependencies = [
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-doc"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/doc" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "olefile" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "olefile", specifier = ">=0.46" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
+
+[[package]]
+name = "vethuq-addon-docx"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/docx" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
+
+[[package]]
+name = "vethuq-addon-eml"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/eml" }
+dependencies = [
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3038,6 +3119,50 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-ppt"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/ppt" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "olefile" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "olefile", specifier = ">=0.46" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
+
+[[package]]
+name = "vethuq-addon-pptx"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/pptx" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
+
+[[package]]
 name = "vethuq-addon-proximity"
 version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" }
@@ -3050,6 +3175,28 @@ dependencies = [
 requires-dist = [
     { name = "snowballstemmer", specifier = ">=2.2" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-rtf"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/rtf" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "striprtf" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "striprtf", specifier = ">=0.0.26" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
 ]
 
 [[package]]
@@ -3117,6 +3264,52 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-addon-xls"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/xls" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "olefile" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+    { name = "xlrd" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "olefile", specifier = ">=0.46" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+    { name = "xlrd", specifier = ">=2" },
+]
+
+[[package]]
+name = "vethuq-addon-xlsx"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/xlsx" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+    { name = "vethuq-entitlements" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-entitlements", directory = "../VethuQ-entitlements/packages/entitlements" },
+]
 
 [[package]]
 name = "vethuq-addon-xml"
@@ -3203,6 +3396,33 @@ requires-dist = [
     { name = "vethuq-addon-jpg", editable = "../VethuQ-premium/packages/add-ons/file-types/jpg" },
     { name = "vethuq-addon-png", editable = "../VethuQ-premium/packages/add-ons/file-types/png" },
     { name = "vethuq-addon-tiff", editable = "../VethuQ-premium/packages/add-ons/file-types/tiff" },
+]
+
+[[package]]
+name = "vethuq-bundle-office"
+version = "0.1.0"
+source = { directory = "../VethuQ-premium/packages/bundles/office" }
+dependencies = [
+    { name = "vethuq-addon-doc" },
+    { name = "vethuq-addon-docx" },
+    { name = "vethuq-addon-eml" },
+    { name = "vethuq-addon-ppt" },
+    { name = "vethuq-addon-pptx" },
+    { name = "vethuq-addon-rtf" },
+    { name = "vethuq-addon-xls" },
+    { name = "vethuq-addon-xlsx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-doc", editable = "../VethuQ-premium/packages/add-ons/file-types/doc" },
+    { name = "vethuq-addon-docx", editable = "../VethuQ-premium/packages/add-ons/file-types/docx" },
+    { name = "vethuq-addon-eml", editable = "../VethuQ-premium/packages/add-ons/file-types/eml" },
+    { name = "vethuq-addon-ppt", editable = "../VethuQ-premium/packages/add-ons/file-types/ppt" },
+    { name = "vethuq-addon-pptx", editable = "../VethuQ-premium/packages/add-ons/file-types/pptx" },
+    { name = "vethuq-addon-rtf", editable = "../VethuQ-premium/packages/add-ons/file-types/rtf" },
+    { name = "vethuq-addon-xls", editable = "../VethuQ-premium/packages/add-ons/file-types/xls" },
+    { name = "vethuq-addon-xlsx", editable = "../VethuQ-premium/packages/add-ons/file-types/xlsx" },
 ]
 
 [[package]]
@@ -3362,4 +3582,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/63/80/6a03356d8ee38261e3a78cf89ee03d8e7f12c572d969237be00869e2dc73/wcwidth-0.9.2-cp315-cp315t-win_amd64.whl", hash = "sha256:33df042f96c61ed3cd5fb3742fba427553a635bc578799857a48aa79f774a0b9", size = 605441, upload-time = "2026-10-05T00:24:04.052Z" },
     { url = "https://files.pythonhosted.org/packages/0c/48/1a308a86a833fd12ff7a08d0d2491ff4a72c8a92d12f5ead8317630f771e/wcwidth-0.9.2-cp315-cp315t-win_arm64.whl", hash = "sha256:48719a9bc76c2f84238693fe5013571fa5beffa3621cf228f1f3a9e30dae84b8", size = 605885, upload-time = "2026-10-05T00:23:54.274Z" },
     { url = "https://files.pythonhosted.org/packages/9c/b4/0bfa065af506540d9d558e3e5548cff00bc1f9b24e6e2a8512498e8628de/wcwidth-0.9.2-py3-none-any.whl", hash = "sha256:89ca642c5bf0101157a09366be69fad0379db1f700ae39a920e103234573670e", size = 301667, upload-time = "2026-10-05T00:23:21.097Z" },
+]
+
+[[package]]
+name = "xlrd"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5a/377161c2d3538d1990d7af382c79f3b2372e880b65de21b01b1a2b78691e/xlrd-2.0.2.tar.gz", hash = "sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9", size = 100167, upload-time = "2025-06-14T08:46:39.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/62/c8d562e7766786ba6587d09c5a8ba9f718ed3fa8af7f4553e8f91c36f302/xlrd-2.0.2-py2.py3-none-any.whl", hash = "sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9", size = 96555, upload-time = "2025-06-14T08:46:37.766Z" },
 ]

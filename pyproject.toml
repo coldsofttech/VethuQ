@@ -42,6 +42,15 @@ vethuq-addon-css = { path = "../VethuQ-premium/packages/add-ons/file-types/css" 
 vethuq-addon-js = { path = "../VethuQ-premium/packages/add-ons/file-types/js" }
 vethuq-addon-json = { path = "../VethuQ-premium/packages/add-ons/file-types/json" }
 vethuq-addon-yaml = { path = "../VethuQ-premium/packages/add-ons/file-types/yaml" }
+vethuq-addon-docx = { path = "../VethuQ-premium/packages/add-ons/file-types/docx" }
+vethuq-addon-doc = { path = "../VethuQ-premium/packages/add-ons/file-types/doc" }
+vethuq-addon-xlsx = { path = "../VethuQ-premium/packages/add-ons/file-types/xlsx" }
+vethuq-addon-xls = { path = "../VethuQ-premium/packages/add-ons/file-types/xls" }
+vethuq-addon-pptx = { path = "../VethuQ-premium/packages/add-ons/file-types/pptx" }
+vethuq-addon-ppt = { path = "../VethuQ-premium/packages/add-ons/file-types/ppt" }
+vethuq-addon-rtf = { path = "../VethuQ-premium/packages/add-ons/file-types/rtf" }
+vethuq-addon-eml = { path = "../VethuQ-premium/packages/add-ons/file-types/eml" }
+vethuq-bundle-office = { path = "../VethuQ-premium/packages/bundles/office" }
 vethuq-bundle-developer = { path = "../VethuQ-premium/packages/bundles/developer" }
 vethuq-bundle-web = { path = "../VethuQ-premium/packages/bundles/web" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }

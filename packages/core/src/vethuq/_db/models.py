@@ -362,6 +362,108 @@ class _YamlPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _DocxPage(_Base):
+    """What the Word (.docx) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "docx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _DocPage(_Base):
+    """What the Word (.doc) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "doc_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _XlsxPage(_Base):
+    """What the Excel (.xlsx) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "xlsx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _XlsPage(_Base):
+    """What the Excel (.xls) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "xls_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _PptxPage(_Base):
+    """What the PowerPoint (.pptx) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "pptx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _PptPage(_Base):
+    """What the PowerPoint (.ppt) type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ppt_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _RtfPage(_Base):
+    """What the RTF type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "rtf_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _EmlPage(_Base):
+    """What the email type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "eml_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    subject: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sender: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_cc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_bcc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[str | None] = mapped_column(Text, nullable=True)  # ISO 8601
+    message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class _PdfPagePhase(_Base):
     """A deeper OCR phase (`moderate`, `deep`) read on a page in one language: the angles it read.
     The quick read of a page is `pdf_pages_quick`."""

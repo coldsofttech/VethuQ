@@ -6,6 +6,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (office file types)
+- Tables for the Word, Excel, PowerPoint, RTF and email file types (`docx_pages`, `doc_pages`, `xlsx_pages`,
+  `xls_pages`, `pptx_pages`, `ppt_pages`, `rtf_pages`, `eml_pages`); `vethuq[office]` installs the licensed office pack.
+
 ### Added (YAML)
 - `yaml_pages` table for the YAML file type; `vethuq[developer]` installs the licensed developer pack.
 

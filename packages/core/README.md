@@ -693,6 +693,10 @@ HTML (`.html`, `.htm`, `.xhtml`), XML (`.xml`, `.xsd`, `.xsl`, `.xslt`, `.rss`, 
 
 YAML (`.yaml`, `.yml`) comes from the licensed `vethuq-addon-yaml`, which `pip install vethuq[developer]` installs with JSON in the developer pack bundle (`vethuq-bundle-developer`; JSON is also in the web pack). Every document of a YAML stream is read with the safe loader and flattened into `path: value` lines (`server.ports[0]: 8080`); `on`, `off`, `yes` and `no` stay words, and an alias bomb is refused. Its table is `yaml_pages` (encoding, document, value and depth counts). Licensing works as for the web file types: one developer pack licence unlocks both.
 
+### Office file types (licensed)
+
+Word (`.docx`, `.doc`), Excel (`.xlsx`, `.xls`), PowerPoint (`.pptx`, `.ppt`), RTF and email (`.eml`) come from licensed add-ons (`vethuq-addon-docx`, `-doc`, `-xlsx`, `-xls`, `-pptx`, `-ppt`, `-rtf`, `-eml`), not installed with VethuQ: `pip install vethuq[office]` installs the office pack bundle (`vethuq-bundle-office`), and one office pack licence unlocks all eight (`Docx(client).set_licence(token)`). The text is read straight from the file, never OCR'd and never charged for: Word paragraphs, tables, headers and footnotes; each Excel sheet by name with its rows; slides, notes and comments; an email's headers and body (attachments are left out). Pictures embedded in a Word, Excel, PowerPoint or RTF file are read with OCR from the moderate phase on. Each type has a table of its own beside `pdf_pages` (`docx_pages` ... `rtf_pages`: line and picture counts; `eml_pages`: subject, sender, recipients, sent date, message id).
+
 ### Formatting
 
 `vethuq.formatting.Formatting` has the small formatters front ends and reports share: `size(bytes)` (`1.5 KB`), `seconds(s)` (`2.5s`), `duration(s)` (`3m 5s`), `timestamp(iso)` (local time, `2026-10-04 12:30:05`) and `short_timestamp(iso)` (`4 Oct 2026 12:30`). A missing value renders as `-`. HTML exports use it for file sizes.
