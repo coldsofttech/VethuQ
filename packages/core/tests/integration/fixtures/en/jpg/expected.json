@@ -1,0 +1,407 @@
+{
+  "language": "en",
+  "file_type": "jpg",
+  "files": [
+    {
+      "file": "1_Financial_Table_Scenario.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS",
+            "Q3 2026 Financial Report",
+            "Consolidated Statement of Operations",
+            "Professional Services & Consulting",
+            "Operating Income (EBIT)"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "2_Bilingual.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "Discover Andhra Pradesh",
+            "Cultural Tourism & Heritage Destination Guide",
+            "Sri Venkateswara Temple",
+            "Kanaka Durga Temple",
+            "APTDC"
+          ],
+          "note": "The Telugu text is not asserted: the English model is not expected to read it. The Telugu heading overlaps 'Essential Destination Directory' in the image, so that line is not asserted either."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "3_Skewed_Document.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS",
+            "REC-2026-SKW-03",
+            "physical inventory checks were reconciled",
+            "BAY 4 - NORTH WAREHOUSE",
+            "Scanned Feed Test Artifact"
+          ],
+          "note": "Skewed by a few degrees."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "4_Severe_Rotation.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.5,
+          "contains": [
+            "CONFIDENTIAL DOCUMENT - STRESS TEST 4",
+            "SEC-REF-2026-X90",
+            "PENDING ROTATION CORRECTION",
+            "Bounding box polygon orientation tracking"
+          ],
+          "note": "Rotated about 45 degrees: read by the deeper OCR phases, so the quick pass may read little of it."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "5_Thermal_Receipt.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "METRO PROVISIONS",
+            "124 Market Street, Suite 100",
+            "Artisanal Espresso",
+            "SUBTOTAL",
+            "CONTACTLESS VISA",
+            "THANK YOU FOR YOUR VISIT"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "6_Scanned_Hardcopy.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "DEPARTMENT OF ARCHIVAL RECORDS",
+            "CENTRAL REGISTRY OFFICE",
+            "REC-2026-88941-X",
+            "DIVISION OF FINANCIAL OVERSIGHT",
+            "SUMMARY OF AUDIT FINDINGS",
+            "Approved by Inspector"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "7_Micro_Typography.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "TEST SCENARIO 7: Micro-Typography & Fine Print",
+            "COMPACT LEGAL DISCLAIMER",
+            "EXTREME MICRO-PRINT STRESS LINES"
+          ],
+          "note": "Only the large and 9 pt text is asserted: the 6 pt lines are below what OCR reads reliably."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "8_Complex_Chart.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "VANGUARD ENTERPRISE",
+            "WARNING: Threshold Variance Detected",
+            "Under Review",
+            "REF-ID: 2026-X89"
+          ],
+          "note": "A chart: the title is partly hidden by a curve, so only its first words are asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "9_Form.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "PATIENT REGISTRATION & SERVICE HISTORY FORM",
+            "Jonathan D. Reynolds",
+            "Date of Birth",
+            "REC-2026-FORM-9921-X",
+            "Assigned Clinician",
+            "CONFIDENTIAL MEDICAL RECORD"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "10_Transparency_Flattening.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "Alpha-Channel Flattening Test",
+            "JPEG format discards alpha channel and flattens transparency"
+          ],
+          "note": "Text is 8-9 px tall."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "11_Corporate_Letter.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "Vanguard Advisory Group",
+            "STRATEGIC MANAGEMENT CONSULTANTS",
+            "Mr. Jonathan Reynolds",
+            "Executive Strategic Partnership Proposal",
+            "Operational Optimization"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "12_Academic_Formula.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "On the Convergence Bounds of Non-Euclidean Gradient Flows",
+            "in High-Dimensional Metric Spaces",
+            "Journal of Advanced Mathematical Modeling",
+            "Abstract",
+            "Matrix Formulations & Bounds"
+          ],
+          "note": "The formulas and the overlapping body text are not asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "13_Network_Topology.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "ENTERPRISE CLOUD ARCHITECTURE - REGIONAL TOPOLOGY",
+            "NET-TOP-2026-A1",
+            "API GATEWAY",
+            "DATABASE CLUSTER",
+            "APP SERVER 01"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "14_Extreme_Aspect_Ratio.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.5,
+          "contains": [
+            "SCENARIO 14 TEST: Ultra-Wide Aspect Ratio Banner",
+            "Checking OCR engine chunking",
+            "horizontal text continuity"
+          ],
+          "note": "4800x300: a single line repeated across the strip, which OCR may split or downscale."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "15_Report_8bit_Grayscale.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS - Q3 REPORT",
+            "Row 01",
+            "Segment Alpha-Beta",
+            "Margin: 64.3%",
+            "Status: Verified"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "16_Report_24bit_RGB.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS - Q3 REPORT",
+            "Row 01",
+            "Segment Alpha-Beta",
+            "Margin: 64.3%",
+            "Status: Verified"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "17_TOC.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.8,
+          "contains": [
+            "TECHNICAL REFERENCE MANUAL",
+            "TABLE OF CONTENTS & INDEX MAPPING",
+            "SYSTEM ARCHITECTURE & TOPOLOGY",
+            "SECURITY & COMPLIANCE PROTOCOLS",
+            "Binarization Algorithms",
+            "MAN-2026-TOC-16"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "18_Dot_Matrix.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.4,
+          "contains": [
+            "SHIPPING LABEL",
+            "INDUSTRIAL VALVE",
+            "12 UNITS"
+          ],
+          "note": "Dot-matrix type: the dots make it hard to read, hence the low confidence floor."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "19_Upside_Down_Text.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "SCENARIO 18: Spatial Inversion Test",
+            "Orientation and Script Detection"
+          ],
+          "note": "The block inside the box is rotated 180 degrees: it is read by the deeper OCR phases, so only the upright heading is asserted."
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "20_Security_Mesh.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.7,
+          "contains": [
+            "VANGUARD ENTERPRISE HOLDINGS",
+            "INTERNAL SECURITY COMPLIANCE MEMORANDUM",
+            "SEC-2026-9942-X",
+            "Division of Information Security",
+            "REQUIRED ACTION ITEMS",
+            "Rotate all administrative API keys by midnight"
+          ]
+        }
+      },
+      "verified": false
+    },
+    {
+      "file": "21_Dense_Code.jpg",
+      "status": "indexed",
+      "page_count": 1,
+      "pages": {
+        "1": {
+          "source": "ocr",
+          "min_confidence": 0.6,
+          "contains": [
+            "TECHNICAL WHITEPAPER",
+            "SEC-VAL-2026-991",
+            "Programming Syntax & Low-Level Escape Sequences",
+            "Hexadecimal Streams & Memory Offsets",
+            "parse_stream"
+          ],
+          "note": "Small, dense code in a thin font; only headings and one identifier are asserted."
+        }
+      },
+      "verified": false
+    }
+  ]
+}

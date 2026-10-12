@@ -111,4 +111,6 @@ markers = [
     "lang_en: integration tests of English files",
     "lang_te: integration tests of Telugu files",
     "type_pdf: integration tests of PDF files",
+    "type_png: integration tests of PNG files",
+    "type_jpg: integration tests of JPG files",
 ]

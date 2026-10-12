@@ -4,7 +4,7 @@
 #
 # The inputs choose what is tested. The tests read them from the environment (VETHUQ_IT_*) and
 # say what they cover with markers: lang_<id> and type_<id>. There are no integration tests yet,
-# so a run that collects nothing passes with a warning. Tests so far: PDF (English, Telugu).
+# so a run that collects nothing passes with a warning. Tests so far: PDF, PNG and JPG (English, Telugu).
 name: integration
 
 on:
@@ -99,6 +99,11 @@ jobs:
       - name: Install
         working-directory: work/VethuQ
         run: uv sync --all-packages --group dev
+      # The image types are separate (free) add-ons; PDF comes with VethuQ.
+      - name: Install the image add-on
+        if: inputs.file-type == 'png' || inputs.file-type == 'jpg'
+        working-directory: work/VethuQ
+        run: uv pip install ../VethuQ-premium/packages/add-ons/file-types/${{ inputs.file-type }}
       # Telugu is licensed and not part of VethuQ: install it (and the licence package it needs).
       - name: Install the Telugu add-on
         if: inputs.language == 'te'
