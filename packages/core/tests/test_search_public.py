@@ -610,7 +610,7 @@ class TestLocation:
     def test_a_text_match_has_its_line_and_column(self, texts):
         found = {(m.file_name, m.line, m.column) for m in texts.search.run("wheat", engine="like")}
         assert ("story.txt", 2, 17) in found and ("story.txt", 4, 14) in found
-        assert ("data.csv", 2, 6) in found  # a CSV row; the column counts in "farm | wheat"
+        assert ("data.csv", 2, 8) in found  # a CSV row; the column counts in "farm | wheat"
 
     def test_a_pdf_match_has_a_page_and_no_line(self, texts):
         (pdf,) = [
