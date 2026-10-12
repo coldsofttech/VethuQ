@@ -152,6 +152,7 @@ class AddonStatus(StrEnum):
     LOADED = "loaded"
     INCOMPATIBLE = "incompatible"  # it needs a different add-on API version
     FAILED = "failed"  # it couldn't be loaded
+    DISABLED = "disabled"  # turned off with `addons.set_enabled`; it is not loaded
 
 
 class PolicyStatus(StrEnum):

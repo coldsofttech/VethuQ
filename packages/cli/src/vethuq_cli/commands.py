@@ -863,11 +863,25 @@ def policy_refresh(force: bool = typer.Option(False, "--force")) -> None:
 addons_app = typer.Typer(help="Installed add-ons.", no_args_is_help=True)
 
 
+@addons_app.command("enable")
+def addons_enable(addon_id: str) -> None:
+    """Turn an add-on on again (applies the next time VethuQ starts)."""
+    info = client().addons.set_enabled(addon_id, True)
+    say(f"{info.id} is on. It runs from the next start.", data=info.to_dict())
+
+
+@addons_app.command("disable")
+def addons_disable(addon_id: str) -> None:
+    """Turn an add-on off (applies the next time VethuQ starts)."""
+    info = client().addons.set_enabled(addon_id, False)
+    say(f"{info.id} is off. It stops at the next start.", data=info.to_dict())
+
+
 @addons_app.command("list")
 @exportable("Add-ons", "addons", facets=("status",))
 def addons_list() -> None:
     """The installed add-ons and whether each is running."""
-    table(client().addons.list(), ["id", "name", "version", "status", "detail"])
+    table(client().addons.list(), ["id", "name", "version", "status", "disabled", "detail"])
 
 
 def register(app: typer.Typer) -> None:

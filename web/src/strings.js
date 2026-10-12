@@ -9,6 +9,7 @@ export const strings = {
     indexing: 'Indexing',
     credits: 'Credits',
     stats: 'Statistics',
+    addons: 'Add-ons',
     about: 'About',
     settings: 'Settings',
   },

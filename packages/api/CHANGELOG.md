@@ -5,6 +5,9 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Add-ons: `/api/addons` (installed add-ons with status, update announced by the signed policy, licence entered,
+  and the packs VethuQ names as extras), turning one off or on, and installing a pack or updating an add-on with
+  pip on a background job. Only VethuQ's own pack names and announced updates reach pip; a packaged copy refuses.
 - OCR: `/api/ocr` (engines and phases), `/api/ocr/models` (with size on disk), a background download job
   with progress (`/api/ocr/models/download`, `/redownload`, `/api/ocr/job`) and removal (`/clear`, `/clean`).
 - Statistics: `/api/stats/summary` (totals and pages per day), `/api/stats/breakdown` (grouped, filtered, sorted

@@ -69,10 +69,11 @@ class OcrService:
                 "error": None,
                 "finished": False,
             }
+            started = {**self._job, "progress": {}}
         threading.Thread(
             target=self._run, args=(action, languages or None, names or None), daemon=True
         ).start()
-        return self.job()
+        return started
 
     def _note(self, name: str, state: str) -> None:
         with self._lock:

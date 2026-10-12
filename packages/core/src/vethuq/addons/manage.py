@@ -24,6 +24,7 @@ class AddonInfo:
     version: str
     status: AddonStatus
     detail: str = ""  # why it isn't running
+    disabled: bool = False  # turned off; it stops running at the next start
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +33,7 @@ class AddonInfo:
             "version": self.version,
             "status": self.status.value,
             "detail": self.detail,
+            "disabled": self.disabled,
         }
 
     def to_json(self, indent: int | None = None) -> str:
@@ -74,8 +76,11 @@ class Addons:
 
     def list(self) -> list[AddonInfo]:
         """Every installed add-on, by id, with whether it is running."""
+        turned_off = self._manager.disabled_ids()
         return [
-            AddonInfo(item.id, item.name, item.version, item.status, item.detail)
+            AddonInfo(
+                item.id, item.name, item.version, item.status, item.detail, item.id in turned_off
+            )
             for item in self._manager.loaded().values()
         ]
 
@@ -85,6 +90,28 @@ class Addons:
 
     def is_installed(self, addon_id: str) -> bool:
         return self.get(addon_id) is not None
+
+    # An add-on VethuQ cannot do without: the fallback language.
+    ALWAYS_ON = ("english",)
+
+    def set_enabled(self, addon_id: str, enabled: bool) -> AddonInfo:
+        """Turn an installed add-on off or on. The change applies the next time VethuQ starts (what
+        is running keeps running), and `AddonInfo.disabled` says what is saved. Raises `ValueError`
+        for an add-on that isn't installed, or one that can't be turned off."""
+        info = self.get(addon_id)
+        if info is None:
+            raise ValueError(f"No add-on {addon_id!r} is installed.")
+        if not enabled and addon_id in self.ALWAYS_ON:
+            raise ValueError(f"{addon_id} can't be turned off: VethuQ needs it.")
+        off = self._manager.disabled_ids()
+        off.discard(addon_id) if enabled else off.add(addon_id)
+        self._open_database()
+        store = _AddonSettingsStore(self._db_path, "vethuq")
+        if off:
+            store.set(self._manager.DISABLED_KEY, ",".join(sorted(off)))
+        else:
+            store.reset(self._manager.DISABLED_KEY)
+        return self.get(addon_id) or info
 
     def settings(self, addon_id: str) -> AddonSettings:
         """The settings of one add-on."""

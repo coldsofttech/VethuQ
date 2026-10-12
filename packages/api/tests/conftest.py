@@ -90,6 +90,9 @@ class FakeCore:
     def ocr(self):
         return SimpleNamespace()
 
+    def addons(self):
+        return SimpleNamespace()
+
     def indexing(self):
         core = self
 

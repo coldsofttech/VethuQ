@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, Protocol
 
+from vethuq_api.addons_service import AddonsService
 from vethuq_api.credits_service import CreditsService
 from vethuq_api.indexing import IndexingService
 from vethuq_api.ocr_service import OcrService
@@ -46,6 +47,8 @@ class Core(Protocol):
 
     def ocr(self) -> Any: ...
 
+    def addons(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -60,6 +63,7 @@ class VethuQCore:
         self._credits = CreditsService(self._vethuq)
         self._stats = StatsService(self._vethuq)
         self._ocr = OcrService(self._vethuq)
+        self._addons = AddonsService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -89,6 +93,9 @@ class VethuQCore:
 
     def ocr(self) -> OcrService:
         return self._ocr
+
+    def addons(self) -> AddonsService:
+        return self._addons
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()

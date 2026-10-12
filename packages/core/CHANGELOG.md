@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (turning add-ons off)
+- `addons.set_enabled(id, enabled)` turns an installed add-on off or on; it applies at the next start. An add-on
+  that is off is listed as `AddonStatus.DISABLED` (and `AddonInfo.disabled` says what is saved); `english` can't
+  be turned off. CLI: `addons enable` and `addons disable`.
+
 ### Changed (the grace is internal)
 - The grace allowance is no longer shown anywhere: `CreditBalance` has no `grace` and its `total` is daily,
   promotional and one-off credits only; `credits.grants()` no longer lists it (`kind="grace"` is refused), and

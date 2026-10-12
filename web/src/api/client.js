@@ -239,6 +239,18 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  addons: {
+    list: (signal) => request('/api/addons', { signal }),
+    job: (signal) => request('/api/addons/job', { signal }),
+    setEnabled: (id, enabled) =>
+      request(`/api/addons/${encodeURIComponent(id)}/enabled`, {
+        method: 'POST',
+        body: { enabled },
+      }),
+    update: (id) => request(`/api/addons/${encodeURIComponent(id)}/update`, { method: 'POST' }),
+    install: (pack) =>
+      request(`/api/addons/packs/${encodeURIComponent(pack)}/install`, { method: 'POST' }),
+  },
   ocr: {
     /** @returns {Promise<{ engines: object[], phases: object[] }>} */
     overview: (signal) => request('/api/ocr', { signal }),

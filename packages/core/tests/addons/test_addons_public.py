@@ -185,3 +185,25 @@ class TestSettings:
     def test_bad_names_are_refused(self, client, key):
         with pytest.raises(vethuq.errors.InvalidSettingValueError):
             client.addons.settings("backup").set(key, "v")
+
+
+class TestTurningOneOff:
+    def test_it_is_saved_and_applies_at_the_next_start(self, folder, client, tmp_path):
+        AddonFactory.install(folder)
+        saved = client.addons.set_enabled("dummy", False)
+        assert saved.disabled and saved.status is AddonStatus.LOADED  # it keeps running for now
+        again = vethuq.VethuQ(client.db_path)
+        info = again.addons.get("dummy")
+        assert info.status is AddonStatus.DISABLED and info.disabled
+        assert info.version == "1.2.3" and info.detail == "turned off in settings"
+        assert "dummy" not in [name for name, _ in again.addons.cli()]  # nothing of it runs
+        again.addons.set_enabled("dummy", True)
+        assert not again.addons.get("dummy").disabled
+        assert vethuq.VethuQ(client.db_path).addons.get("dummy").status is AddonStatus.LOADED
+
+    def test_an_unknown_add_on_and_the_language_it_needs_are_refused(self, client):
+        with pytest.raises(ValueError, match="No add-on"):
+            client.addons.set_enabled("nothing", False)
+        with pytest.raises(ValueError, match="needs it"):
+            client.addons.set_enabled("english", False)
+        assert client.addons.set_enabled("english", True).disabled is False

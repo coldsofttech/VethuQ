@@ -11,6 +11,7 @@ from pathlib import Path
 
 from vethuq._addons.finder import _AddonFinder
 from vethuq._addons.host import _Host
+from vethuq._addons.settings import _AddonSettingsStore
 from vethuq._credits import _Credits
 from vethuq.enums import AddonStatus
 from vethuq_addon_api import (
@@ -67,7 +68,25 @@ class _AddonManager:
 
     # ----- loading --------------------------------------------------------------------------
 
-    def _load_one(self, point: EntryPoint) -> _Loaded:
+    # The add-ons the user turned off are kept by VethuQ itself, as `addon.vethuq.disabled`.
+    DISABLED_KEY = "disabled"
+
+    def disabled_ids(self) -> set[str]:
+        saved = _AddonSettingsStore(self._db_path, "vethuq").get(self.DISABLED_KEY, "") or ""
+        return {item for item in saved.split(",") if item}
+
+    def _load_one(
+        self, point: EntryPoint, disabled: frozenset[str] | set[str] = frozenset()
+    ) -> _Loaded:
+        if point.name in disabled:
+            dist = getattr(point, "dist", None)
+            return _Loaded(
+                point.name,
+                dist.name if dist is not None else point.name,
+                dist.version if dist is not None else "",
+                AddonStatus.DISABLED,
+                "turned off in settings",
+            )
         try:
             cls = point.load()
             manifest = cls.manifest
@@ -98,8 +117,9 @@ class _AddonManager:
         with self._lock:
             if self._loaded is None:
                 found: dict[str, _Loaded] = {}
+                disabled = self.disabled_ids()
                 for point in sorted(self._discover(), key=lambda p: p.name):
-                    found.setdefault(point.name, self._load_one(point))
+                    found.setdefault(point.name, self._load_one(point, disabled))
                 self._loaded = found
             return self._loaded
 

@@ -9,6 +9,8 @@ import {
   Folder24Filled,
   Folder24Regular,
   Info24Filled,
+  PuzzlePiece24Filled,
+  PuzzlePiece24Regular,
   Info24Regular,
   Settings24Filled,
   Wallet24Filled,
@@ -24,6 +26,7 @@ const SourcesIcon = bundleIcon(Folder24Filled, Folder24Regular);
 const IndexingIcon = bundleIcon(DocumentSearch24Filled, DocumentSearch24Regular);
 const CreditsIcon = bundleIcon(Wallet24Filled, Wallet24Regular);
 const StatsIcon = bundleIcon(ChartMultiple24Filled, ChartMultiple24Regular);
+const AddonsIcon = bundleIcon(PuzzlePiece24Filled, PuzzlePiece24Regular);
 const InfoIcon = bundleIcon(Info24Filled, Info24Regular);
 const SettingsIcon = bundleIcon(Settings24Filled, Settings24Regular);
 
@@ -33,6 +36,7 @@ const ITEMS = [
   { path: '/indexing', label: strings.nav.indexing, icon: <IndexingIcon /> },
   { path: '/credits', label: strings.nav.credits, icon: <CreditsIcon /> },
   { path: '/stats', label: strings.nav.stats, icon: <StatsIcon /> },
+  { path: '/addons', label: strings.nav.addons, icon: <AddonsIcon /> },
   { path: '/about', label: strings.nav.about, icon: <InfoIcon /> },
   { path: '/settings', label: strings.nav.settings, icon: <SettingsIcon /> },
 ];
