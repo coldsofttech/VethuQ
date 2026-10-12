@@ -12,6 +12,27 @@
  * @property {string} tagline
  * @property {{ light: PaletteScheme, dark: PaletteScheme }} palette
  *
+ * @typedef {object} SettingOption
+ * @property {string | number | boolean} value
+ * @property {string} label
+ * @property {boolean} available
+ * @property {string} reason
+ *
+ * @typedef {object} Setting  One setting, described by the API.
+ * @property {string} id
+ * @property {string} label
+ * @property {string} description
+ * @property {'boolean' | 'integer' | 'number' | 'choice'} type
+ * @property {string | number | boolean} value
+ * @property {string | number | boolean} default
+ * @property {boolean} is_default
+ * @property {boolean} advanced
+ * @property {string} note  When the change takes effect, or ''.
+ * @property {SettingOption[]} [options]  For a choice.
+ * @property {number} [min]
+ * @property {number} [max]
+ * @property {string} [unit]
+ *
  * @typedef {object} CatalogAddon
  * @property {string} id
  * @property {string} name
@@ -102,6 +123,15 @@ export const api = {
   health: (signal) => request('/api/health', { signal }),
   /** @returns {Promise<AboutDetails>} */
   about: (signal) => request('/api/about', { signal }),
+  settings: {
+    /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */
+    list: (section, signal) => request(`/api/settings/${section}`, { signal }),
+    /** @param {string} section @param {string} id @param {unknown} value @returns {Promise<Setting>} */
+    update: (section, id, value) =>
+      request(`/api/settings/${section}/${id}`, { method: 'PUT', body: { value } }),
+    /** @param {string} section @param {string} id @returns {Promise<Setting>} */
+    reset: (section, id) => request(`/api/settings/${section}/${id}`, { method: 'DELETE' }),
+  },
   /** @returns {Promise<Brand>} */
   brand: (signal) => request('/api/brand', { signal }),
   /** @returns {Promise<Catalog>} */

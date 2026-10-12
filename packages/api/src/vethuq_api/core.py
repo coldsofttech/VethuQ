@@ -6,6 +6,8 @@ import threading
 from pathlib import Path
 from typing import Any, Protocol
 
+from vethuq_api.settings import SettingsService
+
 
 class Core(Protocol):
     """What the routes need from the core. Tests replace it with a fake."""
@@ -16,6 +18,12 @@ class Core(Protocol):
 
     def brand(self) -> dict[str, object]: ...
 
+    def settings(self, section: str) -> list[dict[str, object]]: ...
+
+    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]: ...
+
+    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -24,6 +32,7 @@ class VethuQCore:
         self._db_path = db_path
         self._lock = threading.Lock()
         self._client: Any = None
+        self._settings = SettingsService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -35,6 +44,15 @@ class VethuQCore:
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()
+
+    def settings(self, section: str) -> list[dict[str, object]]:
+        return self._settings.list(section)
+
+    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]:
+        return self._settings.update(section, setting_id, value)
+
+    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]:
+        return self._settings.reset(section, setting_id)
 
     def brand(self) -> dict[str, object]:
         """The app's name, tagline and colour palette, so every surface looks the same."""

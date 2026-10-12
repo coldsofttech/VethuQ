@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Flask, Response, jsonify
+from flask import Blueprint, Flask, Response, jsonify, request
 
 from vethuq_api.core import Core
+from vethuq_api.settings import InvalidSettingError, SettingNotFoundError
 from vethuq_api.window import WindowController
 
 
@@ -36,6 +37,29 @@ def register(
     @api.get("/catalog")
     def catalog() -> Response:
         return jsonify(core.catalog())
+
+    @api.errorhandler(SettingNotFoundError)
+    def _setting_not_found(error: SettingNotFoundError) -> tuple[Response, int]:
+        return jsonify(error=str(error)), 404
+
+    @api.errorhandler(InvalidSettingError)
+    def _invalid_setting(error: InvalidSettingError) -> tuple[Response, int]:
+        return jsonify(error=str(error)), 422
+
+    @api.get("/settings/<section>")
+    def list_settings(section: str) -> Response:
+        return jsonify(section=section, settings=core.settings(section))
+
+    @api.put("/settings/<section>/<setting_id>")
+    def update_setting(section: str, setting_id: str) -> Response:
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or "value" not in body:
+            raise InvalidSettingError('Send {"value": ...}.')
+        return jsonify(core.update_setting(section, setting_id, body["value"]))
+
+    @api.delete("/settings/<section>/<setting_id>")
+    def reset_setting(section: str, setting_id: str) -> Response:
+        return jsonify(core.reset_setting(section, setting_id))
 
     @api.get("/platform")
     def platform() -> Response:

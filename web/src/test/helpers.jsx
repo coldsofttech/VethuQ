@@ -43,7 +43,10 @@ export function mockApi(routes) {
     if (key === 'GET /api/brand' && !(key in routes)) return Response.json(BRAND);
     if (!(key in routes))
       return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
-    const value = typeof routes[key] === 'function' ? routes[key]() : routes[key];
+    // A route can be a function of the request (parsed JSON body), or a ready-made Response.
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    const value = typeof routes[key] === 'function' ? routes[key](body) : routes[key];
+    if (value instanceof Response) return value;
     if (value instanceof Error) throw value; // simulates the service being unreachable
     return new Response(JSON.stringify(value), { status: 200 });
   });

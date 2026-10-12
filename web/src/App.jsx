@@ -10,7 +10,7 @@ export function App() {
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="about" element={<AboutPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/*" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

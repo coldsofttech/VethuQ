@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
@@ -19,6 +21,8 @@ def start_host() -> tuple[subprocess.Popen[str], str]:
         [sys.executable, "-m", "vethuq_desktop", "--no-window"],
         stdout=subprocess.PIPE,
         text=True,
+        # A throw-away data folder, so the settings the checks change are not the user's own.
+        env={**os.environ, "VETHUQ_HOME": tempfile.mkdtemp(prefix="vethuq-ui-")},
     )
     assert process.stdout is not None
     line = process.stdout.readline()
@@ -70,8 +74,32 @@ def run(browser: Browser, out: Path) -> None:
             expect(page.get_by_role("table", name="File types")).to_be_visible()
             shot(page, out, f"about-file-types-{scheme}")
             page.get_by_role("tab", name="Settings").click()
+            page.get_by_role("tab", name="General").click()
             expect(page.get_by_text("Use my system setting")).to_be_visible()
             shot(page, out, f"settings-{scheme}")
+
+        # Indexing settings: change, persist across a reload, show errors, reset.
+        page.get_by_role("tab", name="Settings").click()
+        page.get_by_role("tab", name="Indexing").click()
+        expect(page.get_by_text("Files indexed at once")).to_be_visible()
+        shot(page, out, "settings-indexing")
+        gpu = page.get_by_role("switch", name="Use the graphics card for OCR")
+        gpu.click()
+        expect(gpu).to_be_checked()
+        page.get_by_role("combobox", name="Files indexed at once").click()
+        page.get_by_role("option", name="4", exact=True).click()
+        expect(page.get_by_role("combobox", name="Files indexed at once")).to_have_text("4")
+        page.get_by_role("switch", name="Show advanced settings").click()
+        expect(page.get_by_text("Wait for files to stop changing")).to_be_visible()
+        shot(page, out, "settings-indexing-changed")
+        page.reload()
+        page.get_by_role("tab", name="Indexing").click()
+        expect(page.get_by_role("switch", name="Use the graphics card for OCR")).to_be_checked()
+        expect(page.get_by_role("combobox", name="Files indexed at once")).to_have_text("4")
+        page.get_by_role("button", name="Reset to default: Files indexed at once").click()
+        expect(page.get_by_role("combobox", name="Files indexed at once")).to_have_text(
+            "Automatic (sized to this computer)"
+        )
 
         # Title-bar buttons talk to the host (simulated here).
         page.get_by_role("tab", name="Home").click()

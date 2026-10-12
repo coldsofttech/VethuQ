@@ -34,7 +34,8 @@ export function NavRail() {
   const styles = useStyles();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const selected = ITEMS.some((item) => item.path === pathname) ? pathname : '/';
+  const selected =
+    ITEMS.find((item) => item.path !== '/' && pathname.startsWith(item.path))?.path ?? '/';
 
   return (
     <nav className={styles.root} aria-label="Primary">

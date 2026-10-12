@@ -35,6 +35,15 @@ class FakeCore:
     def brand(self) -> dict[str, object]:
         return {"name": "Brand", "tagline": "Tag.", "palette": {"light": {}, "dark": {}}}
 
+    def settings(self, section: str) -> list[dict[str, object]]:
+        return []
+
+    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]:
+        return {"id": setting_id, "value": value}
+
+    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]:
+        return {"id": setting_id}
+
     def catalog(self) -> dict[str, list[dict[str, object]]]:
         return {"add_ons": [{"id": "csv", "name": "vethuq-addon-csv", "version": "0.1.0"}]}
 
