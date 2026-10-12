@@ -110,49 +110,6 @@ export function StatusBar() {
   return (
     <footer className={styles.root} data-testid="status-bar">
       <span className={styles.left}>
-        <ServiceDot colour={shown || idleNote ? 'amber' : 'green'} aria-hidden="true" />
-        <Text size={200}>{shown ? 'Indexing' : idleNote || 'Ready'}</Text>
-      </span>
-      <div className={styles.right}>
-        {shown && (
-          <>
-            <button
-              type="button"
-              className={styles.strip}
-              onClick={() => navigate('/indexing')}
-              aria-label="Show indexing activity"
-            >
-              <ArrowSync20Regular />
-              <Text size={200} className={styles.label} title={shown.text}>
-                {shown.text}
-              </Text>
-              {shown.progress !== null && (
-                <ProgressBar className={styles.bar} thickness="medium" value={shown.progress} />
-              )}
-            </button>
-            {state.active && (
-              <>
-                <Tooltip content={state.paused ? 'Resume' : 'Pause'} relationship="label">
-                  <Button
-                    size="small"
-                    appearance="subtle"
-                    icon={state.paused ? <Play16Regular /> : <Pause16Regular />}
-                    onClick={state.paused ? resume : pause}
-                  />
-                </Tooltip>
-                <Tooltip content="Stop" relationship="label">
-                  <Button
-                    size="small"
-                    appearance="subtle"
-                    icon={<Stop16Regular />}
-                    disabled={state.stopping}
-                    onClick={requestStop}
-                  />
-                </Tooltip>
-              </>
-            )}
-          </>
-        )}
         {service && (
           <Menu openOnContext>
             <MenuTrigger disableButtonEnhancement>
@@ -197,6 +154,51 @@ export function StatusBar() {
               </MenuList>
             </MenuPopover>
           </Menu>
+        )}
+        {!service && (
+          <ServiceDot colour={shown || idleNote ? 'amber' : 'green'} aria-hidden="true" />
+        )}
+        <Text size={200}>{shown ? 'Indexing' : idleNote || 'Ready'}</Text>
+      </span>
+      <div className={styles.right}>
+        {shown && (
+          <>
+            <button
+              type="button"
+              className={styles.strip}
+              onClick={() => navigate('/indexing')}
+              aria-label="Show indexing activity"
+            >
+              <ArrowSync20Regular />
+              <Text size={200} className={styles.label} title={shown.text}>
+                {shown.text}
+              </Text>
+              {shown.progress !== null && (
+                <ProgressBar className={styles.bar} thickness="medium" value={shown.progress} />
+              )}
+            </button>
+            {state.active && (
+              <>
+                <Tooltip content={state.paused ? 'Resume' : 'Pause'} relationship="label">
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    icon={state.paused ? <Play16Regular /> : <Pause16Regular />}
+                    onClick={state.paused ? resume : pause}
+                  />
+                </Tooltip>
+                <Tooltip content="Stop" relationship="label">
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    icon={<Stop16Regular />}
+                    disabled={state.stopping}
+                    onClick={requestStop}
+                  />
+                </Tooltip>
+              </>
+            )}
+          </>
         )}
       </div>
     </footer>
