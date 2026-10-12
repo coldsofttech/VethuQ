@@ -5,6 +5,8 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Shared usage metrics: `/api/metrics` (where sharing stands), `/api/metrics/preview` (exactly the batch that would be
+  sent, with its size), `/api/metrics/send` and `/api/metrics/delete-data`.
 - GitHub token: it can be saved in the operating system's credential store (Windows Credential Manager) through the
   GitHub add-on, kept for the session only, or forgotten (`/api/github/token`, `/api/github/token/forget`).
 - Logs: `/api/logs` (the files), `/api/logs/<component>` (a day's entries, filtered, with a cursor so the

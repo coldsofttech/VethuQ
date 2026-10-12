@@ -8,6 +8,7 @@ import {
   TiersPanel,
   UpdatesPanel,
 } from '../maintenance/panels.jsx';
+import { MetricsPanel } from '../maintenance/MetricsPanel.jsx';
 import { OcrPanel } from '../ocr/OcrPanel.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { SettingFrame } from '../components/SettingFrame.jsx';
@@ -54,6 +55,7 @@ function General() {
         </RadioGroup>
       </SettingFrame>
       <SettingsSection section="general" />
+      <MetricsPanel />
       <UpdatesPanel />
     </div>
   );

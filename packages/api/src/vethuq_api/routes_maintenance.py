@@ -61,6 +61,22 @@ def register(api: Blueprint, core: Core) -> None:
     def search_rebuild() -> tuple[Response, int]:
         return jsonify(service().search_rebuild()), 202
 
+    @api.get("/metrics")
+    def metrics() -> Response:
+        return jsonify(service().metrics())
+
+    @api.get("/metrics/preview")
+    def metrics_preview() -> Response:
+        return jsonify(service().metrics_preview())
+
+    @api.post("/metrics/send")
+    def metrics_send() -> Response:
+        return jsonify(service().metrics_send(_flag("force")))
+
+    @api.post("/metrics/delete-data")
+    def metrics_delete() -> Response:
+        return jsonify(service().metrics_delete())
+
     @api.get("/tiers")
     def tiers() -> Response:
         return jsonify(tiers=service().tiers())

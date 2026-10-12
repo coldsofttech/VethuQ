@@ -48,6 +48,61 @@ const BASE = {
     features: { github_tier: { enabled: false, min_client: '2.0', message: 'Needs 2.0' } },
     addons: { github: { enabled: false, latest: '0.2', message: 'Withdrawn' } },
   },
+  'GET /api/metrics': {
+    opted_in: true,
+    available: true,
+    last_sent_at: '2026-10-11T08:00:00+00:00',
+    sent_through: '2026-10-10',
+    pending_days: 1,
+    bonus_active: true,
+    bonus_percent: 10,
+  },
+  'GET /api/metrics/preview': {
+    size_bytes: 2048,
+    batch: {
+      schema: 1,
+      batch_id: 'b1',
+      install_id: 'anon-123',
+      client: { vethuq: '1.0.0', os: 'windows', ram_bucket: '16' },
+      settings: { workers: 'auto', languages: ['en', 'ta'] },
+      days: [
+        {
+          day: '2026-10-11',
+          pages: [
+            {
+              file_type: 'pdf',
+              phase: 'quick',
+              language: 'en',
+              engine: 'paddle',
+              page_source: 'ocr',
+              size_bucket: 'a4',
+              band: 'high',
+              pages: 5,
+              passes: 5,
+              duration_ms: 9000,
+              confidence_sum: 4.5,
+              credits_milli: 5000,
+            },
+            {
+              file_type: 'txt',
+              phase: '',
+              language: 'en',
+              engine: '',
+              page_source: 'native',
+              size_bucket: 'a4',
+              band: '',
+              pages: 7,
+              passes: 0,
+              duration_ms: 0,
+              confidence_sum: 0,
+              credits_milli: 0,
+            },
+          ],
+          failures: [{ file_type: 'pdf', code: 'password', count: 2 }],
+        },
+      ],
+    },
+  },
   'GET /api/settings/general': { section: 'general', settings: [] },
   'GET /api/settings/system': { section: 'system', settings: [] },
   'GET /api/settings/search': { section: 'search', settings: [] },
@@ -179,5 +234,84 @@ describe('Policy', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([p]) => p === '/api/policy/refresh')).toBe(true),
     );
+  });
+});
+
+describe('Shared metrics', () => {
+  it('shows where sharing stands and exactly what would be sent', async () => {
+    mockApi(BASE);
+    renderWithProviders(<App />, { route: '/settings/general' });
+    expect(await screen.findByText('What is shared')).toBeInTheDocument();
+    expect(screen.getByText('anon-123')).toBeInTheDocument();
+    expect(screen.getByText('Days waiting to be sent')).toBeInTheDocument();
+    expect(screen.getByText('On (+10%)')).toBeInTheDocument();
+    expect(screen.getByText('en, ta')).toBeInTheDocument();
+    expect(screen.getByText(/Next batch: 2.0 KB/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText(/2026-10-11 · 12 pages in 2 groups · 1 failure groups/));
+    const table = await screen.findByRole('table', { name: 'Usage on 2026-10-11' });
+    expect(within(table).getByText('paddle')).toBeInTheDocument();
+    expect(within(table).getByText('native')).toBeInTheDocument();
+    const failures = screen.getByRole('table', { name: 'Failures on 2026-10-11' });
+    expect(within(failures).getByText('password')).toBeInTheDocument();
+  });
+
+  it('shows the raw batch on request', async () => {
+    mockApi(BASE);
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByText('What is shared');
+    expect(screen.queryByLabelText('Raw batch')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: 'Show the raw data' }));
+    expect(screen.getByLabelText('Raw batch')).toHaveTextContent('"install_id": "anon-123"');
+  });
+
+  it('sends now and says what happened', async () => {
+    const fetchMock = mockApi({ ...BASE, 'POST /api/metrics/send': { status: 'sent', days: 1 } });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Send now' }));
+    await waitFor(() =>
+      expect(
+        JSON.parse(fetchMock.mock.calls.find(([p]) => p === '/api/metrics/send')[1].body),
+      ).toEqual({ force: true }),
+    );
+    expect(await screen.findByText('Sent.')).toBeInTheDocument();
+  });
+
+  it('cannot send while sharing is off, and says nothing was sent', async () => {
+    mockApi({ ...BASE, 'GET /api/metrics': { ...BASE['GET /api/metrics'], opted_in: false } });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    expect(await screen.findByRole('button', { name: 'Send now' })).toBeDisabled();
+    expect(screen.getByText('Off')).toBeInTheDocument();
+  });
+
+  it('asks before deleting what was sent', async () => {
+    const fetchMock = mockApi({
+      ...BASE,
+      'POST /api/metrics/delete-data': { status: 'sent', detail: '' },
+    });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete my data…' }));
+    expect(await screen.findByText('Delete the data already sent?')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([p]) => p === '/api/metrics/delete-data')).toBe(false);
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }),
+    );
+    expect(await screen.findByText('Deletion requested')).toBeInTheDocument();
+  });
+});
+
+describe('A page that fails to draw', () => {
+  it('leaves the menu in place and says so', async () => {
+    mockApi({
+      ...BASE,
+      // A batch without the days it should have: the panel cannot draw it.
+      'GET /api/metrics/preview': {
+        size_bytes: 1,
+        batch: { client: {}, settings: {}, days: [{ day: 'x' }] },
+      },
+    });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    expect(await screen.findByText('This page could not be shown.')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab', { name: 'Credits' })[0]).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 });

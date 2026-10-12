@@ -1,7 +1,8 @@
 import { makeStyles, tokens } from '@fluentui/react-components';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { CloseGuard } from './CloseGuard.jsx';
 import { DropTarget } from './DropTarget.jsx';
+import { PageBoundary } from './PageBoundary.jsx';
 import { NavRail } from './NavRail.jsx';
 import { StatusBar } from './StatusBar.jsx';
 import { TitleBar } from './TitleBar.jsx';
@@ -31,13 +32,16 @@ const useStyles = makeStyles({
 
 export function AppShell() {
   const styles = useStyles();
+  const { pathname } = useLocation();
   return (
     <div className={styles.root} data-testid="app-shell">
       <TitleBar />
       <div className={styles.body}>
         <NavRail />
         <main className={styles.content}>
-          <Outlet />
+          <PageBoundary resetKey={pathname}>
+            <Outlet />
+          </PageBoundary>
         </main>
       </div>
       <StatusBar />

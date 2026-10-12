@@ -128,6 +128,22 @@ class MaintenanceService:
 
         return self._start("search-rebuild", work)
 
+    # ----- shared usage metrics ---------------------------------------------------------------
+
+    def metrics(self) -> dict[str, object]:
+        return self._client().metrics.status().to_dict()
+
+    def metrics_preview(self) -> dict[str, object]:
+        """Exactly the batch that would be sent next, and how big it is."""
+        batch = self._client().metrics.preview()
+        return {"batch": batch.to_dict(), "size_bytes": batch.size_bytes}
+
+    def metrics_send(self, force: bool) -> dict[str, object]:
+        return self._client().metrics.send(force).to_dict()
+
+    def metrics_delete(self) -> dict[str, object]:
+        return self._client().metrics.delete_data().to_dict()
+
     # ----- the processing tiers ---------------------------------------------------------------
 
     def tiers(self) -> list[dict[str, object]]:

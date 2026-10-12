@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -413,6 +414,7 @@ def seed_credits(home: str, documents: Path) -> None:
     os.environ["VETHUQ_HOME"] = home
     with VethuQ() as client:
         client.credits.balance()
+        client.metrics.opt_in()  # so there is something waiting to be shown
         spent_today = 0
         source = client.sources.create(documents)
         now = datetime.now(UTC)
@@ -648,6 +650,14 @@ def credits_screens(browser: Browser, out: Path) -> None:
         page.get_by_role("heading", name="Updates").scroll_into_view_if_needed()
         page.wait_for_timeout(300)
         shot(page, out, "settings-updates")
+        page.get_by_role("heading", name="What is shared").scroll_into_view_if_needed()
+        page.get_by_role("button", name=re.compile(r"\d{4}-\d\d-\d\d · \d+ pages")).first.click()
+        page.wait_for_timeout(400)
+        shot(page, out, "settings-metrics-preview")
+        page.get_by_role("switch", name="Show the raw data").click()
+        page.get_by_label("Raw batch").scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        shot(page, out, "settings-metrics-raw")
         page.get_by_role("tab", name="Search", exact=True).click()
         expect(page.get_by_role("heading", name="Search index")).to_be_visible()
         page.get_by_role("heading", name="Search index").scroll_into_view_if_needed()

@@ -119,6 +119,28 @@ class TestSearchIndex:
         assert "disk full" in wait(service, "search-rebuild")["error"]
 
 
+class TestMetrics:
+    def test_the_status_says_where_sharing_stands(self, service):
+        status = service.metrics()
+        assert (
+            status["opted_in"] is False and "pending_days" in status and "bonus_percent" in status
+        )
+
+    def test_the_preview_is_the_batch_itself_with_its_size(self, service):
+        data = service.metrics_preview()
+        batch = data["batch"]
+        assert set(batch) >= {"schema", "batch_id", "install_id", "client", "settings", "days"}
+        assert data["size_bytes"] > 0
+        assert "path" not in str(batch).lower()  # names and paths are never in it
+
+    def test_sending_while_not_opted_in_sends_nothing(self, service):
+        assert service.metrics_send(False)["status"] == "not_opted_in"
+        assert service.metrics_send(True)["status"] == "not_opted_in"
+
+    def test_deleting_answers_with_a_status_and_never_raises(self, service):
+        assert "status" in service.metrics_delete()
+
+
 class TestTiers:
     def test_they_are_listed_chosen_and_reset(self, service):
         tiers = {t["id"]: t for t in service.tiers()}
@@ -146,6 +168,10 @@ class TestHttp:
         assert "last" in get("/db") and "current" in get("/updates")
         assert get("/policy")["source"] and "pages_total" in get("/search-index")
         assert get("/tiers")["tiers"][0]["id"] == "local"
+        assert get("/metrics")["opted_in"] is False
+        assert get("/metrics/preview")["batch"]["schema"] == 1
+        assert post("/metrics/send").get_json()["status"] == "not_opted_in"
+        assert "status" in post("/metrics/delete-data").get_json()
         assert post("/db/check", quick=True).status_code == 202
         assert post("/search-index/rebuild").status_code in (202, 409)
         assert set(get("/maintenance/tasks")) == {"db-check", "search-rebuild"}
@@ -159,5 +185,6 @@ class TestHttp:
             f"/api{path}", json=body, base_url=ORIGIN, headers=HEADERS
         )
         assert post("/db/check", quick="yes").status_code == 422
+        assert post("/metrics/send", force="yes").status_code == 422
         assert post("/tiers/use").status_code == 422
         assert post("/tiers/use", tier="warp").status_code == 422
