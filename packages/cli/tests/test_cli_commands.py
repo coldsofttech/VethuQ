@@ -146,3 +146,12 @@ class TestQueueAndService:
     def test_without_a_service_nothing_is_queued(self, run, docs):
         run("source", "add", str(docs))
         assert "completed" in run("index", "run").output
+
+
+def test_source_list_and_files_sort(run, run_json, docs):
+    run("source", "add", str(docs))
+    assert run("source", "list", "--sort-by", "path", "--order", "desc").exit_code == 0
+    asc = [f["name"] for f in run_json("source", "files", "1", "--sort-by", "name")]
+    desc = [f["name"] for f in run_json("source", "files", "1", "--order", "desc")]
+    assert desc == sorted(asc, reverse=True)
+    assert run("source", "files", "1", "--sort-by", "bogus").exit_code != 0

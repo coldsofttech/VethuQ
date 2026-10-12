@@ -171,11 +171,76 @@ def addon_app(client) -> typer.Typer:
     return group
 
 
+def location_app() -> typer.Typer:
+    """`settings location`: where the data folder and the backups live."""
+    from vethuq import Paths
+
+    group = typer.Typer(help="Where VethuQ keeps its data.", no_args_is_help=True)
+    backups = typer.Typer(help="Where database backups are kept.", no_args_is_help=True)
+    group.add_typer(backups, name="backups")
+
+    def attempt(action: Callable[[], Any]) -> Any:
+        try:
+            return action()
+        except (ValueError, OSError) as error:
+            say(str(error), style=Theme.ERROR)
+            raise typer.Exit(1) from None
+
+    @group.command("show")
+    def show() -> None:
+        """The data folder and where it comes from."""
+        facts(
+            {
+                "path": str(Paths.data_root()),
+                "source": Paths.location_source(),
+                "default": str(Paths.default_data_root()),
+            },
+            title="Data location",
+        )
+
+    @group.command("set")
+    def set_(
+        path: str,
+        no_move: bool = typer.Option(False, "--no-move", help="Do not move the existing data."),
+    ) -> None:
+        """Move the data folder to PATH (stop any indexing first)."""
+        new = attempt(lambda: Paths.relocate(path, move=not no_move))
+        say(f"Data location is now {new}", data={"path": str(new)})
+
+    @group.command("reset")
+    def reset(
+        no_move: bool = typer.Option(False, "--no-move", help="Do not move the existing data."),
+    ) -> None:
+        """Go back to the default data folder."""
+        new = attempt(lambda: Paths.reset_location(move=not no_move))
+        say(f"Data location is now {new}", data={"path": str(new)})
+
+    @backups.command("show")
+    def backups_show() -> None:
+        """The folder backups are kept in."""
+        say(str(Paths.backups_dir()), data={"path": str(Paths.backups_dir())})
+
+    @backups.command("set")
+    def backups_set(path: str) -> None:
+        """Keep backups in PATH."""
+        new = attempt(lambda: Paths.set_backups_dir(path))
+        say(f"Backups are now kept in {new}", data={"path": str(new)})
+
+    @backups.command("reset")
+    def backups_reset() -> None:
+        """Keep backups next to the database again."""
+        new = attempt(Paths.reset_backups_dir)
+        say(f"Backups are now kept in {new}", data={"path": str(new)})
+
+    return group
+
+
 def build(client) -> typer.Typer:
     app = typer.Typer(help="Show and change settings.", no_args_is_help=True)
     for area in AREAS:
         app.add_typer(area_app(client, area), name=area)
     app.add_typer(addon_app(client), name="addons")
+    app.add_typer(location_app(), name="location")
 
     @app.command("show")
     def show() -> None:

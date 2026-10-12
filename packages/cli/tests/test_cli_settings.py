@@ -42,3 +42,26 @@ def test_show_lists_every_setting(run, run_json):
 
 def test_json_output(run_json):
     assert run_json("settings", "index", "workers") == {"workers": "auto"}
+
+
+def test_location_show_set_and_reset(run, run_json, tmp_path, monkeypatch):
+    monkeypatch.delenv("VETHUQ_HOME", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "cfg"))
+    target = tmp_path / "moved"
+    assert run("settings", "location", "show").exit_code == 0
+    assert run("settings", "location", "set", str(target), "--no-move").exit_code == 0
+    assert str(target) in run("settings", "location", "show").output
+    assert run("settings", "location", "reset", "--no-move").exit_code == 0
+    assert str(target) not in run("settings", "location", "show").output
+
+
+def test_backups_location_set_and_reset(run, tmp_path, monkeypatch):
+    monkeypatch.delenv("VETHUQ_HOME", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "cfg"))
+    where = tmp_path / "bk"
+    assert run("settings", "location", "backups", "set", str(where)).exit_code == 0
+    assert str(where) in run("settings", "location", "backups", "show").output
+    assert run("settings", "location", "backups", "reset").exit_code == 0
+    assert str(where) not in run("settings", "location", "backups", "show").output

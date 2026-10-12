@@ -8,8 +8,8 @@
         policy/         the cached policy and its state
 
 The data root is the `VETHUQ_HOME` environment variable if set, else the location saved
-in the per-user `db.json`, else the platform default. Everything here is read-only: it
-reports paths and creates nothing on disk.
+in the per-user `db.json`, else the platform default. The getters only report paths and
+create nothing; `relocate`, `reset_location` and the backups equivalents change where data lives.
 """
 
 from __future__ import annotations
@@ -65,3 +65,61 @@ class Paths:
     def config_file() -> Path:
         """The per-user `db.json` that stores a relocated data root."""
         return _Paths.location_file()
+
+    @staticmethod
+    def location_source() -> str:
+        """Where the data root comes from: `env`, `saved` or `default`."""
+        if _Paths.env_location() is not None:
+            return "env"
+        return "saved" if _Paths.configured_location() is not None else "default"
+
+    @staticmethod
+    def default_data_root() -> Path:
+        """The platform default data root."""
+        return _Paths.default_data_root()
+
+    @staticmethod
+    def relocate(target: str | Path, *, move: bool = True) -> Path:
+        """Make `target` the data root, moving the existing data there unless `move=False`.
+
+        Raises `ValueError` if the move is not possible (same place, nested, or the target already
+        holds data) and `OSError` if the target is not writable. Make sure no index run is active.
+        """
+        if _Paths.env_location() is not None:
+            raise ValueError(f"{Paths.ENV_VAR} is set and overrides the saved location")
+        new = Path(target).expanduser().resolve()
+        _Paths.ensure_writable(new)
+        old = Paths.data_root()
+        if move and old.exists():
+            _Paths.move_data(old, new)
+        else:
+            _Paths.save_location(new)
+        return new
+
+    @staticmethod
+    def reset_location(*, move: bool = True) -> Path:
+        """Go back to the platform default data root."""
+        default = _Paths.default_data_root()
+        if _Paths.env_location() is not None:
+            raise ValueError(f"{Paths.ENV_VAR} is set and overrides the saved location")
+        if Paths.data_root() == default:
+            _Paths.clear_location()
+            return default
+        if move and Paths.data_root().exists():
+            _Paths.move_data(Paths.data_root(), default)
+        _Paths.clear_location()
+        return default
+
+    @staticmethod
+    def set_backups_dir(target: str | Path) -> Path:
+        """Keep database backups in `target`."""
+        new = Path(target).expanduser().resolve()
+        _Paths.ensure_writable(new)
+        _Paths.save_backups_location(new)
+        return new
+
+    @staticmethod
+    def reset_backups_dir() -> Path:
+        """Keep database backups next to the database again."""
+        _Paths.clear_backups_location()
+        return Paths.backups_dir()

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import time
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.text import Text
 
+from vethuq.enums import SortOrder, SourceSortBy
 from vethuq_cli.console import Theme, console
 from vethuq_cli.export import exportable
 from vethuq_cli.output import dump, facts, plain, say, table
@@ -17,6 +19,20 @@ from vethuq_cli.state import State
 Languages = Annotated[
     list[str] | None, typer.Option("--language", "-l", help="A language id; repeat for several.")
 ]
+
+
+class FileSortBy(StrEnum):
+    NAME = "name"
+    SIZE = "size"
+    STATUS = "status"
+
+
+def _file_key(f, sort_by: FileSortBy):
+    if sort_by is FileSortBy.SIZE:
+        return f.size_bytes or 0
+    if sort_by is FileSortBy.STATUS:
+        return str((plain(f.index) or {}).get("status", ""))
+    return f.name
 
 
 def client():
@@ -41,10 +57,16 @@ def source_add(path: Path, language: Languages = None) -> None:
 
 @source_app.command("list")
 @exportable("Sources", "sources", facets=("source_type", "status"))
-def source_list(removed: bool = typer.Option(False, "--removed", help="Include removed.")) -> None:
+def source_list(
+    removed: bool = typer.Option(False, "--removed", help="Include removed."),
+    sort_by: Annotated[
+        SourceSortBy, typer.Option("--sort-by", help="Field to sort by.")
+    ] = SourceSortBy.ID,
+    order: Annotated[SortOrder, typer.Option("--order", help="asc or desc.")] = SortOrder.ASC,
+) -> None:
     """List the sources."""
     table(
-        client().sources.list(include_removed=removed),
+        client().sources.list(include_removed=removed, sort_by=sort_by, order=order),
         ["id", "path", "source_type", "status", "languages", "files_total", "files_processed"],
         empty="No sources. Add one with: vethuq source add PATH",
     )
@@ -52,9 +74,17 @@ def source_list(removed: bool = typer.Option(False, "--removed", help="Include r
 
 @source_app.command("files")
 @exportable("Files", "files", facets=("status", "file_type"))
-def source_files(source: str, detailed: bool = typer.Option(False, "--detailed")) -> None:
+def source_files(
+    source: str,
+    detailed: bool = typer.Option(False, "--detailed"),
+    sort_by: Annotated[
+        FileSortBy, typer.Option("--sort-by", help="Field to sort by.")
+    ] = FileSortBy.NAME,
+    order: Annotated[SortOrder, typer.Option("--order", help="asc or desc.")] = SortOrder.ASC,
+) -> None:
     """List the files of a source with their index state."""
     rows = client().sources.list_files(_ident(source), detailed=detailed)
+    rows = sorted(rows, key=lambda f: _file_key(f, sort_by), reverse=order is SortOrder.DESC)
     table(
         [{"name": f.name, "size_bytes": f.size_bytes, **(plain(f.index) or {})} for f in rows],
         ["name", "size_bytes", "status", "pages", "confidence", "languages", "file_type"],
