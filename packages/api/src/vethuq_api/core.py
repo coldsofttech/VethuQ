@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from vethuq_api.credits_service import CreditsService
 from vethuq_api.indexing import IndexingService
+from vethuq_api.ocr_service import OcrService
 from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
 from vethuq_api.stats_service import StatsService
@@ -43,6 +44,8 @@ class Core(Protocol):
 
     def stats(self) -> Any: ...
 
+    def ocr(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -56,6 +59,7 @@ class VethuQCore:
         self._indexing = IndexingService(self._vethuq)
         self._credits = CreditsService(self._vethuq)
         self._stats = StatsService(self._vethuq)
+        self._ocr = OcrService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -82,6 +86,9 @@ class VethuQCore:
 
     def stats(self) -> StatsService:
         return self._stats
+
+    def ocr(self) -> OcrService:
+        return self._ocr
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()

@@ -5,6 +5,8 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- OCR: `/api/ocr` (engines and phases), `/api/ocr/models` (with size on disk), a background download job
+  with progress (`/api/ocr/models/download`, `/redownload`, `/api/ocr/job`) and removal (`/clear`, `/clean`).
 - Statistics: `/api/stats/summary` (totals and pages per day), `/api/stats/breakdown` (grouped, filtered, sorted
   and paged, with a totals row) and `/api/stats/export`.
 - Sources and their files carry what they cost (`credits`), and files sort by it.

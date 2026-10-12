@@ -74,6 +74,7 @@ export const strings = {
       general: 'General',
       search: 'Search',
       indexing: 'Indexing',
+      ocr: 'OCR',
       sources: 'Sources',
       tiers: 'Cloud OCR',
       results: 'Results',

@@ -522,6 +522,16 @@ def credits_screens(browser: Browser, out: Path) -> None:
         expect(page.get_by_role("table", name="Ledger")).to_be_visible()
         page.wait_for_timeout(500)
         shot(page, out, "credits-ledger")
+        # OCR in settings: engines, phases and models (nothing is downloaded here).
+        page.get_by_role("tab", name="Settings").click()
+        page.get_by_role("tab", name="OCR", exact=True).click()
+        expect(page.get_by_role("table", name="OCR models")).to_be_visible()
+        page.wait_for_timeout(400)
+        shot(page, out, "settings-ocr")
+        page.get_by_role("button", name="Remove models nothing uses").click()
+        expect(page.get_by_text("Remove models nothing uses?")).to_be_visible()
+        shot(page, out, "settings-ocr-confirm")
+        page.get_by_role("button", name="Cancel").click()
         # Statistics.
         page.get_by_role("tab", name="Statistics").first.click()
         expect(page.get_by_text("Pages read", exact=True)).to_be_visible()

@@ -163,6 +163,7 @@ describe('Settings tabs', () => {
       'General',
       'Search',
       'Indexing',
+      'OCR',
       'Sources',
       'Cloud OCR',
       'Results',

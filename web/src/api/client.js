@@ -239,6 +239,20 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  ocr: {
+    /** @returns {Promise<{ engines: object[], phases: object[] }>} */
+    overview: (signal) => request('/api/ocr', { signal }),
+    models: (signal) => request('/api/ocr/models', { signal }),
+    job: (signal) => request('/api/ocr/job', { signal }),
+    /** @param {'download' | 'redownload'} action */
+    start: (action, body = {}) => request(`/api/ocr/models/${action}`, { method: 'POST', body }),
+    clear: (languages, includeShared) =>
+      request('/api/ocr/models/clear', {
+        method: 'POST',
+        body: { languages, include_shared: includeShared },
+      }),
+    clean: () => request('/api/ocr/models/clean', { method: 'POST' }),
+  },
   stats: {
     summary: (params = {}, signal) => request(`/api/stats/summary${query(params)}`, { signal }),
     breakdown: (params = {}, signal) => request(`/api/stats/breakdown${query(params)}`, { signal }),

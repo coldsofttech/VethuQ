@@ -87,6 +87,9 @@ class FakeCore:
     def stats(self):
         return SimpleNamespace()
 
+    def ocr(self):
+        return SimpleNamespace()
+
     def indexing(self):
         core = self
 

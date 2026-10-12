@@ -1,6 +1,7 @@
 import { Radio, RadioGroup, Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { GroupHeading } from '../components/GroupHeading.jsx';
+import { OcrPanel } from '../ocr/OcrPanel.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { SettingFrame } from '../components/SettingFrame.jsx';
 import { SettingsSection } from '../components/SettingsSection.jsx';
@@ -11,6 +12,7 @@ const SECTIONS = [
   'general',
   'search',
   'indexing',
+  'ocr',
   'sources',
   'tiers',
   'results',
@@ -72,7 +74,8 @@ export function SettingsPage() {
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
         <Route path="general" element={<General />} />
-        {SECTIONS.filter((id) => id !== 'general').map((id) => (
+        <Route path="ocr" element={<OcrPanel />} />
+        {SECTIONS.filter((id) => id !== 'general' && id !== 'ocr').map((id) => (
           <Route
             key={id}
             path={id}
