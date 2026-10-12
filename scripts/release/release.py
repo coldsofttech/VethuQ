@@ -214,7 +214,7 @@ class Cli:
         size_kb: int,
         package: str = "vethuq-cli",
         summary: str = "VethuQ command line",
-        detail: str = "Document intelligence and evidence infrastructure: index, OCR and search\n"
+        detail: str = " Document intelligence and evidence infrastructure: index, OCR and search\n"
         " documents from the terminal. Installs to /opt/vethuq with the default add-ons.\n",
         depends: str | None = None,
     ) -> str:

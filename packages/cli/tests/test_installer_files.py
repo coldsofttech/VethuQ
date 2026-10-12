@@ -222,6 +222,12 @@ class TestInteractiveInstaller:
         assert "Depends: vethuq-cli\n" in control
         assert "Terminal=true" in release.Cli.DESKTOP
 
+    @pytest.mark.parametrize("package", ["vethuq-cli", "vethuq-interactive-cli"])
+    def test_every_control_line_is_a_field_or_a_continuation(self, package):
+        control = release.Cli(release.Version("1.2.0")).control("amd64", 1, package=package)
+        for line in control.splitlines():
+            assert line.startswith(" ") or re.match(r"^[A-Za-z-]+: ", line), line
+
     def test_a_mode_is_still_required(self):
         with pytest.raises(SystemExit):
             release.main(["--dev"])
