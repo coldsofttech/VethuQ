@@ -38,6 +38,11 @@ class _Page:
         return f"data:image/svg+xml;base64,{data}"
 
     @staticmethod
+    def script() -> str:
+        """The page's script (filters, expand all, open on print) inline in a `<script>`."""
+        return f"<script>\n{_Page.template('export.js').rstrip()}\n</script>"
+
+    @staticmethod
     def fill(document: str, *, kind: str, lang: str, generated_at: str) -> str:
         """Fill the parts every export shares: head, brand header (logo, name, tagline), footer."""
         shared = {
@@ -57,6 +62,7 @@ class _Page:
             .replace("{{APP_NAME}}", html.escape(_Brand.NAME))
             .replace("{{APP_TAGLINE}}", html.escape(_Brand.TAGLINE))
             .replace("{{GENERATED_AT}}", html.escape(generated_at))
+            .replace("{{SCRIPT}}", _Page.script())
         )
 
     @staticmethod

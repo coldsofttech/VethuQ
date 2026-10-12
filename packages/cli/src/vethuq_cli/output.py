@@ -56,7 +56,14 @@ def table(
     empty: str = "Nothing to show.",
     headers: Mapping[str, str] | None = None,
 ) -> None:
-    """A table of `rows` (dataclasses with `to_dict`, or dicts), the given `columns`."""
+    """A table of `rows` (dataclasses with `to_dict`, or dicts), the given `columns`.
+
+    With `--export` (see `exportable`) it is written to that file instead of being printed."""
+    if State.export is not None:
+        from vethuq_cli.export import ListExport  # noqa: PLC0415 - export imports this module
+
+        ListExport.write(State.export, rows, columns, headers)
+        return
     if State.json:
         dump(list(rows))
         return

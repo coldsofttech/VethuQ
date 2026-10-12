@@ -242,6 +242,8 @@ class TestTemplates:
             "export.css",
             "export.js",
             "list_export.html",
+            "section.html",
+            "sections_export.html",
             "logo.svg",
             "page_head.html",
             "page_header.html",

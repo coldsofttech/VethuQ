@@ -30,9 +30,11 @@ def test_a_group_is_a_menu_with_back(shell):
     assert BACK in selects(ui)[1][2] and "add" in selects(ui)[1][2]
 
 
-def test_a_command_without_parameters_just_runs(shell, capsys):
-    shell("source", "list", BACK, EXIT)
+def test_a_command_with_only_optional_options_runs_when_they_are_not_asked_for(shell, capsys):
+    # `source list` has optional options (--removed, and --export/--format on every listing).
+    ui = shell("source", "list", False, BACK, EXIT)
     assert "vethuq source add" in capsys.readouterr().out
+    assert [a[1] for a in ui.asked if a[0] == "confirm"] == ["Set optional options?"]
 
 
 def test_a_required_argument_is_asked_until_given(shell, docs, capsys):

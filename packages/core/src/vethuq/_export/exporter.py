@@ -8,11 +8,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vethuq._export.facets import _Facets
 from vethuq._export.languages import _ExportLanguages
 from vethuq._export.page import _Page
 from vethuq.formatting import Formatting
 
 if TYPE_CHECKING:
+    from vethuq.export import ExportSection
     from vethuq.search import SearchMatch, SearchResult
     from vethuq.sources import FileIndex, Source, SourceFile
 
@@ -163,14 +165,25 @@ class _Exporter:
         ]
         if result.total != len(matches):
             cards.append(_Page.card("Of all matches", str(result.total)))
-        rows = [self._search_row(match) for match in matches]
+        bar, attrs = _Facets.bar(
+            [
+                ("engine", "Match type"),
+                ("type", "File type"),
+                ("language", "Language"),
+                ("origin", "Text from"),
+                ("folder", "Folder"),
+            ],
+            [self._match_facets(match) for match in matches],
+            self._languages.tag,
+        )
+        rows = [self._search_row(match, attr) for match, attr in zip(matches, attrs, strict=True)]
         document = (
             _Page.template("export.html")
             .replace("{{QUERY_TEXT}}", html.escape(result.query))
             .replace("{{QUERY}}", self._tagged(result.query))
             .replace("{{CARDS}}", "\n".join(cards))
             .replace("{{CHIPS}}", "".join(chips))
-            .replace("{{SCRIPT}}", f"<script>\n{_Page.template('export.js').rstrip()}\n</script>")
+            .replace("{{FACETS}}", bar)
             .replace("{{ROWS}}", "\n".join(rows))
         )
         return _Page.fill(
@@ -180,7 +193,26 @@ class _Exporter:
             generated_at=_Page.generated_at(),
         )
 
-    def _search_row(self, match: SearchMatch) -> str:
+    ORIGINS = {"native": "Native text", "ocr": "OCR", "mixed": "Native + OCR"}
+
+    def _match_facets(self, match: SearchMatch) -> dict[str, list[str]]:
+        """The values `match` is filtered by in the HTML export."""
+        path = Path(match.file_path)
+        facets = {
+            "type": [path.suffix.lstrip(".").upper() or "(none)"],
+            "folder": [path.parent.as_posix()],
+            "origin": [self.ORIGINS.get(match.source, match.source)],
+            "language": [
+                self._languages.names([language_id])
+                for language_id in self._languages.in_text(self._matched_text(match))
+            ],
+        }
+        found = self._badges().get(match.engine)
+        if found is not None:
+            facets["engine"] = [found[0]]
+        return facets
+
+    def _search_row(self, match: SearchMatch, facets: str = "") -> str:
         page = str(match.page_number) if match.page_number is not None else "-"
         total = str(match.total_pages) if match.total_pages is not None else "-"
         snippet = self._tagged(self._matched_text(match)).replace(
@@ -190,6 +222,7 @@ class _Exporter:
         pill = f'<span class="pill">{html.escape(badge)}</span>' if badge else ""
         return (
             _Page.template("export_row.html")
+            .replace("{{FACETS}}", facets)
             .replace("{{FILE_URI}}", html.escape(self._file_uri(match.file_path)))
             .replace("{{FILE_NAME}}", self._tagged(match.file_name))
             .replace("{{FILE_PATH}}", self._tagged(match.file_path))
@@ -201,16 +234,30 @@ class _Exporter:
 
     # ----- listings ---------------------------------------------------------------------------
 
+    Facets = tuple[list[tuple[str, str]], list[dict[str, list[str]]]]
+
     def _table(
-        self, output: Path, title: str, headers: list[str], rows: list[list[str]], cards: list[str]
+        self,
+        output: Path,
+        title: str,
+        headers: list[str],
+        rows: list[list[str]],
+        cards: list[str],
+        facets: Facets = ([], []),
     ) -> Path:
-        """Write an HTML table under summary `cards`; each `rows` cell is escaped HTML."""
+        """Write an HTML table under summary `cards`; each `rows` cell is escaped HTML. `facets`
+        are the `(key, label)` filters and each row's values for them."""
         head = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-        body = "\n".join("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>" for row in rows)
+        bar, attrs = _Facets.bar(*facets, self._languages.tag)
+        body = "\n".join(
+            f"<tr {attr}>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>"
+            for row, attr in zip(rows, attrs or [""] * len(rows), strict=True)
+        )
         document = (
             _Page.template("list_export.html")
             .replace("{{TITLE}}", html.escape(title))
             .replace("{{CARDS}}", "\n".join(cards))
+            .replace("{{FACETS}}", bar)
             .replace("{{HEADERS}}", head)
             .replace("{{ROWS}}", body)
         )
@@ -264,6 +311,16 @@ class _Exporter:
                     accent=True,
                 ),
             ],
+            (
+                [("type", "Type"), ("status", "Status")],
+                [
+                    {
+                        "type": [s.source_type.value if s.source_type else "-"],
+                        "status": [s.status.value if s.status else "-"],
+                    }
+                    for s in sources
+                ],
+            ),
         )
 
     @staticmethod
@@ -324,7 +381,22 @@ class _Exporter:
                 _Page.card("Indexed", str(statuses.count("indexed")), accent=True),
                 _Page.card("Failed", str(statuses.count("error"))),
             ],
+            (
+                [("status", "Status"), ("type", "File type"), ("duplicate", "Duplicate")],
+                [self._file_facets(f, detailed) for f in files],
+            ),
         )
+
+    @staticmethod
+    def _file_facets(file: SourceFile, detailed: bool) -> dict[str, list[str]]:
+        """The values a file is filtered by (its index state only when it was listed in detail)."""
+        index = file.index
+        kind = (index.file_type if index and index.file_type else Path(file.name).suffix[1:]) or "-"
+        facets = {"type": [kind.upper()]}
+        if detailed and index is not None:
+            facets["status"] = [index.status.value]
+            facets["duplicate"] = ["Duplicate" if index.duplicate_of else "Unique"]
+        return facets
 
     def _index_cells(self, index: FileIndex | None) -> list[str]:
         if index is None:
@@ -344,3 +416,157 @@ class _Exporter:
             html.escape(index.duplicate_of or "-"),
             html.escape(index.error or "-"),
         ]
+
+    # ----- any listing ------------------------------------------------------------------------
+
+    def _cell(
+        self,
+        name: str,
+        record: dict[str, object],
+        statuses: tuple[str, ...],
+        paths: tuple[str, ...],
+        formats: dict[str, Callable[[object], str]],
+    ) -> str:
+        value = record.get(name)
+        if name in formats and value is not None:
+            return formats[name](value)
+        text = "-" if value is None or value == "" else str(value)
+        if name in statuses and value:
+            return _Page.status_pill(text)
+        if name in paths and value:
+            return f'<a href="{html.escape(self._file_uri(text))}">{self._tagged(text)}</a>'
+        return self._tagged(text)
+
+    @staticmethod
+    def _facet_values(record: dict[str, object], fields: tuple[str, ...]) -> dict[str, list[str]]:
+        return {f: [str(record[f])] for f in fields if record.get(f) not in (None, "")}
+
+    def records(
+        self,
+        records: list[dict[str, object]],
+        columns: list[tuple[str, str]],
+        output: Path,
+        format_: str,
+        *,
+        title: str,
+        key: str,
+        statuses: tuple[str, ...] = (),
+        paths: tuple[str, ...] = (),
+        facets: tuple[str, ...] = (),
+        cards: list[tuple[str, str]] | None = None,
+        formats: dict[str, Callable[[object], str]] | None = None,
+    ) -> Path:
+        """Write any listing - `records` shown under `columns` - to `output`, as JSON or HTML.
+
+        `columns` are `(field, header)` in display order. JSON holds the records as they are under
+        `key`. In HTML a field in `statuses` is a colored pill, one in `paths` a link to the file,
+        and a field in `facets` a filter (left out when it has fewer than two values). A `None`
+        shows as `-`; `formats` maps a field to a function giving its cell's HTML (it must
+        escape). `cards` are extra `(label, value)` summary cards after the row count.
+        """
+        self.check_format(format_)
+        if format_ == "json":
+            payload = {
+                "generated_at": _Page.generated_at(),
+                "title": title,
+                "count": len(records),
+                key: records,
+            }
+            return self._write(output, self._json(payload))
+        headers = dict(columns)
+        rows = [
+            [self._cell(f, record, statuses, paths, formats or {}) for f, _ in columns]
+            for record in records
+        ]
+        return self._table(
+            output,
+            title,
+            [header for _, header in columns],
+            rows,
+            [
+                _Page.card(title, str(len(records))),
+                *(_Page.card(label, value) for label, value in cards or []),
+            ],
+            (
+                [(field, headers[field]) for field in facets],
+                [self._facet_values(record, facets) for record in records],
+            ),
+        )
+
+    def sections(
+        self,
+        sections: list[ExportSection],
+        output: Path,
+        format_: str,
+        *,
+        title: str,
+        cards: list[tuple[str, str]] | None = None,
+    ) -> Path:
+        """Write several listings - one table each - to one JSON or HTML file.
+
+        JSON has each section's records under its `key`, plus a `counts` object. HTML has a
+        summary card per section (and any extra `cards`), then each table under its own heading
+        with its own filters; a section with no records says so instead of showing a table.
+        """
+        self.check_format(format_)
+        if format_ == "json":
+            payload: dict[str, object] = {
+                "generated_at": _Page.generated_at(),
+                "title": title,
+                "counts": {s.key: len(s.records) for s in sections},
+            }
+            payload.update({s.key: s.records for s in sections})
+            return self._write(output, self._json(payload))
+        blocks = []
+        for section in sections:
+            if not section.records:
+                body = f'<p class="empty">{html.escape(section.empty)}</p>'
+            else:
+                headers = dict(section.columns)
+                bar, attrs = _Facets.bar(
+                    [(f, headers[f]) for f in section.facets],
+                    [self._facet_values(r, section.facets) for r in section.records],
+                    self._languages.tag,
+                )
+                head = "".join(f"<th>{html.escape(h)}</th>" for _, h in section.columns)
+                rows = "\n".join(
+                    f"<tr {attr}>"
+                    + "".join(
+                        "<td>"
+                        + self._cell(f, record, section.statuses, section.paths, section.formats)
+                        + "</td>"
+                        for f, _ in section.columns
+                    )
+                    + "</tr>"
+                    for record, attr in zip(section.records, attrs, strict=True)
+                )
+                body = (
+                    f"{bar}\n"
+                    '<div class="results table-wrap"><table class="list">'
+                    f"<thead><tr>{head}</tr></thead>\n<tbody>\n{rows}\n</tbody></table></div>"
+                )
+            blocks.append(
+                _Page.template("section.html")
+                .replace("{{SECTION_TITLE}}", html.escape(section.title))
+                .replace("{{BODY}}", body)
+            )
+        document = (
+            _Page.template("sections_export.html")
+            .replace("{{TITLE}}", html.escape(title))
+            .replace(
+                "{{CARDS}}",
+                "\n".join(
+                    [_Page.card(s.title, str(len(s.records))) for s in sections]
+                    + [_Page.card(label, value) for label, value in cards or []]
+                ),
+            )
+            .replace("{{SECTIONS}}", "\n".join(blocks))
+        )
+        default = self._languages.default()
+        document = _Page.fill(
+            document,
+            kind="List export",
+            lang=default.id if default else "en",
+            generated_at=_Page.generated_at(),
+        )
+        return self._write(output, document)

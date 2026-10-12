@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import atexit
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import vethuq
+
+if TYPE_CHECKING:
+    from vethuq_cli.export import ExportRequest
 
 
 class State:
     json: bool = False
     db_path: Path | None = None
+    export: ExportRequest | None = None  # set while a command runs with --export
     _client: vethuq.VethuQ | None = None
 
     @classmethod
@@ -33,3 +38,4 @@ class State:
         cls.close()
         cls.json = False
         cls.db_path = None
+        cls.export = None

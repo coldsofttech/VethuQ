@@ -10,6 +10,7 @@ import typer
 from rich.text import Text
 
 from vethuq_cli.console import Theme, console
+from vethuq_cli.export import exportable
 from vethuq_cli.output import dump, facts, plain, say, table
 from vethuq_cli.state import State
 
@@ -39,6 +40,7 @@ def source_add(path: Path, language: Languages = None) -> None:
 
 
 @source_app.command("list")
+@exportable("Sources", "sources", facets=("source_type", "status"))
 def source_list(removed: bool = typer.Option(False, "--removed", help="Include removed.")) -> None:
     """List the sources."""
     table(
@@ -49,6 +51,7 @@ def source_list(removed: bool = typer.Option(False, "--removed", help="Include r
 
 
 @source_app.command("files")
+@exportable("Files", "files", facets=("status", "file_type"))
 def source_files(source: str, detailed: bool = typer.Option(False, "--detailed")) -> None:
     """List the files of a source with their index state."""
     rows = client().sources.list_files(_ident(source), detailed=detailed)
@@ -268,6 +271,7 @@ JOB_COLUMNS = ["id", "mode", "target", "status", "run_id", "requested_at", "erro
 
 
 @queue_app.command("list")
+@exportable("Index requests", "requests", facets=("mode", "status"))
 def queue_list(
     status: str = typer.Option(None, "--status", help="queued, running, completed ..."),
     limit: int = typer.Option(20, "--limit"),
@@ -355,6 +359,7 @@ def index_clear_stale() -> None:
 
 
 @index_app.command("history")
+@exportable("Index history", "runs", facets=("status",))
 def index_history(limit: int = typer.Option(20, "--limit")) -> None:
     """Past runs, newest first."""
     table(
@@ -373,6 +378,7 @@ def index_history(limit: int = typer.Option(20, "--limit")) -> None:
 
 
 @index_app.command("jobs")
+@exportable("Remote batches", "jobs", facets=("status",))
 def index_jobs(limit: int = typer.Option(20, "--limit")) -> None:
     """Batches sent to a remote tier."""
     table(
@@ -409,8 +415,13 @@ def search_command(
     limit: int = typer.Option(20, "--limit"),
     offset: int = typer.Option(0, "--offset"),
     export: Path = typer.Option(None, "--export", help="Write the results to a file."),  # noqa: B008
+    format: str = typer.Option(  # noqa: A002
+        None, "--format", help="json or html (with --export; default: the saved export format)."
+    ),
 ) -> None:
     """Search the indexed pages."""
+    if format and not export:
+        raise typer.BadParameter("--format needs --export.", param_hint="--format")
     result = client().search.run(
         query,
         engine=engine,
@@ -424,7 +435,7 @@ def search_command(
         offset=offset,
     )
     if export:
-        path = client().search.export(result, export)
+        path = client().search.export(result, export, format)
         say(f"Wrote {path}", style=Theme.OK, data={"path": str(path)})
         return
     if State.json:
@@ -450,6 +461,7 @@ engines_app = typer.Typer(help="Search engines and normalizers.", no_args_is_hel
 
 
 @engines_app.command("list")
+@exportable("Search engines", "engines")
 def engines_list() -> None:
     """The installed search engines."""
     table(
@@ -459,6 +471,7 @@ def engines_list() -> None:
 
 
 @engines_app.command("normalizers")
+@exportable("Normalizers", "normalizers")
 def engines_normalizers() -> None:
     """The installed normalizers and their levels."""
     table(client().search.normalizers(), ["id", "levels", "identity", "setting"])
@@ -488,6 +501,7 @@ types_app = typer.Typer(help="The file types VethuQ can read.", no_args_is_help=
 
 
 @types_app.command("list")
+@exportable("File types", "file_types")
 def types_list() -> None:
     """File types, with whether each is available."""
     table(client().file_types.list(), ["id", "label", "extensions", "available", "reason"])
@@ -497,6 +511,7 @@ languages_app = typer.Typer(help="Languages for reading documents.", no_args_is_
 
 
 @languages_app.command("list")
+@exportable("Languages", "languages")
 def languages_list() -> None:
     """Every language, with whether it is available and enabled."""
     table(
@@ -523,6 +538,7 @@ tiers_app = typer.Typer(
 
 
 @tiers_app.command("list")
+@exportable("Tiers", "tiers")
 def tiers_list() -> None:
     """The processing tiers."""
     table(client().tiers.list(), ["id", "label", "wallet", "available", "selected", "reason"])
@@ -550,6 +566,7 @@ def credits_balance(wallet: str = typer.Option("local", "--wallet")) -> None:
 
 
 @credits_app.command("history")
+@exportable("Credit history", "movements", facets=("kind",))
 def credits_history(limit: int = typer.Option(20, "--limit")) -> None:
     """Credit movements, newest first."""
     table(
@@ -616,6 +633,7 @@ ocr_app.add_typer(models_app, name="models")
 
 
 @models_app.command("list")
+@exportable("OCR models", "models")
 def models_list(language: Languages = None) -> None:
     """Models, with whether each is installed."""
     table(
@@ -653,12 +671,14 @@ def models_clean() -> None:
 
 
 @ocr_app.command("phases")
+@exportable("OCR phases", "phases")
 def ocr_phases() -> None:
     """The OCR phases (quick, moderate, deep) and whether each is installed."""
     table(client().ocr.phases.list() if hasattr(client().ocr.phases, "list") else [], ["id"])
 
 
 @ocr_app.command("engines")
+@exportable("OCR engines", "engines")
 def ocr_engines() -> None:
     """The OCR engines."""
     value = client().ocr.engines
@@ -724,6 +744,7 @@ stats_app = typer.Typer(help="What has been read.", no_args_is_help=True)
 
 
 @stats_app.command("show")
+@exportable("Statistics", "stats")
 def stats_show(
     group_by: str = typer.Option("source", "--group-by"),
     source: str = typer.Option(None, "--source"),
@@ -742,6 +763,7 @@ def stats_show(
 
 
 @stats_app.command("failures")
+@exportable("Failures", "failures")
 def stats_failures() -> None:
     """Failed files by reason."""
     found = client().stats.failures()
@@ -749,6 +771,7 @@ def stats_failures() -> None:
 
 
 @stats_app.command("low-confidence")
+@exportable("Low-confidence pages", "pages", facets=("band",), paths=("file_path",))
 def stats_low(limit: int = typer.Option(50, "--limit")) -> None:
     """Pages read with low confidence."""
     table(
@@ -792,6 +815,7 @@ addons_app = typer.Typer(help="Installed add-ons.", no_args_is_help=True)
 
 
 @addons_app.command("list")
+@exportable("Add-ons", "addons", facets=("status",))
 def addons_list() -> None:
     """The installed add-ons and whether each is running."""
     table(client().addons.list(), ["id", "name", "version", "status", "detail"])

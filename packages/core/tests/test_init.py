@@ -26,6 +26,7 @@ class TestPublicApi:
             "credits",
             "db",
             "errors",
+            "export",
             "file_types",
             "formatting",
             "index",

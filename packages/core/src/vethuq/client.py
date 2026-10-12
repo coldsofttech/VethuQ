@@ -23,6 +23,7 @@ from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq.addons import Addons
 from vethuq.credits import Credits
 from vethuq.db import Db
+from vethuq.export import Export
 from vethuq.file_types import FileTypes
 from vethuq.index import Index
 from vethuq.languages import Languages
@@ -59,6 +60,7 @@ class VethuQ:
         self._languages: Languages | None = None
         self._settings: Settings | None = None
         self._logs: Logs | None = None
+        self._export: Export | None = None
         self._policy: PolicyClient | None = None
         self._updates: Updates | None = None
         self._checks: Db | None = None
@@ -320,6 +322,13 @@ class VethuQ:
         return self._search
 
     @property
+    def export(self) -> Export:
+        """Write any listing to a JSON or HTML file (search results and sources have their own)."""
+        if self._export is None:
+            self._export = Export(self._db(), self._exporter())
+        return self._export
+
+    @property
     def logs(self) -> Logs:
         """VethuQ's logs."""
         if self._logs is None:
@@ -369,6 +378,7 @@ class VethuQ:
             self._languages = None
             self._settings = None
             self._logs = None
+            self._export = None
             self._policy = None
             self._updates = None
             self._checks = None

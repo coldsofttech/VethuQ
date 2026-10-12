@@ -15,10 +15,25 @@ Every command takes the global `--json` (print JSON) and `--db FILE`. With no co
 |---|---|
 | `source` | `add`, `list`, `files`, `remove`, `purge`, `set-languages`, `export` |
 | `index` | `run`, `restart`, `reindex source\|file`, `status [--live]`, `pause`, `resume`, `stop`, `clear-stale`, `history`, `jobs`, `collect` |
-| `search QUERY` | `--engine`, `--normalize NAME=LEVEL`, `--option ENGINE.OPTION=VALUE`, `--language`, `--limit`, `--export FILE` |
+| `search QUERY` | `--engine`, `--normalize NAME=LEVEL`, `--option ENGINE.OPTION=VALUE`, `--language`, `--limit`, `--export FILE`, `--format json\|html` |
 | `search-index` / `search-engines` | `status`, `rebuild` / `list`, `normalizers` |
 | `file-types`, `languages`, `tiers`, `credits`, `metrics`, `ocr`, `db`, `logs`, `stats`, `updates`, `policy`, `addons` | Look at and manage what each name says |
 | `settings` | Show and change settings, as a hierarchy (below) |
+
+### Exporting a list
+
+The listing commands take `--export FILE` and `--format json|html` and write the list to a file instead of printing it
+(`--format` alone is an error; without it the saved format is used, `vethuq settings search export-format`):
+
+    vethuq source list --export sources.html --format html
+    vethuq source files 1 --detailed --export files.html --format html
+    vethuq addons list --export addons.json
+    vethuq search "invoice" --export found.html --format html
+
+They are `source list|files`, `index queue list|history|jobs`, `search-engines list|normalizers`, `file-types list`,
+`languages list`, `tiers list`, `credits history`, `ocr models list|phases|engines`, `stats show|failures|low-confidence`
+and `addons list`. The HTML page has filters (a dropdown per column that has more than one value), a live
+"Showing X of Y", and prints with every row open.
 
 ## Settings
 

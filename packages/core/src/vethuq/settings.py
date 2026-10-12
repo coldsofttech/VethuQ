@@ -593,8 +593,8 @@ class SearchSettings:
             _SearchSettings.reset(session, _SearchSettings.CONTEXT_KEY)
 
     def get_export_format(self) -> str:
-        """The format `search.export`, `sources.export` and `sources.export_files` write when they
-        aren't told one: `json` (the default) or `html`."""
+        """The format `search.export`, `sources.export`, `sources.export_files` and `export`
+        write when they aren't told one: `json` (the default) or `html`."""
         with self._database.session() as session:
             return _SearchSettings.get_export_format(session)
 

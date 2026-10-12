@@ -6,6 +6,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (HTML export filters and any-listing export)
+- HTML exports have a filter bar (a dropdown of checkboxes per facet, "Showing X of Y", clear, striped rows that
+  survive filtering): search results by match type, file type, language, text origin and folder; sources by type
+  and status; a source's files by type, status and duplicate. Each table of a report filters on its own.
+- `client.export` (`vethuq.export`): `records()` writes any listing to JSON or HTML and `sections()` several tables
+  to one page; `ExportSection`. New templates `section.html` and `sections_export.html`; `list_export.html` has the
+  script and the filter slot.
+
 ### Added (search pack)
 - `vethuq[search]`: the search pack bundle (`vethuq-bundle-search`), which installs every search
   engine and normalizer.
