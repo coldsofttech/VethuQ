@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 from vethuq_worker.errors import JobError
@@ -42,6 +43,9 @@ class WorkerCli:
     @staticmethod
     def _parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(prog="vethuq-worker")
+        parser.add_argument(
+            "--version", action="version", version=f"vethuq-worker {version('vethuq-worker')}"
+        )
         commands = parser.add_subparsers(dest="command", required=True)
         run = commands.add_parser("run", help="read a job's pages")
         run.add_argument("--job-id", required=True)

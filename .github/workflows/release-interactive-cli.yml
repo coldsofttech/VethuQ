@@ -76,7 +76,7 @@ jobs:
       - name: Install the command line and the default add-ons
         working-directory: work/VethuQ
         shell: bash
-        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
+        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
           uv pip install "pyinstaller>=6.10"
       - name: Install the compiled entitlements runtime
         working-directory: work/VethuQ

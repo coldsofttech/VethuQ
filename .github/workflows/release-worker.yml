@@ -1,0 +1,165 @@
+# Builds the VethuQ worker's installers when `vethuq-worker-bin-vX.Y.Z` is pushed:
+#
+#   Windows   VethuQ-Worker-Setup.exe             PyInstaller + Inno Setup
+#   Linux     vethuq-worker_X.Y.Z_amd64.deb       PyInstaller + dpkg-deb
+#
+# They install into the folder of the command line (vethuq-cli), reusing its lib/ and add-ons/, so
+# the same build also makes the CLI installer; the smoke test installs both, CLI first.
+#
+# Only the worker (no UI; the command line, the shell and the service have their own workflows, though
+# the same build holds all four programs). `vethuq-worker-vX.Y.Z` is the PyPI package's tag; this one is
+# the program's. Add `-rcN` for a release candidate: it is attached to a GitHub prerelease. Nothing goes
+# to PyPI. The free add-ons come from the sibling VethuQ-premium checkout, and the compiled
+# `vethuq_entitlements` runtime from the private VethuQ-entitlements release pinned in
+# packages/core/ENTITLEMENTS_VERSION (both read with PREMIUM_READ_TOKEN, as in release.yml). The OCR
+# models are not in the installers: `vethuq-worker bake-models --models DIR` downloads them.
+# See docs/releasing.md.
+name: release-worker
+
+on:
+  push:
+    tags:
+      - "vethuq-worker-bin-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-worker-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$GITHUB_REF_NAME"
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#vethuq-worker-bin-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: worker-windows
+          # The oldest Ubuntu runner: a binary needs a glibc at least as new as the one it was built on.
+          - os: ubuntu-22.04
+            artifact: worker-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The three repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          fetch-depth: 0 # hatch-vcs reads the tag
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install the command line and the default add-ons
+        working-directory: work/VethuQ
+        shell: bash
+        run: |
+          uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+          if [ "$RUNNER_OS" = Windows ]; then uv pip install "pywin32>=306"; fi
+          uv pip install "pyinstaller>=6.10"
+      - name: Install the compiled entitlements runtime
+        working-directory: work/VethuQ
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PREMIUM_READ_TOKEN }}
+        run: |
+          version="$(tr -d '[:space:]' < packages/core/ENTITLEMENTS_VERSION)"
+          gh release download "vethuq-entitlements-v${version}" \
+            --repo coldsofttech/VethuQ-entitlements --dir entitlements
+          (cd entitlements && sha256sum --check SHA256SUMS)
+          uv pip install --no-deps --find-links entitlements vethuq-entitlements
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build the installer
+        working-directory: work/VethuQ
+        shell: bash
+        run: uv run --no-sync python scripts/release/release.py --cli --worker --version "${{ needs.plan.outputs.version }}"
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: work/VethuQ
+        shell: pwsh
+        run: |
+          # The worker goes into the command line's folder, so the command line comes first.
+          $dir = "$env:RUNNER_TEMP\vethuq"
+          Start-Process -Wait dist\VethuQ-CLI-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER","/MERGETASKS=!addtopath","/DIR=$dir"
+          Start-Process -Wait dist\VethuQ-Worker-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER"
+          & "$dir\vethuqw.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Without the key it refuses (usage error 2) rather than crashing.
+          $env:VETHUQ_MASTER_KEY = ""
+          & "$dir\vethuqw.exe" run --job-id x --payload . --out .
+          if ($LASTEXITCODE -ne 2) { throw "expected the usage error, got $LASTEXITCODE" }
+          if (-not (Test-Path "$dir\vethuq.exe")) { throw "the command line is gone" }
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: |
+          # The worker depends on the command line, so apt installs both.
+          sudo apt-get install -y ./dist/vethuq-cli_*.deb ./dist/vethuq-worker_*.deb
+          vethuq-worker --version
+          test "$(readlink -f /usr/bin/vethuq-worker)" = /opt/vethuq/vethuqw
+          # Without the key it refuses (usage error 2) rather than crashing.
+          set +e; VETHUQ_MASTER_KEY= vethuq-worker run --job-id x --payload . --out .; code=$?; set -e
+          test "$code" = 2
+          # Removing the command line takes the worker with it.
+          sudo apt-get remove -y vethuq-cli
+          test ! -e /usr/bin/vethuq-worker
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            work/VethuQ/dist/VethuQ-Worker-Setup.exe
+            work/VethuQ/dist/vethuq-worker_*.deb
+          if-no-files-found: error
+
+  github-release:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: worker-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}" \
+            --title "VethuQ worker ${{ needs.plan.outputs.version }}" \
+            --notes "The VethuQ worker (vethuqw): reads a job's pages for a GitHub runner. Install the VethuQ command line first (same release): it installs into the same folder. Windows: VethuQ-Worker-Setup.exe. Linux (Debian, Ubuntu): sudo apt install ./vethuq-cli_*.deb ./vethuq-worker_*.deb, then run vethuq-worker."

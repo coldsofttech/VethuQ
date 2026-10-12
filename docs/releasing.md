@@ -13,7 +13,7 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The command line, the interactive shell and the background service ship as installers: see
+The command line, the interactive shell, the background service and the worker ship as installers: see
 [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
@@ -81,7 +81,7 @@ downloaded the first time OCR runs.
 Build one locally (Windows needs Inno Setup's `iscc` on PATH; Linux needs `dpkg-deb`), from a workspace
 next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` installed:
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
     uv pip install "pyinstaller>=6.10"
     uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
 
@@ -107,7 +107,7 @@ PyInstaller version) must equal the id the shell's installer was built with. So 
 same commit or at least the same `uv.lock`. Uninstalling the command line removes `vethuqic` too. The
 Windows shell's own uninstaller removes only what it added (`vethuqic.exe`).
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
     uv run --no-sync python scripts/release/release.py --cli --interactive-cli --version 1.2.0
 
 ### The background service
@@ -133,6 +133,30 @@ The `vethuq background ...` commands (install, uninstall, start, stop, pause, re
 there, so they appear once this is installed. Uninstalling the command line removes `vethuqbs.exe` too, so
 uninstall the service first (the background service's own uninstaller does).
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
     uv pip install "pywin32>=306"        # Windows only
     uv run --no-sync python scripts/release/release.py --background-service --version 1.2.0
+
+### The worker
+
+`vethuq-worker-bin-vX.Y.Z` (`-rcN` for a release candidate) builds the worker program, `vethuqw`, with
+`.github/workflows/release-worker.yml`. (`vethuq-worker-vX.Y.Z` is the PyPI package's tag and is
+unchanged.) Like the shell and the service it installs **into the command line's folder** on the same
+`lib/` and `add-ons/`, and needs the command line installed first, from the same build.
+
+| Platform | File | Installs |
+|---|---|---|
+| Windows | `VethuQ-Worker-Setup.exe` | `vethuqw.exe` |
+| Linux | `vethuq-worker_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqw`, and `/usr/bin/vethuq-worker` pointing at it; depends on `vethuq-cli` |
+
+    vethuqw run --job-id ID --payload DIR --out DIR      # the key is in VETHUQ_MASTER_KEY
+    vethuqw bake-models --models DIR                     # fetches the OCR models (needs the network)
+
+The worker reads a job with the add-ons in `add-ons/`: the installers carry the free defaults, so a runner
+that needs more (office files, Telugu, deeper OCR) adds those add-on folders there. The OCR models are not
+in the installers; `bake-models` downloads them, and `VETHUQ_MODELS` points the worker at them. There is
+nothing to configure at install time and no service to clean up; uninstalling the command line removes
+`vethuqw.exe` too.
+
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+    uv run --no-sync python scripts/release/release.py --worker --version 1.2.0

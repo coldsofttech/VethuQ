@@ -336,3 +336,64 @@ class TestBackgroundInstaller:
     def test_a_mode_is_required(self):
         with pytest.raises(SystemExit):
             release.main(["--dev"])
+
+
+W_INSTALLER = ROOT / "packages" / "worker" / "installer"
+
+
+class TestWorkerInstaller:
+    """vethuqw.exe goes into the command line's folder, like the shell and the service."""
+
+    def script(self) -> str:
+        return (W_INSTALLER / "vethuqw.iss").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("name", ["vethuqw.iss", "vethuqw_entry.py"])
+    def test_the_file_exists(self, name):
+        assert (W_INSTALLER / name).is_file()
+
+    def test_it_installs_only_the_worker_into_the_cli_folder(self):
+        script = self.script()
+        files = script.split("[Files]")[1].split("[Code]")[0]
+        assert len(re.findall(r"^Source: .*", files, re.M)) == 1
+        assert '#define MyAppExeName "vethuqw.exe"' in script
+        assert "DefaultDirName={code:CliDir}" in script
+        assert "into_cli_folder.iss" in script
+        for name in ("LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"):
+            assert f"..\\..\\..\\installer\\shared\\{name}" in script
+
+    def test_every_installer_has_an_app_id_of_its_own(self):
+        ids = []
+        for path in (
+            INSTALLER / "vethuq-cli.iss",
+            IC_INSTALLER / "vethuqic.iss",
+            BS_INSTALLER / "vethuqbs.iss",
+            W_INSTALLER / "vethuqw.iss",
+        ):
+            ids.append(re.search(r"^AppId=\{\{([0-9A-Fa-f-]+)\}", path.read_text("utf-8"), re.M)[1])
+        assert len(set(ids)) == 4
+
+    def test_the_spec_builds_the_worker_with_its_schemas(self):
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
+        assert 'W_INSTALLER / "vethuqw_entry.py"' in spec and '"vethuqw"' in spec
+        assert '"jsonschema_specifications"' in spec and '"vethuq_worker"' in spec
+        assert spec.count("COLLECT(") == 1
+
+    def test_the_command_line_installers_leave_the_worker_alone(self):
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        assert 'Name: "{app}\\vethuqw.exe"' in cli
+
+    def test_its_tag_does_not_clash_with_the_pypi_one(self):
+        binary = plan.plan("vethuq-worker-bin-v1.2.0-rc1")
+        assert (binary.dist, binary.prerelease) == ("vethuq-worker", True)
+        # The PyPI release keeps its tag, which the program's tag does not match.
+        assert plan.plan("vethuq-worker-v1.2.0").version == "1.2.0"
+        release_yml = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+        assert '"vethuq-worker-v*"' in release_yml
+        assert not re.match(r"vethuq-worker-v.*", "vethuq-worker-bin-v1.2.0")
+
+    def test_the_deb_checks_the_runtime_and_depends_on_the_cli(self):
+        assert "/usr/share/vethuq-worker/runtime-id" in release.Cli.postinst("vethuq-worker")
+
+    def test_a_mode_is_required(self):
+        with pytest.raises(SystemExit):
+            release.main(["--dev"])

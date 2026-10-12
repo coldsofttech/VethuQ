@@ -3,15 +3,17 @@
     python scripts/release/release.py --cli --version 1.2.0
     python scripts/release/release.py --interactive-cli --version 1.2.0
     python scripts/release/release.py --background-service --version 1.2.0
-    python scripts/release/release.py --cli --interactive-cli --background-service --dev  # local
+    python scripts/release/release.py --worker --version 1.2.0
+    python scripts/release/release.py --cli --interactive-cli --background-service --worker --dev
 
 No desktop app is built. One PyInstaller build makes both programs:
 
   1. PyInstaller turns `installer/shared/vethuq.spec` into `build/cli/vethuq/`:
      `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `vethuqbs(.exe)` (the
-     background service), `lib/` (the runtime and every dependency, plus `runtime-id.txt`) and
-     `add-ons/` (the default add-ons). The `vethuq background` commands (add-ons/background) are
-     moved to `build/cli/background-plugin/` for the service's installer.
+     background service), `vethuqw(.exe)` (the worker), `lib/` (the runtime and every dependency,
+     plus `runtime-id.txt`) and `add-ons/` (the default add-ons). The `vethuq background`
+     commands (add-ons/background) are moved to `build/cli/background-plugin/` for the service's
+     installer.
   2. `--cli`: Windows: Inno Setup (`iscc`) wraps `vethuq`, `lib/` and `add-ons/` into
      `dist/VethuQ-CLI-Setup.exe`. Linux: `dpkg-deb` packs them into
      `dist/vethuq-cli_<version>_<arch>.deb` (installs to /opt/vethuq, /usr/bin/vethuq).
@@ -22,6 +24,9 @@ No desktop app is built. One PyInstaller build makes both programs:
   4. `--background-service`: only `vethuqbs` and the `vethuq background` commands are packed, again
      for the command line's folder: `dist/VethuQ-Background-Service-Setup.exe`, or
      `dist/vethuq-background-service_<version>_<arch>.deb` (depends on vethuq-cli).
+  5. `--worker`: only `vethuqw` is packed, again for the command line's folder:
+     `dist/VethuQ-Worker-Setup.exe`, or `dist/vethuq-worker_<version>_<arch>.deb` (depends on
+     vethuq-cli; `/usr/bin/vethuq-worker` runs it).
 
 `--version` is the release version (`1.2.0`, or `1.2.0-rc1` for a release candidate). `--dev` skips
 compression and reuses a PyInstaller build whose inputs haven't changed. Run it in an environment
@@ -46,6 +51,7 @@ INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
 SHARED = REPO_ROOT / "installer" / "shared"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 BS_INSTALLER = REPO_ROOT / "packages" / "background" / "installer"
+W_INSTALLER = REPO_ROOT / "packages" / "worker" / "installer"
 BUILD = REPO_ROOT / "build" / "cli"
 DIST = REPO_ROOT / "dist"
 APP = BUILD / "vethuq"
@@ -109,6 +115,7 @@ class Cli:
             *INSTALLER.glob("*.py"),
             *IC_INSTALLER.glob("*.py"),
             *BS_INSTALLER.glob("*.py"),
+            *W_INSTALLER.glob("*.py"),
             *SHARED.glob("*.py"),
             SHARED / "vethuq.spec",
         ]
@@ -190,6 +197,7 @@ class Cli:
             APP / f"vethuq{suffix}",
             APP / f"vethuqic{suffix}",
             APP / f"vethuqbs{suffix}",
+            APP / f"vethuqw{suffix}",
             APP / "lib",
             APP / "add-ons",
             PLUGIN,
@@ -306,7 +314,7 @@ class Cli:
             APP,
             root / "opt" / "vethuq",
             symlinks=True,
-            ignore=shutil.ignore_patterns("vethuqic", "vethuqbs"),
+            ignore=shutil.ignore_patterns("vethuqic", "vethuqbs", "vethuqw"),
         )
         (root / "usr" / "bin").mkdir(parents=True)
         (root / "usr" / "bin" / "vethuq").symlink_to("/opt/vethuq/vethuq")
@@ -414,10 +422,46 @@ Categories=Utility;ConsoleOnly;
         )
         return self.pack(root, "vethuq-background-service", arch)
 
+    def worker_deb(self, runtime_id: str) -> Path:
+        """`vethuqw`, into the CLI's /opt/vethuq; `/usr/bin/vethuq-worker` is what runners call."""
+        arch = self.architecture()
+        root = self.stage("deb-w")
+        opt = root / "opt" / "vethuq"
+        opt.mkdir(parents=True)
+        shutil.copy2(APP / "vethuqw", opt / "vethuqw")
+        (root / "usr" / "bin").mkdir(parents=True)
+        (root / "usr" / "bin" / "vethuq-worker").symlink_to("/opt/vethuq/vethuqw")
+        data = root / "usr" / "share" / "vethuq-worker"
+        data.mkdir(parents=True)
+        (data / "runtime-id").write_text(runtime_id + "\n", encoding="ascii")
+        self.changelog(root / "usr" / "share" / "doc" / "vethuq-worker", "worker")
+        debian = root / "DEBIAN"
+        debian.mkdir()
+        (debian / "postinst").write_text(self.postinst("vethuq-worker"), encoding="utf-8")
+        (debian / "postinst").chmod(0o755)
+        (debian / "control").write_text(
+            self.control(
+                arch,
+                self.installed_size_kb(root),
+                package="vethuq-worker",
+                summary="VethuQ worker",
+                detail=" Reads a job's pages for a GitHub runner (vethuq-worker run --job-id ID\n"
+                " --payload DIR --out DIR). Installs into the folder of vethuq-cli.\n",
+                depends="vethuq-cli",
+            ),
+            encoding="utf-8",
+        )
+        return self.pack(root, "vethuq-worker", arch)
+
     # ----- all --------------------------------------------------------------------------------
 
     def build(
-        self, *, cli: bool = False, interactive: bool = False, background: bool = False
+        self,
+        *,
+        cli: bool = False,
+        interactive: bool = False,
+        background: bool = False,
+        worker: bool = False,
     ) -> list[Path]:
         if sys.platform not in ("win32", "linux"):
             raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
@@ -445,6 +489,14 @@ Categories=Utility;ConsoleOnly;
                         f"/DRuntimeId={runtime_id}",
                     )
                 )
+            if worker:
+                built.append(
+                    self.inno(
+                        W_INSTALLER / "vethuqw.iss",
+                        "VethuQ-Worker-Setup.exe",
+                        f"/DRuntimeId={runtime_id}",
+                    )
+                )
         else:
             if cli:
                 built.append(self.deb())
@@ -452,6 +504,8 @@ Categories=Utility;ConsoleOnly;
                 built.append(self.interactive_deb(runtime_id))
             if background:
                 built.append(self.background_deb(runtime_id))
+            if worker:
+                built.append(self.worker_deb(runtime_id))
         return built
 
 
@@ -460,6 +514,11 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--cli", action="store_true", help="build the command-line installer")
+    parser.add_argument(
+        "--worker",
+        action="store_true",
+        help="build the worker's installer (it installs into the command line's folder)",
+    )
     parser.add_argument(
         "--background-service",
         action="store_true",
@@ -474,11 +533,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
     args = parser.parse_args(argv)
-    if not (args.cli or args.interactive_cli or args.background_service):
-        parser.error("choose what to build: --cli, --interactive-cli and/or --background-service")
+    if not (args.cli or args.interactive_cli or args.background_service or args.worker):
+        parser.error(
+            "choose what to build: --cli, --interactive-cli, --background-service, --worker"
+        )
     try:
         built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(
-            cli=args.cli, interactive=args.interactive_cli, background=args.background_service
+            cli=args.cli,
+            interactive=args.interactive_cli,
+            background=args.background_service,
+            worker=args.worker,
         )
     except (ReleaseError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -72,13 +72,15 @@ Source: "..\..\..\build\cli\vethuq\lib\*"; DestDir: "{app}\lib"; Flags: ignoreve
 Source: "..\..\..\build\cli\vethuq\add-ons\*"; DestDir: "{app}\add-ons"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [UninstallDelete]
-; The interactive shell and the background service (their own installers) live in this folder and rely
+; The interactive shell, the background service and the worker (their own installers) live in this folder and rely
 ; on lib\.
 Type: files; Name: "{app}\vethuqic.exe"
 Type: files; Name: "{app}\vethuqbs.exe"
+Type: files; Name: "{app}\vethuqw.exe"
 Type: filesandordirs; Name: "{app}\add-ons\background"
 Type: files; Name: "{app}\unins001.*"
 Type: files; Name: "{app}\unins002.*"
+Type: files; Name: "{app}\unins003.*"
 
 [Tasks]
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Command line:"; Flags: checkedonce

@@ -11,6 +11,8 @@ Tags (one per package, versions independent; `-rcN` is a release candidate, publ
                                                    `vethuq_entitlements` runtime built in
     vethuq-cli-vX.Y.Z         vethuq-cli           not on PyPI: release-cli.yml builds the
                                                    installers (Windows .exe, Linux .deb)
+    vethuq-worker-bin-vX.Y.Z   the program      not on PyPI: release-worker.yml builds its
+                                                   installers (they need the CLI)
     vethuq-background-service-vX.Y.Z   the service   not on PyPI: release-background-service.yml
                                                    builds its installers (they need the CLI)
     vethuq-interactive-cli-vX.Y.Z   the shell        not on PyPI: release-interactive-cli.yml builds
@@ -37,10 +39,12 @@ PACKAGES = {
     "vethuq-cli": ("vethuq-cli", "packages/cli", False),
     "vethuq-interactive-cli": ("vethuq-interactive-cli", "packages/interactive-cli", False),
     "vethuq-background-service": ("vethuq-background", "packages/background", False),
+    # `vethuq-worker-vX.Y.Z` releases the PyPI package; this one builds the worker program.
+    "vethuq-worker-bin": ("vethuq-worker", "packages/worker", False),
     "vethuq": ("vethuq", "packages/core", True),
 }
 TAG = re.compile(
-    r"^(?P<prefix>vethuq-addon-api|vethuq-worker|vethuq-interactive-cli|vethuq-background-service|vethuq-cli|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
+    r"^(?P<prefix>vethuq-addon-api|vethuq-worker-bin|vethuq-worker|vethuq-interactive-cli|vethuq-background-service|vethuq-cli|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
 )
 
 
