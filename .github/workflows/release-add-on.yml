@@ -1,0 +1,148 @@
+# Builds the installers of one VethuQ add-on when `vethuq-addon-<name>-vX.Y.Z` is pushed:
+#
+#   Windows   VethuQ-Addon-<name>-Setup.exe             Inno Setup
+#   Linux     vethuq-addon-<name>_X.Y.Z_amd64.deb       dpkg-deb
+#
+# The add-on's sources are in the private VethuQ-premium repository (read with PREMIUM_READ_TOKEN, as
+# in release-cli.yml); the installers live here so anyone can download and install an add-on. An
+# add-on is compiled modules and a few packages, so there is no PyInstaller step: the installer
+# puts it in <VethuQ folder>/add-ons/<name>/, and it refuses to run unless VethuQ is installed
+# (Windows: the command line, the interactive shell or the desktop app; Linux: `vethuq-cli`).
+# The add-on's version in VethuQ-premium must equal the tag's. `vethuq-addon-api-vX.Y.Z` is the
+# add-on API package's tag (release.yml), not an add-on. Add `-rcN` for a release candidate: it is
+# attached to a GitHub prerelease. Nothing goes to PyPI. Licences are not asked for here: a licensed
+# add-on is activated with the command line. See docs/releasing.md.
+name: release-add-on
+
+on:
+  push:
+    tags:
+      - "vethuq-addon-*-v*"
+      - "!vethuq-addon-api-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to build, e.g. vethuq-addon-xls-v0.1.0 (the tag must exist)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+concurrency:
+  group: release-add-on-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.plan.outputs.name }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$TAG"
+      - id: version
+        # The tag's version as written (1.2.0 or 1.2.0-rc1), which is what release.py wants.
+        run: echo "version=${TAG##*-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: add-on-windows
+          # The oldest Ubuntu runner: a compiled module needs a glibc at least as old as the user's.
+          - os: ubuntu-22.04
+            artifact: add-on-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The two repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build the installer
+        working-directory: work/VethuQ
+        shell: bash
+        run: |
+          uv run --no-project python scripts/release/release.py --add-on \
+            --name "${{ needs.plan.outputs.name }}" \
+            --version "${{ needs.plan.outputs.version }}" \
+            --premium ../VethuQ-premium
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: work/VethuQ
+        shell: pwsh
+        run: |
+          # No VethuQ is installed on the runner: Setup must refuse, and install nothing.
+          $setup = "dist\VethuQ-Addon-${{ needs.plan.outputs.name }}-Setup.exe"
+          $run = Start-Process -Wait -PassThru $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/CURRENTUSER"
+          Write-Host "exit code $($run.ExitCode)"
+          if ($run.ExitCode -eq 0) { throw "Setup ran without VethuQ installed" }
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: |
+          deb="$(ls dist/vethuq-addon-*.deb)"
+          dpkg-deb -I "$deb" | grep -E "Pre-Depends: vethuq-cli"
+          dpkg-deb -c "$deb" | grep -E "/opt/vethuq/add-ons/${{ needs.plan.outputs.name }}/.*\.dist-info/METADATA"
+          # No VethuQ is installed on the runner: dpkg must refuse before unpacking.
+          if sudo dpkg -i "$deb"; then echo "installed without VethuQ" >&2; exit 1; fi
+          test ! -e /opt/vethuq/add-ons
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            work/VethuQ/dist/VethuQ-Addon-*-Setup.exe
+            work/VethuQ/dist/vethuq-addon-*.deb
+          if-no-files-found: error
+
+  github-release:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: add-on-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" dist/* "${flags[@]}" --repo "$GITHUB_REPOSITORY" \
+            --title "VethuQ add-on ${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }}" \
+            --notes "The ${{ needs.plan.outputs.name }} add-on for VethuQ. Install VethuQ first. Windows: run VethuQ-Addon-${{ needs.plan.outputs.name }}-Setup.exe and choose the same install for all users or just you as VethuQ. Linux (Debian, Ubuntu): sudo apt install ./vethuq-addon-${{ needs.plan.outputs.name }}_*.deb. A licensed add-on is activated afterwards with: vethuq settings addons ${{ needs.plan.outputs.name }} licence TOKEN"

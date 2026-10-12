@@ -4,6 +4,7 @@
     python scripts/release/release.py --interactive-cli --version 1.2.0
     python scripts/release/release.py --background-service --version 1.2.0
     python scripts/release/release.py --worker --version 1.2.0
+    python scripts/release/release.py --add-on --name xls --version 0.1.0
     python scripts/release/release.py --cli --interactive-cli --background-service --worker --dev
 
 No desktop app is built. One PyInstaller build makes both programs:
@@ -27,6 +28,13 @@ No desktop app is built. One PyInstaller build makes both programs:
   5. `--worker`: only `vethuqw` is packed, again for the command line's folder:
      `dist/VethuQ-Worker-Setup.exe`, or `dist/vethuq-worker_<version>_<arch>.deb` (depends on
      vethuq-cli; `/usr/bin/vethuq-worker` runs it).
+  6. `--add-on --name NAME`: one add-on, no PyInstaller (compiled modules + a few packages).
+     The wheel is built from the sibling VethuQ-premium checkout (`--premium PATH`); its
+     dependencies that VethuQ does not already carry are staged beside it, and Inno Setup /
+     `dpkg-deb` pack that
+     into `dist/VethuQ-Addon-<name>-Setup.exe` or
+     `dist/vethuq-addon-<name>_<version>_<arch>.deb`. It installs into
+     `<VethuQ>/add-ons/<name>/` and refuses to run unless VethuQ is installed.
 
 `--version` is the release version (`1.2.0`, or `1.2.0-rc1` for a release candidate). `--dev` skips
 compression and reuses a PyInstaller build whose inputs haven't changed. Run it in an environment
@@ -44,6 +52,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
+import uuid
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -57,6 +68,8 @@ DIST = REPO_ROOT / "dist"
 APP = BUILD / "vethuq"
 # The `vethuq background` commands, kept out of the command line's add-ons/.
 PLUGIN = BUILD / "background-plugin"
+UV = shutil.which("uv") or "uv"
+ADDON_INSTALLER = REPO_ROOT / "installer" / "addon"
 
 VERSION = re.compile(r"^(?P<release>\d+\.\d+\.\d+)(?:-?(?P<pre>rc\d+))?$")
 MAINTAINER = "coldsofttech <noreply@github.com>"
@@ -509,11 +522,247 @@ Categories=Utility;ConsoleOnly;
         return built
 
 
+def normalise(name: str) -> str:
+    """A distribution name as pip compares it."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+class AddOn(Cli):
+    """The installers of one add-on, built from its sources in the VethuQ-premium checkout."""
+
+    def __init__(
+        self, name: str, version: Version, premium: Path, *, dev: bool = False, clean: bool = False
+    ) -> None:
+        super().__init__(version, dev=dev, clean=clean)
+        self.name = name
+        self.premium = Path(premium)
+        self.work = BUILD.parent / "addon" / name
+        self.dist_name = f"vethuq-addon-{name}"
+
+    @property
+    def guid(self) -> str:
+        """The add-on's AppId: the same every time, and different for every add-on."""
+        url = f"https://github.com/coldsofttech/VethuQ/add-on/{self.name}"
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, url)).upper()
+
+    # ----- the sources and the wheel ------------------------------------------------------------
+
+    def source(self) -> Path:
+        """The add-on's folder: `packages/add-ons/[group/[sub/]]<folder>` holds its pyproject."""
+        for pyproject in sorted((self.premium / "packages" / "add-ons").rglob("pyproject.toml")):
+            if "src" in pyproject.parts:
+                continue
+            project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {})
+            if project.get("name") == self.dist_name:
+                return pyproject.parent
+        raise ReleaseError(
+            f"No add-on {self.name!r} in {self.premium} (looked for {self.dist_name}). "
+            "Check out VethuQ-premium next to VethuQ, or pass --premium."
+        )
+
+    def build_wheel(self) -> Path:
+        out = self.work / "wheel"
+        if out.exists():
+            shutil.rmtree(out)
+        run([UV, "build", "--wheel", "--out-dir", str(out), str(self.source())])
+        wheels = sorted(out.glob("*.whl"))
+        if len(wheels) != 1:
+            raise ReleaseError(f"Expected one wheel in {out}, found {len(wheels)}.")
+        return wheels[0]
+
+    def check_version(self, wheel: Path) -> None:
+        """The wheel is the release the tag names: the add-on's own version is the version."""
+        built = wheel.name.split("-")[1]
+        if built != self.version.release + (self.version.pre or ""):
+            raise ReleaseError(
+                f"{wheel.name} is version {built}, not {self.version.display}: set the add-on's "
+                "version in VethuQ-premium to the tag's before releasing."
+            )
+
+    # ----- what VethuQ already carries --------------------------------------------------------
+
+    @staticmethod
+    def pins(text: str) -> dict[str, str]:
+        """`name==version` lines (markers and comments dropped) as {normalised name: version}."""
+        found = {}
+        for line in text.splitlines():
+            match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;]+)", line.strip())
+            if match:
+                found[normalise(match[1])] = match[2]
+        return found
+
+    def provided(self) -> dict[str, str]:
+        """The packages in the command line's build: `vethuq-cli` and, through `vethuq`, the default
+        add-ons and what they need. An add-on is installed beside that, so it ships the
+        rest."""
+        result = subprocess.run(  # noqa: S603, S607 - fixed argv
+            [
+                UV,
+                "export",
+                "--frozen",
+                "--no-dev",
+                "--no-hashes",
+                "--no-emit-workspace",
+                "--package",
+                "vethuq-cli",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        return self.pins(result.stdout)
+
+    @staticmethod
+    def requirements(wheel: Path) -> list[str]:
+        """The wheel's own requirements, less VethuQ's packages and optional extras."""
+        with zipfile.ZipFile(wheel) as archive:
+            name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+            metadata = archive.read(name).decode("utf-8")
+        wanted = []
+        for line in metadata.splitlines():
+            if not line.startswith("Requires-Dist:"):
+                continue
+            requirement = line.split(":", 1)[1].strip()
+            if "extra ==" in requirement or normalise(
+                re.split(r"[\s;\[<>=!~(]", requirement)[0]
+            ).startswith("vethuq"):
+                continue
+            wanted.append(requirement)
+        return wanted
+
+    # ----- staging ------------------------------------------------------------------------
+
+    def stage_files(self, wheel: Path) -> Path:
+        """The folder that is installed: the add-on's package and dist-info, plus the packages it
+        needs that VethuQ does not carry (pinned by `uv pip compile`, installed without dependencies
+        so nothing VethuQ carries is repeated)."""
+        folder = self.work / "stage"
+        if folder.exists():
+            shutil.rmtree(folder)
+        folder.mkdir(parents=True)
+        with zipfile.ZipFile(wheel) as archive:
+            archive.extractall(folder)  # noqa: S202 - our own wheel
+        needed = self.requirements(wheel)
+        if needed:
+            provided = self.provided()
+            (self.work / "requirements.in").write_text("\n".join(needed) + "\n", encoding="utf-8")
+            compiled = subprocess.run(  # noqa: S603, S607 - fixed argv
+                [
+                    UV,
+                    "pip",
+                    "compile",
+                    "--no-header",
+                    "--no-annotate",
+                    "-q",
+                    str(self.work / "requirements.in"),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            extra = {n: v for n, v in self.pins(compiled.stdout).items() if n not in provided}
+            if extra:
+                lines = [f"{n}=={v}" for n, v in sorted(extra.items())]
+                (self.work / "requirements.txt").write_text(
+                    "\n".join(lines) + "\n", encoding="utf-8"
+                )
+                run(
+                    [
+                        UV,
+                        "pip",
+                        "install",
+                        "--no-deps",
+                        "--target",
+                        str(folder),
+                        "-r",
+                        str(self.work / "requirements.txt"),
+                    ]
+                )
+        for scripts in ("bin", "Scripts"):
+            shutil.rmtree(folder / scripts, ignore_errors=True)
+        for cache in folder.rglob("__pycache__"):
+            shutil.rmtree(cache)
+        if not list(folder.glob("*.dist-info")):
+            raise ReleaseError(f"The staged add-on has no dist-info: {folder}")
+        return folder
+
+    # ----- the installers -----------------------------------------------------------------
+
+    def windows(self, folder: Path) -> Path:
+        return self.inno(
+            ADDON_INSTALLER / "vethuq-addon.iss",
+            f"VethuQ-Addon-{self.name}-Setup.exe",
+            f"/DAddonName={self.name}",
+            f"/DAddonGuid={self.guid}",
+            f"/DStageDir={folder}",
+        )
+
+    PREINST = """#!/bin/sh
+set -e
+if [ "$1" = install ] || [ "$1" = upgrade ]; then
+    if [ ! -x /opt/vethuq/vethuq ]; then
+        echo "VethuQ is not installed. Install vethuq-cli first, then install this add-on." >&2
+        exit 1
+    fi
+fi
+"""
+
+    def linux(self, folder: Path) -> Path:
+        arch = self.architecture()
+        package = f"vethuq-addon-{self.name}"
+        root = Cli.stage(f"deb-addon-{self.name}")
+        shutil.copytree(folder, root / "opt" / "vethuq" / "add-ons" / self.name, symlinks=True)
+        self.changelog_for(root / "usr" / "share" / "doc" / package, package)
+        debian = root / "DEBIAN"
+        debian.mkdir()
+        (debian / "preinst").write_text(self.PREINST, encoding="utf-8")
+        (debian / "preinst").chmod(0o755)
+        control = self.control(
+            arch,
+            self.installed_size_kb(root),
+            package=package,
+            summary=f"VethuQ add-on {self.name}",
+            detail=f" The {self.name} add-on for VethuQ. Installs into /opt/vethuq/add-ons.\n",
+            depends="vethuq-cli",
+        )
+        # Pre-Depends: dpkg refuses to unpack before VethuQ (vethuq-cli) is installed.
+        control = control.replace("Depends: ", "Pre-Depends: ", 1)
+        (debian / "control").write_text(control, encoding="utf-8")
+        return self.pack(root, package, arch)
+
+    @staticmethod
+    def changelog_for(doc: Path, package: str) -> None:
+        doc.mkdir(parents=True)
+        shutil.copy(REPO_ROOT / "LICENSE", doc / "copyright")
+
+    def build_addon(self) -> list[Path]:
+        if sys.platform not in ("win32", "linux"):
+            raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
+        wheel = self.build_wheel()
+        self.check_version(wheel)
+        folder = self.stage_files(wheel)
+        DIST.mkdir(exist_ok=True)
+        return [self.windows(folder) if sys.platform == "win32" else self.linux(folder)]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--cli", action="store_true", help="build the command-line installer")
+    parser.add_argument(
+        "--add-on",
+        action="store_true",
+        help="build the installer of one add-on (with --name); it installs into VethuQ's folder",
+    )
+    parser.add_argument("--name", help="the add-on to build with --add-on, e.g. xls")
+    parser.add_argument(
+        "--premium",
+        type=Path,
+        default=Path(os.environ.get("VETHUQ_PREMIUM", REPO_ROOT.parent / "VethuQ-premium")),
+        help="the VethuQ-premium checkout holding the add-on (default: next to this repository)",
+    )
     parser.add_argument(
         "--worker",
         action="store_true",
@@ -533,9 +782,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
     args = parser.parse_args(argv)
+    if args.add_on and not args.name:
+        parser.error("--add-on needs --name, e.g. --add-on --name xls")
+    if args.add_on:
+        try:
+            built = AddOn(
+                args.name, Version(args.version), args.premium, dev=args.dev, clean=args.clean
+            ).build_addon()
+        except (ReleaseError, subprocess.CalledProcessError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        for path in built:
+            print(f"Built {path}")
+        return 0
     if not (args.cli or args.interactive_cli or args.background_service or args.worker):
         parser.error(
-            "choose what to build: --cli, --interactive-cli, --background-service, --worker"
+            "choose what to build: --cli, --interactive-cli, --background-service, --worker, "
+            "--add-on"
         )
     try:
         built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(

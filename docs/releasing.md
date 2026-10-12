@@ -13,7 +13,7 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The command line, the interactive shell, the background service and the worker ship as installers: see
+The command line, the interactive shell, the background service, the worker and each add-on ship as installers: see
 [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
@@ -160,3 +160,33 @@ nothing to configure at install time and no service to clean up; uninstalling th
 
     uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
     uv run --no-sync python scripts/release/release.py --worker --version 1.2.0
+
+### Add-ons
+
+`vethuq-addon-<name>-vX.Y.Z` (`-rcN` for a release candidate) builds the installers of one add-on, with
+`.github/workflows/release-add-on.yml` (also runnable by hand with the tag as input). The sources stay in
+the private VethuQ-premium repository, which the workflow reads; the installers are published here, so
+anyone can download an add-on. (`vethuq-addon-api-vX.Y.Z` is the add-on API package, not an add-on.)
+
+| Platform | File | Installs |
+|---|---|---|
+| Windows | `VethuQ-Addon-<name>-Setup.exe` | the add-on into `<VethuQ folder>\add-ons\<name>\` |
+| Linux | `vethuq-addon-<name>_X.Y.Z_amd64.deb` | `/opt/vethuq/add-ons/<name>/`; `Pre-Depends: vethuq-cli` |
+
+An add-on is compiled modules (a `cp311-abi3` wheel) and a few small packages, so there is no PyInstaller
+step. `release.py` builds the wheel from the sibling VethuQ-premium checkout, then stages the wheel's
+package and dist-info (which holds the entry point VethuQ finds it by) and the packages it needs that VethuQ
+does not already carry: it takes the command line's own packages from `uv.lock` (`uv export --package
+vethuq-cli`), resolves the add-on's requirements with `uv pip compile`, and installs the difference with
+`uv pip install --no-deps --target`. For `xls` that is `olefile` and `xlrd`; numpy and Pillow are already
+in VethuQ. The add-on's version in VethuQ-premium must equal the tag's.
+
+**VethuQ must be installed first.** On Windows Setup looks for the command line, the interactive shell or
+the desktop app (their install folders are in the registry) and stops with a message if none is there; it
+installs into that folder, with the same "all users or just me" choice as the main installer (pick the same
+as VethuQ). On Linux `Pre-Depends: vethuq-cli` makes dpkg refuse before unpacking, and `preinst` says what
+to do. Uninstalling removes only the add-on. The compiled add-ons are checked at run time, so the
+installers of licensed add-ons are public too; **Setup asks for no licence**: activate one with
+`vethuq settings addons <name> licence <token>`.
+
+    uv run --no-project python scripts/release/release.py --add-on --name xls --version 0.1.0 --premium ../VethuQ-premium

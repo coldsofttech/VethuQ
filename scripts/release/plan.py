@@ -13,6 +13,8 @@ Tags (one per package, versions independent; `-rcN` is a release candidate, publ
                                                    installers (Windows .exe, Linux .deb)
     vethuq-worker-bin-vX.Y.Z   the program      not on PyPI: release-worker.yml builds its
                                                    installers (they need the CLI)
+    vethuq-addon-<name>-vX.Y.Z   an add-on     not on PyPI: release-add-on.yml builds its installers
+                                                   (sources: VethuQ-premium)
     vethuq-background-service-vX.Y.Z   the service   not on PyPI: release-background-service.yml
                                                    builds its installers (they need the CLI)
     vethuq-interactive-cli-vX.Y.Z   the shell        not on PyPI: release-interactive-cli.yml builds
@@ -48,6 +50,15 @@ TAG = re.compile(
 )
 
 
+# `vethuq-addon-<name>-vX.Y.Z` builds the installers of one add-on (sources: VethuQ-premium).
+# `api` is the add-on API package, released as a Python package under its own tag above.
+ADDON_TAG = re.compile(
+    r"^vethuq-addon-(?P<name>[a-z][a-z0-9]*(?:-[a-z0-9]+)*)"
+    r"-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
+)
+NOT_ADDONS = frozenset({"api", "core", "test", "tests", "template", "sample"})
+
+
 class ReleaseError(Exception):
     """The tag, or what was built for it, is not right."""
 
@@ -59,6 +70,7 @@ class Plan:
     version: str  # normalised (PEP 440)
     prerelease: bool
     platform_wheels: bool  # one wheel per platform, with the entitlements runtime inside
+    name: str = ""  # an add-on's name (`vethuq-addon-<name>`); empty for the packages above
 
     def lines(self) -> list[str]:
         return [
@@ -69,11 +81,18 @@ class Plan:
 
 def plan(tag: str) -> Plan:
     match = TAG.match(tag)
+    addon = ADDON_TAG.match(tag)
+    if match is None and addon is not None and addon["name"] not in NOT_ADDONS:
+        version = Version(addon["version"].replace("-rc", "rc"))
+        name = addon["name"]
+        return Plan(
+            f"vethuq-addon-{name}", "", str(version), version.is_prerelease, False, name=name
+        )
     if match is None:
         raise ReleaseError(
             f"{tag!r} is not a release tag. Use vethuq-addon-api-vX.Y.Z, vethuq-worker-vX.Y.Z, "
-            "vethuq-cli-vX.Y.Z, vethuq-interactive-cli-vX.Y.Z, vethuq-background-service-vX.Y.Z "
-            "or vethuq-vX.Y.Z "
+            "vethuq-cli-vX.Y.Z, vethuq-interactive-cli-vX.Y.Z, vethuq-background-service-vX.Y.Z, "
+            "vethuq-addon-<name>-vX.Y.Z or vethuq-vX.Y.Z "
             "(add -rcN for a release candidate)."
         )
     dist, directory, platform = PACKAGES[match["prefix"]]

@@ -397,3 +397,113 @@ class TestWorkerInstaller:
     def test_a_mode_is_required(self):
         with pytest.raises(SystemExit):
             release.main(["--dev"])
+
+
+ADDON_INSTALLER = ROOT / "installer" / "addon"
+
+
+class TestAddOnInstaller:
+    """One generic installer per add-on: into VethuQ's add-ons/ folder, and only if VethuQ is there."""
+
+    def script(self) -> str:
+        return (ADDON_INSTALLER / "vethuq-addon.iss").read_text(encoding="utf-8")
+
+    def test_it_uses_the_shared_images_and_license(self):
+        script = self.script()
+        for name in ("LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"):
+            assert f"..\\shared\\{name}" in script
+            assert (SHARED / name).is_file()
+
+    def test_it_installs_into_the_add_ons_folder_of_vethuq(self):
+        script = self.script()
+        assert 'DestDir: "{app}\\add-ons\\{#AddonName}"' in script
+        assert "DefaultDirName={code:VethuqDir}" in script
+        assert "PrivilegesRequiredOverridesAllowed=dialog commandline" in script
+
+    def test_it_stops_unless_the_command_line_the_shell_or_the_desktop_app_is_installed(self):
+        script = self.script()
+        assert (
+            "InstallLocation(CliKey) or InstallLocation(ShellKey) or InstallLocation(DesktopKey)"
+            in script
+        )
+        assert "VethuQ is not installed. Install VethuQ first" in script
+        for path, key in (
+            (INSTALLER / "vethuq-cli.iss", "CliKey"),
+            (IC_INSTALLER / "vethuqic.iss", "ShellKey"),
+        ):
+            app_id = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", path.read_text("utf-8"), re.M)[1]
+            assert f"{key} = '{{{app_id}}}_is1'" in script
+
+    def test_it_asks_for_no_licence(self):
+        script = self.script().lower()
+        assert "licence" not in script.split("[code]")[1]
+        assert "[run]" not in script
+
+    def test_the_app_id_is_the_add_ons_own(self):
+        a = release.AddOn("xls", release.Version("1.0.0"), ROOT).guid
+        b = release.AddOn("docx", release.Version("1.0.0"), ROOT).guid
+        assert a == release.AddOn("xls", release.Version("2.0.0"), ROOT).guid
+        assert a != b and re.fullmatch(r"[0-9A-F-]{36}", a)
+
+    def test_the_cli_installers_ids_are_not_reused(self):
+        ids = {
+            release.AddOn(n, release.Version("1.0.0"), ROOT).guid for n in ("xls", "docx", "telugu")
+        }
+        cli = (INSTALLER / "vethuq-cli.iss").read_text("utf-8")
+        assert not any(guid in cli for guid in ids)
+
+    def test_the_tag_names_the_add_on(self):
+        result = plan.plan("vethuq-addon-xls-v1.2.0-rc1")
+        assert (result.name, result.dist, result.prerelease) == ("xls", "vethuq-addon-xls", True)
+        assert plan.plan("vethuq-addon-ocr-quick-v1.0.0").name == "ocr-quick"
+        # The add-on API package keeps its own tag.
+        assert plan.plan("vethuq-addon-api-v0.1.0").name == ""
+        with pytest.raises(plan.ReleaseError):
+            plan.plan("vethuq-addon-core-v1.0.0")
+        workflow = (ROOT / ".github" / "workflows" / "release-add-on.yml").read_text("utf-8")
+        assert '"!vethuq-addon-api-v*"' in workflow
+
+    def test_pins_are_read_from_an_export_and_names_are_normalised(self):
+        text = "numpy==2.1.0 ; sys_platform == 'win32'\n# comment\nPyYAML==6.0\n-e ./x\n"
+        text += "olefile==0.47\n"
+        assert release.AddOn.pins(text) == {"numpy": "2.1.0", "pyyaml": "6.0", "olefile": "0.47"}
+        assert release.normalise("Typing_Extensions") == "typing-extensions"
+
+    def test_the_wheels_own_requirements_leave_out_vethuq_and_extras(self, tmp_path):
+        import zipfile
+
+        wheel = tmp_path / "x-1.0-py3-none-any.whl"
+        metadata = (
+            "Requires-Dist: vethuq-addon-api~=0.1\nRequires-Dist: olefile>=0.46\n"
+            "Requires-Dist: pillow>=10; sys_platform != 'x'\n"
+            "Requires-Dist: pytest; extra == 'test'\n"
+        )
+        with zipfile.ZipFile(wheel, "w") as archive:
+            archive.writestr("x-1.0.dist-info/METADATA", metadata)
+        assert release.AddOn.requirements(wheel) == [
+            "olefile>=0.46",
+            "pillow>=10; sys_platform != 'x'",
+        ]
+
+    def test_the_add_on_is_found_in_the_premium_layout(self, tmp_path):
+        folder = tmp_path / "packages" / "add-ons" / "file-types" / "xls"
+        (folder / "src" / "vethuq_addon_xls").mkdir(parents=True)
+        (folder / "pyproject.toml").write_text('[project]\nname = "vethuq-addon-xls"\n')
+        addon = release.AddOn("xls", release.Version("1.0.0"), tmp_path)
+        assert addon.source() == folder
+        with pytest.raises(release.ReleaseError, match="No add-on 'nope'"):
+            release.AddOn("nope", release.Version("1.0.0"), tmp_path).source()
+
+    def test_the_wheel_must_be_the_tags_version(self, tmp_path):
+        addon = release.AddOn("xls", release.Version("1.2.0-rc1"), tmp_path)
+        addon.check_version(Path("vethuq_addon_xls-1.2.0rc1-cp311-abi3-win_amd64.whl"))
+        with pytest.raises(release.ReleaseError, match="set the add-on's version"):
+            addon.check_version(Path("vethuq_addon_xls-0.1.0-cp311-abi3-win_amd64.whl"))
+
+    def test_the_deb_refuses_to_install_without_vethuq(self):
+        assert "/opt/vethuq/vethuq" in release.AddOn.PREINST and "exit 1" in release.AddOn.PREINST
+        assert "Install vethuq-cli first" in release.AddOn.PREINST
+
+    def test_it_needs_a_name(self):
+        with pytest.raises(SystemExit):
+            release.main(["--add-on"])
