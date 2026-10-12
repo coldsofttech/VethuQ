@@ -26,10 +26,11 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 # This package lives in a subdirectory of the repo, not at its root.
 root = "../.."
-# Released on its own with tags `cli-vX.Y.Z` (or `cli-vX.Y.Z-dev.N`), independent of the other
-# packages. Only this package's tags count.
-tag_regex = "^cli-v(?P<version>\\d+\\.\\d+\\.\\d+(-dev\\.\\d+)?)$"
-git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "cli-v*"]
+# Released on its own with tags `vethuq-cli-vX.Y.Z` (or `vethuq-cli-vX.Y.Z-rcN`), independent of the
+# other packages. Only this package's tags count. With no tag yet the version is 0.1.0.
+fallback_version = "0.1.0"
+tag_regex = "^vethuq-cli-v(?P<version>\\d+\\.\\d+\\.\\d+(?:-?rc\\d+)?)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "vethuq-cli-v*"]
 
 [tool.uv.sources]
 vethuq = { workspace = true }

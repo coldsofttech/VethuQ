@@ -66,11 +66,17 @@ vethuq-addon-noise-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/e
 vethuq-addon-semantic = { path = "../VethuQ-premium/packages/add-ons/search/engines/semantic" }
 vethuq-addon-case = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/case" }
 vethuq-addon-unicode = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" }
-vethuq-addon-leetspeak = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" }
+vethuq-addon-leetspeak = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak", editable = true }
 
 [dependency-groups]
 dev = [
     "VethuQ",
+    # Not installed with VethuQ by default, but the tests exercise them.
+    "vethuq-addon-lexical",
+    "vethuq-addon-proximity",
+    "vethuq-addon-fuzzy",
+    "vethuq-addon-noise-fuzzy",
+    "vethuq-addon-leetspeak",
     "vethuq-addon-semantic",
     "numpy>=1.26",
     "vethuq-addon-api",

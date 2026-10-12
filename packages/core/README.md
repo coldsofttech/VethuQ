@@ -898,7 +898,7 @@ Only closed UTC days are sent, each once. The schema is in the VethuQ repository
 
 ## Search
 
-`client.search` finds text on the pages that were indexed. Only pages of files that are `indexed` and whose text is final are searched. Search engines and the normalizers they apply come from add-ons, all free and installed with VethuQ:
+`client.search` finds text on the pages that were indexed. Only pages of files that are `indexed` and whose text is final are searched. Search engines and the normalizers they apply come from add-ons, all free. `exact`, `like` and `full-text` are installed with VethuQ; `lexical`, `proximity`, `fuzzy` and `noise-fuzzy` are not, and each is installed with its own extra (`pip install vethuq[lexical]`, `vethuq[proximity]`, `vethuq[fuzzy]`, `vethuq[noise-fuzzy]`). Installing `fuzzy` or `noise-fuzzy` also installs the `leetspeak` normalizer:
 
 | Engine | Finds | Strictness |
 |---|---|---|

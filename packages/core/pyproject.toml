@@ -19,18 +19,19 @@ dependencies = [
     "vethuq-addon-ocr-quick~=0.1",
     "vethuq-addon-like~=0.1",
     "vethuq-addon-exact~=0.1",
-    "vethuq-addon-lexical~=0.1",
     "vethuq-addon-full-text~=0.1",
-    "vethuq-addon-proximity~=0.1",
-    "vethuq-addon-fuzzy~=0.1",
-    "vethuq-addon-noise-fuzzy~=0.1",
     "vethuq-addon-case~=0.1",
     "vethuq-addon-unicode~=0.1",
-    "vethuq-addon-leetspeak~=0.1",
     "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
+# Search engines that are not installed by default (each is its own add-on).
+lexical = ["vethuq-addon-lexical~=0.1"]
+proximity = ["vethuq-addon-proximity~=0.1"]
+# Similar words (misspellings, OCR misreads). Brings the leetspeak normaliser.
+fuzzy = ["vethuq-addon-fuzzy~=0.1"]
+noise-fuzzy = ["vethuq-addon-noise-fuzzy~=0.1"]
 # Run OCR in your own GitHub account (a free add-on).
 github = ["vethuq-addon-github~=0.1"]
 # Search by meaning (a free add-on; preparing pages costs credits). Brings ONNX Runtime.

@@ -2745,16 +2745,11 @@ dependencies = [
     { name = "vethuq-addon-english" },
     { name = "vethuq-addon-exact" },
     { name = "vethuq-addon-full-text" },
-    { name = "vethuq-addon-fuzzy" },
-    { name = "vethuq-addon-leetspeak" },
-    { name = "vethuq-addon-lexical" },
     { name = "vethuq-addon-like" },
     { name = "vethuq-addon-markdown" },
-    { name = "vethuq-addon-noise-fuzzy" },
     { name = "vethuq-addon-ocr-quick" },
     { name = "vethuq-addon-paddle" },
     { name = "vethuq-addon-pdf" },
-    { name = "vethuq-addon-proximity" },
     { name = "vethuq-addon-txt" },
     { name = "vethuq-addon-unicode" },
 ]
@@ -2766,14 +2761,26 @@ deep-scan = [
 developer = [
     { name = "vethuq-bundle-developer" },
 ]
+fuzzy = [
+    { name = "vethuq-addon-fuzzy" },
+]
 github = [
     { name = "vethuq-addon-github" },
 ]
 images = [
     { name = "vethuq-bundle-image" },
 ]
+lexical = [
+    { name = "vethuq-addon-lexical" },
+]
+noise-fuzzy = [
+    { name = "vethuq-addon-noise-fuzzy" },
+]
 office = [
     { name = "vethuq-bundle-office" },
+]
+proximity = [
+    { name = "vethuq-addon-proximity" },
 ]
 semantic = [
     { name = "vethuq-addon-semantic" },
@@ -2795,17 +2802,16 @@ requires-dist = [
     { name = "vethuq-addon-english", directory = "../VethuQ-premium/packages/add-ons/languages/english" },
     { name = "vethuq-addon-exact", directory = "../VethuQ-premium/packages/add-ons/search/engines/exact" },
     { name = "vethuq-addon-full-text", directory = "../VethuQ-premium/packages/add-ons/search/engines/full-text" },
-    { name = "vethuq-addon-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" },
+    { name = "vethuq-addon-fuzzy", marker = "extra == 'fuzzy'", directory = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" },
     { name = "vethuq-addon-github", marker = "extra == 'github'", directory = "../VethuQ-premium/packages/add-ons/tiers/github" },
-    { name = "vethuq-addon-leetspeak", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
-    { name = "vethuq-addon-lexical", directory = "../VethuQ-premium/packages/add-ons/search/engines/lexical" },
+    { name = "vethuq-addon-lexical", marker = "extra == 'lexical'", directory = "../VethuQ-premium/packages/add-ons/search/engines/lexical" },
     { name = "vethuq-addon-like", directory = "../VethuQ-premium/packages/add-ons/search/engines/like" },
     { name = "vethuq-addon-markdown", directory = "../VethuQ-premium/packages/add-ons/file-types/markdown" },
-    { name = "vethuq-addon-noise-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" },
+    { name = "vethuq-addon-noise-fuzzy", marker = "extra == 'noise-fuzzy'", directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" },
     { name = "vethuq-addon-ocr-quick", editable = "../VethuQ-premium/packages/add-ons/ocr/modes/quick" },
     { name = "vethuq-addon-paddle", directory = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" },
     { name = "vethuq-addon-pdf", directory = "../VethuQ-premium/packages/add-ons/file-types/pdf" },
-    { name = "vethuq-addon-proximity", directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
+    { name = "vethuq-addon-proximity", marker = "extra == 'proximity'", directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
     { name = "vethuq-addon-semantic", marker = "extra == 'semantic'", directory = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
     { name = "vethuq-addon-txt", directory = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", directory = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
@@ -2815,7 +2821,7 @@ requires-dist = [
     { name = "vethuq-bundle-office", marker = "extra == 'office'", directory = "../VethuQ-premium/packages/bundles/office" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", directory = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["deep-scan", "developer", "github", "images", "office", "semantic", "web"]
+provides-extras = ["deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "semantic", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -2956,10 +2962,14 @@ version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" }
 dependencies = [
     { name = "vethuq-addon-api" },
+    { name = "vethuq-addon-leetspeak" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+requires-dist = [
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-addon-leetspeak", editable = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
+]
 
 [[package]]
 name = "vethuq-addon-github"
@@ -3046,7 +3056,7 @@ requires-dist = [
 [[package]]
 name = "vethuq-addon-leetspeak"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" }
+source = { editable = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" }
 dependencies = [
     { name = "vethuq-addon-api" },
 ]
@@ -3103,10 +3113,14 @@ version = "0.1.0"
 source = { directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" }
 dependencies = [
     { name = "vethuq-addon-api" },
+    { name = "vethuq-addon-leetspeak" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+requires-dist = [
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-addon-leetspeak", editable = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
+]
 
 [[package]]
 name = "vethuq-addon-ocr-deep"
@@ -3617,6 +3631,11 @@ dev = [
     { name = "ruff" },
     { name = "vethuq" },
     { name = "vethuq-addon-api" },
+    { name = "vethuq-addon-fuzzy" },
+    { name = "vethuq-addon-leetspeak" },
+    { name = "vethuq-addon-lexical" },
+    { name = "vethuq-addon-noise-fuzzy" },
+    { name = "vethuq-addon-proximity" },
     { name = "vethuq-addon-semantic" },
     { name = "vethuq-worker" },
 ]
@@ -3635,6 +3654,11 @@ dev = [
     { name = "ruff", specifier = ">=0.6" },
     { name = "vethuq", editable = "packages/core" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
+    { name = "vethuq-addon-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" },
+    { name = "vethuq-addon-leetspeak", editable = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak" },
+    { name = "vethuq-addon-lexical", directory = "../VethuQ-premium/packages/add-ons/search/engines/lexical" },
+    { name = "vethuq-addon-noise-fuzzy", directory = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" },
+    { name = "vethuq-addon-proximity", directory = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
     { name = "vethuq-addon-semantic", directory = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
     { name = "vethuq-worker", editable = "packages/worker" },
 ]

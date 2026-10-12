@@ -9,6 +9,8 @@ Tags (one per package, versions independent; `-rcN` is a release candidate, publ
     vethuq-worker-vX.Y.Z      vethuq-worker        pure Python
     vethuq-vX.Y.Z             vethuq               one wheel per platform, with the compiled
                                                    `vethuq_entitlements` runtime built in
+    vethuq-cli-vX.Y.Z         vethuq-cli           not on PyPI: release-cli.yml builds the
+                                                   installers (Windows .exe, Linux .deb)
 
 The version of a pure package comes from the tag (hatch-vcs), so `--wheels` confirms that what was
 built carries it. Prints `key=value` lines; under GitHub Actions they also go to `$GITHUB_OUTPUT`.
@@ -28,10 +30,11 @@ PACKAGES = {
     # tag prefix: (distribution, directory, platform wheels)
     "vethuq-addon-api": ("vethuq-addon-api", "packages/addon-api", False),
     "vethuq-worker": ("vethuq-worker", "packages/worker", False),
+    "vethuq-cli": ("vethuq-cli", "packages/cli", False),
     "vethuq": ("vethuq", "packages/core", True),
 }
 TAG = re.compile(
-    r"^(?P<prefix>vethuq-addon-api|vethuq-worker|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
+    r"^(?P<prefix>vethuq-addon-api|vethuq-worker|vethuq-cli|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
 )
 
 
@@ -58,8 +61,8 @@ def plan(tag: str) -> Plan:
     match = TAG.match(tag)
     if match is None:
         raise ReleaseError(
-            f"{tag!r} is not a release tag. Use vethuq-addon-api-vX.Y.Z, vethuq-worker-vX.Y.Z or "
-            "vethuq-vX.Y.Z (add -rcN for a release candidate)."
+            f"{tag!r} is not a release tag. Use vethuq-addon-api-vX.Y.Z, vethuq-worker-vX.Y.Z, "
+            "vethuq-cli-vX.Y.Z or vethuq-vX.Y.Z (add -rcN for a release candidate)."
         )
     dist, directory, platform = PACKAGES[match["prefix"]]
     version = Version(match["version"].replace("-rc", "rc"))

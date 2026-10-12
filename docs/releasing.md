@@ -13,8 +13,8 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The command line, the interactive shell and the background service are not released here. They will
-ship as binaries.
+The interactive shell and the background service are not released here. They will ship as binaries.
+The command line ships as installers: see [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
 
@@ -54,3 +54,36 @@ whenever the GitHub tier's protocol changes.
 - Repository settings: create the `pypi` and `testpypi` environments with required reviewers.
 - Secret `PREMIUM_READ_TOKEN`: read access to VethuQ-premium and VethuQ-entitlements (it is already used
   by the test workflow).
+
+## Command-line installers
+
+`vethuq-cli-vX.Y.Z` (`-rcN` for a release candidate) builds the command line only, with no desktop app,
+interactive shell or background service, and attaches the installers to a GitHub release
+(`.github/workflows/release-cli.yml`). Nothing goes to PyPI.
+
+| Platform | File | Made with |
+|---|---|---|
+| Windows | `VethuQ-CLI-Setup.exe` | PyInstaller, then Inno Setup (`packages/cli/installer/vethuq-cli.iss`) |
+| Linux | `vethuq-cli_X.Y.Z_amd64.deb` | PyInstaller, then `dpkg-deb`; installs to `/opt/vethuq`, with `/usr/bin/vethuq` |
+
+Both hold the same folder:
+
+    vethuq(.exe)   the command
+    lib/           the Python runtime and every dependency (Paddle, rich, SQLAlchemy, ...)
+    add-ons/       the default add-ons, one folder each: english, pdf, txt, csv, markdown, paddle,
+                   ocr-quick, like, exact, full-text, case, unicode
+
+`add-ons/` holds each add-on's package and its dist-info; a runtime hook puts each folder on `sys.path`,
+which is where VethuQ finds add-ons by their entry points. The other add-ons (`lexical`, `proximity`,
+`fuzzy`, `noise-fuzzy`, `leetspeak`, `semantic`, ...) are not in the installers. The Paddle OCR models are
+downloaded the first time OCR runs.
+
+Build one locally (Windows needs Inno Setup's `iscc` on PATH; Linux needs `dpkg-deb`), from a workspace
+next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` installed:
+
+    uv sync --package vethuq-cli --no-dev
+    uv pip install "pyinstaller>=6.10"
+    uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
+
+`--dev` skips compression and reuses an unchanged PyInstaller build. After changing the icon, run
+`python scripts/dev/brand/cli_installer.py` to regenerate the installer's images and license page.

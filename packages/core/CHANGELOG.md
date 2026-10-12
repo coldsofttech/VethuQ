@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Changed (default search engines)
+- VethuQ installs only the `like`, `exact` and `full-text` search engines (with the `case` and `unicode`
+  normalisers). `lexical`, `proximity`, `fuzzy` and `noise-fuzzy` are now the extras `vethuq[lexical]`,
+  `vethuq[proximity]`, `vethuq[fuzzy]` and `vethuq[noise-fuzzy]`; `fuzzy` and `noise-fuzzy` bring `leetspeak`.
+
 ### Added (index queue)
 - `index.queue`: `submit`, `list`, `get`, `cancel`, `claim_next`, `run_next`, `finish`, `reconcile`, `wait`, and the
   service marker (`announce_service`, `clear_service`, `service_running`); `IndexJob`, `IndexJobStatus`,
