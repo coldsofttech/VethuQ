@@ -49,12 +49,14 @@ class TestListing:
 
     def test_sections_in_the_order_the_screen_shows_them(self, service):
         assert service.sections() == [
-            "indexing",
             "general",
+            "search",
+            "indexing",
             "sources",
             "tiers",
             "results",
             "system",
+            "addons",
         ]
 
     def test_advanced_settings_are_marked(self, service):
@@ -147,10 +149,12 @@ class TestOtherSections:
     def test_each_section_lists_its_settings(self, service):
         assert list(by_id(service.list("general"))) == [
             "languages.languages",
+            "location.data",
+            "location.backups",
             "updates.check",
-            "metrics.opt_in",
             "updates.skipped_version",
             "updates.snoozed_until",
+            "metrics.opt_in",
         ]
         assert list(by_id(service.list("sources"))) == ["sources.removed_retention_minutes"]
         assert list(by_id(service.list("results"))) == ["confidence.bands"]

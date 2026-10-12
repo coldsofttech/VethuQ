@@ -32,9 +32,11 @@ scripts.
 | `GET /api/about` | What the installation runs (`VethuQ().version`) |
 | `GET /api/brand` | App name, tagline and the colour palette (light and dark) shared with the CLI and exports |
 | `GET /api/catalog` | What is installed: add-ons, file types, search engines, languages, OCR engines (what the CLI lists) |
-| `GET /api/settings/<section>` | The settings of a section (`indexing`, `general`, `sources`, `tiers`, `results`, `system`), each with its type, value, default, allowed values and where it applies |
+| `GET /api/settings/<section>` | The settings of a section (`general`, `search`, `indexing`, `sources`, `tiers`, `results`, `system`, `addons`), each with its type, value, default, allowed values and where it applies |
 | `PUT /api/settings/<section>/<id>` `{"value": ...}` | Change one setting; `422` with the reason if the value is refused |
 | `DELETE /api/settings/<section>/<id>` | Put its default back |
+| `GET /api/support-info` | Plain text for a support request: versions, what is installed, settings changed from the default. No folders, no file names |
+| `POST /api/dialog/folder` | The host's folder picker (desktop only); `{"path": null}` if cancelled |
 | `GET /api/platform` | `{kind, window_controls}`: what the host offers the interface |
 | `GET /api/window/state`, `POST /api/window/{minimize,maximize,restore,close}` | Window controls (only when the host passes a window controller) |
 

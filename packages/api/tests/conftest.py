@@ -8,10 +8,26 @@ from api_support import HOST, ORIGIN, TOKEN
 from vethuq_api import allow_host, create_app
 
 
+@pytest.fixture(autouse=True)
+def _isolated_locations(tmp_path_factory, monkeypatch):
+    """Keep the data and backups folders the tests move away from the person's own."""
+    from vethuq._paths import _Paths
+
+    root = tmp_path_factory.mktemp("vethuq-data")
+    monkeypatch.delenv(_Paths.ENV_VAR, raising=False)
+    monkeypatch.setattr(_Paths, "platform_data_root", staticmethod(lambda: root / "default"))
+    monkeypatch.setattr(_Paths, "location_file", staticmethod(lambda: root / "config" / "db.json"))
+
+
 class FakeWindow:
     def __init__(self) -> None:
         self.maximized = False
         self.calls: list[str] = []
+        self.picked: str | None = "/chosen/folder"
+
+    def choose_folder(self, start: str | None = None) -> str | None:
+        self.calls.append(f"choose_folder:{start}")
+        return self.picked
 
     def minimize(self) -> None:
         self.calls.append("minimize")
@@ -38,11 +54,18 @@ class FakeCore:
     def settings(self, section: str) -> list[dict[str, object]]:
         return []
 
-    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]:
-        return {"id": setting_id, "value": value}
+    def update_setting(
+        self, section: str, setting_id: str, value: object, options: dict | None = None
+    ) -> dict[str, object]:
+        return {"id": setting_id, "value": value, "options": options}
 
-    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]:
-        return {"id": setting_id}
+    def reset_setting(
+        self, section: str, setting_id: str, options: dict | None = None
+    ) -> dict[str, object]:
+        return {"id": setting_id, "options": options}
+
+    def support_report(self) -> str:
+        return "## Support\n"
 
     def catalog(self) -> dict[str, list[dict[str, object]]]:
         return {"add_ons": [{"id": "csv", "name": "vethuq-addon-csv", "version": "0.1.0"}]}

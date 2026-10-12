@@ -8,43 +8,24 @@ sections, one section per page of the settings screen.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
-BOOLEAN, INTEGER, NUMBER, CHOICE = "boolean", "integer", "number", "choice"
-MULTI, BANDS, TEXT = "multichoice", "bands", "text"
+from vethuq_api.setting_spec import (  # noqa: F401  (re-exported for callers and tests)
+    BANDS,
+    BOOLEAN,
+    CHOICE,
+    INTEGER,
+    MULTI,
+    NUMBER,
+    PATH,
+    TEXT,
+    InvalidSettingError,
+    SettingNotFoundError,
+    Spec,
+)
+from vethuq_api.settings_dynamic import addon_specs, search_specs
 
 _NEXT_RUN = "Applies from the next indexing run."
-
-
-class SettingNotFoundError(LookupError):
-    """No such section or setting."""
-
-
-class InvalidSettingError(ValueError):
-    """The value is not allowed for the setting (the message says why)."""
-
-
-@dataclass(frozen=True)
-class Spec:
-    """One setting. `read`, `write` and `reset` talk to the core client."""
-
-    id: str
-    section: str
-    label: str
-    description: str
-    kind: str
-    default: Any  # the value, or a function of the client when it depends on the installation
-    read: Callable[[Any], Any]
-    write: Callable[[Any, Any], None] | None  # None: shown, but not changed here
-    reset: Callable[[Any], None]  # for a read-only setting, clears it
-    options: Callable[[Any], list[dict[str, object]]] | None = None
-    labels: tuple[str, ...] = ()
-    minimum: float | None = None
-    maximum: float | None = None
-    unit: str = ""
-    advanced: bool = False
-    note: str | Callable[[Any], str] = ""
 
 
 def _workers_options(_client: Any) -> list[dict[str, object]]:
@@ -175,6 +156,84 @@ def _integrity_options(_client: Any) -> list[dict[str, object]]:
     ]
 
 
+def _engine_options(client: Any) -> list[dict[str, object]]:
+    engines = client.search.engines()
+    semantic = next((e for e in engines if e.id == "semantic"), None)
+    options: list[dict[str, object]] = [{"value": "all", "label": "All engines"}]
+    options.append(
+        {
+            "value": "hybrid",
+            "label": "Hybrid: meaning plus a keyword engine",
+            "available": semantic is not None and semantic.available,
+            "reason": "Needs the semantic engine.",
+        }
+    )
+    options += [
+        {"value": e.id, "label": e.label, "available": e.available, "reason": e.reason}
+        for e in engines
+    ]
+    return options
+
+
+def _paths() -> Any:
+    """The core's `Paths` (imported on use so this module loads without the core)."""
+    from vethuq import Paths
+
+    return Paths
+
+
+def _data_location_lock(_client: Any) -> str:
+    from vethuq import Paths
+
+    if Paths.location_source() == "env":
+        return f"The {Paths.ENV_VAR} environment variable sets this folder; change it there."
+    return ""
+
+
+def _relocate(_client: Any, value: Any, options: dict[str, Any]) -> None:
+    from vethuq import Paths
+
+    Paths.relocate(value, move=options.get("move", True))
+
+
+def _platform_default() -> Any:
+    """The data folder VethuQ uses when none was chosen.
+
+    `Paths.default_data_root()` is meant to be this, but it reports the folder in use (the saved
+    one after a move), so it cannot say where "default" is. The core's own helper can.
+    """
+    from vethuq._paths import _Paths
+
+    return _Paths.platform_data_root()
+
+
+def _reset_location(_client: Any, options: dict[str, Any]) -> None:
+    """Back to the default folder. `Paths.reset_location(move=True)` forgets a saved location
+    without moving the data (it compares the folder in use with itself), which would leave the data
+    behind; so the data is moved first, and the saved location is forgotten after."""
+    from vethuq import Paths
+
+    if options.get("move", True) and Paths.location_source() == "saved":
+        Paths.relocate(_platform_default(), move=True)
+    Paths.reset_location(move=False)
+
+
+def _path_errors() -> tuple[type[BaseException], ...]:
+    from vethuq.errors import DataFolderNotWritableError
+
+    return (ValueError, OSError, DataFolderNotWritableError)
+
+
+def _default_data_folder(_client: Any) -> str:
+    return str(_platform_default())
+
+
+def _default_backups_folder(_client: Any) -> str:
+    from vethuq import Paths
+
+    return str(Paths.db_dir() / "backups")  # next to the database, unless a folder is chosen
+
+
 def _specs() -> tuple[Spec, ...]:
     return (
         Spec(
@@ -263,8 +322,84 @@ def _specs() -> tuple[Spec, ...]:
             note=_NEXT_RUN,
         ),
         Spec(
+            id="location.data",
+            section="general",
+            group="Data",
+            label="Data folder",
+            description="Where VethuQ keeps its database, logs and other data.",
+            kind=PATH,
+            default=_default_data_folder,
+            read=lambda c: _paths().data_root().__str__(),
+            write=None,
+            reset=None,
+            write_with=_relocate,
+            reset_with=_reset_location,
+            moves=True,
+            locked=_data_location_lock,
+            catches=_path_errors(),
+            note="Stop indexing before moving it.",
+        ),
+        Spec(
+            id="location.backups",
+            section="general",
+            group="Data",
+            label="Backups folder",
+            description="Where database backups are kept. By default, next to the database.",
+            kind=PATH,
+            default=_default_backups_folder,
+            read=lambda c: str(_paths().backups_dir()),
+            write=lambda c, v: _paths().set_backups_dir(v),
+            reset=lambda c: _paths().reset_backups_dir(),
+            catches=_path_errors(),
+        ),
+        Spec(
+            id="search.engine",
+            section="search",
+            group="Searching",
+            label="Default search engine",
+            description="The engine a search uses when it does not name one.",
+            kind=CHOICE,
+            default="all",
+            read=lambda c: c.settings.search.get_engine(),
+            write=lambda c, v: c.settings.search.set_engine(v),
+            reset=lambda c: c.settings.search.reset_engine(),
+            options=_engine_options,
+        ),
+        Spec(
+            id="search.snippet_context_chars",
+            section="search",
+            group="Searching",
+            label="Context around a match",
+            description="How much text is shown on either side of a match in a result.",
+            kind=INTEGER,
+            default=80,
+            read=lambda c: c.settings.search.get_snippet_context_chars(),
+            write=lambda c, v: c.settings.search.set_snippet_context_chars(v),
+            reset=lambda c: c.settings.search.reset_snippet_context_chars(),
+            minimum=0,
+            maximum=2000,
+            unit="characters",
+        ),
+        Spec(
+            id="search.export_format",
+            section="search",
+            group="Searching",
+            label="Export format",
+            description="The format exports are written in when none is chosen.",
+            kind=CHOICE,
+            default="json",
+            read=lambda c: c.settings.search.get_export_format(),
+            write=lambda c, v: c.settings.search.set_export_format(v),
+            reset=lambda c: c.settings.search.reset_export_format(),
+            options=lambda _c: [
+                {"value": "json", "label": "JSON"},
+                {"value": "html", "label": "HTML report"},
+            ],
+        ),
+        Spec(
             id="languages.languages",
             section="general",
+            group="Languages",
             label="Languages to read documents in",
             description="The languages a source is read in when it has none of its own. Choose at "
             "least one.",
@@ -280,6 +415,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="updates.check",
             section="general",
+            group="Updates",
             label="Check for updates",
             description="Whether VethuQ looks for a newer version, and whether it offers to "
             "install it.",
@@ -294,6 +430,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="metrics.opt_in",
             section="general",
+            group="Privacy",
             label="Share anonymous usage metrics",
             description="Help improve VethuQ by sharing anonymous usage figures. Off unless you "
             "turn it on.",
@@ -306,6 +443,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="updates.skipped_version",
             section="general",
+            group="Updates",
             label="Skipped update",
             description="The version you chose not to be told about. A newer version is announced "
             "again.",
@@ -319,6 +457,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="updates.snoozed_until",
             section="general",
+            group="Updates",
             label="Update notice snoozed until",
             description='When "remind me later" ends. Clearing it shows the notice again.',
             kind=TEXT,
@@ -345,6 +484,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.default",
             section="tiers",
+            group="Where work is done",
             label="Processing tier",
             description="Where indexing work is done by default. A run can still choose its own "
             "tier.",
@@ -358,6 +498,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.phases",
             section="tiers",
+            group="Hybrid tier",
             label="OCR phases sent to GitHub",
             description="With the hybrid tier, the OCR phases that are done on GitHub instead of "
             "on this computer: Moderate also reads pages rotated 90°, 180° and 270°, Deep every "
@@ -374,6 +515,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.min_size_factor",
             section="tiers",
+            group="Hybrid tier",
             label="Smallest page sent to GitHub",
             description="With the hybrid tier, pages at least this large, against A4, are sent to "
             "GitHub. 2 means A3. 0 turns the size rule off.",
@@ -389,6 +531,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.max_job_pages",
             section="tiers",
+            group="Remote jobs",
             label="Most pages in one remote job",
             description="A job that would hold more pages is split.",
             kind=INTEGER,
@@ -403,6 +546,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.max_job_megabytes",
             section="tiers",
+            group="Remote jobs",
             label="Largest remote job",
             description="A job whose files add up to more than this is split.",
             kind=INTEGER,
@@ -417,6 +561,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="tiers.wait_timeout_minutes",
             section="tiers",
+            group="Remote jobs",
             label="How long to wait for remote jobs",
             description="When a run is told to wait, how long it waits for remote jobs to finish "
             "before giving up.",
@@ -448,6 +593,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="logs.level",
             section="system",
+            group="Logs",
             label="Log detail",
             description="How much VethuQ writes to its log files.",
             kind=CHOICE,
@@ -461,6 +607,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="logs.retention_days",
             section="system",
+            group="Logs",
             label="Keep log files for",
             description="Older daily log files are deleted.",
             kind=INTEGER,
@@ -475,6 +622,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="database.integrity_check",
             section="system",
+            group="Database",
             label="Check the database for damage",
             description="When VethuQ checks that its database is intact. A check can always be "
             "run by hand.",
@@ -489,6 +637,7 @@ def _specs() -> tuple[Spec, ...]:
         Spec(
             id="database.integrity_check_interval_minutes",
             section="system",
+            group="Database",
             label="Time between automatic checks",
             description="In Automatic mode, the database is checked at most this often.",
             kind=INTEGER,
@@ -504,48 +653,175 @@ def _specs() -> tuple[Spec, ...]:
     )
 
 
-class SettingsService:
-    """Lists, changes and resets the settings, on the core client `client()` returns."""
+SECTIONS = ("general", "search", "indexing", "sources", "tiers", "results", "system", "addons")
 
-    def __init__(self, client: Callable[[], Any]) -> None:
+# The order of the fixed settings within a section; ones that depend on what is installed follow.
+_ORDER = (
+    "languages.languages",
+    "location.data",
+    "location.backups",
+    "updates.check",
+    "updates.skipped_version",
+    "updates.snoozed_until",
+    "metrics.opt_in",
+    "search.engine",
+    "search.snippet_context_chars",
+    "search.export_format",
+    "index.workers",
+    "index.retry_attempts",
+    "ocr.engine",
+    "ocr.gpu",
+    "index.stability_check_seconds",
+    "index.stale_lock",
+    "sources.removed_retention_minutes",
+    "tiers.default",
+    "tiers.phases",
+    "tiers.min_size_factor",
+    "tiers.max_job_pages",
+    "tiers.max_job_megabytes",
+    "tiers.wait_timeout_minutes",
+    "confidence.bands",
+    "logs.level",
+    "logs.retention_days",
+    "database.integrity_check",
+    "database.integrity_check_interval_minutes",
+)
+
+
+class SettingsService:
+    """Lists, changes and resets the settings, on the core client `client()` returns.
+
+    `release()` is called after a change that moved the core's data, so the next call builds a
+    fresh client on the new location.
+    """
+
+    def __init__(
+        self, client: Callable[[], Any], release: Callable[[], None] | None = None
+    ) -> None:
         self._client = client
-        self._specs = _specs()
+        self._release = release or (lambda: None)
+        self._fixed = _specs()
 
     def sections(self) -> list[str]:
-        return list(dict.fromkeys(spec.section for spec in self._specs))
+        return list(SECTIONS)
+
+    def _specs_for(self, client: Any, section: str) -> list[Spec]:
+        """The settings of a section: the fixed ones in order, then those that depend on what is
+        installed."""
+        rank = {key: index for index, key in enumerate(_ORDER)}
+        fixed = [spec for spec in self._fixed if spec.section == section]
+        fixed.sort(key=lambda spec: rank.get(spec.id, len(rank)))
+        if section == "search":
+            return [*fixed, *search_specs(client)]
+        if section == "addons":
+            return addon_specs(client)
+        return fixed
 
     def list(self, section: str) -> list[dict[str, object]]:
-        specs = [spec for spec in self._specs if spec.section == section]
-        if not specs:
+        if section not in SECTIONS:
             raise SettingNotFoundError(f"There is no settings section {section!r}.")
         client = self._client()
-        return [self._describe(client, spec) for spec in specs]
+        return [self._describe(client, spec) for spec in self._specs_for(client, section)]
 
-    def update(self, section: str, setting_id: str, value: object) -> dict[str, object]:
-        spec = self._spec(section, setting_id)
-        if spec.write is None:
-            raise InvalidSettingError("This setting cannot be changed here.")
+    def changed(self) -> list[dict[str, object]]:
+        """Every setting that is not at its default, for a support report (folders left out)."""
+        rows = []
+        for section in SECTIONS:
+            for row in self.list(section):
+                if (
+                    row["type"] != PATH
+                    and not row["is_default"]
+                    and row["resettable"]
+                    and not row["readonly"]
+                ):
+                    rows.append(row)
+        return rows
+
+    def update(
+        self,
+        section: str,
+        setting_id: str,
+        value: object,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, object]:
         client = self._client()
+        spec = self._spec(client, section, setting_id)
+        self._refuse_if_locked(client, spec)
+        if spec.write is None and spec.write_with is None:
+            raise InvalidSettingError("This setting cannot be changed here.")
         value = self._check(client, spec, value)
+        options = self._options(spec, options)
+        return self._apply(
+            client,
+            spec,
+            lambda: spec.write_with(client, value, options)
+            if spec.write_with
+            else spec.write(client, value),  # type: ignore[misc]
+        )
+
+    def reset(
+        self,
+        section: str,
+        setting_id: str,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, object]:
+        client = self._client()
+        spec = self._spec(client, section, setting_id)
+        self._refuse_if_locked(client, spec)
+        if spec.reset is None and spec.reset_with is None:
+            raise InvalidSettingError("This setting has nothing to reset to.")
+        options = self._options(spec, options)
+        return self._apply(
+            client,
+            spec,
+            lambda: spec.reset_with(client, options) if spec.reset_with else spec.reset(client),  # type: ignore[misc]
+        )
+
+    def _apply(self, client: Any, spec: Spec, action: Callable[[], None]) -> dict[str, object]:
         # Imported here so the module loads without the core (tests of the pure parts).
         from vethuq.errors import InvalidSettingValueError, LanguageUnavailableError
 
+        catches = (InvalidSettingValueError, LanguageUnavailableError, *spec.catches)
+        if spec.moves:
+            self._prepare_move(client)
         try:
-            spec.write(client, value)
-        except (InvalidSettingValueError, LanguageUnavailableError) as error:
+            action()
+        except catches as error:
             raise InvalidSettingError(str(error)) from error
-        return self._describe(client, spec)
+        finally:
+            if spec.moves:
+                self._release()
+        # After a move the client is new; describe on whichever the service now hands out.
+        return self._describe(self._client() if spec.moves else client, spec)
 
-    def reset(self, section: str, setting_id: str) -> dict[str, object]:
-        spec = self._spec(section, setting_id)
-        client = self._client()
-        spec.reset(client)
-        return self._describe(client, spec)
+    @staticmethod
+    def _prepare_move(client: Any) -> None:
+        """Moving the data needs no run in progress and no open database."""
+        status = client.index.status()
+        if status is not None and status.active:
+            raise InvalidSettingError("Indexing is running. Stop it before moving the data folder.")
+        client.close()
 
-    def _spec(self, section: str, setting_id: str) -> Spec:
-        for spec in self._specs:
-            if spec.section == section and spec.id == setting_id:
-                return spec
+    @staticmethod
+    def _options(spec: Spec, options: dict[str, Any] | None) -> dict[str, Any]:
+        options = options or {}
+        if set(options) - {"move"} or not isinstance(options.get("move", True), bool):
+            raise InvalidSettingError("The only option is move: true or false.")
+        if options and not spec.moves:
+            raise InvalidSettingError("This setting takes no options.")
+        return options
+
+    @staticmethod
+    def _refuse_if_locked(client: Any, spec: Spec) -> None:
+        reason = spec.locked(client) if spec.locked else ""
+        if reason:
+            raise InvalidSettingError(reason)
+
+    def _spec(self, client: Any, section: str, setting_id: str) -> Spec:
+        if section in SECTIONS:
+            for spec in self._specs_for(client, section):
+                if spec.id == setting_id:
+                    return spec
         raise SettingNotFoundError(f"There is no setting {setting_id!r} in {section!r}.")
 
     @staticmethod
@@ -569,6 +845,9 @@ class SettingsService:
                 raise InvalidSettingError(f"Use {spec.minimum:g} or more.")
             if spec.maximum is not None and value > spec.maximum:  # type: ignore[operator]
                 raise InvalidSettingError(f"Use {spec.maximum:g} or less.")
+        elif spec.kind in (TEXT, PATH):
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidSettingError("Enter a value.")
         elif spec.kind == CHOICE:
             SettingsService._check_choice(client, spec, value)
         elif spec.kind == MULTI:
@@ -610,6 +889,7 @@ class SettingsService:
     def _describe(client: Any, spec: Spec) -> dict[str, object]:
         value = spec.read(client)
         default = spec.default(client) if callable(spec.default) else spec.default
+        locked = spec.locked(client) if spec.locked else ""
         if spec.kind == MULTI:
             is_default = sorted(value) == sorted(default)
         else:
@@ -625,7 +905,12 @@ class SettingsService:
             "is_default": is_default,
             "advanced": spec.advanced,
             "note": spec.note(client) if callable(spec.note) else spec.note,
-            "readonly": spec.write is None,
+            "readonly": spec.write is None and spec.write_with is None,
+            "locked": locked,
+            "group": spec.group,
+            "group_note": spec.group_note,
+            "resettable": spec.resettable,
+            "can_move": spec.moves,
         }
         if spec.options is not None:
             item["options"] = [

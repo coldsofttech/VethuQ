@@ -17,3 +17,7 @@ All notable changes to `vethuq-api`.
   `results` (confidence bands), with list, multi-choice and three-number (`bands`) setting types.
 - Settings: the update check (with the skipped version and snooze shown read-only and clearable) in
   `general`, and a `system` section with log level and retention and the database integrity check.
+- Settings: a `search` section (default engine, context, export format, the normalizers, each engine's
+  own options), the data and backups folders (with moving the data), a section for the settings
+  add-ons declare (`addons`), setting groups, and `GET /api/support-info` for a support report.
+  `POST /api/dialog/folder` shows the host's folder picker where there is one.

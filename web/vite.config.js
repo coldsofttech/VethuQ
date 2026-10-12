@@ -14,5 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     restoreMocks: true,
+    // Fluent dialogs and menus are slow to open in jsdom, more so when the machine is busy.
+    testTimeout: 20000,
   },
 });

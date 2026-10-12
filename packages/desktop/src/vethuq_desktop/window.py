@@ -42,6 +42,16 @@ class WebviewWindowController:
     def close(self) -> None:
         self._window.destroy()
 
+    def choose_folder(self, start: str | None = None) -> str | None:
+        """Show the system folder picker; the folder chosen, or None if it was cancelled."""
+        import webview
+
+        folder = getattr(getattr(webview, "FileDialog", None), "FOLDER", None)
+        if folder is None:  # older pywebview
+            folder = webview.FOLDER_DIALOG
+        chosen = self._window.create_file_dialog(folder, directory=start or "")
+        return str(chosen[0]) if chosen else None
+
 
 class SimulatedWindowController:
     """Keeps window state in memory so the title bar works in a browser (`--no-window`)."""

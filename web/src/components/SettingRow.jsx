@@ -2,6 +2,7 @@ import {
   Button,
   Dropdown,
   Field,
+  Input,
   Option,
   SpinButton,
   Spinner,
@@ -12,8 +13,10 @@ import {
   tokens,
 } from '@fluentui/react-components';
 import { ArrowCounterclockwise20Regular } from '@fluentui/react-icons';
+import { useState } from 'react';
 import { strings } from '../strings.js';
 import { BandsControl } from './BandsControl.jsx';
+import { PathControl } from './PathControl.jsx';
 import { readSpin } from './numberInput.js';
 import { SettingFrame } from './SettingFrame.jsx';
 
@@ -69,7 +72,17 @@ function Control({ setting, disabled, onChange }) {
   const labelledBy = { 'aria-label': setting.label };
 
   if (setting.type === 'text') {
-    return <Text>{setting.value === null ? text.none : formatText(setting.value)}</Text>;
+    if (setting.readonly) {
+      return <Text>{setting.value === null ? text.none : formatText(setting.value)}</Text>;
+    }
+    return (
+      <TextControl
+        key={String(setting.value)}
+        setting={setting}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    );
   }
 
   if (setting.type === 'boolean') {
@@ -146,6 +159,28 @@ function Control({ setting, disabled, onChange }) {
   return <NumberControl setting={setting} disabled={disabled} onChange={onChange} />;
 }
 
+/** Free text, saved on Enter or when the field is left. */
+function TextControl({ setting, disabled, onChange }) {
+  const styles = useStyles();
+  const [draft, setDraft] = useState(String(setting.value ?? ''));
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== '' && next !== setting.value) onChange(next);
+    else setDraft(String(setting.value ?? ''));
+  };
+  return (
+    <Input
+      aria-label={setting.label}
+      className={styles.grow}
+      disabled={disabled}
+      value={draft}
+      onChange={(_, data) => setDraft(data.value)}
+      onBlur={commit}
+      onKeyDown={(event) => event.key === 'Enter' && commit()}
+    />
+  );
+}
+
 /**
  * A number, saved when it is committed: stepping with the arrows, or Enter / leaving the field after
  * typing. (Fluent reports a typed number once, at that moment, as text.)
@@ -175,14 +210,16 @@ function NumberControl({ setting, disabled, onChange }) {
  * change was refused.
  *
  * @param {{ setting: import('../api/client.js').Setting, busy: boolean, problem: string,
- *   onChange: (value: unknown) => void, onReset: () => void }} props
+ *   onChange: (value: unknown, options?: { move: boolean }) => Promise<boolean> | void,
+ *   onReset: (options?: { move: boolean }) => Promise<boolean> | void }} props
  */
 export function SettingRow({ setting, busy, problem, onChange, onReset }) {
   const styles = useStyles();
-  const hint = [setting.unit && `${text.unit}: ${setting.unit}`, setting.note]
+  const locked = Boolean(setting.locked);
+  const hint = [setting.unit && `${text.unit}: ${setting.unit}`, setting.note, setting.locked]
     .filter(Boolean)
     .join(' · ');
-  const wide = setting.type === 'bands';
+  const wide = setting.type === 'bands' || setting.type === 'path';
 
   return (
     <SettingFrame
@@ -192,37 +229,54 @@ export function SettingRow({ setting, busy, problem, onChange, onReset }) {
       hint={hint}
       stacked={wide}
     >
-      <Field validationState={problem ? 'error' : 'none'} validationMessage={problem || undefined}>
-        <div className={styles.control}>
-          {wide ? (
-            <BandsControl
-              key={String(setting.value)}
-              setting={setting}
-              disabled={busy}
-              onChange={onChange}
-            />
-          ) : (
-            <Control setting={setting} disabled={busy} onChange={onChange} />
-          )}
-          <span className={styles.status}>{busy && <Spinner size="extra-tiny" />}</span>
-          <Tooltip
-            content={
-              setting.readonly
-                ? text.clear
-                : `${text.resetTo} ${describe(setting, setting.default)}`
-            }
-            relationship="label"
-          >
-            <Button
-              appearance="subtle"
-              icon={<ArrowCounterclockwise20Regular />}
-              aria-label={`${setting.readonly ? text.clear : text.reset}: ${setting.label}`}
-              disabled={busy || setting.is_default}
-              onClick={onReset}
-            />
-          </Tooltip>
-        </div>
-      </Field>
+      {setting.type === 'path' ? (
+        <PathControl
+          setting={setting}
+          busy={busy}
+          problem={problem}
+          onChange={onChange}
+          onReset={onReset}
+        />
+      ) : (
+        <Field
+          validationState={problem ? 'error' : 'none'}
+          validationMessage={problem || undefined}
+        >
+          <div className={styles.control}>
+            {setting.type === 'bands' ? (
+              <BandsControl
+                key={String(setting.value)}
+                setting={setting}
+                disabled={busy || locked}
+                onChange={onChange}
+              />
+            ) : (
+              <Control setting={setting} disabled={busy || locked} onChange={onChange} />
+            )}
+            <span className={styles.status}>{busy && <Spinner size="extra-tiny" />}</span>
+            {setting.resettable !== false && (
+              <Tooltip
+                content={
+                  setting.readonly
+                    ? text.clear
+                    : setting.default === null
+                      ? text.reset
+                      : `${text.resetTo} ${describe(setting, setting.default)}`
+                }
+                relationship="label"
+              >
+                <Button
+                  appearance="subtle"
+                  icon={<ArrowCounterclockwise20Regular />}
+                  aria-label={`${setting.readonly ? text.clear : text.reset}: ${setting.label}`}
+                  disabled={busy || locked || setting.is_default}
+                  onClick={() => onReset()}
+                />
+              </Tooltip>
+            )}
+          </div>
+        </Field>
+      )}
       {setting.unit === 'minutes' && typeof setting.value === 'number' && (
         <Text size={200} className={styles.human}>
           {humanMinutes(setting.value)}

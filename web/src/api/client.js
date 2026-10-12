@@ -22,12 +22,17 @@
  * @property {string} id
  * @property {string} label
  * @property {string} description
- * @property {'boolean' | 'integer' | 'number' | 'choice' | 'multichoice' | 'bands' | 'text'} type
+ * @property {'boolean' | 'integer' | 'number' | 'choice' | 'multichoice' | 'bands' | 'text' | 'path'} type
  * @property {string | number | boolean | Array<string | number> | null} value
  * @property {string | number | boolean | Array<string | number>} default
  * @property {boolean} is_default
  * @property {boolean} advanced
  * @property {boolean} [readonly]  Shown but not editable; reset clears it.
+ * @property {string} [locked]  Why it cannot be changed now (for example an environment variable), or ''.
+ * @property {string} [group]  A heading the screen puts above a run of related settings.
+ * @property {string} [group_note]
+ * @property {boolean} [resettable]  False when there is nothing to reset to.
+ * @property {boolean} [can_move]  Changing it can move data (the data folder).
  * @property {string} note  When the change takes effect, or ''.
  * @property {SettingOption[]} [options]  For a choice or multichoice.
  * @property {string[]} [labels]  The names of the three fields of `bands`.
@@ -63,6 +68,7 @@
  * @typedef {object} PlatformInfo
  * @property {'desktop' | 'web'} kind
  * @property {boolean} window_controls  Whether the host window can be minimised/maximised/closed.
+ * @property {boolean} folder_dialog  Whether the host can show a folder picker.
  *
  * @typedef {object} WindowState
  * @property {boolean} maximized
@@ -120,6 +126,22 @@ export async function request(path, { method = 'GET', body, signal } = {}) {
   return /** @type {Promise<T>} */ (response.json());
 }
 
+/**
+ * Like `request`, for an endpoint that answers with plain text.
+ * @param {string} path
+ * @returns {Promise<string>}
+ */
+export async function requestText(path) {
+  let response;
+  try {
+    response = await fetch(path, { credentials: 'same-origin' });
+  } catch {
+    throw new ApiError('The service is not reachable', 0);
+  }
+  if (!response.ok) throw new ApiError(response.statusText, response.status);
+  return response.text();
+}
+
 export const api = {
   /** @returns {Promise<{ status: string }>} */
   health: (signal) => request('/api/health', { signal }),
@@ -129,10 +151,23 @@ export const api = {
     /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */
     list: (section, signal) => request(`/api/settings/${section}`, { signal }),
     /** @param {string} section @param {string} id @param {unknown} value @returns {Promise<Setting>} */
-    update: (section, id, value) =>
-      request(`/api/settings/${section}/${id}`, { method: 'PUT', body: { value } }),
-    /** @param {string} section @param {string} id @returns {Promise<Setting>} */
-    reset: (section, id) => request(`/api/settings/${section}/${id}`, { method: 'DELETE' }),
+    update: (section, id, value, options) =>
+      request(`/api/settings/${section}/${id}`, {
+        method: 'PUT',
+        body: options ? { value, options } : { value },
+      }),
+    /** @param {string} section @param {string} id @param {{ move?: boolean }} [options] @returns {Promise<Setting>} */
+    reset: (section, id, options) =>
+      request(`/api/settings/${section}/${id}`, {
+        method: 'DELETE',
+        body: options ? { options } : undefined,
+      }),
+  },
+  /** The text to paste into a support request. @returns {Promise<string>} */
+  supportInfo: () => requestText('/api/support-info'),
+  dialog: {
+    /** @param {string} [start] @returns {Promise<{ path: string | null }>} */
+    folder: (start) => request('/api/dialog/folder', { method: 'POST', body: { start } }),
   },
   /** @returns {Promise<Brand>} */
   brand: (signal) => request('/api/brand', { signal }),

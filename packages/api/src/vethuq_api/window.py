@@ -18,3 +18,10 @@ class WindowController(Protocol):
     def restore(self) -> None: ...
 
     def close(self) -> None: ...
+
+
+class FolderPicker(Protocol):
+    """A window that can ask the person to pick a folder (a desktop host can; a web host cannot)."""
+
+    def choose_folder(self, start: str | None = None) -> str | None:
+        """The folder chosen, or None if the dialog was cancelled."""

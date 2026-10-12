@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from vethuq_api.settings import SettingsService
+from vethuq_api.support import build_report
 
 
 class Core(Protocol):
@@ -20,9 +21,15 @@ class Core(Protocol):
 
     def settings(self, section: str) -> list[dict[str, object]]: ...
 
-    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]: ...
+    def update_setting(
+        self, section: str, setting_id: str, value: object, options: dict[str, Any] | None = None
+    ) -> dict[str, object]: ...
 
-    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]: ...
+    def reset_setting(
+        self, section: str, setting_id: str, options: dict[str, Any] | None = None
+    ) -> dict[str, object]: ...
+
+    def support_report(self) -> str: ...
 
 
 class VethuQCore:
@@ -32,7 +39,7 @@ class VethuQCore:
         self._db_path = db_path
         self._lock = threading.Lock()
         self._client: Any = None
-        self._settings = SettingsService(self._vethuq)
+        self._settings = SettingsService(self._vethuq, self._release)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -42,17 +49,37 @@ class VethuQCore:
                 self._client = VethuQ(self._db_path)
             return self._client
 
+    def _release(self) -> None:
+        """Forget the client (after the data folder moved), so the next use opens the new one."""
+        with self._lock:
+            self._client = None
+
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()
+
+    def support_report(self) -> str:
+        """Everything a support request needs, as text to paste (no folders, no file names)."""
+        from vethuq import Paths
+
+        return build_report(
+            about=self.about(),
+            catalog=self.catalog(),
+            changed=self._settings.changed(),
+            data_location=Paths.location_source(),
+        )
 
     def settings(self, section: str) -> list[dict[str, object]]:
         return self._settings.list(section)
 
-    def update_setting(self, section: str, setting_id: str, value: object) -> dict[str, object]:
-        return self._settings.update(section, setting_id, value)
+    def update_setting(
+        self, section: str, setting_id: str, value: object, options: dict[str, Any] | None = None
+    ) -> dict[str, object]:
+        return self._settings.update(section, setting_id, value, options)
 
-    def reset_setting(self, section: str, setting_id: str) -> dict[str, object]:
-        return self._settings.reset(section, setting_id)
+    def reset_setting(
+        self, section: str, setting_id: str, options: dict[str, Any] | None = None
+    ) -> dict[str, object]:
+        return self._settings.reset(section, setting_id, options)
 
     def brand(self) -> dict[str, object]:
         """The app's name, tagline and colour palette, so every surface looks the same."""

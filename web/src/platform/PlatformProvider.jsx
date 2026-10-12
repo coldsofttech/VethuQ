@@ -7,11 +7,12 @@ import { api } from '../api/client.js';
  * @typedef {object} Platform
  * @property {'desktop' | 'web'} kind
  * @property {boolean} windowControls
+ * @property {boolean} folderDialog  The host can show a folder picker.
  * @property {boolean} ready  False until the host has answered.
  */
 
 /** @type {Platform} */
-const UNKNOWN = { kind: 'web', windowControls: false, ready: false };
+const UNKNOWN = { kind: 'web', windowControls: false, folderDialog: false, ready: false };
 
 const PlatformContext = createContext(UNKNOWN);
 
@@ -21,7 +22,13 @@ export function PlatformProvider({ children }) {
   useEffect(() => {
     const controller = new AbortController();
     api.platform(controller.signal).then(
-      (info) => setPlatform({ kind: info.kind, windowControls: info.window_controls, ready: true }),
+      (info) =>
+        setPlatform({
+          kind: info.kind,
+          windowControls: info.window_controls,
+          folderDialog: info.folder_dialog === true,
+          ready: true,
+        }),
       (error) => {
         if (error?.name !== 'AbortError') setPlatform({ ...UNKNOWN, ready: true });
       },

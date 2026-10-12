@@ -16,13 +16,13 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 VIEWPORT = {"width": 1200, "height": 780}
 
 
-def start_host() -> tuple[subprocess.Popen[str], str]:
+def start_host(env: dict[str, str] | None = None) -> tuple[subprocess.Popen[str], str]:
     process = subprocess.Popen(  # noqa: S603
         [sys.executable, "-m", "vethuq_desktop", "--no-window"],
         stdout=subprocess.PIPE,
         text=True,
         # A throw-away data folder, so the settings the checks change are not the user's own.
-        env={**os.environ, "VETHUQ_HOME": tempfile.mkdtemp(prefix="vethuq-ui-")},
+        env=env or {**os.environ, "VETHUQ_HOME": tempfile.mkdtemp(prefix="vethuq-ui-")},
     )
     assert process.stdout is not None
     line = process.stdout.readline()
@@ -32,7 +32,9 @@ def start_host() -> tuple[subprocess.Popen[str], str]:
 
 
 def open_page(browser: Browser, url: str) -> Page:
-    page = browser.new_context(viewport=VIEWPORT, color_scheme="light").new_page()
+    context = browser.new_context(viewport=VIEWPORT, color_scheme="light")
+    context.grant_permissions(["clipboard-read", "clipboard-write"], origin=url.split("/?")[0])
+    page = context.new_page()
     page.goto(url)
     expect(page.get_by_test_id("app-shell")).to_be_visible()
     return page
@@ -77,6 +79,42 @@ def run(browser: Browser, out: Path) -> None:
             page.get_by_role("tab", name="General").click()
             expect(page.get_by_text("Use my system setting")).to_be_visible()
             shot(page, out, f"settings-{scheme}")
+
+        # Search: grouped, with the normalizers and each engine's own options.
+        page.get_by_role("tab", name="Settings").click()
+        page.get_by_role("tab", name="Search").click()
+        expect(page.get_by_role("heading", name="Searching")).to_be_visible()
+        expect(page.get_by_role("heading", name="How text is matched")).to_be_visible()
+        expect(page.get_by_role("heading", name="Similar (fuzzy) engine")).to_be_visible()
+        shot(page, out, "settings-search")
+        engine = page.get_by_role("combobox", name="Default search engine")
+        engine.click()
+        page.get_by_role("option", name="Contains (like)").click()
+        expect(engine).to_have_text("Contains (like)")
+        case = page.get_by_role("combobox", name="Letter case")
+        case.click()
+        page.get_by_role("option", name="Ignore case").click()
+        expect(case).to_have_text("Ignore case")
+        threshold = page.get_by_role("textbox", name="Threshold").first
+        threshold.fill("loose")
+        threshold.press("Enter")
+        context_chars = page.get_by_role("spinbutton", name="Context around a match")
+        context_chars.fill("150")
+        context_chars.press("Tab")
+        page.reload()
+        page.get_by_role("tab", name="Search").click()
+        expect(page.get_by_role("combobox", name="Default search engine")).to_have_text(
+            "Contains (like)"
+        )
+        expect(page.get_by_role("combobox", name="Letter case")).to_have_text("Ignore case")
+        expect(page.get_by_role("spinbutton", name="Context around a match")).to_have_value("150")
+        shot(page, out, "settings-search-changed")
+        for name in ("Default search engine", "Letter case", "Context around a match"):
+            page.get_by_role("button", name=f"Reset to default: {name}").click()
+        expect(page.get_by_role("combobox", name="Default search engine")).to_have_text(
+            "All engines"
+        )
+        expect(page.get_by_role("spinbutton", name="Context around a match")).to_have_value("80")
 
         # Indexing settings: change, persist across a reload, show errors, reset.
         page.get_by_role("tab", name="Settings").click()
@@ -138,6 +176,24 @@ def run(browser: Browser, out: Path) -> None:
         page.get_by_role("button", name="Reset to default: Check for updates").click()
         expect(updates).to_have_text("On: check and offer to update")
 
+        # General: the data folder is set by VETHUQ_HOME here, so it is locked; backups can change.
+        page.get_by_role("tab", name="General").click()
+        data = page.get_by_test_id("setting-location.data")
+        expect(data).to_contain_text("VETHUQ_HOME")
+        expect(data.get_by_role("button", name="Change…")).to_be_disabled()
+        backups = page.get_by_test_id("setting-location.backups")
+        backups.get_by_role("button", name="Change…").click()
+        folder = os.path.join(tempfile.mkdtemp(prefix="vethuq-backups-"), "kept")
+        page.get_by_role("dialog").get_by_role("textbox", name="Folder").fill(folder)
+        shot(page, out, "settings-backups-dialog")
+        page.get_by_role("dialog").get_by_role("button", name="Change folder").click()
+        expect(page.get_by_test_id("path-location.backups")).to_contain_text("kept")
+        backups.get_by_role("button", name="Use the default folder").click()
+        page.get_by_role("dialog").get_by_role("button", name="Use the default folder").click()
+        expect(page.get_by_test_id("path-location.backups")).to_contain_text("backups")
+        expect(page.get_by_role("heading", name="Data")).to_be_visible()
+        shot(page, out, "settings-general-data")
+
         # Sources: retention in minutes, with a readable duration.
         page.get_by_role("tab", name="Sources").click()
         expect(page.get_by_text("7 days", exact=True)).to_be_visible()
@@ -150,7 +206,7 @@ def run(browser: Browser, out: Path) -> None:
         expect(page.get_by_text("7 days", exact=True)).to_be_visible()
 
         # Processing: tiers and the hybrid options.
-        page.get_by_role("tab", name="Processing").click()
+        page.get_by_role("tab", name="Cloud OCR").click()
         expect(page.get_by_test_id("setting-tiers.default")).to_be_visible()
         page.get_by_role("combobox", name="OCR phases sent to GitHub").click()
         page.get_by_role("menuitemcheckbox", name="Deep").click()
@@ -186,7 +242,7 @@ def run(browser: Browser, out: Path) -> None:
         expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("70")
 
         # System: logs and database.
-        page.get_by_role("tab", name="System").click()
+        page.get_by_role("tab", name="Logs and database").click()
         level = page.get_by_role("combobox", name="Log detail")
         level.click()
         page.get_by_role("option", name="Debug: everything, for troubleshooting").click()
@@ -199,7 +255,7 @@ def run(browser: Browser, out: Path) -> None:
         expect(page.get_by_text("1 day", exact=True)).to_be_visible()
         shot(page, out, "settings-system")
         page.reload()
-        page.get_by_role("tab", name="System").click()
+        page.get_by_role("tab", name="Logs and database").click()
         expect(page.get_by_role("combobox", name="Log detail")).to_have_text(
             "Debug: everything, for troubleshooting"
         )
@@ -210,6 +266,23 @@ def run(browser: Browser, out: Path) -> None:
             "Info: normal activity"
         )
         expect(page.get_by_role("spinbutton", name="Keep log files for")).to_have_value("15")
+
+        # Add-ons: none of the installed ones has settings here.
+        page.get_by_role("tab", name="Add-ons").click()
+        expect(page.get_by_text("None of the installed add-ons has settings.")).to_be_visible()
+        shot(page, out, "settings-addons")
+
+        # About: the support information is copied, without folders.
+        page.get_by_role("tab", name="About").click()
+        page.get_by_role("button", name="Copy support information").click()
+        expect(page.get_by_role("button", name="Copied to the clipboard")).to_be_visible()
+        copied = page.evaluate("navigator.clipboard.readText()")
+        assert copied.startswith("## VethuQ support information"), copied[:80]
+        assert "### Add-ons" in copied and "### Interface" in copied
+        assert "- Data folder: env" in copied
+        assert os.environ.get("VETHUQ_HOME", "no-such-folder") not in copied
+        (out / "support-information.txt").write_text(copied, encoding="utf-8")
+        shot(page, out, "about-copied")
 
         # Title-bar buttons talk to the host (simulated here).
         page.get_by_role("tab", name="Home").click()

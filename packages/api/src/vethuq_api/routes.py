@@ -34,6 +34,10 @@ def register(
     def brand() -> Response:
         return jsonify(core.brand())
 
+    @api.get("/support-info")
+    def support_info() -> Response:
+        return Response(core.support_report(), mimetype="text/plain; charset=utf-8")
+
     @api.get("/catalog")
     def catalog() -> Response:
         return jsonify(core.catalog())
@@ -55,15 +59,33 @@ def register(
         body = request.get_json(silent=True)
         if not isinstance(body, dict) or "value" not in body:
             raise InvalidSettingError('Send {"value": ...}.')
-        return jsonify(core.update_setting(section, setting_id, body["value"]))
+        options = body.get("options")
+        if options is not None and not isinstance(options, dict):
+            raise InvalidSettingError("Options are an object.")
+        return jsonify(core.update_setting(section, setting_id, body["value"], options))
 
     @api.delete("/settings/<section>/<setting_id>")
     def reset_setting(section: str, setting_id: str) -> Response:
-        return jsonify(core.reset_setting(section, setting_id))
+        body = request.get_json(silent=True)
+        options = body.get("options") if isinstance(body, dict) else None
+        return jsonify(core.reset_setting(section, setting_id, options))
 
     @api.get("/platform")
     def platform() -> Response:
-        return jsonify(kind=host_kind, window_controls=window is not None)
+        return jsonify(
+            kind=host_kind,
+            window_controls=window is not None,
+            folder_dialog=callable(getattr(window, "choose_folder", None)),
+        )
+
+    if window is not None and callable(getattr(window, "choose_folder", None)):
+
+        @api.post("/dialog/folder")
+        def choose_folder() -> Response:
+            body = request.get_json(silent=True)
+            start = body.get("start") if isinstance(body, dict) else None
+            chosen = window.choose_folder(start if isinstance(start, str) else None)  # type: ignore[union-attr]
+            return jsonify(path=chosen)
 
     if window is not None:
 

@@ -54,9 +54,11 @@ export function useSettings(section) {
       });
       try {
         replace(await call());
+        return true;
       } catch (error) {
         if (previous) replace(previous);
         setProblems((current) => ({ ...current, [id]: error.message || 'Could not save.' }));
+        return false;
       } finally {
         setBusy((current) => ({ ...current, [id]: false }));
       }
@@ -65,12 +67,12 @@ export function useSettings(section) {
   );
 
   const update = useCallback(
-    (id, value) =>
-      run(id, { value, is_default: false }, () => api.settings.update(section, id, value)),
+    (id, value, options) =>
+      run(id, { value, is_default: false }, () => api.settings.update(section, id, value, options)),
     [run, section],
   );
   const reset = useCallback(
-    (id) => run(id, null, () => api.settings.reset(section, id)),
+    (id, options) => run(id, null, () => api.settings.reset(section, id, options)),
     [run, section],
   );
 
