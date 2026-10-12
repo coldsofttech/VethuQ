@@ -1,0 +1,156 @@
+# Builds the VethuQ interactive shell's installers when `vethuq-interactive-cli-vX.Y.Z` is pushed:
+#
+#   Windows   VethuQ-Interactive-CLI-Setup.exe             PyInstaller + Inno Setup
+#   Linux     vethuq-interactive-cli_X.Y.Z_amd64.deb       PyInstaller + dpkg-deb
+#
+# They install into the folder of the command line (vethuq-cli), reusing its lib/ and add-ons/, so
+# the same build also makes the CLI installer; the smoke test installs both, CLI first.
+#
+# Only the command line (no UI, no background service; the interactive shell has its own workflow,
+# release-interactive-cli.yml, though the same build holds both programs). Add `-rcN` for a
+# release candidate: it is attached to a GitHub prerelease. Nothing goes to PyPI. The free add-ons
+# come from the sibling VethuQ-premium checkout, and the compiled `vethuq_entitlements` runtime from
+# the private VethuQ-entitlements release pinned in packages/core/ENTITLEMENTS_VERSION (both read
+# with PREMIUM_READ_TOKEN, as in release.yml). See docs/releasing.md.
+name: release-interactive-cli
+
+on:
+  push:
+    tags:
+      - "vethuq-interactive-cli-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-interactive-cli-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$GITHUB_REF_NAME"
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#vethuq-interactive-cli-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: interactive-cli-windows
+          # The oldest Ubuntu runner: a binary needs a glibc at least as new as the one it was built on.
+          - os: ubuntu-22.04
+            artifact: interactive-cli-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The three repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          fetch-depth: 0 # hatch-vcs reads the tag
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install the command line and the default add-ons
+        working-directory: work/VethuQ
+        shell: bash
+        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
+          uv pip install "pyinstaller>=6.10"
+      - name: Install the compiled entitlements runtime
+        working-directory: work/VethuQ
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PREMIUM_READ_TOKEN }}
+        run: |
+          version="$(tr -d '[:space:]' < packages/core/ENTITLEMENTS_VERSION)"
+          gh release download "vethuq-entitlements-v${version}" \
+            --repo coldsofttech/VethuQ-entitlements --dir entitlements
+          (cd entitlements && sha256sum --check SHA256SUMS)
+          uv pip install --no-deps --find-links entitlements vethuq-entitlements
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build the installer
+        working-directory: work/VethuQ
+        shell: bash
+        run: uv run --no-sync python scripts/release/release.py --cli --interactive-cli --version "${{ needs.plan.outputs.version }}"
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: work/VethuQ
+        shell: pwsh
+        run: |
+          # The shell goes into the command line's folder, so the command line comes first.
+          $dir = "$env:RUNNER_TEMP\vethuq"
+          Start-Process -Wait dist\VethuQ-CLI-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER","/MERGETASKS=!addtopath","/DIR=$dir"
+          Start-Process -Wait dist\VethuQ-Interactive-CLI-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER","/MERGETASKS=!addtopath"
+          & "$dir\vethuqic.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path "$dir\vethuq.exe")) { throw "the command line is gone" }
+          if (Test-Path "$dir\lib\vethuqic.exe") { throw "vethuqic.exe is not beside vethuq.exe" }
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: |
+          # The shell depends on the command line, so apt installs both.
+          sudo apt-get install -y ./dist/vethuq-cli_*.deb ./dist/vethuq-interactive-cli_*.deb
+          vethuqic --version
+          vethuq --version
+          test "$(readlink -f /usr/bin/vethuqic)" = /opt/vethuq/vethuqic
+          # Removing the command line takes the shell with it.
+          sudo apt-get remove -y vethuq-cli
+          test ! -e /usr/bin/vethuqic
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            work/VethuQ/dist/VethuQ-Interactive-CLI-Setup.exe
+            work/VethuQ/dist/vethuq-interactive-cli_*.deb
+          if-no-files-found: error
+
+  github-release:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: interactive-cli-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}" \
+            --title "VethuQ interactive shell ${{ needs.plan.outputs.version }}" \
+            --notes "The VethuQ command line (no desktop app). Windows: run VethuQ-CLI-Setup.exe. Linux (Debian, Ubuntu): sudo apt install ./vethuq-cli_*.deb. Installs the default add-ons; see docs/releasing.md."

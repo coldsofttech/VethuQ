@@ -1,15 +1,21 @@
 """Build the VethuQ command-line installers (PyInstaller, then Inno Setup or a .deb).
 
     python scripts/release/release.py --cli --version 1.2.0
-    python scripts/release/release.py --cli --dev            # local iteration
+    python scripts/release/release.py --interactive-cli --version 1.2.0
+    python scripts/release/release.py --cli --interactive-cli --dev     # local iteration
 
-`--cli` builds the command line only (no desktop app, no interactive shell):
+No desktop app is built. One PyInstaller build makes both programs:
 
   1. PyInstaller turns `packages/cli/installer/vethuq-cli.spec` into `build/cli/vethuq/`:
-     `vethuq(.exe)`, `lib/` (the runtime and every dependency) and `add-ons/` (the default add-ons).
-  2. Windows: Inno Setup (`iscc`) wraps that folder into `dist/VethuQ-CLI-Setup.exe`.
-     Linux: `dpkg-deb` packs it into `dist/vethuq-cli_<version>_<arch>.deb` (installs to
-     /opt/vethuq, with /usr/bin/vethuq pointing at it).
+     `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `lib/` (the runtime
+     and every dependency, plus `runtime-id.txt`) and `add-ons/` (the default add-ons).
+  2. `--cli`: Windows: Inno Setup (`iscc`) wraps `vethuq`, `lib/` and `add-ons/` into
+     `dist/VethuQ-CLI-Setup.exe`. Linux: `dpkg-deb` packs them into
+     `dist/vethuq-cli_<version>_<arch>.deb` (installs to /opt/vethuq, /usr/bin/vethuq).
+  3. `--interactive-cli`: only `vethuqic` is packed, for the same folder as the command line,
+     whose `lib/` and `add-ons/` it reuses: `dist/VethuQ-Interactive-CLI-Setup.exe`, or
+     `dist/vethuq-interactive-cli_<version>_<arch>.deb` (depends on vethuq-cli). Both refuse to
+     install over a command line built from different libraries (`runtime-id.txt`).
 
 `--version` is the release version (`1.2.0`, or `1.2.0-rc1` for a release candidate). `--dev` skips
 compression and reuses a PyInstaller build whose inputs haven't changed. Run it in an environment
@@ -31,6 +37,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
+IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 BUILD = REPO_ROOT / "build" / "cli"
 DIST = REPO_ROOT / "dist"
 APP = BUILD / "vethuq"
@@ -122,6 +129,24 @@ class Cli:
         BUILD.mkdir(parents=True, exist_ok=True)
         stamp.write_text(key)
 
+    def runtime_id(self) -> str:
+        """Names the libraries lib/ was built from: the dependency lock, Python and PyInstaller.
+
+        The interactive shell is installed on top of the command line's lib/, so the two builds must
+        agree on this."""
+        import PyInstaller  # noqa: PLC0415 - only needed once a build exists
+
+        digest = hashlib.sha256()
+        digest.update((REPO_ROOT / "uv.lock").read_bytes())
+        digest.update(f"py{sys.version_info.major}.{sys.version_info.minor}".encode())
+        digest.update(f"pyinstaller{PyInstaller.__version__}".encode())
+        return digest.hexdigest()[:16]
+
+    def stamp_runtime(self) -> str:
+        identifier = self.runtime_id()
+        (APP / "lib" / "runtime-id.txt").write_text(identifier + "\n", encoding="ascii")
+        return identifier
+
     @staticmethod
     def move_addons() -> None:
         """PyInstaller puts data in lib/; the add-ons belong beside the executable."""
@@ -135,8 +160,14 @@ class Cli:
 
     def check_build(self) -> None:
         """What the installers rely on is there."""
-        exe = APP / ("vethuq.exe" if os.name == "nt" else "vethuq")
-        missing = [p for p in (exe, APP / "lib", APP / "add-ons") if not p.exists()]
+        suffix = ".exe" if os.name == "nt" else ""
+        required = (
+            APP / f"vethuq{suffix}",
+            APP / f"vethuqic{suffix}",
+            APP / "lib",
+            APP / "add-ons",
+        )
+        missing = [p for p in required if not p.exists()]
         if missing:
             raise ReleaseError("The build is missing: " + ", ".join(str(p) for p in missing))
         if not any((APP / "add-ons").iterdir()):
@@ -144,7 +175,7 @@ class Cli:
 
     # ----- Windows: Inno Setup ----------------------------------------------------------------
 
-    def inno(self) -> Path:
+    def inno(self, script: Path, output: str, *defines: str) -> Path:
         iscc = shutil.which("iscc") or shutil.which("ISCC")
         if iscc is None:
             raise ReleaseError("Inno Setup (iscc) was not found on PATH.")
@@ -152,14 +183,15 @@ class Cli:
             iscc,
             f"/DMyAppVersion={self.version.display}",
             f"/DMyAppNumericVersion={self.version.numeric}",
+            *defines,
         ]
         if self.dev:
             command.append("/DNoCompression")
         else:
             command.append(f"/DCompressThreads={min(os.cpu_count() or 1, 4)}")
-        command.append(str(INSTALLER / "vethuq-cli.iss"))
+        command.append(str(script))
         run(command)
-        return DIST / "VethuQ-CLI-Setup.exe"
+        return DIST / output
 
     # ----- Linux: .deb ------------------------------------------------------------------------
 
@@ -176,11 +208,20 @@ class Cli:
         total = sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
         return (total + 1023) // 1024
 
-    def control(self, arch: str, size_kb: int) -> str:
+    def control(
+        self,
+        arch: str,
+        size_kb: int,
+        package: str = "vethuq-cli",
+        summary: str = "VethuQ command line",
+        detail: str = "Document intelligence and evidence infrastructure: index, OCR and search\n"
+        " documents from the terminal. Installs to /opt/vethuq with the default add-ons.\n",
+        depends: str | None = None,
+    ) -> str:
         libc = platform.libc_ver()[1]
-        depends = f"libc6 (>= {libc})" if libc else "libc6"
+        depends = depends or (f"libc6 (>= {libc})" if libc else "libc6")
         return (
-            "Package: vethuq-cli\n"
+            f"Package: {package}\n"
             f"Version: {self.version.debian}\n"
             "Section: utils\n"
             "Priority: optional\n"
@@ -189,59 +230,150 @@ class Cli:
             f"Installed-Size: {size_kb}\n"
             f"Maintainer: {MAINTAINER}\n"
             f"Homepage: {HOMEPAGE}\n"
-            "Description: VethuQ command line\n"
-            " Document intelligence and evidence infrastructure: index, OCR and search\n"
-            " documents from the terminal. Installs to /opt/vethuq with the default add-ons.\n"
+            f"Description: {summary}\n"
+            f"{detail}"
         )
 
-    def deb(self) -> Path:
-        if shutil.which("dpkg-deb") is None:
-            raise ReleaseError("dpkg-deb was not found (install dpkg).")
-        arch = self.architecture()
-        root = BUILD / "deb"
-        if root.exists():
-            shutil.rmtree(root)
-        opt = root / "opt" / "vethuq"
-        shutil.copytree(APP, opt, symlinks=True)
-        (root / "usr" / "bin").mkdir(parents=True)
-        (root / "usr" / "bin" / "vethuq").symlink_to("/opt/vethuq/vethuq")
-        doc = root / "usr" / "share" / "doc" / "vethuq-cli"
-        doc.mkdir(parents=True)
-        shutil.copy(REPO_ROOT / "LICENSE", doc / "copyright")
-        changelog = REPO_ROOT / "packages" / "cli" / "CHANGELOG.md"
-        if changelog.is_file():
-            with (doc / "changelog.gz").open("wb") as raw:
-                with gzip.GzipFile("", "wb", 9, raw, mtime=0) as handle:
-                    handle.write(changelog.read_bytes())
-        debian = root / "DEBIAN"
-        debian.mkdir()
-        (debian / "control").write_text(
-            self.control(arch, self.installed_size_kb(root)), encoding="utf-8"
-        )
+    @staticmethod
+    def set_modes(root: Path) -> None:
         for path in [root, *root.rglob("*")]:
             if path.is_symlink():
                 continue
-            if path.is_dir():
-                path.chmod(0o755)
-            elif os.access(path, os.X_OK):
+            if path.is_dir() or os.access(path, os.X_OK):
                 path.chmod(0o755)
             else:
                 path.chmod(0o644)
+
+    def pack(self, root: Path, name: str, arch: str) -> Path:
+        self.set_modes(root)
         DIST.mkdir(exist_ok=True)
-        target = DIST / f"vethuq-cli_{self.version.debian}_{arch}.deb"
+        target = DIST / f"{name}_{self.version.debian}_{arch}.deb"
         compression = ["-Zgzip", "-z1"] if self.dev else ["-Zxz", "-z6"]
         run(["dpkg-deb", "--root-owner-group", *compression, "--build", str(root), str(target)])
         return target
 
+    @staticmethod
+    def stage(name: str) -> Path:
+        if shutil.which("dpkg-deb") is None:
+            raise ReleaseError("dpkg-deb was not found (install dpkg).")
+        root = BUILD / name
+        if root.exists():
+            shutil.rmtree(root)
+        return root
+
+    @staticmethod
+    def changelog(doc: Path, package: str) -> None:
+        doc.mkdir(parents=True)
+        shutil.copy(REPO_ROOT / "LICENSE", doc / "copyright")
+        changelog = REPO_ROOT / "packages" / package / "CHANGELOG.md"
+        if changelog.is_file():
+            with (doc / "changelog.gz").open("wb") as raw:
+                with gzip.GzipFile("", "wb", 9, raw, mtime=0) as handle:
+                    handle.write(changelog.read_bytes())
+
+    def deb(self) -> Path:
+        arch = self.architecture()
+        root = self.stage("deb")
+        # The interactive shell is a package of its own.
+        shutil.copytree(
+            APP, root / "opt" / "vethuq", symlinks=True, ignore=shutil.ignore_patterns("vethuqic")
+        )
+        (root / "usr" / "bin").mkdir(parents=True)
+        (root / "usr" / "bin" / "vethuq").symlink_to("/opt/vethuq/vethuq")
+        self.changelog(root / "usr" / "share" / "doc" / "vethuq-cli", "cli")
+        (root / "DEBIAN").mkdir()
+        (root / "DEBIAN" / "control").write_text(
+            self.control(arch, self.installed_size_kb(root)), encoding="utf-8"
+        )
+        return self.pack(root, "vethuq-cli", arch)
+
+    POSTINST = """#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    want="$(cat /usr/share/vethuq-interactive-cli/runtime-id)"
+    have="$(cat /opt/vethuq/lib/runtime-id.txt 2>/dev/null || echo none)"
+    if [ "$want" != "$have" ]; then
+        echo "vethuq-interactive-cli: vethuq-cli was built from different libraries." >&2
+        echo "Update vethuq-cli to the matching release first." >&2
+        exit 1
+    fi
+fi
+"""
+
+    DESKTOP = """[Desktop Entry]
+Type=Application
+Name=VethuQ Interactive
+Comment=Menus over the VethuQ commands
+Exec=/opt/vethuq/vethuqic
+Icon=vethuq
+Terminal=true
+Categories=Utility;ConsoleOnly;
+"""
+
+    def interactive_deb(self, runtime_id: str) -> Path:
+        """Only `vethuqic`: it runs from the CLI's /opt/vethuq, on its lib/ and add-ons/."""
+        arch = self.architecture()
+        root = self.stage("deb-ic")
+        (root / "opt" / "vethuq").mkdir(parents=True)
+        shutil.copy2(APP / "vethuqic", root / "opt" / "vethuq" / "vethuqic")
+        (root / "usr" / "bin").mkdir(parents=True)
+        (root / "usr" / "bin" / "vethuqic").symlink_to("/opt/vethuq/vethuqic")
+        applications = root / "usr" / "share" / "applications"
+        applications.mkdir(parents=True)
+        (applications / "vethuqic.desktop").write_text(self.DESKTOP, encoding="utf-8")
+        for size in (16, 32, 64, 256, 512):
+            icons = root / "usr" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps"
+            icons.mkdir(parents=True)
+            shutil.copy(REPO_ROOT / "icons" / f"icon-{size}.png", icons / "vethuq.png")
+        data = root / "usr" / "share" / "vethuq-interactive-cli"
+        data.mkdir(parents=True)
+        (data / "runtime-id").write_text(runtime_id + "\n", encoding="ascii")
+        self.changelog(root / "usr" / "share" / "doc" / "vethuq-interactive-cli", "interactive-cli")
+        debian = root / "DEBIAN"
+        debian.mkdir()
+        (debian / "postinst").write_text(self.POSTINST, encoding="utf-8")
+        (debian / "postinst").chmod(0o755)
+        (debian / "control").write_text(
+            self.control(
+                arch,
+                self.installed_size_kb(root),
+                package="vethuq-interactive-cli",
+                summary="VethuQ interactive shell",
+                detail=" Arrow-key menus over the vethuq commands (run vethuqic). Installs into\n"
+                " the folder of vethuq-cli and uses its libraries and add-ons.\n",
+                depends="vethuq-cli",
+            ),
+            encoding="utf-8",
+        )
+        return self.pack(root, "vethuq-interactive-cli", arch)
+
     # ----- all --------------------------------------------------------------------------------
 
-    def build(self) -> Path:
+    def build(self, *, cli: bool = False, interactive: bool = False) -> list[Path]:
         if sys.platform not in ("win32", "linux"):
-            raise ReleaseError(f"--cli builds on Windows and Linux, not {sys.platform}.")
+            raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
         self.pyinstaller()
+        runtime_id = self.stamp_runtime()
         self.check_build()
         DIST.mkdir(exist_ok=True)
-        return self.inno() if sys.platform == "win32" else self.deb()
+        built = []
+        if sys.platform == "win32":
+            if cli:
+                built.append(self.inno(INSTALLER / "vethuq-cli.iss", "VethuQ-CLI-Setup.exe"))
+            if interactive:
+                built.append(
+                    self.inno(
+                        IC_INSTALLER / "vethuqic.iss",
+                        "VethuQ-Interactive-CLI-Setup.exe",
+                        f"/DRuntimeId={runtime_id}",
+                    )
+                )
+        else:
+            if cli:
+                built.append(self.deb())
+            if interactive:
+                built.append(self.interactive_deb(runtime_id))
+        return built
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,18 +381,26 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--cli", action="store_true", help="build the command-line installer")
+    parser.add_argument(
+        "--interactive-cli",
+        action="store_true",
+        help="build the interactive shell's installer (it installs into the command line's folder)",
+    )
     parser.add_argument("--version", default="0.1.0", help="release version (X.Y.Z or X.Y.Z-rcN)")
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
     args = parser.parse_args(argv)
-    if not args.cli:
-        parser.error("choose what to build: --cli")
+    if not (args.cli or args.interactive_cli):
+        parser.error("choose what to build: --cli and/or --interactive-cli")
     try:
-        result = Cli(Version(args.version), dev=args.dev, clean=args.clean).build()
+        built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(
+            cli=args.cli, interactive=args.interactive_cli
+        )
     except (ReleaseError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(f"Built {result}")
+    for path in built:
+        print(f"Built {path}")
     return 0
 
 

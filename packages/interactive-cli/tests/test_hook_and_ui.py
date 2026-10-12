@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import vethuq_interactive_cli
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
@@ -54,3 +55,12 @@ def test_text_and_confirm_prompts():
 
 
 _ = State
+
+
+def test_version_prints_and_exits_without_a_terminal(monkeypatch, capsys):
+    from vethuq_interactive_cli import main as main_module
+
+    monkeypatch.setattr(main_module.sys, "argv", ["vethuq-interactive", "--version"])
+    monkeypatch.setattr(main_module, "run", lambda **_: pytest.fail("the shell must not start"))
+    main_module.main()
+    assert capsys.readouterr().out.startswith("vethuq-interactive-cli ")

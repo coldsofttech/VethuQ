@@ -13,8 +13,8 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The interactive shell and the background service are not released here. They will ship as binaries.
-The command line ships as installers: see [Command-line installers](#command-line-installers).
+The background service is not released here yet; it will ship as a binary. The command line and the
+interactive shell ship as installers: see [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
 
@@ -68,7 +68,7 @@ interactive shell or background service, and attaches the installers to a GitHub
 
 Both hold the same folder:
 
-    vethuq(.exe)   the command
+    vethuq(.exe)   the command (vethuqic(.exe), the interactive shell, joins it; see below)
     lib/           the Python runtime and every dependency (Paddle, rich, SQLAlchemy, ...)
     add-ons/       the default add-ons, one folder each: english, pdf, txt, csv, markdown, paddle,
                    ocr-quick, like, exact, full-text, case, unicode
@@ -81,9 +81,30 @@ downloaded the first time OCR runs.
 Build one locally (Windows needs Inno Setup's `iscc` on PATH; Linux needs `dpkg-deb`), from a workspace
 next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` installed:
 
-    uv sync --package vethuq-cli --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
     uv pip install "pyinstaller>=6.10"
     uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
 
 `--dev` skips compression and reuses an unchanged PyInstaller build. After changing the icon, run
 `python scripts/dev/brand/cli_installer.py` to regenerate the installer's images and license page.
+
+### The interactive shell
+
+`vethuq-interactive-cli-vX.Y.Z` (`-rcN` for a release candidate) builds the interactive shell,
+`vethuqic`, with `.github/workflows/release-interactive-cli.yml`. It installs **into the command
+line's folder** and reuses its `lib/` and `add-ons/`, so it has no copy of its own: the same
+PyInstaller build makes `vethuq` and `vethuqic`, which share `lib/`.
+
+| Platform | File | Installs |
+|---|---|---|
+| Windows | `VethuQ-Interactive-CLI-Setup.exe` | `vethuqic.exe` into the folder `VethuQ-CLI-Setup.exe` chose, plus a Start menu entry and the PATH task |
+| Linux | `vethuq-interactive-cli_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqic`, `/usr/bin/vethuqic`, a `.desktop` launcher (`Terminal=true`) and icons; depends on `vethuq-cli` |
+
+Install the command line first. Both installers refuse to run otherwise, and refuse a command line
+built from different libraries: `lib/runtime-id.txt` (a hash of `uv.lock`, the Python minor version and the
+PyInstaller version) must equal the id the shell's installer was built with. So release the two from the
+same commit or at least the same `uv.lock`. Uninstalling the command line removes `vethuqic` too. The
+Windows shell's own uninstaller removes only what it added (`vethuqic.exe`).
+
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
+    uv run --no-sync python scripts/release/release.py --cli --interactive-cli --version 1.2.0

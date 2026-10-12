@@ -52,6 +52,7 @@ class TestInstallerFiles:
             "vethuq-cli.spec",
             "vethuq-cli.iss",
             "vethuq_entry.py",
+            "vethuqic_entry.py",
             "addons_hook.py",
             "LICENSE.rtf",
             "vethuq.ico",
@@ -153,3 +154,74 @@ class TestRelease:
         assert pattern.match("vethuq-cli-v1.2.0")["version"] == "1.2.0"
         assert not pattern.match("vethuq-v1.2.0")
         assert "vethuq-cli-v*" in raw["git_describe_command"]
+
+
+IC_INSTALLER = ROOT / "packages" / "interactive-cli" / "installer"
+
+
+class TestInteractiveInstaller:
+    """vethuqic.exe goes into the command line's folder and reuses its lib/ and add-ons/."""
+
+    def script(self) -> str:
+        return (IC_INSTALLER / "vethuqic.iss").read_text(encoding="utf-8")
+
+    def test_it_reuses_the_command_lines_images_license_and_icon(self):
+        script = self.script()
+        for name in ("LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"):
+            assert f"..\\..\\cli\\installer\\{name}" in script
+            assert (INSTALLER / name).is_file()
+
+    def test_it_installs_only_the_shell_into_the_cli_folder(self):
+        script = self.script()
+        files = script.split("[Files]")[1].split("[")[0]
+        assert re.findall(r"^Source: .*", files, re.M) == [
+            'Source: "..\\..\\..\\build\\cli\\vethuq\\{#MyAppExeName}"; '
+            'DestDir: "{app}"; Flags: ignoreversion'
+        ]
+        assert '#define MyAppExeName "vethuqic.exe"' in script
+        assert "DefaultDirName={code:CliDir}" in script
+        assert "InstallLocation" in script and "runtime-id.txt" in script
+        # The AppId of the command line, to find its folder; its own AppId differs.
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        cli_id = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", cli, re.M)[1]
+        assert f'#define CliAppId "{cli_id}"' in script
+        assert f"AppId={{{{{cli_id}}}" not in script
+
+    def test_the_cli_uninstaller_removes_the_shell(self):
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        assert 'Name: "{app}\\vethuqic.exe"' in cli
+
+    def test_the_spec_builds_both_programs_into_one_folder(self):
+        spec = (INSTALLER / "vethuq-cli.spec").read_text(encoding="utf-8")
+        assert '_exe_for("vethuq_entry.py", "vethuq"' in spec
+        assert '"vethuqic_entry.py",\n    "vethuqic"' in spec
+        assert spec.count("COLLECT(") == 1
+        # The command line has no shell in it.
+        assert "CLI_EXCLUDES" in spec and '"questionary"' in spec
+
+    def test_the_interactive_tag_is_planned_and_versions_come_from_it(self):
+        result = plan.plan("vethuq-interactive-cli-v1.2.0")
+        assert (result.dist, result.directory) == (
+            "vethuq-interactive-cli",
+            "packages/interactive-cli",
+        )
+        assert plan.plan("vethuq-cli-v1.2.0").dist == "vethuq-cli"
+        project = tomllib.loads(
+            (ROOT / "packages" / "interactive-cli" / "pyproject.toml").read_text("utf-8")
+        )
+        raw = project["tool"]["hatch"]["version"]["raw-options"]
+        assert re.match(raw["tag_regex"], "vethuq-interactive-cli-v1.2.0-rc1")
+        assert "vethuq-interactive-cli-v*" in raw["git_describe_command"]
+
+    def test_the_deb_checks_the_runtime_and_depends_on_the_cli(self):
+        assert "runtime-id" in release.Cli.POSTINST and "exit 1" in release.Cli.POSTINST
+        control = release.Cli(release.Version("1.2.0")).control(
+            "amd64", 1, package="vethuq-interactive-cli", depends="vethuq-cli"
+        )
+        assert "Package: vethuq-interactive-cli\n" in control
+        assert "Depends: vethuq-cli\n" in control
+        assert "Terminal=true" in release.Cli.DESKTOP
+
+    def test_a_mode_is_still_required(self):
+        with pytest.raises(SystemExit):
+            release.main(["--dev"])

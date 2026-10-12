@@ -71,6 +71,11 @@ Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 Source: "..\..\..\build\cli\vethuq\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\build\cli\vethuq\add-ons\*"; DestDir: "{app}\add-ons"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[UninstallDelete]
+; The interactive shell (VethuQ-Interactive-CLI-Setup.exe) lives in this folder and relies on lib\.
+Type: files; Name: "{app}\vethuqic.exe"
+Type: files; Name: "{app}\unins001.*"
+
 [Tasks]
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Command line:"; Flags: checkedonce
 

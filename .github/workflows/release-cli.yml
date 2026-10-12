@@ -3,7 +3,8 @@
 #   Windows   VethuQ-CLI-Setup.exe             PyInstaller + Inno Setup
 #   Linux     vethuq-cli_X.Y.Z_amd64.deb       PyInstaller + dpkg-deb
 #
-# Only the command line (no UI, no interactive shell, no background service). Add `-rcN` for a
+# Only the command line (no UI, no background service; the interactive shell has its own workflow,
+# release-interactive-cli.yml, though the same build holds both programs). Add `-rcN` for a
 # release candidate: it is attached to a GitHub prerelease. Nothing goes to PyPI. The free add-ons
 # come from the sibling VethuQ-premium checkout, and the compiled `vethuq_entitlements` runtime from
 # the private VethuQ-entitlements release pinned in packages/core/ENTITLEMENTS_VERSION (both read
@@ -72,7 +73,7 @@ jobs:
       - name: Install the command line and the default add-ons
         working-directory: work/VethuQ
         shell: bash
-        run: uv sync --package vethuq-cli --no-dev
+        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
           uv pip install "pyinstaller>=6.10"
       - name: Install the compiled entitlements runtime
         working-directory: work/VethuQ

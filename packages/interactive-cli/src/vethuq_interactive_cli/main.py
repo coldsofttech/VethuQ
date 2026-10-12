@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,9 @@ def interactive_available() -> bool:
 def main() -> None:
     """The `vethuq-interactive` script."""
     argv = sys.argv[1:]
+    if "--version" in argv:
+        print(f"vethuq-interactive-cli {version('vethuq-interactive-cli')}")
+        return
     db = (
         Path(argv[argv.index("--db") + 1])
         if "--db" in argv and argv.index("--db") + 1 < len(argv)
