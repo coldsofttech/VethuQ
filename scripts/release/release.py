@@ -6,7 +6,7 @@
 
 No desktop app is built. One PyInstaller build makes both programs:
 
-  1. PyInstaller turns `packages/cli/installer/vethuq-cli.spec` into `build/cli/vethuq/`:
+  1. PyInstaller turns `installer/shared/vethuq.spec` into `build/cli/vethuq/`:
      `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `lib/` (the runtime
      and every dependency, plus `runtime-id.txt`) and `add-ons/` (the default add-ons).
   2. `--cli`: Windows: Inno Setup (`iscc`) wraps `vethuq`, `lib/` and `add-ons/` into
@@ -100,7 +100,7 @@ class Cli:
             *INSTALLER.glob("*.py"),
             *IC_INSTALLER.glob("*.py"),
             *SHARED.glob("*.py"),
-            INSTALLER / "vethuq-cli.spec",
+            SHARED / "vethuq.spec",
         ]
         for path in sorted(installer_files):
             digest.update(path.read_bytes())
@@ -129,7 +129,7 @@ class Cli:
                 str(BUILD),
                 "--workpath",
                 str(BUILD / "_work"),
-                str(INSTALLER / "vethuq-cli.spec"),
+                str(SHARED / "vethuq.spec"),
             ]
         )
         self.move_addons()

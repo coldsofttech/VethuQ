@@ -47,7 +47,7 @@ plan = load("plan")
 
 
 class TestInstallerFiles:
-    @pytest.mark.parametrize("name", ["vethuq-cli.spec", "vethuq-cli.iss", "vethuq_entry.py"])
+    @pytest.mark.parametrize("name", ["vethuq-cli.iss", "vethuq_entry.py"])
     def test_the_file_exists(self, name):
         assert (INSTALLER / name).is_file()
 
@@ -84,7 +84,7 @@ class TestInstallerFiles:
             assert word not in code
 
     def test_the_spec_bakes_in_exactly_the_default_add_ons(self):
-        spec = (INSTALLER / "vethuq-cli.spec").read_text(encoding="utf-8")
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
         block = re.search(r"DEFAULT_ADDONS = \((.*?)\n\)", spec, re.S)[1]
         assert set(re.findall(r'"([a-z-]+)"', block)) == DEFAULT_ADDONS
         assert 'contents_directory="lib"' in spec
@@ -195,10 +195,10 @@ class TestInteractiveInstaller:
     def test_the_spec_is_not_git_ignored(self):
         # *.spec is ignored in .gitignore; the spec must be un-ignored or CI never sees it.
         ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-        assert "!packages/cli/installer/vethuq-cli.spec" in ignore
+        assert "!installer/shared/vethuq.spec" in ignore
 
     def test_the_spec_builds_both_programs_into_one_folder(self):
-        spec = (INSTALLER / "vethuq-cli.spec").read_text(encoding="utf-8")
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
         assert '_exe_for(INSTALLER / "vethuq_entry.py", "vethuq"' in spec
         assert 'IC_INSTALLER / "vethuqic_entry.py",\n    "vethuqic"' in spec
         assert 'SHARED / "addons_hook.py"' in spec

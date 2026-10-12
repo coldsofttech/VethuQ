@@ -12,6 +12,8 @@
 # `vethuqic` into the same folder, on top of the CLI's lib/ and add-ons/. No UI is built.
 # PyInstaller puts data files in `lib/`; scripts/release/release.py moves `lib/add-ons` up beside
 # the executables after the build.
+# The entry scripts sit with their packages: packages/cli/installer/vethuq_entry.py and
+# packages/interactive-cli/installer/vethuqic_entry.py.
 # Built by `python scripts/release/release.py --cli` and `--interactive-cli`.
 
 import importlib.metadata as metadata
@@ -22,11 +24,11 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
 
-# SPECPATH is packages/cli/installer
-INSTALLER = Path(SPECPATH)
-REPO_ROOT = INSTALLER.parents[2]
-# Shared by both installers: the icon, images, license and the add-ons runtime hook.
-SHARED = REPO_ROOT / "installer" / "shared"
+# SPECPATH is installer/shared: this spec builds both programs, so it lives with what they share
+# (the icon, images, license and the add-ons runtime hook).
+SHARED = Path(SPECPATH)
+REPO_ROOT = SHARED.parents[1]
+INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 
 # The add-ons VethuQ installs by default (its `dependencies` in packages/core/pyproject.toml).
