@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from flask import Blueprint, Flask, Response, jsonify
 
+from vethuq_api.core import Core
 from vethuq_api.window import WindowController
 
 
@@ -16,7 +15,7 @@ def _state(window: WindowController) -> Response:
 def register(
     app: Flask,
     *,
-    about: Callable[[], dict[str, object]],
+    core: Core,
     host_kind: str,
     window: WindowController | None,
 ) -> None:
@@ -28,7 +27,11 @@ def register(
 
     @api.get("/about")
     def get_about() -> Response:
-        return jsonify(about())
+        return jsonify(core.about())
+
+    @api.get("/catalog")
+    def catalog() -> Response:
+        return jsonify(core.catalog())
 
     @api.get("/platform")
     def platform() -> Response:

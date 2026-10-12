@@ -6,6 +6,23 @@ import { ThemeProvider } from '../theme/ThemeProvider.jsx';
 
 export const ABOUT = { vethuq: '1.2.3', python: '3.12.0', platform: 'Windows-11', db_schema: 7 };
 
+export const CATALOG = {
+  add_ons: [
+    { id: 'csv', name: 'vethuq-addon-csv', version: '0.1.0', status: 'loaded', detail: '' },
+  ],
+  file_types: [
+    { id: 'pdf', label: 'PDF', extensions: ['.pdf'], available: true, reason: '' },
+    { id: 'csv', label: 'CSV', extensions: ['.csv'], available: false, reason: 'not installed' },
+  ],
+  search_engines: [
+    { id: 'exact', label: 'Exact', description: 'As typed.', available: true, reason: '' },
+  ],
+  languages: [
+    { id: 'en', label: 'English', native_label: '', enabled: true, available: true, reason: '' },
+  ],
+  ocr_engines: [],
+};
+
 /**
  * Replaces fetch with a fake API. `routes` maps "METHOD /path" to a JSON body (or a function).
  * Returns the mock so tests can assert on the calls.

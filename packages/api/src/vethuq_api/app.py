@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable
 from pathlib import Path
 
 from flask import (
@@ -19,26 +17,10 @@ from flask import (
 from werkzeug.exceptions import HTTPException
 
 from vethuq_api import routes, security
+from vethuq_api.core import Core, VethuQCore
 from vethuq_api.window import WindowController
 
 _HASHED_ASSETS = "public, max-age=31536000, immutable"
-
-
-def _default_about() -> Callable[[], dict[str, object]]:
-    """Describe the installation through the public `vethuq` API (created on first use)."""
-    lock = threading.Lock()
-    client = None
-
-    def about() -> dict[str, object]:
-        nonlocal client
-        with lock:
-            if client is None:
-                from vethuq import VethuQ
-
-                client = VethuQ()
-        return client.version.to_dict()
-
-    return about
 
 
 def create_app(
@@ -47,13 +29,13 @@ def create_app(
     web_dist: Path | None = None,
     window: WindowController | None = None,
     host_kind: str = "web",
-    about: Callable[[], dict[str, object]] | None = None,
+    core: Core | None = None,
 ) -> Flask:
     """Build the application.
 
     `bootstrap_token` is the one-time secret in the first URL the host opens. `web_dist` is the
-    built React interface to serve. `window` is given by hosts that own a window. `about`
-    replaces the installation details (for tests). Call `allow_host` for every `host:port` the
+    built React interface to serve. `window` is given by hosts that own a window. `core`
+    replaces the VethuQ core (for tests). Call `allow_host` for every `host:port` the
     server answers on.
     """
     app = Flask(__name__, static_folder=None)
@@ -61,7 +43,7 @@ def create_app(
     app.json.sort_keys = False
     gate = security.SessionGate(bootstrap_token)
     security.install(app, gate)
-    routes.register(app, about=about or _default_about(), host_kind=host_kind, window=window)
+    routes.register(app, core=core or VethuQCore(), host_kind=host_kind, window=window)
 
     @app.errorhandler(HTTPException)
     def _http_error(error: HTTPException) -> Response:

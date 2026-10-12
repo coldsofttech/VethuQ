@@ -28,6 +28,14 @@ class FakeWindow:
         self.calls.append("close")
 
 
+class FakeCore:
+    def about(self) -> dict[str, object]:
+        return {"vethuq": "9.9.9", "python": "3.12.0", "platform": "test", "db_schema": 1}
+
+    def catalog(self) -> dict[str, list[dict[str, object]]]:
+        return {"add_ons": [{"id": "csv", "name": "vethuq-addon-csv", "version": "0.1.0"}]}
+
+
 @pytest.fixture
 def web_dist(tmp_path: Path) -> Path:
     dist = tmp_path / "dist"
@@ -50,7 +58,7 @@ def app(web_dist: Path, window: FakeWindow):
         web_dist=web_dist,
         window=window,
         host_kind="desktop",
-        about=lambda: {"vethuq": "9.9.9", "python": "3.12.0", "platform": "test", "db_schema": 1},
+        core=FakeCore(),
     )
     allow_host(application, HOST)
     return application

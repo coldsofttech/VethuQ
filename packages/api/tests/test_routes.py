@@ -3,6 +3,7 @@ from __future__ import annotations
 from api_support import ORIGIN
 
 from vethuq_api import allow_host, create_app
+from vethuq_api.core import VethuQCore
 
 
 class TestPlatform:
@@ -47,3 +48,23 @@ class TestAbout:
         client.get("/?t=t", base_url=ORIGIN)
         body = client.get("/api/about", base_url=ORIGIN).get_json()
         assert set(body) >= {"vethuq", "python", "platform", "db_schema"}
+
+
+class TestCatalog:
+    def test_lists_what_the_core_reports(self, signed_in):
+        body = signed_in.get("/api/catalog", base_url=ORIGIN).get_json()
+        assert body["add_ons"][0]["id"] == "csv"
+
+    def test_needs_a_session(self, client):
+        assert client.get("/api/catalog", base_url=ORIGIN).status_code == 401
+
+    def test_real_core_reports_every_catalog(self, web_dist, tmp_path):
+        app = create_app(
+            bootstrap_token="t", web_dist=web_dist, core=VethuQCore(tmp_path / "vethuq.db")
+        )
+        allow_host(app, "127.0.0.1:5000")
+        client = app.test_client()
+        client.get("/?t=t", base_url=ORIGIN)
+        body = client.get("/api/catalog", base_url=ORIGIN).get_json()
+        assert set(body) == {"add_ons", "file_types", "search_engines", "languages", "ocr_engines"}
+        assert all(isinstance(rows, list) for rows in body.values())

@@ -5,6 +5,31 @@
  * @property {string} platform
  * @property {number} db_schema
  *
+ * @typedef {object} CatalogAddon
+ * @property {string} id
+ * @property {string} name
+ * @property {string} version
+ * @property {string} status
+ * @property {string} detail
+ *
+ * @typedef {object} CatalogItem  A file type, search engine, language or OCR engine.
+ * @property {string} id
+ * @property {string} label
+ * @property {boolean} available
+ * @property {string} reason
+ * @property {string[]} [extensions]
+ * @property {string} [description]
+ * @property {string} [native_label]
+ * @property {boolean} [enabled]
+ * @property {string[]} [profiles]
+ *
+ * @typedef {object} Catalog
+ * @property {CatalogAddon[]} add_ons
+ * @property {CatalogItem[]} file_types
+ * @property {CatalogItem[]} search_engines
+ * @property {CatalogItem[]} languages
+ * @property {CatalogItem[]} ocr_engines
+ *
  * @typedef {object} PlatformInfo
  * @property {'desktop' | 'web'} kind
  * @property {boolean} window_controls  Whether the host window can be minimised/maximised/closed.
@@ -70,6 +95,8 @@ export const api = {
   health: (signal) => request('/api/health', { signal }),
   /** @returns {Promise<AboutDetails>} */
   about: (signal) => request('/api/about', { signal }),
+  /** @returns {Promise<Catalog>} */
+  catalog: (signal) => request('/api/catalog', { signal }),
   /** @returns {Promise<PlatformInfo>} */
   platform: (signal) => request('/api/platform', { signal }),
   window: {

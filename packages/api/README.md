@@ -30,6 +30,7 @@ scripts.
 |---|---|
 | `GET /api/health` | Readiness probe |
 | `GET /api/about` | What the installation runs (`VethuQ().version`) |
+| `GET /api/catalog` | What is installed: add-ons, file types, search engines, languages, OCR engines (what the CLI lists) |
 | `GET /api/platform` | `{kind, window_controls}`: what the host offers the interface |
 | `GET /api/window/state`, `POST /api/window/{minimize,maximize,restore,close}` | Window controls (only when the host passes a window controller) |
 
