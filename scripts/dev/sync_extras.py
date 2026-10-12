@@ -65,14 +65,12 @@ class SyncExtras:
         if "--check" in argv:
             if self.in_step():
                 return 0
-            print(
-                f"{self.target.relative_to(REPO_ROOT)} is out of date: run scripts/dev/sync_extras.py"
-            )
+            name = self.target.relative_to(REPO_ROOT)
+            print(f"{name} is out of date: run scripts/dev/sync_extras.py")
             return 1
         changed = self.write()
-        print(
-            f"{'Updated' if changed else 'Already up to date:'} {self.target.relative_to(REPO_ROOT)}"
-        )
+        state = "Updated" if changed else "Already up to date:"
+        print(f"{state} {self.target.relative_to(REPO_ROOT)}")
         return 0
 
 
