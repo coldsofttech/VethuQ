@@ -13,6 +13,7 @@ from vethuq_api.indexing import IndexingService
 from vethuq_api.logs_service import LogsService
 from vethuq_api.maintenance_service import MaintenanceService
 from vethuq_api.ocr_service import OcrService
+from vethuq_api.search_service import SearchService
 from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
 from vethuq_api.stats_service import StatsService
@@ -56,6 +57,8 @@ class Core(Protocol):
 
     def github(self) -> Any: ...
 
+    def search(self) -> Any: ...
+
     def maintenance(self) -> Any: ...
 
 
@@ -75,6 +78,7 @@ class VethuQCore:
         self._addons = AddonsService(self._vethuq)
         self._logs = LogsService(self._vethuq)
         self._github = GitHubService(self._vethuq)
+        self._search = SearchService(self._vethuq)
         self._maintenance = MaintenanceService(self._vethuq)
 
     def _vethuq(self) -> Any:
@@ -114,6 +118,9 @@ class VethuQCore:
 
     def github(self) -> GitHubService:
         return self._github
+
+    def search(self) -> SearchService:
+        return self._search
 
     def maintenance(self) -> MaintenanceService:
         return self._maintenance

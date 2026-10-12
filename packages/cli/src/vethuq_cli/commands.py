@@ -431,6 +431,8 @@ def search_command(
     normalize: list[str] = typer.Option(None, "--normalize", "-n", help="normalizer=level"),  # noqa: B008
     option: list[str] = typer.Option(None, "--option", "-o", help="engine.option=value"),  # noqa: B008
     language: Languages = None,
+    file_type: list[str] = typer.Option(None, "--file-type", "-t", help="Only files of this type."),  # noqa: B008
+    source: list[int] = typer.Option(None, "--source", "-s", help="Only this source (its id)."),  # noqa: B008
     case_sensitive: bool = typer.Option(None, "--case-sensitive/--ignore-case"),
     context: int = typer.Option(None, "--context", help="Characters of context."),
     combine: str = typer.Option(None, "--combine", help="The keyword engine of hybrid."),
@@ -451,6 +453,8 @@ def search_command(
         case_sensitive=case_sensitive,
         context_chars=context,
         languages=language or None,
+        file_types=file_type or None,
+        sources=source or None,
         options=",".join(option) if option else None,
         combine=combine,
         limit=limit,

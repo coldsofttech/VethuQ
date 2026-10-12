@@ -5,6 +5,10 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Search: `/api/search/options` (engines, normalizers, file types and the saved defaults), `/api/search/run` (file
+  types, sources, languages, engine, case, normalizer levels, engine options, paging) and `/api/search/export`
+  (every match as JSON or HTML). `/api/os/open` opens a file of a source in its own application; it only opens a
+  file of a kind VethuQ reads inside one of the sources.
 - Shared usage metrics: `/api/metrics` (where sharing stands), `/api/metrics/preview` (exactly the batch that would be
   sent, with its size), `/api/metrics/send` and `/api/metrics/delete-data`.
 - GitHub token: it can be saved in the operating system's credential store (Windows Credential Manager) through the

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
@@ -15,6 +16,31 @@ from vethuq._settings import _Settings
 from vethuq_addon_api import Normalizer, Pipeline
 
 _logger = logging.getLogger("vethuq.search")
+
+
+@dataclass(frozen=True)
+class _Scope:
+    """Which files a search looks in: only these file extensions and/or sources (None: any)."""
+
+    extensions: tuple[str, ...] | None = None  # lower case, with the dot: the file types asked for
+    source_ids: tuple[int, ...] | None = None
+
+    def owner_filter(self) -> tuple[str, dict[str, object]]:
+        """SQL (to add after `status = 'indexed'` on `document_index`) and its bound values."""
+        clause, params = "", {}
+        if self.extensions is not None:
+            tests = " OR ".join(
+                f"lower(file_path) LIKE :e{i} ESCAPE '\\'" for i in range(len(self.extensions))
+            )
+            clause += f" AND ({tests or '0'})"
+            for i, extension in enumerate(self.extensions):
+                escaped = extension.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                params[f"e{i}"] = f"%{escaped}"
+        if self.source_ids is not None:
+            marks = ",".join(f":s{i}" for i in range(len(self.source_ids))) or "NULL"
+            clause += f" AND source_id IN ({marks})"
+            params.update({f"s{i}": value for i, value in enumerate(self.source_ids)})
+        return clause, params
 
 
 class _SearchIndex:
@@ -120,6 +146,7 @@ class _SearchIndex:
         after: int,
         languages: Sequence[int] | None,
         use_fts: bool,
+        scope: _Scope | None = None,
     ) -> list[Row]:
         """The next batch of pages (by id, after `after`) of searchable documents that can hold
         `query`. A page is a candidate when its index form holds the query's."""
@@ -134,10 +161,12 @@ class _SearchIndex:
             if query:
                 where.append("instr(s.norm_text, :needle) > 0")
                 params["needle"] = self.folded_query(query)
+        owners, owner_params = (scope or _Scope()).owner_filter()
         where.append(
-            "p.document_id IN (SELECT document_id FROM document_index "
-            "WHERE status = 'indexed' AND document_id IS NOT NULL)"
+            "p.document_id IN (SELECT document_id FROM document_index "  # noqa: S608 - fixed names and bound values
+            f"WHERE status = 'indexed' AND document_id IS NOT NULL{owners})"
         )
+        params.update(owner_params)
         if languages is not None:
             marks = ",".join(f":l{i}" for i in range(len(languages))) or "NULL"
             where.append(

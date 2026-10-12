@@ -239,6 +239,42 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  search: {
+    options: (signal) => request('/api/search/options', { signal }),
+    /** @param {object} body The search (see `routes_search`). */
+    run: (body, signal) => request('/api/search/run', { method: 'POST', body, signal }),
+    /** Every match of a search as a file the browser saves. */
+    exportFile: async (body) => {
+      let response;
+      try {
+        response = await fetch('/api/search/export', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        throw new ApiError('The service is not reachable', 0);
+      }
+      if (!response.ok) {
+        let message = response.statusText;
+        try {
+          message = (await response.json()).error ?? message;
+        } catch {
+          // Not JSON; keep the status text.
+        }
+        throw new ApiError(message, response.status);
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = body.format === 'html' ? 'search-results.html' : 'search-results.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    },
+  },
   logs: {
     list: (signal) => request('/api/logs', { signal }),
     entries: (component, params = {}, signal) =>
@@ -324,6 +360,7 @@ export const api = {
     perform: (action) => request(`/api/service/${action}`, { method: 'POST' }),
   },
   os: {
+    open: (path) => request('/api/os/open', { method: 'POST', body: { path } }),
     reveal: (path) => request('/api/os/reveal', { method: 'POST', body: { path } }),
   },
   settings: {

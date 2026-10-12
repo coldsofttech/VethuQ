@@ -253,6 +253,18 @@ def register(api: Blueprint, core: Core, window: Any) -> None:
 
     # ----- the host ---------------------------------------------------------------------------
 
+    @api.post("/os/open")
+    def open_file() -> Response:
+        """Open a file of a source in its own application. Only a file VethuQ reads, inside one of
+        the sources, can be opened this way: this is not a way to start any program."""
+        path = _body().get("path")
+        if window is None or not callable(getattr(window, "open_file", None)):
+            return jsonify(error="This host cannot open a file in its application."), 404
+        if not isinstance(path, str) or not core.sources().may_open(path):
+            raise ValueError("Only a file of a source that VethuQ reads can be opened here.")
+        window.open_file(path)
+        return jsonify(ok=True)
+
     @api.post("/os/reveal")
     def reveal() -> Response:
         path = _body().get("path")

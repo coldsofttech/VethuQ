@@ -250,6 +250,29 @@ class SourcesService:
             keep.append(row)
         return keep
 
+    def may_open(self, path: str) -> bool:
+        """Whether `path` is a file of a kind VethuQ reads, inside one of the active sources."""
+        client = self._client()
+        try:
+            real = os.path.realpath(path)
+        except (OSError, ValueError):
+            return False
+        if not os.path.isfile(real):
+            return False
+        readable = {
+            extension
+            for spec in client.file_types.list()
+            if spec.available
+            for extension in spec.extensions
+        }
+        if os.path.splitext(real)[1].lower() not in readable:
+            return False
+        for source in client.sources.list():
+            root = os.path.realpath(source.path)
+            if real == root or real.startswith(root.rstrip("\\/") + os.sep):
+                return True
+        return False
+
     # ----- export -----------------------------------------------------------------------------
 
     def export_sources(self, fmt: str, removed: bool = False) -> tuple[bytes, str, str]:

@@ -385,6 +385,30 @@ def sources_and_indexing(browser: Browser, out: Path) -> None:
             page.wait_for_timeout(300)
         shot(page, out, "indexing-queue")
 
+        # Search: the words are in every file, so narrow by type and look at the menu.
+        page.get_by_role("tab", name="Search").first.click()
+        box = page.get_by_role("searchbox", name="Search text")
+        box.fill("document 7")
+        page.get_by_role("combobox", name="File types").click()
+        page.get_by_role("menuitemcheckbox", name="CSV").click()
+        page.get_by_role("menuitemcheckbox", name="TXT").click()
+        page.keyboard.press("Escape")
+        page.get_by_role("combobox", name="Engine").click()
+        page.get_by_role("option", name=re.compile("Contains")).click()
+        box.press("Enter")
+        expect(page.get_by_role("table", name="Search results")).to_be_visible(timeout=60000)
+        page.wait_for_timeout(600)
+        shot(page, out, "search-results")
+        page.get_by_role("table", name="Search results").get_by_role("row").nth(3).click(
+            button="right"
+        )
+        expect(page.get_by_role("menuitem", name="Copy path")).to_be_visible()
+        shot(page, out, "search-context-menu")
+        page.keyboard.press("Escape")
+        page.get_by_role("button", name="Search options").click()
+        expect(page.get_by_text("What counts as the same character")).to_be_visible()
+        shot(page, out, "search-options")
+        page.keyboard.press("Escape")
         # The files of the source: their type and status.
         page.get_by_role("tab", name="Sources").first.click()
         page.get_by_role("row").filter(has_text=documents.name).dblclick()

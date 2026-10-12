@@ -13,7 +13,7 @@ from sqlalchemy import text
 from vethuq._db import _Database
 from vethuq._errors import _SearchOptionError, _SearchQueryError, _SearchUnavailableError
 from vethuq._search.engines import ALL, HYBRID, SEMANTIC, _Engines, _EngineView
-from vethuq._search.index import _SearchIndex
+from vethuq._search.index import _Scope, _SearchIndex
 from vethuq._search.ranking import PageKey, _Found, _Fusion, _Merger, _Ranker
 from vethuq_addon_api import AddonError, PageText, SearchCorpus, SearchRequest
 
@@ -23,17 +23,24 @@ _logger = logging.getLogger("vethuq.search")
 class _Corpus(SearchCorpus):
     """The pages a search runs over: searchable documents' finished pages, narrowed by the index."""
 
-    def __init__(self, index: _SearchIndex, languages: Sequence[int] | None, use_fts: bool) -> None:
+    def __init__(
+        self,
+        index: _SearchIndex,
+        languages: Sequence[int] | None,
+        use_fts: bool,
+        scope: _Scope | None = None,
+    ) -> None:
         self._index = index
         self._languages = languages
         self._use_fts = use_fts
+        self._scope = scope
 
     def candidates(self, query: str | None = None) -> Iterator[PageText]:
         after, totals = 0, {}
         while True:
             with self._index.database.session() as session:
                 rows = self._index.candidate_rows(
-                    session, query, after, self._languages, self._use_fts
+                    session, query, after, self._languages, self._use_fts, self._scope
                 )
                 for row in rows:
                     if row.document_id not in totals:
@@ -129,6 +136,7 @@ class _Search:
         options: Mapping[str, Mapping[str, str]] | None = None,
         combine: str | None = None,
         defaults: Mapping[str, Mapping[str, str]] | None = None,
+        scope: _Scope | None = None,
     ) -> _Outcome:
         chosen = self.engines.choose(engine, combine)
         self.engines.check_explicit(explicit)
@@ -148,7 +156,7 @@ class _Search:
             return _Outcome(engine, [], levels, False)
         _count, rebuilt = self.index.sync()
         language_ids = self.language_ids(languages)
-        corpus = _Corpus(self.index, language_ids, self.index.has_fts())
+        corpus = _Corpus(self.index, language_ids, self.index.has_fts(), scope)
         found: dict[PageKey, list[_Found]] = {}
         for view in chosen:
             values = {**self.engines.saved_options(view, defaults), **options.get(view.id, {})}
@@ -167,7 +175,7 @@ class _Search:
                 if must:
                     raise
                 _logger.warning("The %s engine failed", view.id, exc_info=True)
-        matches = self._matches(found, context_chars, hybrid)
+        matches = self._matches(found, context_chars, hybrid, scope or _Scope())
         return _Outcome(engine, matches, levels, rebuilt, self._pending(chosen, corpus))
 
     @staticmethod
@@ -238,12 +246,17 @@ class _Search:
 
     # ----- matches ----------------------------------------------------------------------------
 
-    def _files(self, document_ids: set[int]) -> dict[int, list[tuple[int, str]]]:
-        """The searchable files of each document, the original first."""
+    def _files(
+        self, document_ids: set[int], scope: _Scope
+    ) -> tuple[dict[int, list[tuple[int, str]]], dict[int, str]]:
+        """The searchable files of each document that are in `scope`, and the original file of
+        each document (the earliest indexed one, whether or not it is in `scope`)."""
         if not document_ids:
-            return {}
+            return {}, {}
         ids = sorted(document_ids)
+        owners, owner_params = scope.owner_filter()
         files: dict[int, list[tuple[int, str]]] = {}
+        originals: dict[int, str] = {}
         with self.database.session() as session:
             for start in range(0, len(ids), 400):
                 chunk = ids[start : start + 400]
@@ -251,18 +264,27 @@ class _Search:
                 rows = session.execute(
                     text(
                         "SELECT id, document_id, file_path FROM document_index "  # noqa: S608 - fixed names and bound values
-                        f"WHERE status = 'indexed' AND document_id IN ({marks}) ORDER BY id"
+                        f"WHERE status = 'indexed' AND document_id IN ({marks}){owners} ORDER BY id"
                     ),
-                    {f"d{i}": d for i, d in enumerate(chunk)},
+                    {**{f"d{i}": d for i, d in enumerate(chunk)}, **owner_params},
                 ).all()
                 for row in rows:
                     files.setdefault(row.document_id, []).append((row.id, row.file_path))
-        return files
+                for row in session.execute(
+                    text(
+                        "SELECT document_id, file_path FROM document_index WHERE id IN "  # noqa: S608 - fixed names and bound values
+                        "(SELECT MIN(id) FROM document_index WHERE status = 'indexed' "
+                        f"AND document_id IN ({marks}) GROUP BY document_id)"
+                    ),
+                    {f"d{i}": d for i, d in enumerate(chunk)},
+                ).all():
+                    originals[row.document_id] = row.file_path
+        return files, originals
 
     def _matches(
-        self, found: dict[PageKey, list[_Found]], chars: int, hybrid: bool
+        self, found: dict[PageKey, list[_Found]], chars: int, hybrid: bool, scope: _Scope
     ) -> list[_Match]:
-        files = self._files({key[0] for key in found})
+        files, originals = self._files({key[0] for key in found}, scope)
         # Hits of different engines that overlap are one match, except in `hybrid`, where each
         # engine's hits stand on their own (a passage and the words inside it are both shown).
         clusters = {
@@ -303,7 +325,7 @@ class _Search:
                 )
                 owners = files.get(page.document_id, [])
                 for file_id, path in owners:
-                    original = owners[0][1]
+                    original = originals.get(page.document_id, owners[0][1])
                     matches.append(
                         _Match(
                             file_id=file_id,

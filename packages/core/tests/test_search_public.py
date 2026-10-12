@@ -518,3 +518,76 @@ class TestErrors:
 
     def test_the_search_property_is_stable(self, client):
         assert isinstance(client.search, Search) and client.search is client.search
+
+
+class TestScope:
+    @pytest.fixture
+    def two_sources(self, client, tmp_path):
+        first, second = tmp_path / "a", tmp_path / "b"
+        first.mkdir()
+        second.mkdir()
+        write(first, "report.pdf", native("The harvest report mentions wheat."))
+        (first / "notes.txt").write_text("Notes about wheat and barley.", encoding="utf-8")
+        (second / "memo.txt").write_text("A memo on wheat prices.", encoding="utf-8")
+        a = client.sources.create(first)
+        b = client.sources.create(second)
+        assert client.index.run().status.value == "completed"
+        return client, a.id, b.id
+
+    def test_a_match_says_what_kind_of_file_it_is(self, two_sources):
+        client, *_ = two_sources
+        kinds = {m.file_name: m.file_type for m in client.search.run("wheat", engine="like")}
+        assert kinds == {"report.pdf": "pdf", "notes.txt": "txt", "memo.txt": "txt"}
+        assert "file_type" in client.search.run("wheat", engine="like")[0].to_dict()
+
+    def test_file_types_narrow_the_search_and_the_total(self, two_sources):
+        client, *_ = two_sources
+        only_pdf = client.search.run("wheat", engine="like", file_types="pdf")
+        assert [m.file_name for m in only_pdf] == ["report.pdf"] and only_pdf.total == 1
+        both = client.search.run("wheat", engine="like", file_types=["pdf", "TXT"])
+        assert {m.file_name for m in both} == {"report.pdf", "notes.txt", "memo.txt"}
+        assert client.search.run("wheat", engine="like", file_types=["csv"]).total == 0
+        assert client.search.run("wheat", engine="like", file_types=[]).total == 0
+
+    def test_sources_narrow_the_search(self, two_sources):
+        client, a, b = two_sources
+        assert {m.file_name for m in client.search.run("wheat", engine="like", sources=a)} == {
+            "report.pdf",
+            "notes.txt",
+        }
+        assert [m.file_name for m in client.search.run("wheat", engine="like", sources=[b])] == [
+            "memo.txt"
+        ]
+        assert client.search.run("wheat", engine="like", sources=[999]).total == 0
+
+    def test_both_filters_together_and_paging_counts_what_is_kept(self, two_sources):
+        client, a, _ = two_sources
+        result = client.search.run(
+            "wheat", engine="like", file_types="txt", sources=a, limit=1, offset=0
+        )
+        assert [m.file_name for m in result] == ["notes.txt"] and result.total == 1
+
+    def test_the_other_engines_respect_it_too(self, two_sources):
+        client, *_ = two_sources
+        for engine in ("exact", "full-text", "all"):
+            result = client.search.run("wheat", engine=engine, file_types="pdf")
+            assert {m.file_name for m in result} <= {"report.pdf"}, engine
+
+    def test_a_duplicate_still_names_the_true_original(self, client, tmp_path):
+        first, second = tmp_path / "x", tmp_path / "y"
+        first.mkdir()
+        second.mkdir()
+        (first / "one.txt").write_text("identical words about barley", encoding="utf-8")
+        (second / "two.txt").write_text("identical words about barley", encoding="utf-8")
+        client.sources.create(first)
+        other = client.sources.create(second)
+        client.index.run()
+        (match,) = client.search.run("barley", engine="like", sources=other.id)
+        assert match.file_name == "two.txt" and match.duplicate_of_path.endswith("one.txt")
+
+    def test_bad_values_are_refused(self, two_sources):
+        client, *_ = two_sources
+        with pytest.raises(TypeError):
+            client.search.run("wheat", file_types=[1])
+        with pytest.raises(TypeError):
+            client.search.run("wheat", sources=["a"])

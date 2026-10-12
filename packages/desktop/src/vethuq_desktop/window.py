@@ -108,6 +108,15 @@ class WebviewWindowController:
         """Show the system file picker (one file); None if it was cancelled."""
         return self._dialog("OPEN", start, allow_multiple=False)
 
+    def open_file(self, path: str) -> None:
+        """Open a file with the application the system has for it."""
+        if sys.platform == "win32":
+            os.startfile(os.path.normpath(path))  # noqa: S606 - the caller has checked the path
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])  # noqa: S603, S607
+        else:
+            subprocess.Popen(["xdg-open", path])  # noqa: S603, S607
+
     def reveal(self, path: str) -> None:
         """Show a file or folder in the system file manager."""
         if sys.platform == "win32":

@@ -7,6 +7,7 @@ import { LogsPage } from './pages/LogsPage.jsx';
 import { GitHubPage } from './pages/GitHubPage.jsx';
 import { HomePage } from './pages/HomePage.jsx';
 import { IndexingPage } from './pages/IndexingPage.jsx';
+import { SearchPage } from './pages/SearchPage.jsx';
 import { SettingsPage } from './pages/SettingsPage.jsx';
 import { SourceDetailPage } from './pages/SourceDetailPage.jsx';
 import { SourcesPage } from './pages/SourcesPage.jsx';
@@ -17,6 +18,7 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="sources" element={<SourcesPage />} />
         <Route path="sources/:id" element={<SourceDetailPage />} />
         <Route path="indexing/*" element={<IndexingPage />} />

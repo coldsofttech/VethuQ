@@ -15,6 +15,7 @@ class TestPlatform:
             "folder_dialog": True,
             "file_dialog": True,
             "reveal": True,
+            "open_file": True,
         }
 
     def test_web_host_has_no_window_controls_or_window_routes(self, web_dist):
@@ -28,6 +29,7 @@ class TestPlatform:
             "folder_dialog": False,
             "file_dialog": False,
             "reveal": False,
+            "open_file": False,
         }
         assert client.get("/api/window/state", base_url=ORIGIN).status_code == 404
 

@@ -11,6 +11,8 @@ import {
   Cloud24Filled,
   Cloud24Regular,
   Info24Filled,
+  Search24Filled,
+  Search24Regular,
   PuzzlePiece24Filled,
   PuzzlePiece24Regular,
   Info24Regular,
@@ -28,6 +30,7 @@ import { api } from '../api/client.js';
 import { strings } from '../strings.js';
 
 const HomeIcon = bundleIcon(Home24Filled, Home24Regular);
+const SearchIcon = bundleIcon(Search24Filled, Search24Regular);
 const SourcesIcon = bundleIcon(Folder24Filled, Folder24Regular);
 const IndexingIcon = bundleIcon(DocumentSearch24Filled, DocumentSearch24Regular);
 const CreditsIcon = bundleIcon(Wallet24Filled, Wallet24Regular);
@@ -40,6 +43,7 @@ const SettingsIcon = bundleIcon(Settings24Filled, Settings24Regular);
 
 const ITEMS = [
   { path: '/', label: strings.nav.home, icon: <HomeIcon /> },
+  { path: '/search', label: strings.nav.search, icon: <SearchIcon /> },
   { path: '/sources', label: strings.nav.sources, icon: <SourcesIcon /> },
   { path: '/indexing', label: strings.nav.indexing, icon: <IndexingIcon /> },
   { path: '/credits', label: strings.nav.credits, icon: <CreditsIcon /> },

@@ -10,6 +10,7 @@ import { api } from '../api/client.js';
  * @property {boolean} folderDialog  The host can show a folder picker.
  * @property {boolean} fileDialog  The host can show a file picker.
  * @property {boolean} reveal  The host can show a file in the file manager.
+ * @property {boolean} openFile  The host can open a file in its own application.
  * @property {boolean} ready  False until the host has answered.
  */
 
@@ -20,6 +21,7 @@ const UNKNOWN = {
   folderDialog: false,
   fileDialog: false,
   reveal: false,
+  openFile: false,
   ready: false,
 };
 
@@ -38,6 +40,7 @@ export function PlatformProvider({ children }) {
           folderDialog: info.folder_dialog === true,
           fileDialog: info.file_dialog === true,
           reveal: info.reveal === true,
+          openFile: info.open_file === true,
           ready: true,
         }),
       (error) => {

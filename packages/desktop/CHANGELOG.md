@@ -5,6 +5,7 @@ All notable changes to `vethuq-desktop`.
 ## [Unreleased]
 
 ### Added
+- The window can open a file in its own application (`open_file`).
 - The window holds back a close while indexing runs in this application (the interface asks first),
   accepts one file or folder dropped on it, opens a file picker, and shows a file in Explorer.
 - The desktop host: starts the API on `127.0.0.1` on a free port, opens a frameless pywebview window

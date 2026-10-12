@@ -11,6 +11,7 @@ from vethuq_api import (
     routes_logs,
     routes_maintenance,
     routes_ocr,
+    routes_search,
     routes_sources,
     routes_stats,
 )
@@ -39,6 +40,7 @@ def register(
     routes_logs.register(api, core)
     routes_maintenance.register(api, core)
     routes_github.register(api, core)
+    routes_search.register(api, core)
 
     @api.get("/health")
     def health() -> Response:
@@ -96,6 +98,7 @@ def register(
             folder_dialog=callable(getattr(window, "choose_folder", None)),
             file_dialog=callable(getattr(window, "choose_file", None)),
             reveal=callable(getattr(window, "reveal", None)),
+            open_file=callable(getattr(window, "open_file", None)),
         )
 
     if window is not None and callable(getattr(window, "choose_folder", None)):

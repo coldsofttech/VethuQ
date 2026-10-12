@@ -38,6 +38,9 @@ class FakeWindow:
     def reveal(self, path: str) -> None:
         self.calls.append(f"reveal:{path}")
 
+    def open_file(self, path: str) -> None:
+        self.calls.append(f"open:{path}")
+
     def minimize(self) -> None:
         self.calls.append("minimize")
 
@@ -97,6 +100,9 @@ class FakeCore:
         return SimpleNamespace()
 
     def github(self):
+        return SimpleNamespace()
+
+    def search(self):
         return SimpleNamespace()
 
     def maintenance(self):

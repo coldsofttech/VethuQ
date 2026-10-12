@@ -318,7 +318,14 @@ class VethuQ:
         """Search the indexed pages: find a query with a search engine, and look after the index."""
         if self._search is None:
             db, engines, index = self._db(), self._search_catalog(), self._search_indexer()
-            self._search = Search(db, engines, index, _Search(db, engines, index), self._exporter())
+            self._search = Search(
+                db,
+                engines,
+                index,
+                _Search(db, engines, index),
+                self._exporter(),
+                self._file_type_catalog(),
+            )
         return self._search
 
     @property

@@ -11,14 +11,16 @@ import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from vethuq._db import _Database
 from vethuq._errors import _IndexAlreadyRunningError, _SearchOptionError
 from vethuq._export import _Exporter
+from vethuq._filetypes.catalog import _FileTypeCatalog
 from vethuq._indexing.runs import _Runs
 from vethuq._search import HYBRID, _Engines, _Search, _SearchIndex
+from vethuq._search.index import _Scope
 from vethuq._search.service import _Match, _Synced
 from vethuq._settings import _SearchSettings
 from vethuq.enums import ExportFormat, SearchSortBy, SortOrder
@@ -59,6 +61,7 @@ class SearchMatch:
     engine: str  # the strictest engine that found it
     matched_by: tuple[str, ...]  # every engine that found it, strictest first
     modifiers: tuple[str, ...]  # normalizations it needed to match as typed, e.g. `accents`
+    file_type: str | None = None  # what the file is read as (`pdf`, `docx`, ...)
 
     @classmethod
     def _from(cls, match: _Match) -> SearchMatch:
@@ -233,7 +236,9 @@ class Search:
         index: _SearchIndex,
         search: _Search,
         exporter: _Exporter,
+        file_types: _FileTypeCatalog | None = None,
     ) -> None:
+        self._file_types = file_types
         self._database = database
         self._engines = engines
         self._index = index
@@ -249,6 +254,8 @@ class Search:
         case_sensitive: bool | None = None,
         context_chars: int | None = None,
         languages: str | Sequence[str] | None = None,
+        file_types: str | Sequence[str] | None = None,
+        sources: int | Sequence[int] | None = None,
         options: Mapping[str, Mapping[str, object]] | str | None = None,
         combine: str | None = None,
         sort: SearchSortBy | str | None = None,
@@ -263,7 +270,10 @@ class Search:
         counts as the same character, as `{"unicode": "full"}` or `"unicode=full,case=ignore"`;
         left out, the saved level of each normalizer, or the engine's own. `case_sensitive` is
         shorthand for `case=match` / `case=ignore`. `languages` keeps pages of documents read in
-        those language ids (`"en"`). `limit` and `offset` page the result (`total` counts all).
+        those language ids (`"en"`). `file_types` keeps files read as those types (`"pdf"` or
+        `["pdf", "docx"]`, the ids of `client.file_types`) and `sources` keeps files of those
+        sources (ids); a type or source that matches nothing gives no matches. `limit` and `offset`
+        page the result (`total` counts all).
 
         `options` are engines' own settings for this search, by engine id: `{"fuzzy": {"threshold":
         0.7}}` or `"fuzzy.threshold=0.7"` (see `engines()` for what each takes). `engine="hybrid"`
@@ -308,6 +318,7 @@ class Search:
             saved = _SearchSettings.saved_options(session)
         if isinstance(languages, str):
             languages = [languages]
+        scope = self._scope(file_types, sources)
         name = name.strip().lower() if isinstance(name, str) else name
         if combine is not None and not isinstance(combine, str):
             raise TypeError("combine is the id of a keyword engine.")
@@ -321,6 +332,7 @@ class Search:
             asked,
             combine.strip().lower() if combine is not None else None,
             saved,
+            scope,
         )
         matches = outcome.matches
         if sort_by is None:
@@ -346,13 +358,41 @@ class Search:
         return SearchResult(
             query=query,
             engine=outcome.engine,
-            matches=[SearchMatch._from(m) for m in window],
+            matches=[
+                replace(SearchMatch._from(m), file_type=self._file_type_of(m.file_path))
+                for m in window
+            ],
             total=total,
             levels=outcome.levels,
             index_rebuilt=outcome.index_rebuilt,
             pending=outcome.pending,
             options=asked,
         )
+
+    def _scope(
+        self, file_types: str | Sequence[str] | None, sources: int | Sequence[int] | None
+    ) -> _Scope | None:
+        if file_types is None and sources is None:
+            return None
+        types = [file_types] if isinstance(file_types, str) else file_types
+        if types is not None and not all(isinstance(t, str) for t in types):
+            raise TypeError('file_types are file type ids such as "pdf".')
+        ids = [sources] if isinstance(sources, int) and not isinstance(sources, bool) else sources
+        if ids is not None and not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+            raise TypeError("sources are source ids.")
+        extensions = None
+        if types is not None:
+            wanted = {t.strip().lower() for t in types}
+            specs = self._file_types.specs() if self._file_types is not None else []
+            extensions = tuple(
+                dict.fromkeys(e for s in specs if s.id in wanted for e in s.extensions)
+            )
+        return _Scope(extensions, tuple(ids) if ids is not None else None)
+
+    def _file_type_of(self, path: str) -> str | None:
+        """The id of the file type that reads `path` (None when no add-on does)."""
+        spec = self._file_types.for_path(path) if self._file_types is not None else None
+        return spec.id if spec is not None else None
 
     def export(
         self,

@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (searching within file types and sources)
+- `search.run(file_types=..., sources=...)` keeps matches of files read as those types (ids of `client.file_types`)
+  and of those sources, in the total and the paging too; a match carries its `file_type`. CLI: `search --file-type
+  pdf --source 2`.
+
 ### Added (turning add-ons off)
 - `addons.set_enabled(id, enabled)` turns an installed add-on off or on; it applies at the next start. An add-on
   that is off is listed as `AddonStatus.DISABLED` (and `AddonInfo.disabled` says what is saved); `english` can't

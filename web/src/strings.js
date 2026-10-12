@@ -5,6 +5,7 @@ export const strings = {
   tagline: 'Document intelligence and evidence infrastructure.',
   nav: {
     home: 'Home',
+    search: 'Search',
     sources: 'Sources',
     indexing: 'Indexing',
     credits: 'Credits',
