@@ -3,7 +3,7 @@
 #   Windows   VethuQ-Addon-<name>-Setup.exe             Inno Setup
 #   Linux     vethuq-addon-<name>_X.Y.Z_amd64.deb       dpkg-deb
 #
-# The add-on's sources are in the private VethuQ-premium repository (read with PREMIUM_READ_TOKEN, as
+# (Bundles have their own workflow, release-bundle.yml.) The add-on's sources are in the private VethuQ-premium repository (read with PREMIUM_READ_TOKEN, as
 # in release-cli.yml); the installers live here so anyone can download and install an add-on. An
 # add-on is compiled modules and a few packages, so there is no PyInstaller step: the installer
 # puts it in <VethuQ folder>/add-ons/<name>/, and it refuses to run unless VethuQ is installed
@@ -118,7 +118,7 @@ jobs:
         run: |
           deb="$(ls dist/vethuq-addon-*.deb)"
           dpkg-deb -I "$deb" | grep -E "Pre-Depends: vethuq-cli"
-          dpkg-deb -c "$deb" | grep -E "/opt/vethuq/add-ons/${{ needs.plan.outputs.name }}/.*\.dist-info/METADATA"
+          dpkg-deb -c "$deb" | grep -E "/usr/share/vethuq-addon-${{ needs.plan.outputs.name }}/stage/add-ons/${{ needs.plan.outputs.name }}/.*\.dist-info/METADATA"
           # No VethuQ is installed on the runner: dpkg must refuse before unpacking.
           if sudo dpkg -i "$deb"; then echo "installed without VethuQ" >&2; exit 1; fi
           test ! -e /opt/vethuq/add-ons

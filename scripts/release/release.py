@@ -5,6 +5,7 @@
     python scripts/release/release.py --background-service --version 1.2.0
     python scripts/release/release.py --worker --version 1.2.0
     python scripts/release/release.py --add-on --name xls --version 0.1.0
+    python scripts/release/release.py --bundle --name office --version 0.1.0
     python scripts/release/release.py --cli --interactive-cli --background-service --worker --dev
 
 No desktop app is built. One PyInstaller build makes both programs:
@@ -35,6 +36,11 @@ No desktop app is built. One PyInstaller build makes both programs:
      and are removed with the last add-on that needs them. Inno Setup / `dpkg-deb` pack it into
      `dist/VethuQ-Addon-<name>-Setup.exe` or `dist/vethuq-addon-<name>_<version>_<arch>.deb`. It
      refuses to run unless VethuQ is installed.
+  7. `--bundle --name NAME`: the same for a bundle: all its add-ons (less the ones VethuQ
+     installs by default) and the bundle's own package in one installer,
+     `dist/VethuQ-Bundle-<name>-Setup.exe` or
+     `dist/vethuq-bundle-<name>_<version>_<arch>.deb`. An add-on shared with another installer is
+     counted and removed with the last one that needs it.
      `--add-on-constraints` rewrites `installer/addon/constraints.txt` (with `--check`: fails when
      it is out of date).
 
@@ -48,6 +54,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import json
 import os
 import platform
 import re
@@ -328,7 +335,7 @@ class Cli:
     POSTRM = """#!/bin/sh
 set -e
 if [ "$1" = remove ] || [ "$1" = purge ]; then
-    rm -rf /opt/vethuq/lib /opt/vethuq/add-ons
+    rm -rf /opt/vethuq/lib /opt/vethuq/add-ons /opt/vethuq/.owners
     rmdir /opt/vethuq 2>/dev/null || true
 fi
 """
@@ -543,8 +550,19 @@ def normalise(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).lower()
 
 
+def default_addons() -> list[str]:
+    """The add-ons VethuQ installs by default (installer/shared/default-addons.txt). Add-on and
+    bundle installers skip them: they are already there."""
+    lines = (SHARED / "default-addons.txt").read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.startswith("#")]
+
+
 class AddOn(Cli):
     """The installers of one add-on, built from its sources in the VethuQ-premium checkout."""
+
+    KIND = "add-on"
+    FOLDER = "add-ons"  # under packages/ in VethuQ-premium
+    PREFIX = "vethuq-addon-"
 
     def __init__(
         self, name: str, version: Version, premium: Path, *, dev: bool = False, clean: bool = False
@@ -552,48 +570,65 @@ class AddOn(Cli):
         super().__init__(version, dev=dev, clean=clean)
         self.name = name
         self.premium = Path(premium)
-        self.work = BUILD.parent / "addon" / name
-        self.dist_name = f"vethuq-addon-{name}"
+        self.work = BUILD.parent / "addon" / f"{self.KIND}-{name}"
+        self.dist_name = f"{self.PREFIX}{name}"
 
     @property
     def guid(self) -> str:
-        """The add-on's AppId: the same every time, and different for every add-on."""
-        url = f"https://github.com/coldsofttech/VethuQ/add-on/{self.name}"
+        """The AppId: the same every time, and different for every add-on and bundle."""
+        url = f"https://github.com/coldsofttech/VethuQ/{self.KIND}/{self.name}"
         return str(uuid.uuid5(uuid.NAMESPACE_URL, url)).upper()
+
+    @property
+    def title(self) -> str:
+        return f"{self.KIND} {self.name}"
+
+    @property
+    def output_name(self) -> str:
+        return f"VethuQ-{'Addon' if self.KIND == 'add-on' else 'Bundle'}-{self.name}-Setup"
 
     # ----- the sources and the wheel ------------------------------------------------------------
 
-    def source(self) -> Path:
-        """The add-on's folder: `packages/add-ons/[group/[sub/]]<folder>` holds its pyproject."""
-        for pyproject in sorted((self.premium / "packages" / "add-ons").rglob("pyproject.toml")):
+    def source_of(self, dist_name: str, folder: str) -> Path:
+        """The folder of `dist_name`'s pyproject under `packages/<folder>/` in VethuQ-premium."""
+        for pyproject in sorted((self.premium / "packages" / folder).rglob("pyproject.toml")):
             if "src" in pyproject.parts:
                 continue
             project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {})
-            if project.get("name") == self.dist_name:
+            if project.get("name") == dist_name:
                 return pyproject.parent
         raise ReleaseError(
-            f"No add-on {self.name!r} in {self.premium} (looked for {self.dist_name}). "
+            f"No {self.KIND} {self.name!r} in {self.premium} (looked for {dist_name}). "
             "Check out VethuQ-premium next to VethuQ, or pass --premium."
         )
 
-    def build_wheel(self) -> Path:
-        out = self.work / "wheel"
+    def source(self) -> Path:
+        return self.source_of(self.dist_name, self.FOLDER)
+
+    def build_wheel(self, dist_name: str, source: Path) -> Path:
+        out = self.work / "wheels" / dist_name
         if out.exists():
             shutil.rmtree(out)
-        run([UV, "build", "--wheel", "--out-dir", str(out), str(self.source())])
+        run([UV, "build", "--wheel", "--out-dir", str(out), str(source)])
         wheels = sorted(out.glob("*.whl"))
         if len(wheels) != 1:
             raise ReleaseError(f"Expected one wheel in {out}, found {len(wheels)}.")
         return wheels[0]
 
     def check_version(self, wheel: Path) -> None:
-        """The wheel is the release the tag names: the add-on's own version is the version."""
+        """The wheel is the release the tag names: its own version is the version."""
         built = wheel.name.split("-")[1]
         if built != self.version.release + (self.version.pre or ""):
             raise ReleaseError(
-                f"{wheel.name} is version {built}, not {self.version.display}: set the add-on's "
-                "version in VethuQ-premium to the tag's before releasing."
+                f"{wheel.name} is version {built}, not {self.version.display}: set the "
+                f"{self.KIND}'s version in VethuQ-premium to the tag's before releasing."
             )
+
+    def member_ids(self) -> list[str]:
+        """The add-ons this installs: itself."""
+        if self.name in default_addons():
+            raise ReleaseError(f"{self.name} is installed with VethuQ already: nothing to install.")
+        return [self.name]
 
     # ----- what VethuQ already carries --------------------------------------------------------
 
@@ -710,25 +745,36 @@ class AddOn(Cli):
         CONSTRAINTS.write_text(text, encoding="utf-8")
         return True
 
-    def stage_files(self, wheel: Path) -> tuple[Path, Path | None]:
-        """Two folders: the add-on (its package and dist-info, which holds the entry point VethuQ
-        finds it by) for `add-ons/<name>/`, and the packages it needs that VethuQ does not carry
-        for the shared `lib/`. Those are pinned by `constraints.txt` (so every add-on agrees on one
-        version) and installed without dependencies, so nothing VethuQ carries is repeated."""
-        folder = self.work / "stage"
-        if folder.exists():
-            shutil.rmtree(folder)
-        addon, deps = folder / "addon", folder / "deps"
-        addon.mkdir(parents=True)
+    # ----- staging ------------------------------------------------------------------------
+
+    @staticmethod
+    def extract(wheel: Path, target: Path) -> None:
+        target.mkdir(parents=True)
         with zipfile.ZipFile(wheel) as archive:
-            archive.extractall(addon)  # noqa: S202 - our own wheel
-        for cache in addon.rglob("__pycache__"):
+            archive.extractall(target)  # noqa: S202 - our own wheel
+        for cache in target.rglob("__pycache__"):
             shutil.rmtree(cache)
-        if not list(addon.glob("*.dist-info")):
-            raise ReleaseError(f"The staged add-on has no dist-info: {addon}")
-        needed = self.requirements(wheel)
+        if not list(target.glob("*.dist-info")):
+            raise ReleaseError(f"The staged package has no dist-info: {target}")
+
+    def extra_files(self, tree: Path, wheels: dict[str, Path], main: Path) -> None:
+        """What a kind adds to the tree besides its add-ons (nothing for an add-on)."""
+
+    def stage_tree(self, wheels: dict[str, Path], main: Path) -> Path:
+        """A tree that mirrors VethuQ's folder: `add-ons/<name>/` for every add-on (its package
+        and dist-info, which holds the entry point VethuQ finds it by), and `lib/` for the packages
+        they need that VethuQ does not carry. Those are pinned by `constraints.txt` (so every add-on
+        agrees on one version), shared by all the add-ons here, and installed without dependencies,
+        so nothing VethuQ carries is repeated."""
+        tree = self.work / "stage"
+        if tree.exists():
+            shutil.rmtree(tree)
+        for member, wheel in wheels.items():
+            self.extract(wheel, tree / "add-ons" / member)
+        self.extra_files(tree, wheels, main)
+        needed = sorted({r for wheel in wheels.values() for r in self.requirements(wheel)})
         if not needed:
-            return addon, None
+            return tree
         if not CONSTRAINTS.is_file():
             raise ReleaseError("constraints.txt is missing: run --add-on-constraints.")
         provided = self.provided()
@@ -748,96 +794,121 @@ class AddOn(Cli):
             )
         extra = {n: v for n, v in self.pins(compiled.stdout).items() if n not in provided}
         if not extra:
-            return addon, None
+            return tree
         lines = [f"{n}=={v}" for n, v in sorted(extra.items())]
         (self.work / "requirements.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        lib = tree / "lib"
         run(
-            [UV, "pip", "install", "--no-deps", "--target", str(deps)]
+            [UV, "pip", "install", "--no-deps", "--target", str(lib)]
             + ["-r", str(self.work / "requirements.txt")]
         )
         for scripts in ("bin", "Scripts"):
-            shutil.rmtree(deps / scripts, ignore_errors=True)
-        for cache in deps.rglob("__pycache__"):
+            shutil.rmtree(lib / scripts, ignore_errors=True)
+        for cache in lib.rglob("__pycache__"):
             shutil.rmtree(cache)
-        return addon, deps
+        return tree
 
     # ----- the installers -----------------------------------------------------------------
 
-    def windows(self, addon: Path, deps: Path | None) -> Path:
-        defines = [f"/DAddonName={self.name}", f"/DAddonGuid={self.guid}", f"/DStageDir={addon}"]
-        if deps is not None:
-            defines.append(f"/DDepsDir={deps}")
+    def windows(self, tree: Path) -> Path:
         return self.inno(
-            ADDON_INSTALLER / "vethuq-addon.iss", f"VethuQ-Addon-{self.name}-Setup.exe", *defines
+            ADDON_INSTALLER / "vethuq-addon.iss",
+            f"{self.output_name}.exe",
+            f"/DPackageId={self.package_id}",
+            f"/DPackageTitle={self.title}",
+            f"/DPackageGuid={self.guid}",
+            f"/DOutputName={self.output_name}",
+            f"/DStageDir={tree}",
         )
+
+    @property
+    def package_id(self) -> str:
+        return self.name if self.KIND == "add-on" else f"bundle-{self.name}"
 
     PREINST = """#!/bin/sh
 set -e
 if [ "$1" = install ] || [ "$1" = upgrade ]; then
     if [ ! -x /opt/vethuq/vethuq ]; then
-        echo "VethuQ is not installed. Install vethuq-cli first, then install this add-on." >&2
+        echo "VethuQ is not installed. Install vethuq-cli first, then install this package." >&2
         exit 1
     fi
 fi
 """
 
-    # The shared packages in lib/ are counted by the add-ons that need them: a marker file
-    # lib/.addon-deps/<entry>/<add-on> per add-on, because dpkg cannot have two packages own one
-    # file. The last add-on to go takes the entry with it. Every path starts with a literal
-    # absolute folder, so nothing can expand to `/`.
+    # The package carries its files under /usr/share/<package>/stage/{add-ons,lib}/ and postinst
+    # moves each entry into /opt/vethuq, because dpkg cannot have two packages own one file and an
+    # add-on can arrive alone, in a bundle, or in two. Each package leaves a marker
+    # /opt/vethuq/.owners/<folder>/<entry>/<package>; prerm removes it, and the last one to go takes
+    # the entry. An entry VethuQ itself put there has no owners and is never taken. Every path
+    # starts with a literal absolute folder, so nothing can expand to `/`.
     POSTINST = """#!/bin/sh
 set -e
-mkdir -p /opt/vethuq/lib/.addon-deps
-if [ "$1" = configure ] && [ -d /usr/share/vethuq-addon-@NAME@/deps ]; then
-    for path in /usr/share/vethuq-addon-@NAME@/deps/*; do
-        [ -e "$path" ] || continue
-        entry="$(basename "$path")"
-        [ -n "$entry" ] || continue
-        if [ -e "/opt/vethuq/lib/$entry" ]; then
-            rm -rf "/usr/share/vethuq-addon-@NAME@/deps/$entry"
-            # Already there: ours to count only if another add-on put it there (not VethuQ itself).
-            [ -d "/opt/vethuq/lib/.addon-deps/$entry" ] || continue
-        else
-            mv "/usr/share/vethuq-addon-@NAME@/deps/$entry" "/opt/vethuq/lib/$entry"
-        fi
-        mkdir -p "/opt/vethuq/lib/.addon-deps/$entry"
-        : > "/opt/vethuq/lib/.addon-deps/$entry/@NAME@"
+if [ "$1" = configure ] && [ -d /usr/share/@PKG@/stage ]; then
+    mkdir -p /opt/vethuq/add-ons /opt/vethuq/lib
+    for kind in add-ons lib; do
+        for path in /usr/share/@PKG@/stage/$kind/*; do
+            [ -e "$path" ] || continue
+            entry="$(basename "$path")"
+            [ -n "$entry" ] || continue
+            if [ -e "/opt/vethuq/$kind/$entry" ]; then
+                # Already there. VethuQ's own (no owners) is left alone; ours alone is replaced
+                # (an upgrade); shared with another package it stays as it is.
+                if [ ! -d "/opt/vethuq/.owners/$kind/$entry" ]; then
+                    rm -rf "/usr/share/@PKG@/stage/$kind/$entry"
+                    continue
+                fi
+                others="$(ls -A "/opt/vethuq/.owners/$kind/$entry" | grep -vx -- '@PKG@' | wc -l)"
+                if [ "$others" = 0 ]; then
+                    rm -rf "/opt/vethuq/$kind/$entry"
+                    mv "/usr/share/@PKG@/stage/$kind/$entry" "/opt/vethuq/$kind/$entry"
+                else
+                    rm -rf "/usr/share/@PKG@/stage/$kind/$entry"
+                fi
+            else
+                mv "/usr/share/@PKG@/stage/$kind/$entry" "/opt/vethuq/$kind/$entry"
+            fi
+            mkdir -p "/opt/vethuq/.owners/$kind/$entry"
+            : > "/opt/vethuq/.owners/$kind/$entry/@PKG@"
+        done
     done
 fi
 """
 
     PRERM = """#!/bin/sh
 set -e
-if [ "$1" = remove ] && [ -d /opt/vethuq/lib/.addon-deps ]; then
-    for path in /opt/vethuq/lib/.addon-deps/*; do
-        entry="$(basename "$path")"
-        [ -n "$entry" ] || continue
-        [ -e "/opt/vethuq/lib/.addon-deps/$entry/@NAME@" ] || continue
-        rm -f "/opt/vethuq/lib/.addon-deps/$entry/@NAME@"
-        # The last add-on that needs it: take the shared package away.
-        if rmdir "/opt/vethuq/lib/.addon-deps/$entry" 2>/dev/null; then
-            rm -rf "/opt/vethuq/lib/$entry"
-        fi
+if [ "$1" = remove ]; then
+    for kind in add-ons lib; do
+        [ -d "/opt/vethuq/.owners/$kind" ] || continue
+        for path in /opt/vethuq/.owners/$kind/*; do
+            entry="$(basename "$path")"
+            [ -n "$entry" ] || continue
+            [ -e "/opt/vethuq/.owners/$kind/$entry/@PKG@" ] || continue
+            rm -f "/opt/vethuq/.owners/$kind/$entry/@PKG@"
+            # The last package that needs it: take the entry away.
+            if rmdir "/opt/vethuq/.owners/$kind/$entry" 2>/dev/null; then
+                rm -rf "/opt/vethuq/$kind/$entry"
+            fi
+        done
+        rmdir "/opt/vethuq/.owners/$kind" 2>/dev/null || true
     done
-    rmdir /opt/vethuq/lib/.addon-deps 2>/dev/null || true
+    rmdir /opt/vethuq/.owners 2>/dev/null || true
 fi
 """
 
-    def linux(self, addon: Path, deps: Path | None) -> Path:
+    def linux(self, tree: Path) -> Path:
         arch = self.architecture()
-        package = f"vethuq-addon-{self.name}"
-        root = Cli.stage(f"deb-addon-{self.name}")
-        shutil.copytree(addon, root / "opt" / "vethuq" / "add-ons" / self.name, symlinks=True)
-        if deps is not None:
-            # Staged here, moved into the shared lib/ by postinst (so it exists once on disk).
-            shutil.copytree(deps, root / "usr" / "share" / package / "deps", symlinks=True)
+        package = self.dist_name
+        root = Cli.stage(f"deb-{self.KIND}-{self.name}")
+        # Staged here, moved into place by postinst (so it exists once on disk).
+        shutil.copytree(tree, root / "usr" / "share" / package / "stage", symlinks=True)
         self.changelog_for(root / "usr" / "share" / "doc" / package, package)
         debian = root / "DEBIAN"
         debian.mkdir()
-        scripts = {"preinst": self.PREINST}
-        if deps is not None:
-            scripts["postinst"] = self.POSTINST.replace("@NAME@", self.name)
-            scripts["prerm"] = self.PRERM.replace("@NAME@", self.name)
+        scripts = {
+            "preinst": self.PREINST,
+            "postinst": self.POSTINST.replace("@PKG@", package),
+            "prerm": self.PRERM.replace("@PKG@", package),
+        }
         for script, text in scripts.items():
             (debian / script).write_text(text, encoding="utf-8")
             (debian / script).chmod(0o755)
@@ -845,8 +916,8 @@ fi
             arch,
             self.installed_size_kb(root),
             package=package,
-            summary=f"VethuQ add-on {self.name}",
-            detail=f" The {self.name} add-on for VethuQ. Installs into /opt/vethuq/add-ons.\n",
+            summary=f"VethuQ {self.title}",
+            detail=f" The {self.name} {self.KIND} for VethuQ. Installs into /opt/vethuq.\n",
             depends="vethuq-cli",
         )
         # Pre-Depends: dpkg refuses to unpack before VethuQ (vethuq-cli) is installed.
@@ -862,11 +933,72 @@ fi
     def build_addon(self) -> list[Path]:
         if sys.platform not in ("win32", "linux"):
             raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
-        wheel = self.build_wheel()
-        self.check_version(wheel)
-        addon, deps = self.stage_files(wheel)
+        wheels = {
+            member: self.build_wheel(
+                f"vethuq-addon-{member}", self.source_of(f"vethuq-addon-{member}", "add-ons")
+            )
+            for member in self.member_ids()
+        }
+        main = self.main_wheel(wheels)
+        self.check_version(main)
+        tree = self.stage_tree(wheels, main)
         DIST.mkdir(exist_ok=True)
-        return [self.windows(addon, deps) if sys.platform == "win32" else self.linux(addon, deps)]
+        return [self.windows(tree) if sys.platform == "win32" else self.linux(tree)]
+
+    def main_wheel(self, wheels: dict[str, Path]) -> Path:
+        """The wheel whose version is the release's: the add-on's own."""
+        return wheels[self.name]
+
+
+class Bundle(AddOn):
+    """The installers of one bundle: its members (less the ones VethuQ installs by default) in one
+    installer, plus the bundle's own package so VethuQ lists it in `client.version.bundles`."""
+
+    KIND = "bundle"
+    FOLDER = "bundles"
+    PREFIX = "vethuq-bundle-"
+
+    def declared(self) -> list[str]:
+        """The add-ons the bundle names, from its own pyproject (the one source of truth)."""
+        pyproject = self.source() / "pyproject.toml"
+        project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+        names = []
+        for requirement in project.get("dependencies", []):
+            name = normalise(re.split(r"[\s;\[<>=!~(]", requirement)[0])
+            if name.startswith("vethuq-addon-"):
+                names.append(name.removeprefix("vethuq-addon-"))
+        return names
+
+    def member_ids(self) -> list[str]:
+        defaults = default_addons()
+        members = [name for name in self.declared() if name not in defaults]
+        if not members:
+            raise ReleaseError(f"Everything in the {self.name} bundle is installed with VethuQ.")
+        return members
+
+    def main_wheel(self, wheels: dict[str, Path]) -> Path:
+        self._bundle_wheel = self.build_wheel(self.dist_name, self.source())
+        return self._bundle_wheel
+
+    def extra_files(self, tree: Path, wheels: dict[str, Path], main: Path) -> None:
+        """The bundle's own package (add-ons/bundle-<name>/), and what is in it."""
+        target = tree / "add-ons" / f"bundle-{self.name}"
+        self.extract(main, target)
+        versions = {m: wheel.name.split("-")[1] for m, wheel in wheels.items()}
+        skipped = [n for n in self.declared() if n not in versions]
+        (target / "bundle.json").write_text(
+            json.dumps(
+                {
+                    "bundle": self.name,
+                    "version": self.version.display,
+                    "add-ons": versions,
+                    "already installed with VethuQ": skipped,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -879,7 +1011,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="build the installer of one add-on (with --name); it installs into VethuQ's folder",
     )
-    parser.add_argument("--name", help="the add-on to build with --add-on, e.g. xls")
+    parser.add_argument(
+        "--bundle",
+        action="store_true",
+        help="build the installer of one bundle (with --name), e.g. --bundle --name office",
+    )
+    parser.add_argument("--name", help="the add-on or bundle to build, e.g. xls or office")
     parser.add_argument(
         "--add-on-constraints",
         action="store_true",
@@ -928,11 +1065,14 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("constraints.txt is current." if args.check else f"Wrote {CONSTRAINTS}")
         return 0
-    if args.add_on and not args.name:
-        parser.error("--add-on needs --name, e.g. --add-on --name xls")
-    if args.add_on:
+    if (args.add_on or args.bundle) and not args.name:
+        parser.error("--add-on and --bundle need --name, e.g. --add-on --name xls")
+    if args.add_on and args.bundle:
+        parser.error("build an add-on or a bundle, not both")
+    if args.add_on or args.bundle:
+        kind = Bundle if args.bundle else AddOn
         try:
-            built = AddOn(
+            built = kind(
                 args.name, Version(args.version), args.premium, dev=args.dev, clean=args.clean
             ).build_addon()
         except (ReleaseError, subprocess.CalledProcessError) as exc:
@@ -944,7 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.cli or args.interactive_cli or args.background_service or args.worker):
         parser.error(
             "choose what to build: --cli, --interactive-cli, --background-service, --worker, "
-            "--add-on"
+            "--add-on or --bundle"
         )
     try:
         built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(

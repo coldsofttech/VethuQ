@@ -13,7 +13,7 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The command line, the interactive shell, the background service, the worker and each add-on ship as installers: see
+The command line, the interactive shell, the background service, the worker, and each add-on and bundle ship as installers: see
 [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
@@ -194,13 +194,14 @@ that both `docx` and `xlsx` need (`defusedxml`) is therefore installed once, and
 add-on that needs it:
 
 - **Windows:** the files go in as Inno *shared files*, so Windows counts the installs.
-- **Linux:** dpkg cannot have two packages own one file, so the `.deb` carries the packages under
-  `/usr/share/vethuq-addon-<name>/deps/` and `postinst` moves each into `lib/` (or drops its copy if
-  another add-on already put it there), leaving a marker `lib/.addon-deps/<package>/<name>`. `prerm`
-  removes the marker and, when it was the last, the package. A file VethuQ itself put in `lib/` is never
-  counted and never removed.
-- Removing the command line removes `lib/` and `add-ons/` entirely (Inno `[UninstallDelete]`, and the
-  `vethuq-cli` `postrm`), so add-ons that are still installed leave nothing behind.
+- **Linux:** dpkg cannot have two packages own one file, and an add-on can arrive alone, in a bundle, or in
+  two bundles. So each `.deb` carries its files under `/usr/share/<package>/stage/{add-ons,lib}/`, and
+  `postinst` moves each entry into `/opt/vethuq/add-ons/` or `/lib/`, leaving a marker
+  `/opt/vethuq/.owners/<folder>/<entry>/<package>`. `prerm` removes its markers and, for an entry that
+  had none left, the entry itself. An entry VethuQ itself put there has no markers and is never taken; an
+  entry only this package owns is replaced on upgrade; one shared with another package stays as it is.
+- Removing the command line removes `lib/`, `add-ons/` and `.owners/` entirely (Inno `[UninstallDelete]`,
+  and the `vethuq-cli` `postrm`), so add-ons that are still installed leave nothing behind.
 
 The add-on's version in VethuQ-premium must equal the tag's.
 
@@ -213,3 +214,32 @@ installers of licensed add-ons are public too; **Setup asks for no licence**: ac
 `vethuq settings addons <name> licence <token>`.
 
     uv run --no-project python scripts/release/release.py --add-on --name xls --version 0.1.0 --premium ../VethuQ-premium
+
+### Bundles
+
+`vethuq-bundle-<name>-vX.Y.Z` (`-rcN` for a release candidate) builds the installer of one bundle
+(`image`, `deep-scan`, `office`, `web`, `developer`, `search`), with `.github/workflows/release-bundle.yml`.
+It is one download that installs all of the bundle's add-ons and the bundle's own package:
+
+| Platform | File |
+|---|---|
+| Windows | `VethuQ-Bundle-<name>-Setup.exe` |
+| Linux | `vethuq-bundle-<name>_X.Y.Z_amd64.deb` (`Pre-Depends: vethuq-cli`) |
+
+- The members come from the bundle's own `pyproject.toml` in VethuQ-premium, **less the add-ons VethuQ
+  installs by default** (`installer/shared/default-addons.txt`, which the PyInstaller spec reads too). So
+  `search` adds `lexical`, `proximity`, `fuzzy`, `noise-fuzzy`, `semantic` and `leetspeak`, and `deep-scan`
+  adds `ocr-moderate` and `ocr-deep`.
+- Each member goes in its own `add-ons/<member>/`, exactly as when installed alone, and their
+  dependencies are merged into the shared `lib/` once (`office` brings `defusedxml` and `olefile` once).
+- The bundle's package (with its `vethuq.bundles` entry point, which makes `client.version.bundles` list
+  it) goes in `add-ons/bundle-<name>/`, with a `bundle.json` recording the bundle's version, each member's
+  version and which members VethuQ already had.
+- Installing a bundle and one of its add-ons (in either order), or two bundles that share one (`json` is
+  in both `web` and `developer`), is safe: the shared entries are counted as above, so each stays until
+  the last installer that needs it is removed.
+- It follows the add-on installer's rules: VethuQ must be installed first, the same "all users or just
+  me" choice as VethuQ, no licence is asked for, and the bundle's version in VethuQ-premium must equal
+  the tag's.
+
+    uv run --no-project python scripts/release/release.py --bundle --name office --version 0.1.0 --premium ../VethuQ-premium

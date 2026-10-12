@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import shutil
 import subprocess
@@ -85,8 +86,9 @@ class TestInstallerFiles:
 
     def test_the_spec_bakes_in_exactly_the_default_add_ons(self):
         spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
-        block = re.search(r"DEFAULT_ADDONS = \((.*?)\n\)", spec, re.S)[1]
-        assert set(re.findall(r'"([a-z-]+)"', block)) == DEFAULT_ADDONS
+        # One list, read by the spec, release.py (add-on and bundle installers skip these) and here.
+        assert 'SHARED / "default-addons.txt"' in spec
+        assert set(release.default_addons()) == DEFAULT_ADDONS
         assert 'contents_directory="lib"' in spec
         for name in ("vethuq_interactive_cli", "tkinter", "vethuq_ui"):
             assert f'"{name}"' in spec
@@ -416,7 +418,8 @@ class TestAddOnInstaller:
 
     def test_it_installs_into_the_add_ons_folder_of_vethuq(self):
         script = self.script()
-        assert 'DestDir: "{app}\\add-ons\\{#AddonName}"' in script
+        # The staged tree mirrors VethuQ's folder (add-ons\\<name>, lib\\), whatever it holds.
+        assert 'Source: "{#StageDir}\\*"; DestDir: "{app}"' in script
         assert "DefaultDirName={code:VethuqDir}" in script
         assert "PrivilegesRequiredOverridesAllowed=dialog commandline" in script
 
@@ -510,7 +513,7 @@ class TestAddOnInstaller:
 
 
 class TestSharedDependencies:
-    """An add-on's dependencies go into the shared lib/: one copy, whoever needs it."""
+    """What installers share (a dependency, an add-on) exists once and is counted."""
 
     def sandbox(self, tmp_path):
         """The maintainer scripts with their literal paths moved under tmp_path."""
@@ -520,8 +523,10 @@ class TestSharedDependencies:
                 "/usr/share", f"{tmp_path}/usr/share"
             )
 
-        (tmp_path / "opt" / "vethuq" / "lib").mkdir(parents=True)
+        for folder in ("add-ons", "lib"):
+            (tmp_path / "opt" / "vethuq" / folder).mkdir(parents=True)
         (tmp_path / "opt" / "vethuq" / "lib" / "from_vethuq").mkdir()
+        (tmp_path / "opt" / "vethuq" / "add-ons" / "pdf").mkdir()
         return adapt
 
     def run_script(self, text, *args):
@@ -529,45 +534,93 @@ class TestSharedDependencies:
 
         subprocess.run(["sh", "-c", text, "script", *args], check=True)  # noqa: S603, S607
 
-    def stage(self, tmp_path, name, entries):
-        folder = tmp_path / "usr" / "share" / f"vethuq-addon-{name}" / "deps"
-        for entry in entries:
-            (folder / entry).mkdir(parents=True)
-            (folder / entry / "__init__.py").write_text(entry)
+    def stage(self, tmp_path, package, entries):
+        """`entries` as {"lib": [...], "add-ons": [...]}: what the package carries."""
+        for kind, names in entries.items():
+            for name in names:
+                folder = tmp_path / "usr" / "share" / package / "stage" / kind / name
+                folder.mkdir(parents=True)
+                (folder / "__init__.py").write_text(f"{package} {name}")
 
-    def install(self, adapt, tmp_path, name, entries):
-        self.stage(tmp_path, name, entries)
-        self.run_script(adapt(release.AddOn.POSTINST.replace("@NAME@", name)), "configure")
+    def install(self, adapt, tmp_path, package, entries):
+        self.stage(tmp_path, package, entries)
+        self.run_script(adapt(release.AddOn.POSTINST.replace("@PKG@", package)), "configure")
 
-    def remove(self, adapt, name):
-        self.run_script(adapt(release.AddOn.PRERM.replace("@NAME@", name)), "remove")
+    def remove(self, adapt, package):
+        self.run_script(adapt(release.AddOn.PRERM.replace("@PKG@", package)), "remove")
 
     @pytest.mark.skipif(shutil.which("sh") is None, reason="needs sh")
     def test_a_shared_package_stays_until_the_last_add_on_that_needs_it_goes(self, tmp_path):
         adapt = self.sandbox(tmp_path)
-        lib = tmp_path / "opt" / "vethuq" / "lib"
-        self.install(adapt, tmp_path, "xls", ["olefile", "xlrd"])
-        self.install(adapt, tmp_path, "doc", ["olefile"])
-        assert (lib / "olefile" / "__init__.py").is_file() and (lib / "xlrd").is_dir()
-        # Moved into lib/, not left behind (it exists once on disk).
-        assert not any((tmp_path / "usr" / "share" / "vethuq-addon-doc" / "deps").iterdir())
-        assert sorted(p.name for p in (lib / ".addon-deps" / "olefile").iterdir()) == ["doc", "xls"]
+        root = tmp_path / "opt" / "vethuq"
+        self.install(
+            adapt, tmp_path, "vethuq-addon-xls", {"add-ons": ["xls"], "lib": ["olefile", "xlrd"]}
+        )
+        self.install(adapt, tmp_path, "vethuq-addon-doc", {"add-ons": ["doc"], "lib": ["olefile"]})
+        assert (root / "lib" / "olefile" / "__init__.py").is_file() and (
+            root / "lib" / "xlrd"
+        ).is_dir()
+        assert (root / "add-ons" / "xls").is_dir() and (root / "add-ons" / "doc").is_dir()
+        # Moved into place, not left behind (it exists once on disk).
+        assert not any(
+            (tmp_path / "usr" / "share" / "vethuq-addon-doc" / "stage" / "lib").iterdir()
+        )
+        owners = sorted(p.name for p in (root / ".owners" / "lib" / "olefile").iterdir())
+        assert owners == ["vethuq-addon-doc", "vethuq-addon-xls"]
 
-        self.remove(adapt, "xls")
-        assert (lib / "olefile").is_dir() and not (lib / "xlrd").exists()
-        self.remove(adapt, "doc")
-        assert not (lib / "olefile").exists() and not (lib / ".addon-deps").exists()
-        assert (lib / "from_vethuq").is_dir()
+        self.remove(adapt, "vethuq-addon-xls")
+        assert (root / "lib" / "olefile").is_dir() and not (root / "lib" / "xlrd").exists()
+        assert not (root / "add-ons" / "xls").exists() and (root / "add-ons" / "doc").is_dir()
+        self.remove(adapt, "vethuq-addon-doc")
+        assert not (root / "lib" / "olefile").exists() and not (root / ".owners").exists()
+        assert (root / "lib" / "from_vethuq").is_dir() and (root / "add-ons" / "pdf").is_dir()
 
     @pytest.mark.skipif(shutil.which("sh") is None, reason="needs sh")
-    def test_reinstalling_keeps_the_count_and_vethuqs_own_files_are_never_taken(self, tmp_path):
+    def test_an_add_on_in_two_bundles_and_alone_is_removed_with_the_last(self, tmp_path):
         adapt = self.sandbox(tmp_path)
-        lib = tmp_path / "opt" / "vethuq" / "lib"
-        self.install(adapt, tmp_path, "doc", ["olefile", "from_vethuq"])
-        self.install(adapt, tmp_path, "doc", ["olefile"])  # an upgrade
-        assert sorted(p.name for p in (lib / ".addon-deps").iterdir()) == ["olefile"]
-        self.remove(adapt, "doc")
-        assert (lib / "from_vethuq").is_dir() and not (lib / "olefile").exists()
+        root = tmp_path / "opt" / "vethuq"
+        web = {"add-ons": ["html", "json", "bundle-web"], "lib": []}
+        developer = {"add-ons": ["yaml", "json", "bundle-developer"], "lib": []}
+        self.install(adapt, tmp_path, "vethuq-bundle-web", web)
+        self.install(adapt, tmp_path, "vethuq-bundle-developer", developer)
+        self.install(adapt, tmp_path, "vethuq-addon-json", {"add-ons": ["json"], "lib": []})
+        assert len(list((root / ".owners" / "add-ons" / "json").iterdir())) == 3
+        self.remove(adapt, "vethuq-bundle-web")
+        assert (root / "add-ons" / "json").is_dir() and not (root / "add-ons" / "html").exists()
+        self.remove(adapt, "vethuq-addon-json")
+        assert (root / "add-ons" / "json").is_dir()
+        self.remove(adapt, "vethuq-bundle-developer")
+        assert not (root / "add-ons" / "json").exists() and not (root / ".owners").exists()
+
+    @pytest.mark.skipif(shutil.which("sh") is None, reason="needs sh")
+    def test_an_upgrade_replaces_what_only_this_package_owns_and_vethuqs_own_files_are_kept(
+        self, tmp_path
+    ):
+        adapt = self.sandbox(tmp_path)
+        root = tmp_path / "opt" / "vethuq"
+        self.install(adapt, tmp_path, "vethuq-addon-doc", {"add-ons": ["doc"], "lib": ["olefile"]})
+        self.stage(
+            tmp_path, "vethuq-addon-doc", {"add-ons": ["doc"], "lib": ["from_vethuq", "pdf"]}
+        )
+        (
+            tmp_path
+            / "usr"
+            / "share"
+            / "vethuq-addon-doc"
+            / "stage"
+            / "add-ons"
+            / "doc"
+            / "new.txt"
+        ).write_text("v2")
+        self.run_script(
+            adapt(release.AddOn.POSTINST.replace("@PKG@", "vethuq-addon-doc")), "configure"
+        )
+        assert (root / "add-ons" / "doc" / "new.txt").is_file()  # replaced: ours alone
+        assert (root / "lib" / "from_vethuq").is_dir() and not (
+            root / ".owners" / "lib" / "from_vethuq"
+        ).exists()
+        self.remove(adapt, "vethuq-addon-doc")
+        assert (root / "lib" / "from_vethuq").is_dir()  # VethuQ's own is never taken
 
     def test_every_removal_in_the_scripts_starts_from_a_literal_absolute_path(self):
         for script in (release.AddOn.POSTINST, release.AddOn.PRERM, release.Cli.POSTRM):
@@ -578,8 +631,7 @@ class TestSharedDependencies:
 
     def test_the_windows_installer_counts_shared_files_and_the_cli_removes_everything(self):
         script = (ADDON_INSTALLER / "vethuq-addon.iss").read_text("utf-8")
-        assert 'DestDir: "{app}\\lib"' in script and "sharedfile" in script
-        assert "#ifdef DepsDir" in script
+        assert "sharedfile" in script and 'DestDir: "{app}"' in script
         cli = (INSTALLER / "vethuq-cli.iss").read_text("utf-8")
         assert 'Name: "{app}\\lib"' in cli and 'Name: "{app}\\add-ons"' in cli
 
@@ -607,3 +659,98 @@ class TestSharedDependencies:
     )
     def test_constraints_are_current(self):
         assert release.AddOn.write_constraints(ROOT.parent / "VethuQ-premium", check=True)
+
+
+class TestBundleInstaller:
+    """One installer per bundle: its add-ons (less the defaults) and its own package."""
+
+    def premium(self, tmp_path, dependencies):
+        folder = tmp_path / "packages" / "bundles" / "office"
+        folder.mkdir(parents=True)
+        lines = ", ".join(f'"{d}~=0.1"' for d in dependencies)
+        (folder / "pyproject.toml").write_text(
+            f'[project]\nname = "vethuq-bundle-office"\ndependencies = [{lines}]\n'
+        )
+        return tmp_path
+
+    def bundle(self, premium, name="office", version="1.0.0"):
+        return release.Bundle(name, release.Version(version), premium)
+
+    def test_the_members_come_from_the_bundles_own_pyproject_less_the_defaults(self, tmp_path):
+        premium = self.premium(
+            tmp_path, ["vethuq-addon-docx", "vethuq-addon-ocr-quick", "vethuq-addon-like"]
+        )
+        assert self.bundle(premium).member_ids() == ["docx"]
+        assert self.bundle(premium).declared() == ["docx", "ocr-quick", "like"]
+
+    def test_a_bundle_of_defaults_has_nothing_to_install(self, tmp_path):
+        premium = self.premium(tmp_path, ["vethuq-addon-pdf", "vethuq-addon-txt"])
+        with pytest.raises(release.ReleaseError, match="installed with VethuQ"):
+            self.bundle(premium).member_ids()
+
+    def test_an_add_on_that_is_a_default_has_no_installer(self, tmp_path):
+        with pytest.raises(release.ReleaseError, match="installed with VethuQ already"):
+            release.AddOn("pdf", release.Version("1.0.0"), tmp_path).member_ids()
+
+    def test_names_ids_and_titles(self, tmp_path):
+        bundle = self.bundle(tmp_path)
+        addon = release.AddOn("office", release.Version("1.0.0"), tmp_path)
+        assert (bundle.output_name, bundle.package_id, bundle.title) == (
+            "VethuQ-Bundle-office-Setup",
+            "bundle-office",
+            "bundle office",
+        )
+        assert (addon.output_name, addon.package_id) == ("VethuQ-Addon-office-Setup", "office")
+        assert bundle.dist_name == "vethuq-bundle-office" and bundle.guid != addon.guid
+
+    def test_the_bundle_package_is_staged_with_a_record_of_what_it_holds(self, tmp_path):
+        import zipfile
+
+        def wheel(name, version):
+            path = tmp_path / f"{name}-{version}-cp311-abi3-linux_x86_64.whl"
+            with zipfile.ZipFile(path, "w") as archive:
+                archive.writestr(f"{name}-{version}.dist-info/METADATA", "Name: x\n")
+                archive.writestr(f"{name}/__init__.py", "")
+            return path
+
+        premium = self.premium(tmp_path, ["vethuq-addon-docx", "vethuq-addon-pdf"])
+        bundle = self.bundle(premium, version="1.2.0-rc1")
+        tree = tmp_path / "tree"
+        bundle.extra_files(
+            tree,
+            {"docx": wheel("vethuq_addon_docx", "0.3.0")},
+            wheel("vethuq_bundle_office", "1.2.0rc1"),
+        )
+        folder = tree / "add-ons" / "bundle-office"
+        assert (folder / "vethuq_bundle_office-1.2.0rc1.dist-info" / "METADATA").is_file()
+        record = json.loads((folder / "bundle.json").read_text())
+        assert record == {
+            "bundle": "office",
+            "version": "1.2.0-rc1",
+            "add-ons": {"docx": "0.3.0"},
+            "already installed with VethuQ": ["pdf"],
+        }
+
+    def test_the_tag_names_the_bundle_and_the_workflow_builds_it(self):
+        result = plan.plan("vethuq-bundle-deep-scan-v1.0.0-rc1")
+        assert (result.kind, result.name, result.dist) == (
+            "bundle",
+            "deep-scan",
+            "vethuq-bundle-deep-scan",
+        )
+        assert plan.plan("vethuq-addon-xls-v1.0.0").kind == "add-on"
+        workflow = (ROOT / ".github" / "workflows" / "release-bundle.yml").read_text("utf-8")
+        assert '"vethuq-bundle-*-v*"' in workflow and "--bundle" in workflow
+        assert "release.py --add-on-constraints --check" in workflow
+
+    def test_every_real_bundle_resolves_when_premium_is_next_to_this_repository(self):
+        premium = ROOT.parent / "VethuQ-premium"
+        if not (premium / "packages" / "bundles").is_dir():
+            pytest.skip("needs the VethuQ-premium checkout")
+        for folder in sorted((premium / "packages" / "bundles").iterdir()):
+            members = release.Bundle(folder.name, release.Version("1.0.0"), premium).member_ids()
+            assert members and not set(members) & DEFAULT_ADDONS
+
+    def test_a_mode_is_required_for_a_bundle_too(self):
+        with pytest.raises(SystemExit):
+            release.main(["--bundle"])

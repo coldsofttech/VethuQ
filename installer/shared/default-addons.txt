@@ -1,0 +1,14 @@
+# The add-ons VethuQ installs by default (the `vethuq-addon-*` dependencies of packages/core).
+# One id per line. The PyInstaller spec bakes these in; add-on and bundle installers skip them.
+english
+pdf
+txt
+csv
+markdown
+paddle
+ocr-quick
+like
+exact
+full-text
+case
+unicode

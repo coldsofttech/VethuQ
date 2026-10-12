@@ -43,19 +43,10 @@ W_INSTALLER = REPO_ROOT / "packages" / "worker" / "installer"
 
 # The add-ons VethuQ installs by default (its `dependencies` in packages/core/pyproject.toml).
 # Everything else (lexical, proximity, fuzzy, noise-fuzzy, semantic, ...) is an extra.
-DEFAULT_ADDONS = (
-    "english",
-    "pdf",
-    "txt",
-    "csv",
-    "markdown",
-    "paddle",
-    "ocr-quick",
-    "like",
-    "exact",
-    "full-text",
-    "case",
-    "unicode",
+DEFAULT_ADDONS = tuple(
+    line.strip()
+    for line in (SHARED / "default-addons.txt").read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.startswith("#")
 )
 
 # Not part of the command line.

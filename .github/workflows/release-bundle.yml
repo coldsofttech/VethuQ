@@ -1,0 +1,153 @@
+# Builds the installer of one VethuQ bundle when `vethuq-bundle-<name>-vX.Y.Z` is pushed:
+#
+#   Windows   VethuQ-Bundle-<name>-Setup.exe             Inno Setup
+#   Linux     vethuq-bundle-<name>_X.Y.Z_amd64.deb       dpkg-deb
+#
+# A bundle installs all its add-ons (less the ones VethuQ installs by default) and the bundle's own
+# package in one go, so a user downloads one file. The dependencies the add-ons share go in
+# <VethuQ folder>/lib once, and an add-on that arrives with another installer (alone, or in a second
+# bundle) is counted and removed with the last one that needs it. The sources are in the private
+# VethuQ-premium repository (read with PREMIUM_READ_TOKEN, as in release-add-on.yml); the installers
+# live here so anyone can download them. It refuses to run unless VethuQ is installed (Windows: the
+# command line, the interactive shell or the desktop app; Linux: `vethuq-cli`). The bundle's version
+# in VethuQ-premium must equal the tag's. Add `-rcN` for a release candidate: it is attached to a
+# GitHub prerelease. Nothing goes to PyPI. Licences are not asked for here: a licensed add-on is
+# activated with the command line. See docs/releasing.md.
+name: release-bundle
+
+on:
+  push:
+    tags:
+      - "vethuq-bundle-*-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to build, e.g. vethuq-bundle-office-v0.1.0 (the tag must exist)"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+concurrency:
+  group: release-bundle-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.plan.outputs.name }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$TAG"
+      - id: version
+        # The tag's version as written (1.2.0 or 1.2.0-rc1), which is what release.py wants.
+        run: echo "version=${TAG##*-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: bundle-windows
+          # The oldest Ubuntu runner: a compiled module needs a glibc at least as old as the user's.
+          - os: ubuntu-22.04
+            artifact: bundle-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The two repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: constraints.txt is current
+        # The versions every add-on shares in lib/: it must match the add-ons' requirements.
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: uv run --no-project python scripts/release/release.py --add-on-constraints --check --premium ../VethuQ-premium
+      - name: Build the installer
+        working-directory: work/VethuQ
+        shell: bash
+        run: |
+          uv run --no-project python scripts/release/release.py --bundle \
+            --name "${{ needs.plan.outputs.name }}" \
+            --version "${{ needs.plan.outputs.version }}" \
+            --premium ../VethuQ-premium
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        working-directory: work/VethuQ
+        shell: pwsh
+        run: |
+          # No VethuQ is installed on the runner: Setup must refuse, and install nothing.
+          $setup = "dist\VethuQ-Bundle-${{ needs.plan.outputs.name }}-Setup.exe"
+          $run = Start-Process -Wait -PassThru $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/CURRENTUSER"
+          Write-Host "exit code $($run.ExitCode)"
+          if ($run.ExitCode -eq 0) { throw "Setup ran without VethuQ installed" }
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: |
+          deb="$(ls dist/vethuq-bundle-*.deb)"
+          dpkg-deb -I "$deb" | grep -E "Pre-Depends: vethuq-cli"
+          dpkg-deb -c "$deb" | grep -E "/usr/share/vethuq-bundle-${{ needs.plan.outputs.name }}/stage/add-ons/bundle-${{ needs.plan.outputs.name }}/bundle.json"
+          # No VethuQ is installed on the runner: dpkg must refuse before unpacking.
+          if sudo dpkg -i "$deb"; then echo "installed without VethuQ" >&2; exit 1; fi
+          test ! -e /opt/vethuq/add-ons
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            work/VethuQ/dist/VethuQ-Bundle-*-Setup.exe
+            work/VethuQ/dist/vethuq-bundle-*.deb
+          if-no-files-found: error
+
+  github-release:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" dist/* "${flags[@]}" --repo "$GITHUB_REPOSITORY" \
+            --title "VethuQ bundle ${{ needs.plan.outputs.name }} ${{ needs.plan.outputs.version }}" \
+            --notes "The ${{ needs.plan.outputs.name }} bundle for VethuQ: all its add-ons in one install. Install VethuQ first. Windows: run VethuQ-Bundle-${{ needs.plan.outputs.name }}-Setup.exe and choose the same install for all users or just you as VethuQ. Linux (Debian, Ubuntu): sudo apt install ./vethuq-bundle-${{ needs.plan.outputs.name }}_*.deb. A licensed add-on is activated afterwards with: vethuq settings addons NAME licence TOKEN"
