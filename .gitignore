@@ -241,3 +241,6 @@ CLAUDE.md
 
 # Temporary Files
 .temp/
+
+# Web interface
+node_modules/
