@@ -33,6 +33,7 @@ import { MatchDetails } from '../search/MatchDetails.jsx';
 import { ResultsList } from '../search/ResultsList.jsx';
 import { SearchBar } from '../search/SearchBar.jsx';
 import { useSearch } from '../search/useSearch.js';
+import { placeOf } from '../search/form.js';
 
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM },
@@ -107,7 +108,10 @@ export function SearchPage() {
       open: async (match) => {
         if (!platform.openFile) return;
         try {
-          await api.os.open(match.file_path);
+          const result = await api.os.open(match.file_path, placeOf(match));
+          if (result && result.opened && !result.jumped && result.hint) {
+            notify({ title: 'Opened at the top', body: result.hint, intent: 'info' });
+          }
         } catch (failure) {
           notify({ title: 'Could not open the file', body: failure.message, intent: 'error' });
         }

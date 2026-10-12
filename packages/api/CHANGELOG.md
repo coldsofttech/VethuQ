@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Changed (opening at the place)
+- `POST /api/os/open` accepts `page`, `line` and `column` and returns `{opened, jumped, hint}`.
+
 ### Added
 - Search: `/api/search/options` (engines, normalizers, file types and the saved defaults), `/api/search/run` (file
   types, sources, languages, engine, case, normalizer levels, engine options, paging) and `/api/search/export`

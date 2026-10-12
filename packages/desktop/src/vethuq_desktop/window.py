@@ -10,6 +10,8 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from vethuq_desktop.opening import Opener
+
 
 class WebviewWindowController:
     """Controls the pywebview window and follows its maximised state."""
@@ -108,14 +110,16 @@ class WebviewWindowController:
         """Show the system file picker (one file); None if it was cancelled."""
         return self._dialog("OPEN", start, allow_multiple=False)
 
-    def open_file(self, path: str) -> None:
-        """Open a file with the application the system has for it."""
-        if sys.platform == "win32":
-            os.startfile(os.path.normpath(path))  # noqa: S606 - the caller has checked the path
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])  # noqa: S603, S607
-        else:
-            subprocess.Popen(["xdg-open", path])  # noqa: S603, S607
+    def open_file(
+        self,
+        path: str,
+        page: int | None = None,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> dict[str, object]:
+        """Open a file in the application the system has for it, at the page or line if that
+        application can be told. Says whether it jumped, and where to look if it did not."""
+        return Opener().open(path, page, line, column).to_dict()
 
     def reveal(self, path: str) -> None:
         """Show a file or folder in the system file manager."""

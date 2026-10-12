@@ -22,6 +22,7 @@ import {
 } from '@fluentui/react-icons';
 import { FileIcon } from '../components/FileIcon.jsx';
 import { baseName } from '../format.js';
+import { describePlace, placeOf } from './form.js';
 
 const useStyles = makeStyles({
   table: {
@@ -132,6 +133,7 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
       <MenuItem
         icon={<DocumentArrowRight20Regular />}
         disabled={!platform.openFile}
+        title={describePlace(placeOf(match)) ?? undefined}
         onClick={() => actions.open(match)}
       >
         Open

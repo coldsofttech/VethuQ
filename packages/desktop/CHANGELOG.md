@@ -4,6 +4,9 @@ All notable changes to `vethuq-desktop`.
 
 ## [Unreleased]
 
+### Added (opening at the place)
+- `open_file(path, page, line, column)` opens a file in its default application at a page or line where it can (browsers, Adobe/Foxit/Sumatra PDF, VS Code, Notepad++, Sublime) and otherwise at the top, returning `{opened, jumped, hint}`.
+
 ### Added
 - The window can open a file in its own application (`open_file`).
 - The window holds back a close while indexing runs in this application (the interface asks first),

@@ -14,6 +14,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
+from sqlalchemy import text
+
 from vethuq._db import _Database
 from vethuq._errors import _IndexAlreadyRunningError, _SearchOptionError
 from vethuq._export import _Exporter
@@ -62,6 +64,11 @@ class SearchMatch:
     matched_by: tuple[str, ...]  # every engine that found it, strictest first
     modifiers: tuple[str, ...]  # normalizations it needed to match as typed, e.g. `accents`
     file_type: str | None = None  # what the file is read as (`pdf`, `docx`, ...)
+    # Where the match is in a plain-text file (text, Markdown, CSV), counting from 1; None for files
+    # whose pages are not the file's own lines (a PDF's page is `page_number`). For CSV the line is
+    # the row and there is no column (the text is shown with the fields spread out).
+    line: int | None = None
+    column: int | None = None
 
     @classmethod
     def _from(cls, match: _Match) -> SearchMatch:
@@ -358,16 +365,50 @@ class Search:
         return SearchResult(
             query=query,
             engine=outcome.engine,
-            matches=[
-                replace(SearchMatch._from(m), file_type=self._file_type_of(m.file_path))
-                for m in window
-            ],
+            matches=self._located(window),
             total=total,
             levels=outcome.levels,
             index_rebuilt=outcome.index_rebuilt,
             pending=outcome.pending,
             options=asked,
         )
+
+    # File types whose single page is the file's own lines, so a match has a line (and, except for
+    # CSV whose fields are spread out, a column). HTML, XML and the like are read as extracted text,
+    # whose lines are not the file's.
+    LINE_TYPES = frozenset({"txt", "markdown", "csv"})
+
+    def _located(self, window: list[_Match]) -> list[SearchMatch]:
+        """The public matches of a page of results, each with its file type, and the line and
+        column where it sits in a text-like file."""
+        texts: dict[tuple[int, int], str] = {}
+        out = []
+        with self._database.session() as session:
+            for match in window:
+                file_type = self._file_type_of(match.file_path)
+                line = column = None
+                if file_type in self.LINE_TYPES:
+                    key = (match.document_id, match.page_number)
+                    if key not in texts:
+                        texts[key] = (
+                            session.execute(
+                                text(
+                                    "SELECT text FROM pdf_pages WHERE document_id = :d "
+                                    "AND page_number = :p"
+                                ),
+                                {"d": match.document_id, "p": match.page_number},
+                            ).scalar()
+                            or ""
+                        )
+                    before = texts[key][: match.start]
+                    line = before.count("\n") + 1
+                    column = (
+                        None if file_type == "csv" else match.start - (before.rfind("\n") + 1) + 1
+                    )
+                out.append(
+                    replace(SearchMatch._from(match), file_type=file_type, line=line, column=column)
+                )
+        return out
 
     def _scope(
         self, file_types: str | Sequence[str] | None, sources: int | Sequence[int] | None

@@ -591,3 +591,36 @@ class TestScope:
             client.search.run("wheat", file_types=[1])
         with pytest.raises(TypeError):
             client.search.run("wheat", sources=["a"])
+
+
+class TestLocation:
+    @pytest.fixture
+    def texts(self, client, tmp_path):
+        folder = tmp_path / "t"
+        folder.mkdir()
+        (folder / "story.txt").write_text(
+            "first line\nsecond line has wheat in it\n\nfourth: more wheat", encoding="utf-8"
+        )
+        (folder / "data.csv").write_text("name,crop\nfarm,wheat\nmill,barley\n", encoding="utf-8")
+        write(folder, "report.pdf", native("The wheat harvest."))
+        client.sources.create(folder)
+        assert client.index.run().status.value == "completed"
+        return client
+
+    def test_a_text_match_has_its_line_and_column(self, texts):
+        found = {(m.file_name, m.line, m.column) for m in texts.search.run("wheat", engine="like")}
+        assert ("story.txt", 2, 17) in found and ("story.txt", 4, 14) in found
+        assert ("data.csv", 2, None) in found  # a CSV row, no column
+
+    def test_a_pdf_match_has_a_page_and_no_line(self, texts):
+        (pdf,) = [
+            m for m in texts.search.run("wheat", engine="like") if m.file_name == "report.pdf"
+        ]
+        assert (pdf.page_number, pdf.line, pdf.column) == (1, None, None)
+        assert "line" in pdf.to_dict() and "column" in pdf.to_dict()
+
+    def test_the_line_points_at_the_matched_text(self, texts):
+        for match in texts.search.run("wheat", engine="like", file_types="txt"):
+            lines = open(match.file_path, encoding="utf-8").read().split("\n")
+            start = match.column - 1
+            assert lines[match.line - 1][start : start + 5] == "wheat"

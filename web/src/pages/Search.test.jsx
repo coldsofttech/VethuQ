@@ -260,4 +260,69 @@ describe('Search', () => {
     expect(within(dialog).getByText('accents')).toBeInTheDocument();
     expect(within(dialog).getByText('83%')).toBeInTheDocument();
   });
+
+  describe('open at the place of the match', () => {
+    const DESKTOP = {
+      'GET /api/platform': { kind: 'desktop', window_controls: true, open_file: true },
+    };
+
+    const openFrom = async (text) => {
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: await within(table).findByText(text),
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Open' }));
+    };
+
+    const opens = (fetchMock) =>
+      fetchMock.mock.calls
+        .filter(([p]) => p === '/api/os/open')
+        .map(([, init]) => JSON.parse(init.body));
+
+    it('asks for the page of a PDF match and says nothing when the app jumped', async () => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        ...DESKTOP,
+        'POST /api/os/open': { opened: true, jumped: true, hint: null },
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      await openFrom('3 of 12');
+      await waitFor(() =>
+        expect(opens(fetchMock)).toEqual([{ path: '/docs/report.pdf', page: 3 }]),
+      );
+      expect(screen.queryByText('Opened at the top')).not.toBeInTheDocument();
+    });
+
+    it('asks for the line of a text match, and says where to look when it opened at the top', async () => {
+      const lined = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'notes.txt',
+            file_path: '/docs/notes.txt',
+            file_type: 'txt',
+            total_pages: 1,
+            page_number: 1,
+            line: 12,
+            column: 4,
+          }),
+        ],
+      };
+      const fetchMock = mockApi({
+        ...ROUTES,
+        ...DESKTOP,
+        'POST /api/search/run': lined,
+        'POST /api/os/open': { opened: true, jumped: false, hint: 'Go to line 12, column 4.' },
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      await openFrom('notes.txt');
+      await waitFor(() =>
+        expect(opens(fetchMock)).toEqual([{ path: '/docs/notes.txt', line: 12, column: 4 }]),
+      );
+      expect(await screen.findByText('Go to line 12, column 4.')).toBeInTheDocument();
+    });
+  });
 });

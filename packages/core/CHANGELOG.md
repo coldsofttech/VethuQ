@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (where a match sits)
+- A search match carries `line` (and `column`, not for CSV) for text, Markdown and CSV files, so an application can open the file at the match. PDF matches already have `page_number`.
+
 ### Added (searching within file types and sources)
 - `search.run(file_types=..., sources=...)` keeps matches of files read as those types (ids of `client.file_types`)
   and of those sources, in the total and the paging too; a match carries its `file_type`. CLI: `search --file-type

@@ -189,7 +189,23 @@ class TestOpenOverHttp:
             headers=HEADERS,
         )
         assert good.status_code == 200 and window.calls == [f"open:{library / 'a' / 'notes.txt'}"]
+        placed = http.post(
+            "/api/os/open",
+            json={"path": str(library / "a" / "notes.txt"), "page": 4, "line": 9, "column": 2},
+            base_url=origin,
+            headers=HEADERS,
+        )
+        assert placed.get_json() == {"opened": True, "jumped": True, "hint": None}
+        assert window.calls[-1].endswith(":page=4:line=9:column=2")
+        for bad_place in ({"page": 0}, {"line": "9"}, {"column": True}):
+            refused = http.post(
+                "/api/os/open",
+                json={"path": str(library / "a" / "notes.txt"), **bad_place},
+                base_url=origin,
+                headers=HEADERS,
+            )
+            assert refused.status_code == 422
         for path in (str(library / "a" / "tool.exe"), str(library / "vethuq.db"), 5, None):
             bad = http.post("/api/os/open", json={"path": path}, base_url=origin, headers=HEADERS)
             assert bad.status_code == 422
-        assert len(window.calls) == 1
+        assert len(window.calls) == 2

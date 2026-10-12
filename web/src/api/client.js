@@ -360,7 +360,13 @@ export const api = {
     perform: (action) => request(`/api/service/${action}`, { method: 'POST' }),
   },
   os: {
-    open: (path) => request('/api/os/open', { method: 'POST', body: { path } }),
+    /**
+     * @param {string} path
+     * @param {{page?: number, line?: number, column?: number}} [place]
+     * @returns {Promise<{opened: boolean, jumped: boolean, hint: string | null}>}
+     */
+    open: (path, place = {}) =>
+      request('/api/os/open', { method: 'POST', body: { path, ...place } }),
     reveal: (path) => request('/api/os/reveal', { method: 'POST', body: { path } }),
   },
   settings: {

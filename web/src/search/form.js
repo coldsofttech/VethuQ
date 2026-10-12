@@ -68,3 +68,23 @@ export function forgetSearches() {
     // Nothing to forget.
   }
 }
+
+/**
+ * Where in the file a match sits, as the native application can be asked to jump to it.
+ * @param {{file_type?: string | null, page_number?: number, line?: number | null, column?: number | null}} match
+ * @returns {{page?: number, line?: number, column?: number}}
+ */
+export const placeOf = (match) => {
+  if (match.file_type === 'pdf' && match.page_number) return { page: match.page_number };
+  if (match.line != null) {
+    return match.column != null ? { line: match.line, column: match.column } : { line: match.line };
+  }
+  return {};
+};
+
+/** @param {{page?: number, line?: number, column?: number}} place */
+export const describePlace = (place) => {
+  if (place.page) return `Opens at page ${place.page}`;
+  if (place.line) return `Opens at line ${place.line}`;
+  return null;
+};

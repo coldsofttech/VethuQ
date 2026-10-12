@@ -51,6 +51,15 @@ export function MatchDetails({ match, labels, onClose }) {
                   <Text>
                     {match.page_number} of {match.total_pages}
                   </Text>
+                  {match.line != null && (
+                    <>
+                      <Text className={styles.muted}>Line</Text>
+                      <Text>
+                        {match.line}
+                        {match.column != null ? `, column ${match.column}` : ''}
+                      </Text>
+                    </>
+                  )}
                   <Text className={styles.muted}>Page read</Text>
                   <Text>{match.source}</Text>
                   <Text className={styles.muted}>Found by</Text>

@@ -38,8 +38,14 @@ class FakeWindow:
     def reveal(self, path: str) -> None:
         self.calls.append(f"reveal:{path}")
 
-    def open_file(self, path: str) -> None:
-        self.calls.append(f"open:{path}")
+    def open_file(self, path: str, page=None, line=None, column=None) -> dict:
+        self.calls.append(
+            f"open:{path}"
+            + "".join(
+                f":{n}={v}" for n, v in (("page", page), ("line", line), ("column", column)) if v
+            )
+        )
+        return {"opened": True, "jumped": page is not None, "hint": None if page else "Go to line."}
 
     def minimize(self) -> None:
         self.calls.append("minimize")

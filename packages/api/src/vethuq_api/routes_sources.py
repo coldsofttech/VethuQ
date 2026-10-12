@@ -56,6 +56,16 @@ def _body() -> dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
+def _place(body: dict[str, Any], name: str) -> int | None:
+    """A page, line or column to open at: a whole number from 1, or nothing."""
+    value = body.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} is a whole number from 1.")
+    return value
+
+
 def _target(value: object) -> int | str | None:
     if value is None or isinstance(value, bool):
         return None
@@ -257,13 +267,14 @@ def register(api: Blueprint, core: Core, window: Any) -> None:
     def open_file() -> Response:
         """Open a file of a source in its own application. Only a file VethuQ reads, inside one of
         the sources, can be opened this way: this is not a way to start any program."""
-        path = _body().get("path")
+        body = _body()
+        path = body.get("path")
         if window is None or not callable(getattr(window, "open_file", None)):
             return jsonify(error="This host cannot open a file in its application."), 404
         if not isinstance(path, str) or not core.sources().may_open(path):
             raise ValueError("Only a file of a source that VethuQ reads can be opened here.")
-        window.open_file(path)
-        return jsonify(ok=True)
+        place = {name: _place(body, name) for name in ("page", "line", "column")}
+        return jsonify(window.open_file(path, **place))
 
     @api.post("/os/reveal")
     def reveal() -> Response:
