@@ -35,6 +35,7 @@ const useStyles = makeStyles({
     background: tokens.colorNeutralBackground3,
     color: tokens.colorNeutralForeground2,
   },
+  left: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalS },
   right: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalM, minWidth: 0 },
   strip: {
     display: 'flex',
@@ -108,7 +109,10 @@ export function StatusBar() {
 
   return (
     <footer className={styles.root} data-testid="status-bar">
-      <Text size={200}>{shown ? 'Indexing' : idleNote || 'Ready'}</Text>
+      <span className={styles.left}>
+        <ServiceDot colour={shown || idleNote ? 'amber' : 'green'} aria-hidden="true" />
+        <Text size={200}>{shown ? 'Indexing' : idleNote || 'Ready'}</Text>
+      </span>
       <div className={styles.right}>
         {shown && (
           <>
