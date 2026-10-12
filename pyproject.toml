@@ -32,6 +32,7 @@ vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/
 vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png" }
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
 vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
+vethuq-bundle-search-pack = { path = "../VethuQ-premium/packages/bundles/search-pack" }
 vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
 vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
 vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
@@ -56,16 +57,16 @@ vethuq-bundle-web = { path = "../VethuQ-premium/packages/bundles/web" }
 vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick", editable = true }
 vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }
-vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like" }
-vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact" }
-vethuq-addon-lexical = { path = "../VethuQ-premium/packages/add-ons/search/engines/lexical" }
-vethuq-addon-full-text = { path = "../VethuQ-premium/packages/add-ons/search/engines/full-text" }
-vethuq-addon-proximity = { path = "../VethuQ-premium/packages/add-ons/search/engines/proximity" }
-vethuq-addon-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy" }
-vethuq-addon-noise-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy" }
-vethuq-addon-semantic = { path = "../VethuQ-premium/packages/add-ons/search/engines/semantic" }
-vethuq-addon-case = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/case" }
-vethuq-addon-unicode = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" }
+vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like", editable = true }
+vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact", editable = true }
+vethuq-addon-lexical = { path = "../VethuQ-premium/packages/add-ons/search/engines/lexical", editable = true }
+vethuq-addon-full-text = { path = "../VethuQ-premium/packages/add-ons/search/engines/full-text", editable = true }
+vethuq-addon-proximity = { path = "../VethuQ-premium/packages/add-ons/search/engines/proximity", editable = true }
+vethuq-addon-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/fuzzy", editable = true }
+vethuq-addon-noise-fuzzy = { path = "../VethuQ-premium/packages/add-ons/search/engines/noise-fuzzy", editable = true }
+vethuq-addon-semantic = { path = "../VethuQ-premium/packages/add-ons/search/engines/semantic", editable = true }
+vethuq-addon-case = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/case", editable = true }
+vethuq-addon-unicode = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode", editable = true }
 vethuq-addon-leetspeak = { path = "../VethuQ-premium/packages/add-ons/search/normalisers/leetspeak", editable = true }
 
 [dependency-groups]

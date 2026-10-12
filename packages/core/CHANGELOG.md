@@ -6,6 +6,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (search pack)
+- `vethuq[search-pack]`: the search pack bundle (`vethuq-bundle-search-pack`), which installs every search
+  engine and normalizer.
+
 ### Changed (default search engines)
 - VethuQ installs only the `like`, `exact` and `full-text` search engines (with the `case` and `unicode`
   normalisers). `lexical`, `proximity`, `fuzzy` and `noise-fuzzy` are now the extras `vethuq[lexical]`,
