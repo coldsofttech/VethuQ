@@ -18,6 +18,7 @@ import {
   Stop16Regular,
 } from '@fluentui/react-icons';
 import { useNavigate } from 'react-router-dom';
+import { CreditsStatus } from './CreditsStatus.jsx';
 import { ServiceDot } from './ServiceDot.jsx';
 import { baseName, formatDuration } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
@@ -200,6 +201,7 @@ export function StatusBar() {
             )}
           </>
         )}
+        <CreditsStatus />
       </div>
     </footer>
   );

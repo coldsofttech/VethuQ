@@ -7,6 +7,7 @@ export const strings = {
     home: 'Home',
     sources: 'Sources',
     indexing: 'Indexing',
+    credits: 'Credits',
     about: 'About',
     settings: 'Settings',
   },

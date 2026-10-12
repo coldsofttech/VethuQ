@@ -754,9 +754,11 @@ class SettingsService:
         return self._apply(
             client,
             spec,
-            lambda: spec.write_with(client, value, options)
-            if spec.write_with
-            else spec.write(client, value),  # type: ignore[misc]
+            lambda: (
+                spec.write_with(client, value, options)
+                if spec.write_with
+                else spec.write(client, value)
+            ),  # type: ignore[misc]
         )
 
     def reset(

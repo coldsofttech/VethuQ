@@ -358,7 +358,8 @@ class _Wallet:
                         run_id=row.run_id,
                         page_number=row.page_number,
                         phase=row.phase,
-                        note=note,
+                        # What the charge was for stays readable: "<why>: <file>".
+                        note=f"{note}: {row.note}" if row.note else note,
                     )
                 )
                 total += 0 if expired else row.amount_milli

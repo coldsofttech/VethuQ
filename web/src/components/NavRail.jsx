@@ -9,6 +9,8 @@ import {
   Info24Filled,
   Info24Regular,
   Settings24Filled,
+  Wallet24Filled,
+  Wallet24Regular,
   Settings24Regular,
   bundleIcon,
 } from '@fluentui/react-icons';
@@ -18,6 +20,7 @@ import { strings } from '../strings.js';
 const HomeIcon = bundleIcon(Home24Filled, Home24Regular);
 const SourcesIcon = bundleIcon(Folder24Filled, Folder24Regular);
 const IndexingIcon = bundleIcon(DocumentSearch24Filled, DocumentSearch24Regular);
+const CreditsIcon = bundleIcon(Wallet24Filled, Wallet24Regular);
 const InfoIcon = bundleIcon(Info24Filled, Info24Regular);
 const SettingsIcon = bundleIcon(Settings24Filled, Settings24Regular);
 
@@ -25,6 +28,7 @@ const ITEMS = [
   { path: '/', label: strings.nav.home, icon: <HomeIcon /> },
   { path: '/sources', label: strings.nav.sources, icon: <SourcesIcon /> },
   { path: '/indexing', label: strings.nav.indexing, icon: <IndexingIcon /> },
+  { path: '/credits', label: strings.nav.credits, icon: <CreditsIcon /> },
   { path: '/about', label: strings.nav.about, icon: <InfoIcon /> },
   { path: '/settings', label: strings.nav.settings, icon: <SettingsIcon /> },
 ];

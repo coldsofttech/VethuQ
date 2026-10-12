@@ -81,6 +81,9 @@ class FakeCore:
     def sources(self):
         return SimpleNamespace(forget=lambda: None)
 
+    def credits(self):
+        return SimpleNamespace()
+
     def indexing(self):
         core = self
 

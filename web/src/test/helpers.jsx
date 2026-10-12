@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { BrandProvider } from '../brand/BrandProvider.jsx';
 import { NotifyProvider } from '../components/Notifications.jsx';
+import { CreditsProvider } from '../credits/CreditsProvider.jsx';
 import { IndexingProvider } from '../indexing/IndexingProvider.jsx';
 import { PlatformProvider } from '../platform/PlatformProvider.jsx';
 import { ThemeProvider } from '../theme/ThemeProvider.jsx';
@@ -34,6 +35,8 @@ export const IDLE = {
   service: null,
 };
 
+export const NO_CREDITS = { wallets: [], primary: null };
+
 export const ABOUT = { vethuq: '1.2.3', python: '3.12.0', platform: 'Windows-11', db_schema: 7 };
 
 export const CATALOG = {
@@ -63,6 +66,7 @@ export function mockApi(routes) {
     const full = `${init.method ?? 'GET'} ${path}`;
     const key = full in routes ? full : full.split('?')[0];
     if (key === 'GET /api/brand' && !(key in routes)) return Response.json(BRAND);
+    if (key === 'GET /api/credits/summary' && !(key in routes)) return Response.json(NO_CREDITS);
     if (key === 'GET /api/index/state' && !(key in routes)) return Response.json(IDLE);
     if (!(key in routes))
       return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
@@ -84,7 +88,9 @@ export function renderWithProviders(ui, { route = '/' } = {}) {
         <PlatformProvider>
           <NotifyProvider>
             <IndexingProvider>
-              <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+              <CreditsProvider>
+                <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+              </CreditsProvider>
             </IndexingProvider>
           </NotifyProvider>
         </PlatformProvider>

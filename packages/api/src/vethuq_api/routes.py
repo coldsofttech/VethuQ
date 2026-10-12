@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, Flask, Response, jsonify, request
 
-from vethuq_api import routes_sources
+from vethuq_api import routes_credits, routes_sources
 from vethuq_api.core import Core
 from vethuq_api.settings import InvalidSettingError, SettingNotFoundError
 from vethuq_api.window import WindowController
@@ -23,6 +23,7 @@ def register(
 ) -> None:
     api = Blueprint("api", __name__, url_prefix="/api")
     routes_sources.register(api, core, window)
+    routes_credits.register(api, core)
 
     @api.get("/health")
     def health() -> Response:

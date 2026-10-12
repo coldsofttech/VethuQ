@@ -591,6 +591,35 @@ def credits_history(limit: int = typer.Option(20, "--limit")) -> None:
     )
 
 
+@credits_app.command("grants")
+@exportable("Credit grants", "grants", facets=("kind", "wallet"))
+def credits_grants(
+    kind: str = typer.Option(None, "--kind", help="daily, promo, one_off or grace."),
+    expired: bool = typer.Option(False, "--expired", help="Include lapsed grants."),
+    limit: int = typer.Option(20, "--limit"),
+) -> None:
+    """Credits received: allowances, promotions, starter and licence bundles."""
+    table(
+        client().credits.grants(kind=kind, include_expired=expired, limit=limit),
+        ["granted_at", "wallet", "kind", "name", "amount", "used", "remaining", "expires_at"],
+        empty="No credit grants.",
+    )
+
+
+@credits_app.command("usage")
+@exportable("Credit usage", "usage")
+def credits_usage(
+    by: str = typer.Option("day", "--by", help="day, source or file."),
+    limit: int = typer.Option(20, "--limit"),
+) -> None:
+    """What was spent, by day, source or file."""
+    table(
+        client().credits.usage(by, limit=limit),
+        ["key", "credits", "pages", "last_at"],
+        empty="Nothing spent.",
+    )
+
+
 @credits_app.command("estimate")
 def credits_estimate(target: str = typer.Argument(None)) -> None:
     """What indexing a source (or everything) would cost now."""

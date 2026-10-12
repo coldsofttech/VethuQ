@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.orm import Session
 
 from vethuq._credits.clock import _Clock
@@ -17,7 +17,7 @@ from vethuq._credits.pricing import _PageTooLarge, _Pricing
 from vethuq._credits.terms import _Terms, milli
 from vethuq._credits.wallet import LOCAL, _Balance, _Wallet, next_midnight
 from vethuq._db import _CreditGrant, _CreditLedger, _Database, _IndexRun
-from vethuq._db.values import _LedgerKind
+from vethuq._db.values import _GrantKind, _LedgerKind
 from vethuq._errors import _InvalidGrantError
 from vethuq._settings import _MetricsSettings, _Settings
 from vethuq.enums import CreditEntryKind, CreditSortBy, SortOrder
@@ -198,6 +198,185 @@ class _Credits:
         if offset:
             statement = statement.offset(offset)
         return list(session.scalars(statement))
+
+    def grants(
+        self,
+        session: Session,
+        *,
+        wallet: str | None,
+        kind: str | None,
+        scope: str | None,
+        include_expired: bool,
+        limit: int | None,
+        offset: int,
+    ) -> list[tuple[_CreditGrant, str, bool]]:
+        """Grants newest first, each with its name and whether it has lapsed."""
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("limit and offset can't be negative.")
+        terms = self.terms(session)
+        names = {p.id: p.name for p in terms.promotions}
+        now = _Clock.now(session).astimezone(UTC).isoformat()
+        statement = select(_CreditGrant)
+        if wallet is not None:
+            statement = statement.where(_CreditGrant.wallet == wallet)
+        if kind is not None:
+            statement = statement.where(_CreditGrant.kind == _GrantKind(kind))
+        if scope is not None:
+            statement = statement.where(_CreditGrant.scope == scope)
+        if not include_expired:
+            statement = statement.where(
+                (_CreditGrant.expires_at.is_(None)) | (_CreditGrant.expires_at > now)
+            )
+        statement = statement.order_by(_CreditGrant.granted_at.desc(), _CreditGrant.id.desc())
+        if limit is not None:
+            statement = statement.limit(limit)
+        if offset:
+            statement = statement.offset(offset)
+        out = []
+        for grant in session.scalars(statement):
+            expired = grant.expires_at is not None and grant.expires_at <= now
+            name = grant.origin
+            if grant.kind is _GrantKind.PROMO:
+                name = (
+                    names.get(grant.ref.split(":")[1], grant.origin) if ":" in grant.ref else name
+                )
+            out.append((grant, name, expired))
+        return out
+
+    def usage(
+        self,
+        session: Session,
+        *,
+        group_by: str,
+        wallet: str | None,
+        source_id: int | None,
+        since: str | None,
+        until: str | None,
+        sort_by: str,
+        order: str,
+        limit: int | None,
+        offset: int,
+    ) -> list[dict[str, Any]]:
+        """What was spent (charges less refunds), grouped by day, source or file."""
+        L = _CreditLedger
+        net = func.sum(
+            case(
+                (L.kind == _LedgerKind.CHARGE, L.amount_milli),
+                (L.kind == _LedgerKind.REFUND, -L.amount_milli),
+                else_=0,
+            )
+        )
+        pages = func.count(
+            func.distinct(
+                func.coalesce(L.document_id, 0) * 1000003
+                + func.coalesce(L.page_number, 0) * 101
+                + func.coalesce(L.run_id, 0)
+            )
+        )
+        if group_by == "day":
+            key = func.substr(L.at, 1, 10)
+            columns = (key.label("key"),)
+        elif group_by == "source":
+            key = L.source_id
+            columns = (key.label("key"),)
+        elif group_by == "file":
+            return self._usage_by_file(
+                session, wallet, source_id, since, until, sort_by, order, limit, offset
+            )
+        else:
+            raise ValueError("group_by is day, source or file.")
+        statement = (
+            select(*columns, net.label("milli"), pages.label("pages"), func.max(L.at).label("last"))
+            .where(L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]), key.is_not(None))
+            .group_by(key)
+        )
+        if wallet is not None:
+            statement = statement.where(L.wallet == wallet)
+        if source_id is not None:
+            statement = statement.where(L.source_id == source_id)
+        if since is not None:
+            statement = statement.where(L.at >= since)
+        if until is not None:
+            statement = statement.where(L.at <= until)
+        sorts = {"credits": "milli", "pages": "pages", "key": "key", "last": "last"}
+        column = sorts.get(sort_by)
+        if column is None:
+            raise ValueError(f"Sort by {', '.join(sorts)}.")
+        if order not in ("asc", "desc"):
+            raise ValueError("order is asc or desc.")
+        statement = statement.order_by(text(f"{column} {order}"), text("key asc"))
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("limit and offset can't be negative.")
+        if limit is not None:
+            statement = statement.limit(limit)
+        if offset:
+            statement = statement.offset(offset)
+        return [dict(row._mapping) for row in session.execute(statement)]
+
+    @staticmethod
+    def file_of(kind: _LedgerKind, note: str | None) -> str | None:
+        """The file a charge or refund was for: a charge's note is its path, a refund's is
+        "<why>: <path>"."""
+        if not note:
+            return None
+        if kind is _LedgerKind.REFUND:
+            return note.split(": ", 1)[1] if ": " in note else None
+        return note if kind is _LedgerKind.CHARGE else None
+
+    def _usage_by_file(
+        self, session, wallet, source_id, since, until, sort_by, order, limit, offset
+    ) -> list[dict[str, Any]]:
+        L = _CreditLedger
+        pages = func.count(
+            func.distinct(
+                func.coalesce(L.page_number, 0) * 101 + func.coalesce(L.run_id, 0) * 1000003
+            )
+        )
+        statement = (
+            select(
+                L.kind,
+                L.note,
+                func.sum(L.amount_milli).label("milli"),
+                pages.label("pages"),
+                func.min(L.source_id).label("source_id"),
+                func.max(L.at).label("last"),
+            )
+            .where(L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]), L.note.is_not(None))
+            .group_by(L.kind, L.note)
+        )
+        if wallet is not None:
+            statement = statement.where(L.wallet == wallet)
+        if source_id is not None:
+            statement = statement.where(L.source_id == source_id)
+        if since is not None:
+            statement = statement.where(L.at >= since)
+        if until is not None:
+            statement = statement.where(L.at <= until)
+        files: dict[str, dict[str, Any]] = {}
+        for kind, note, milli_, count, src, last in session.execute(statement):
+            path = self.file_of(kind, note)
+            if path is None:
+                continue
+            row = files.setdefault(
+                path, {"key": path, "milli": 0, "pages": 0, "source_id": src, "last": last}
+            )
+            if kind is _LedgerKind.CHARGE:
+                row["milli"] += int(milli_ or 0)
+                row["pages"] += int(count)
+            else:
+                row["milli"] -= int(milli_ or 0)
+            row["last"] = max(row["last"] or "", last or "")
+        sorts = {"credits": "milli", "pages": "pages", "key": "key", "last": "last"}
+        column = sorts.get(sort_by)
+        if column is None:
+            raise ValueError(f"Sort by {', '.join(sorts)}.")
+        if order not in ("asc", "desc"):
+            raise ValueError("order is asc or desc.")
+        rows = sorted(files.values(), key=lambda r: (r[column], r["key"]), reverse=order == "desc")
+        if offset < 0 or (limit is not None and limit < 0):
+            raise ValueError("limit and offset can't be negative.")
+        rows = rows[offset:]
+        return rows if limit is None else rows[:limit]
 
     def refund(
         self,

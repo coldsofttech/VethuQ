@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 from typing import Any, Protocol
 
+from vethuq_api.credits_service import CreditsService
 from vethuq_api.indexing import IndexingService
 from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
@@ -37,6 +38,8 @@ class Core(Protocol):
 
     def indexing(self) -> Any: ...
 
+    def credits(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -48,6 +51,7 @@ class VethuQCore:
         self._settings = SettingsService(self._vethuq, self._release)
         self._sources = SourcesService(self._vethuq)
         self._indexing = IndexingService(self._vethuq)
+        self._credits = CreditsService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -68,6 +72,9 @@ class VethuQCore:
 
     def indexing(self) -> IndexingService:
         return self._indexing
+
+    def credits(self) -> CreditsService:
+        return self._credits
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()

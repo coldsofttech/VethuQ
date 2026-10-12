@@ -668,3 +668,83 @@ class TestSpendOrder:
         balance = client.credits.balance()
         # 1 promotional + 2 daily + 1 general one-off + 1 of the 1 grace: all gone but the scoped
         assert (balance.promotional, balance.daily, balance.one_off, balance.grace) == (0, 0, 0, 0)
+
+
+class TestGrantsAndUsage:
+    def test_grants_list_the_allowance_the_starter_and_a_promotion_by_name(self, client, time):
+        policy(
+            client,
+            promotions=[
+                {
+                    "id": "week",
+                    "name": "Launch week",
+                    "start_date": "2026-10-12",
+                    "end_date": "2026-10-12",
+                    "uplift": {"local": {"percent": 50}},
+                }
+            ],
+        )
+        client.credits.balance()
+        grants = client.credits.grants()
+        kinds = {grant.kind for grant in grants}
+        assert {"daily", "promo", "one_off"} <= kinds
+        promo = next(grant for grant in grants if grant.kind == "promo")
+        assert promo.name == "Launch week" and promo.amount == 250 and not promo.expired
+        assert [g.kind for g in client.credits.grants(kind="promo")] == ["promo"]
+        with pytest.raises(ValueError):
+            client.credits.grants(kind="bundle")
+
+    def test_a_spent_grant_shows_what_was_used(self, client, root):
+        write(root, "a.pdf", scan())
+        client.sources.create(root)
+        client.index.run()
+        daily = client.credits.grants(kind="daily")[0]
+        assert (daily.used, daily.remaining) == (1.0, daily.amount - 1.0)
+
+    def test_expired_grants_can_be_left_out(self, client, time):
+        client.credits.balance()
+        time.next_day()
+        client.credits.balance()
+        every = client.credits.grants(kind="daily")
+        current = client.credits.grants(kind="daily", include_expired=False)
+        assert len(every) == 2 and len(current) == 1 and every[1].expired
+
+    def test_the_ledger_names_the_file(self, client, root):
+        path = write(root, "a.pdf", scan())
+        client.sources.create(root)
+        client.index.run()
+        (charge,) = client.credits.history(kind=CreditEntryKind.CHARGE)
+        assert charge.file == str(path)
+
+    def test_usage_by_day_source_and_file(self, client, root, time):
+        path = write(root, "a.pdf", scan(), scan("another scanned page of words"))
+        client.sources.create(root)
+        client.index.run()
+        (day,) = client.credits.usage("day")
+        assert (day.key, day.credits, day.pages) == ("2026-10-12", 2.0, 2)
+        (by_source,) = client.credits.usage("source")
+        assert (by_source.key, by_source.credits) == ("1", 2.0)
+        (by_file,) = client.credits.usage("file", source=1)
+        assert (by_file.key, by_file.credits, by_file.pages) == (str(path), 2.0, 2)
+        assert client.credits.usage("day", wallet="local")[0].credits == 2.0
+        assert client.credits.usage("day", since="2026-10-13") == []
+        with pytest.raises(ValueError):
+            client.credits.usage("week")
+        with pytest.raises(ValueError):
+            client.credits.usage("day", sort_by="colour")
+
+    def test_a_refund_comes_off_the_file(self, client, root):
+        write(root, "a.pdf", scan())
+        client.sources.create(root)
+        client.index.run()
+        ledger = client._credit_engine()
+        with client._db().session() as session:
+            ids = [r.id for r in client.credits.history(kind=CreditEntryKind.CHARGE)]
+            ledger.wallet_for("local").refund(session, ids)
+        (by_file,) = client.credits.usage("file")
+        assert by_file.credits == 0.0
+
+    def test_a_wallet_can_be_named_when_the_day_is_new(self, client, time):
+        time.next_day()
+        assert client.credits.grants(wallet="local")
+        assert client.credits.history(wallet="local") is not None

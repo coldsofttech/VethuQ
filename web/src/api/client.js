@@ -239,6 +239,17 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  credits: {
+    summary: (signal) => request('/api/credits/summary', { signal }),
+    wallets: (signal) => request('/api/credits/wallets', { signal }),
+    grants: (params = {}, signal) => request(`/api/credits/grants${query(params)}`, { signal }),
+    usage: (params = {}, signal) => request(`/api/credits/usage${query(params)}`, { signal }),
+    daily: (days, signal) => request(`/api/credits/daily${query({ days })}`, { signal }),
+    ledger: (params = {}, signal) => request(`/api/credits/ledger${query(params)}`, { signal }),
+    exportUrl: (what, format, params = {}) =>
+      `/api/credits/export/${what}${query({ format, ...params })}`,
+    redeem: (token) => request('/api/credits/redeem', { method: 'POST', body: { token } }),
+  },
   service: {
     /** @param {'start' | 'stop' | 'pause' | 'resume'} action */
     perform: (action) => request(`/api/service/${action}`, { method: 'POST' }),

@@ -5,6 +5,8 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Credits: `/api/credits/*` (summary for the status bar, wallets with lifetime totals, grants, usage by
+  day, source or file, the daily series per wallet, the ledger, CSV/JSON exports, and redeeming a licence).
 - Sources and indexing: `/api/sources` (list, add, remove, restore, delete for good, languages, files with
   filter, sort and paging from a short-lived scan, CSV/JSON export) and `/api/index/*` (state, refresh,
   start, pause, resume, stop, history, remote jobs, queued requests). A run goes to the background

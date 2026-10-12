@@ -384,7 +384,7 @@ def sources_and_indexing(browser: Browser, out: Path) -> None:
             page.wait_for_timeout(300)
         shot(page, out, "indexing-queue")
 
-        # The files of the source: type and status, and a password-protected-looking lock for none here.
+        # The files of the source: their type and status.
         page.get_by_role("tab", name="Sources").first.click()
         page.get_by_role("row").filter(has_text=documents.name).dblclick()
         table = page.get_by_role("table", name="Files")
@@ -401,20 +401,110 @@ def sources_and_indexing(browser: Browser, out: Path) -> None:
         process.wait(timeout=10)
 
 
+def seed_credits(home: str, documents: Path) -> None:
+    """Add a source and some past OCR charges to a throw-away data folder, so the Credits pages
+    have something to show. (Temporary: it writes ledger rows through the core's private models.)"""
+    from datetime import UTC, datetime, timedelta
+
+    from vethuq import VethuQ
+    from vethuq._db import _CreditGrant, _CreditLedger
+    from vethuq._db.values import _GrantKind, _LedgerKind
+
+    os.environ["VETHUQ_HOME"] = home
+    with VethuQ() as client:
+        client.credits.balance()
+        spent_today = 0
+        source = client.sources.create(documents)
+        now = datetime.now(UTC)
+        with client._db().session() as session:
+            for day in range(14):
+                when = (now - timedelta(days=day)).isoformat()
+                for page in range(1, 4 + (day * 7) % 9):
+                    name = (
+                        documents
+                        / ("reports" if day % 2 else "notes")
+                        / f"document-{(day * 3 + page) % 9:03}.txt"
+                    )
+                    if day == 0:
+                        spent_today += 1000 if page % 3 else 250
+                    session.add(
+                        _CreditLedger(
+                            at=when,
+                            wallet="local",
+                            kind=_LedgerKind.CHARGE,
+                            amount_milli=1000 if page % 3 else 250,
+                            source_id=source.id,
+                            run_id=day + 1,
+                            page_number=page,
+                            phase="quick",
+                            language="en",
+                            note=str(name),
+                        )
+                    )
+            # Today's charges come out of today's allowance, as a real run would take them.
+            daily = (
+                session.query(_CreditGrant).filter_by(wallet="local", kind=_GrantKind.DAILY).one()
+            )
+            daily.remaining_milli -= spent_today
+
+
+def credits_screens(browser: Browser, out: Path) -> None:
+    documents = make_documents()
+    home = tempfile.mkdtemp(prefix="vethuq-ui-")
+    seed_credits(home, documents)
+    process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+    try:
+        page = open_page(browser, url)
+        expect(page.get_by_test_id("credits-status")).to_contain_text("credits left today")
+        shot(page, out, "credits-status-bar")
+        page.get_by_test_id("credits-status").click()
+        expect(page.get_by_text("Today's allowance")).to_be_visible()
+        shot(page, out, "credits-overview")
+        page.get_by_role("tab", name="Credits held").click()
+        expect(page.get_by_role("table", name="Grants")).to_be_visible()
+        shot(page, out, "credits-held")
+        page.get_by_role("tab", name="Usage by day").click()
+        expect(page.get_by_role("img", name="Credits spent per day")).to_be_visible()
+        shot(page, out, "credits-by-day")
+        page.get_by_role("tab", name="Usage by source").click()
+        page.get_by_text(documents.name).first.click()
+        expect(page.get_by_role("table", name="Credits per file")).to_be_visible()
+        shot(page, out, "credits-by-file")
+        page.get_by_role("tab", name="Ledger").click()
+        expect(page.get_by_role("table", name="Ledger")).to_be_visible()
+        page.wait_for_timeout(500)
+        shot(page, out, "credits-ledger")
+        page.get_by_role("button", name="Redeem a licence").click()
+        expect(page.get_by_placeholder("Paste the licence text")).to_be_visible()
+        page.get_by_placeholder("Paste the licence text").fill("not a licence")
+        page.get_by_role("button", name="Redeem", exact=True).click()
+        page.wait_for_timeout(800)
+        shot(page, out, "credits-redeem-refused")
+        print("credits checks passed")
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
     parser.add_argument("--channel", help="browser channel to use, e.g. msedge")
     parser.add_argument("--executable", help="path to a Chromium binary")
     parser.add_argument("--only-sources", action="store_true")
+    parser.add_argument("--only-credits", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
-            if not args.only_sources:
+            only = args.only_sources or args.only_credits
+            if not only:
                 run(browser, args.out)
-            sources_and_indexing(browser, args.out)
+            if not args.only_credits:
+                sources_and_indexing(browser, args.out)
+            if not args.only_sources:
+                credits_screens(browser, args.out)
         finally:
             browser.close()
     return 0

@@ -6,6 +6,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (credits: grants and usage)
+- `credits.grants()` lists every grant of credits (daily allowances, promotions by name, one-off starter and
+  licence bundles) with what was used and what is left; `credits.usage()` totals what was spent by day, source
+  or file (charges less refunds); a ledger entry names its `file`. A refund's note now ends with the file it
+  was for ("<why>: <path>"). CLI: `credits grants` and `credits usage`.
+
 ### Added (HTML export filters and any-listing export)
 - HTML exports have a filter bar (a dropdown of checkboxes per facet, "Showing X of Y", clear, striped rows that
   survive filtering): search results by match type, file type, language, text origin and folder; sources by type

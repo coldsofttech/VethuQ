@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import { App } from './App.jsx';
 import { BrandProvider } from './brand/BrandProvider.jsx';
 import { NotifyProvider } from './components/Notifications.jsx';
+import { CreditsProvider } from './credits/CreditsProvider.jsx';
 import { IndexingProvider } from './indexing/IndexingProvider.jsx';
 import { PlatformProvider } from './platform/PlatformProvider.jsx';
 import './styles.css';
@@ -16,9 +17,11 @@ createRoot(document.getElementById('root')).render(
         <PlatformProvider>
           <NotifyProvider>
             <IndexingProvider>
-              <HashRouter>
-                <App />
-              </HashRouter>
+              <CreditsProvider>
+                <HashRouter>
+                  <App />
+                </HashRouter>
+              </CreditsProvider>
             </IndexingProvider>
           </NotifyProvider>
         </PlatformProvider>

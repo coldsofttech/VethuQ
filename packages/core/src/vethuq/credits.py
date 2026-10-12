@@ -23,6 +23,8 @@ from vethuq.enums import CreditEntryKind, CreditSortBy, SortOrder
 __all__ = [
     "CreditBalance",
     "CreditEntry",
+    "CreditGrant",
+    "CreditUsage",
     "CreditEntryKind",
     "CreditSortBy",
     "Credits",
@@ -81,9 +83,11 @@ class CreditEntry:
     size_factor: float | None
     rate_card_version: int | None
     note: str | None
+    # The file the page is of; a refund made before the file was recorded has none.
+    file: str | None = None
 
     @classmethod
-    def _from_model(cls, row: _CreditLedger) -> CreditEntry:
+    def _from_model(cls, row: _CreditLedger, file: str | None = None) -> CreditEntry:
         return cls(
             id=row.id,
             at=row.at,
@@ -98,12 +102,56 @@ class CreditEntry:
             size_factor=_credits(row.size_factor_milli),
             rate_card_version=row.rate_card_version,
             note=row.note,
+            file=file,
         )
 
     def to_dict(self) -> dict[str, object]:
         data = dict(self.__dict__)
         data["kind"] = self.kind.value
         return data
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
+class CreditGrant:
+    """Credits a wallet received: a day's allowance, a promotion, a starter or licence bundle."""
+
+    id: int
+    wallet: str
+    kind: str  # daily, promo, one_off or grace
+    name: str  # a promotion's name, else where the credits came from
+    origin: str
+    scope: str | None  # an add-on the credits can only be spent on, or None for all work
+    amount: float  # what was granted
+    remaining: float
+    used: float
+    granted_at: str  # UTC, ISO 8601
+    expires_at: str | None
+    expired: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self.__dict__)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
+@dataclass(frozen=True)
+class CreditUsage:
+    """What was spent for one day, source or file (charges less refunds)."""
+
+    key: str  # the day (YYYY-MM-DD), the source's id, or the file's path
+    source_id: int | None
+    credits: float
+    pages: int
+    last_at: str | None  # the latest movement, UTC, ISO 8601
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self.__dict__)
 
     def to_json(self, indent: int | None = None) -> str:
         """The same details as `to_dict()`, as a JSON string."""
@@ -202,12 +250,13 @@ class Credits:
         source is purged. Raises `ValueError`
         for a value that isn't valid.
         """
+        name = None if wallet is None else self._wallet(wallet)
         with self._database.session() as session:
             self._credits.sync(session)
             rows = self._credits.history(
                 session,
                 kind=kind,
-                wallet=None if wallet is None else self._wallet(wallet),
+                wallet=name,
                 source_id=source,
                 run_id=run_id,
                 since=since,
@@ -217,7 +266,101 @@ class Credits:
                 limit=limit,
                 offset=offset,
             )
-            return [CreditEntry._from_model(row) for row in rows]
+            return [
+                CreditEntry._from_model(row, self._credits.file_of(row.kind, row.note))
+                for row in rows
+            ]
+
+    def grants(
+        self,
+        wallet: str | None = None,
+        kind: str | None = None,
+        scope: str | None = None,
+        include_expired: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[CreditGrant]:
+        """Every grant of credits, newest first: the daily allowances, promotions, one-off
+        starter and licence bundles. `kind` is daily, promo, one_off or grace; `scope` keeps the
+        credits that only an add-on can spend. Raises `ValueError` for a value that isn't valid."""
+        if kind is not None and kind not in ("daily", "promo", "one_off", "grace"):
+            raise ValueError("kind is daily, promo, one_off or grace.")
+        name = None if wallet is None else self._wallet(wallet)
+        with self._database.session() as session:
+            self._credits.sync(session)
+            rows = self._credits.grants(
+                session,
+                wallet=name,
+                kind=kind,
+                scope=scope,
+                include_expired=include_expired,
+                limit=limit,
+                offset=offset,
+            )
+            return [
+                CreditGrant(
+                    id=grant.id,
+                    wallet=grant.wallet,
+                    kind=grant.kind.value,
+                    name=name,
+                    origin=grant.origin,
+                    scope=grant.scope,
+                    amount=grant.amount_milli / 1000,
+                    remaining=grant.remaining_milli / 1000,
+                    used=(grant.amount_milli - grant.remaining_milli) / 1000,
+                    granted_at=grant.granted_at,
+                    expires_at=grant.expires_at,
+                    expired=expired,
+                )
+                for grant, name, expired in rows
+            ]
+
+    def usage(
+        self,
+        group_by: str = "day",
+        wallet: str | None = None,
+        source: int | None = None,
+        since: datetime | str | None = None,
+        until: datetime | str | None = None,
+        sort_by: str = "key",
+        order: SortOrder | str = SortOrder.DESC,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[CreditUsage]:
+        """What was spent, grouped by `day`, `source` or `file`: charges less refunds. `source`
+        keeps one source's work; `since` and `until` bound the time; `sort_by` is `key`,
+        `credits`, `pages` or `last`. Work for a purged source is gone with it. Raises
+        `ValueError` for a value that isn't valid."""
+        if group_by not in ("day", "source", "file"):
+            raise ValueError("group_by is day, source or file.")
+        direction = SortOrder(order).value if isinstance(order, str) else order.value
+        name = None if wallet is None else self._wallet(wallet)
+        with self._database.session() as session:
+            rows = self._credits.usage(
+                session,
+                group_by=group_by,
+                wallet=name,
+                source_id=source,
+                since=None if since is None else self._credits._moment(since, "since"),
+                until=None if until is None else self._credits._moment(until, "until"),
+                sort_by=sort_by,
+                order=direction,
+                limit=limit,
+                offset=offset,
+            )
+        out = []
+        for row in rows:
+            key, source_id = row["key"], row.get("source_id")
+            out.append(
+                CreditUsage(
+                    key=str(key),
+                    source_id=source_id if group_by != "source" else int(key),
+                    credits=int(row["milli"] or 0) / 1000,
+                    pages=int(row["pages"]),
+                    last_at=row["last"],
+                )
+            )
+        return out
 
     # ----- licence credits --------------------------------------------------------------------
 

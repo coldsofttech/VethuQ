@@ -52,3 +52,18 @@ export function download(url) {
   link.click();
   link.remove();
 }
+
+/** Credits with up to two decimals and no trailing zeros: "500", "12.5", "0.25". */
+export function formatCredits(value) {
+  if (value === null || value === undefined) return '—';
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+/** A UTC day or moment as a local short date. */
+export function formatDay(value) {
+  if (!value) return '—';
+  const date = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleDateString(undefined, { timeZone: value.length === 10 ? 'UTC' : undefined });
+}
