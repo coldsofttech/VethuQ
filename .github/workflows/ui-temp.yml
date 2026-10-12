@@ -4,15 +4,9 @@
 # Remove this file and scripts/ui_temp/ when it is no longer needed.
 name: ui-temp
 
+# Disabled for now: it no longer runs on push. Start it by hand (Actions > ui-temp > Run workflow)
+# when the screenshots are needed again, or add the `push:` trigger back.
 on:
-  push:
-    branches: [feat/new-feature]
-    paths:
-      - web/**
-      - packages/api/**
-      - packages/desktop/**
-      - scripts/ui_temp/**
-      - .github/workflows/ui-temp.yml
   workflow_dispatch:
 
 permissions:
