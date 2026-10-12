@@ -8,6 +8,7 @@ export const strings = {
     sources: 'Sources',
     indexing: 'Indexing',
     credits: 'Credits',
+    stats: 'Statistics',
     about: 'About',
     settings: 'Settings',
   },

@@ -10,6 +10,7 @@ from vethuq_api.credits_service import CreditsService
 from vethuq_api.indexing import IndexingService
 from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
+from vethuq_api.stats_service import StatsService
 from vethuq_api.support import build_report
 
 
@@ -40,6 +41,8 @@ class Core(Protocol):
 
     def credits(self) -> Any: ...
 
+    def stats(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -52,6 +55,7 @@ class VethuQCore:
         self._sources = SourcesService(self._vethuq)
         self._indexing = IndexingService(self._vethuq)
         self._credits = CreditsService(self._vethuq)
+        self._stats = StatsService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -75,6 +79,9 @@ class VethuQCore:
 
     def credits(self) -> CreditsService:
         return self._credits
+
+    def stats(self) -> StatsService:
+        return self._stats
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()

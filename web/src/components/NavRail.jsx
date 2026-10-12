@@ -2,6 +2,8 @@ import { Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
 import {
   Home24Filled,
   Home24Regular,
+  ChartMultiple24Filled,
+  ChartMultiple24Regular,
   DocumentSearch24Filled,
   DocumentSearch24Regular,
   Folder24Filled,
@@ -21,6 +23,7 @@ const HomeIcon = bundleIcon(Home24Filled, Home24Regular);
 const SourcesIcon = bundleIcon(Folder24Filled, Folder24Regular);
 const IndexingIcon = bundleIcon(DocumentSearch24Filled, DocumentSearch24Regular);
 const CreditsIcon = bundleIcon(Wallet24Filled, Wallet24Regular);
+const StatsIcon = bundleIcon(ChartMultiple24Filled, ChartMultiple24Regular);
 const InfoIcon = bundleIcon(Info24Filled, Info24Regular);
 const SettingsIcon = bundleIcon(Settings24Filled, Settings24Regular);
 
@@ -29,6 +32,7 @@ const ITEMS = [
   { path: '/sources', label: strings.nav.sources, icon: <SourcesIcon /> },
   { path: '/indexing', label: strings.nav.indexing, icon: <IndexingIcon /> },
   { path: '/credits', label: strings.nav.credits, icon: <CreditsIcon /> },
+  { path: '/stats', label: strings.nav.stats, icon: <StatsIcon /> },
   { path: '/about', label: strings.nav.about, icon: <InfoIcon /> },
   { path: '/settings', label: strings.nav.settings, icon: <SettingsIcon /> },
 ];

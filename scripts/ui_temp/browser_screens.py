@@ -407,7 +407,7 @@ def seed_credits(home: str, documents: Path) -> None:
     from datetime import UTC, datetime, timedelta
 
     from vethuq import VethuQ
-    from vethuq._db import _CreditGrant, _CreditLedger, _IndexRun
+    from vethuq._db import _CreditGrant, _CreditLedger, _IndexRun, _UsageDaily
     from vethuq._db.values import _GrantKind, _LedgerKind
 
     os.environ["VETHUQ_HOME"] = home
@@ -459,6 +459,36 @@ def seed_credits(home: str, documents: Path) -> None:
                         completed_at=started,
                     )
                 )
+            # What statistics show: native pages and OCR pages by day, language, engine and band.
+            for day in range(20):
+                when = (now - timedelta(days=day)).date().isoformat()
+                for kind, ext, language, engine, band, pages in (
+                    ("native", "txt", "en", "", "", 30 + day * 3),
+                    ("native", "csv", "en", "", "", 12 + day),
+                    ("ocr", "pdf", "en", "rapidocr", "high", 9 - day % 5),
+                    ("ocr", "pdf", "ta", "rapidocr", "medium", 3 + day % 4),
+                    ("ocr", "png", "en", "paddleocr", "low", 1 + day % 3),
+                ):
+                    ocr = kind == "ocr"
+                    session.add(
+                        _UsageDaily(
+                            day=when,
+                            source_id=source.id,
+                            file_type=ext,
+                            phase="quick" if ocr else "",
+                            language=language,
+                            engine=engine,
+                            page_source=kind,
+                            size_bucket="a4",
+                            band=band,
+                            pages=pages,
+                            passes=pages if ocr else 0,
+                            duration_ms=pages * 9000 if ocr else 0,
+                            confidence_sum=pages
+                            * {"high": 0.95, "medium": 0.78, "low": 0.55}.get(band, 0),
+                            credits_milli=pages * 1000 if ocr else 0,
+                        )
+                    )
             # Today's charges come out of today's allowance, as a real run would take them.
             daily = (
                 session.query(_CreditGrant).filter_by(wallet="local", kind=_GrantKind.DAILY).one()
@@ -492,6 +522,20 @@ def credits_screens(browser: Browser, out: Path) -> None:
         expect(page.get_by_role("table", name="Ledger")).to_be_visible()
         page.wait_for_timeout(500)
         shot(page, out, "credits-ledger")
+        # Statistics.
+        page.get_by_role("tab", name="Statistics").first.click()
+        expect(page.get_by_text("Pages read", exact=True)).to_be_visible()
+        page.wait_for_timeout(500)
+        shot(page, out, "stats-summary")
+        page.get_by_role("tab", name="Breakdown").click()
+        expect(page.get_by_role("table", name="Breakdown")).to_be_visible()
+        page.wait_for_timeout(400)
+        shot(page, out, "stats-breakdown")
+        page.get_by_role("combobox", name="Group by").click()
+        page.get_by_role("option", name="Language").click()
+        page.get_by_role("table", name="Breakdown").get_by_text("ta", exact=True).click()
+        page.wait_for_timeout(600)
+        shot(page, out, "stats-narrowed")
         # The cost on the other pages.
         page.get_by_role("tab", name="Sources").first.click()
         expect(page.get_by_role("columnheader", name="Credits")).to_be_visible()

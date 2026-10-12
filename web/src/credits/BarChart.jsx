@@ -22,7 +22,14 @@ const COLOURS = [
  * @param {{ days: Array<Record<string, number | string>>, series: string[],
  *   onPick?: (day: string) => void }} props
  */
-export function BarChart({ days, series, onPick }) {
+export function BarChart({
+  days,
+  series,
+  labels = {},
+  unit = 'credits',
+  description = 'Credits spent per day',
+  onPick,
+}) {
   const styles = useStyles();
   const width = 720;
   const height = 220;
@@ -43,7 +50,7 @@ export function BarChart({ days, series, onPick }) {
         className={styles.root}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Credits spent per day"
+        aria-label={description}
       >
         {[0, 0.5, 1].map((fraction) => (
           <g key={fraction}>
@@ -73,7 +80,7 @@ export function BarChart({ days, series, onPick }) {
               onClick={onPick ? () => onPick(day.day) : undefined}
               style={{ cursor: onPick ? 'pointer' : 'default' }}
             >
-              <title>{`${day.day}: ${totals[index]} credits`}</title>
+              <title>{`${day.day}: ${totals[index]} ${unit}`}</title>
               <rect
                 x={pad.left + index * slot}
                 y={pad.top}
@@ -118,7 +125,7 @@ export function BarChart({ days, series, onPick }) {
               className={styles.swatch}
               style={{ background: COLOURS[index % COLOURS.length] }}
             />
-            {walletLabel(name)}
+            {labels[name] ?? walletLabel(name)}
           </span>
         ))}
       </div>

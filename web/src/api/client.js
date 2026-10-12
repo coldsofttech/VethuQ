@@ -239,6 +239,11 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  stats: {
+    summary: (params = {}, signal) => request(`/api/stats/summary${query(params)}`, { signal }),
+    breakdown: (params = {}, signal) => request(`/api/stats/breakdown${query(params)}`, { signal }),
+    exportUrl: (format, params = {}) => `/api/stats/export${query({ format, ...params })}`,
+  },
   credits: {
     summary: (signal) => request('/api/credits/summary', { signal }),
     wallets: (signal) => request('/api/credits/wallets', { signal }),

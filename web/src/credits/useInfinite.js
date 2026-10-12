@@ -11,6 +11,7 @@ export function useInfinite(load, deps) {
     more: false,
     loading: true,
     error: null,
+    meta: null,
   });
   const token = useRef(0);
   const loaded = useRef(0);
@@ -32,6 +33,7 @@ export function useInfinite(load, deps) {
             more: page.more ?? (total !== null && items.length < total),
             loading: false,
             error: null,
+            meta: offset === 0 ? page : s.meta,
           };
         });
       } catch (error) {

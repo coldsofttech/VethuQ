@@ -7,6 +7,7 @@ import { IndexingPage } from './pages/IndexingPage.jsx';
 import { SettingsPage } from './pages/SettingsPage.jsx';
 import { SourceDetailPage } from './pages/SourceDetailPage.jsx';
 import { SourcesPage } from './pages/SourcesPage.jsx';
+import { StatsPage } from './pages/StatsPage.jsx';
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
         <Route path="sources/:id" element={<SourceDetailPage />} />
         <Route path="indexing/*" element={<IndexingPage />} />
         <Route path="credits/*" element={<CreditsPage />} />
+        <Route path="stats/*" element={<StatsPage />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="settings/*" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

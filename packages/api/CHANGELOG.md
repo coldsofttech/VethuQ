@@ -5,6 +5,8 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Statistics: `/api/stats/summary` (totals and pages per day), `/api/stats/breakdown` (grouped, filtered, sorted
+  and paged, with a totals row) and `/api/stats/export`.
 - Sources and their files carry what they cost (`credits`), and files sort by it.
 - Credits: `/api/credits/*` (summary for the status bar, wallets with lifetime totals, grants, usage by
   day, source or file, the daily series per wallet, the ledger, CSV/JSON exports, and redeeming a licence).

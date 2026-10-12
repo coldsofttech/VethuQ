@@ -84,6 +84,9 @@ class FakeCore:
     def credits(self):
         return SimpleNamespace()
 
+    def stats(self):
+        return SimpleNamespace()
+
     def indexing(self):
         core = self
 
