@@ -1,0 +1,43 @@
+# vethuq-api
+
+The HTTP API behind the VethuQ user interface. It is a thin Flask layer over the public `vethuq`
+package: routes validate input, call the core and return JSON. No business logic lives here.
+
+The same application is meant to serve the desktop host (`vethuq-desktop`) and, later, a normal web
+deployment.
+
+## Security model
+
+The application assumes it is reachable by other programs on the same machine, so every request is
+checked:
+
+| Check | What it stops |
+|---|---|
+| `Host` must be exactly `127.0.0.1:<port>` | DNS rebinding |
+| `Origin` must be the app's own origin on `POST`/`PUT`/`PATCH`/`DELETE` | Cross-site requests from a web page |
+| `/api/*` needs the session cookie (`HttpOnly`, `SameSite=Strict`) | Other local programs and web pages |
+| The start-up token in the first URL works **once** and is then replaced by a random session id | Replaying a leaked launch URL |
+| Strict `Content-Security-Policy`, `nosniff`, `no-referrer`, no CORS headers | Script injection and cross-origin reads |
+
+`/api/health` is the only unauthenticated endpoint; it reveals nothing but `{"status": "ok"}`.
+
+The CSP allows inline *styles* (Fluent UI injects style rules at run time) but no inline or remote
+scripts.
+
+## Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Readiness probe |
+| `GET /api/about` | What the installation runs (`VethuQ().version`) |
+| `GET /api/platform` | `{kind, window_controls}`: what the host offers the interface |
+| `GET /api/window/state`, `POST /api/window/{minimize,maximize,restore,close}` | Window controls (only when the host passes a window controller) |
+
+## Using it
+
+```python
+from vethuq_api import create_app, allow_host
+
+app = create_app(bootstrap_token="...", web_dist=Path("web/dist"))
+allow_host(app, "127.0.0.1:8765")  # every host:port the server answers on
+```

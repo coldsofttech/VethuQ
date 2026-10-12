@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from api_support import HOST, ORIGIN, TOKEN
+
+from vethuq_api import allow_host, create_app
+
+
+class FakeWindow:
+    def __init__(self) -> None:
+        self.maximized = False
+        self.calls: list[str] = []
+
+    def minimize(self) -> None:
+        self.calls.append("minimize")
+
+    def maximize(self) -> None:
+        self.calls.append("maximize")
+        self.maximized = True
+
+    def restore(self) -> None:
+        self.calls.append("restore")
+        self.maximized = False
+
+    def close(self) -> None:
+        self.calls.append("close")
+
+
+@pytest.fixture
+def web_dist(tmp_path: Path) -> Path:
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><title>VethuQ</title>")
+    (dist / "assets" / "app.js").write_text("console.log('app')")
+    (tmp_path / "secret.txt").write_text("outside the interface")
+    return dist
+
+
+@pytest.fixture
+def window() -> FakeWindow:
+    return FakeWindow()
+
+
+@pytest.fixture
+def app(web_dist: Path, window: FakeWindow):
+    application = create_app(
+        bootstrap_token=TOKEN,
+        web_dist=web_dist,
+        window=window,
+        host_kind="desktop",
+        about=lambda: {"vethuq": "9.9.9", "python": "3.12.0", "platform": "test", "db_schema": 1},
+    )
+    allow_host(application, HOST)
+    return application
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
+
+
+@pytest.fixture
+def signed_in(client):
+    """A client that has exchanged the start-up token for a session cookie."""
+    response = client.get(f"/?t={TOKEN}", base_url=ORIGIN)
+    assert response.status_code == 303
+    return client

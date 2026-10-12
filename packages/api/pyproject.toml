@@ -1,0 +1,31 @@
+[project]
+name = "vethuq-api"
+dynamic = ["version"]
+description = "VethuQ HTTP API: the Flask application the user interface talks to, a thin layer over the VethuQ core"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "vethuq",
+    "flask>=3.0",
+]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vethuq_api"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+# This package lives in a subdirectory of the repo, not at its root.
+root = "../.."
+# Released on its own with tags `vethuq-api-vX.Y.Z` (or `-rcN`). With no tag yet the version is 0.1.0.
+fallback_version = "0.1.0"
+tag_regex = "^vethuq-api-v(?P<version>\\d+\\.\\d+\\.\\d+(?:-?rc\\d+)?)$"
+git_describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "vethuq-api-v*"]
+
+[tool.uv.sources]
+vethuq = { workspace = true }

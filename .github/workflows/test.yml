@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.11", "3.12"]
-        package: [addon-api, core, worker, cli, interactive-cli, background]
+        package: [addon-api, core, worker, cli, interactive-cli, background, api, desktop]
     steps:
       - uses: actions/checkout@v4
         with:

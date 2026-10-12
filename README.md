@@ -5,3 +5,11 @@ VethuQ — open-source document intelligence and evidence infrastructure for sea
 
 If `vethuq` is not found after a plain `uv sync`, restore the whole workspace with
 `uv run python scripts/dev/sync.py` (same as `uv sync --all-packages --group dev`).
+
+## User interface (Windows)
+
+`web/` is the React + Fluent UI interface, `packages/api` the Flask API it talks to and
+`packages/desktop` the pywebview host that shows it in a window (see `packages/desktop/README.md`).
+
+    cd web && npm ci && npm run build
+    uv run vethuq-desktop
