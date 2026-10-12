@@ -2782,8 +2782,8 @@ office = [
 proximity = [
     { name = "vethuq-addon-proximity" },
 ]
-search-pack = [
-    { name = "vethuq-bundle-search-pack" },
+search = [
+    { name = "vethuq-bundle-search" },
 ]
 semantic = [
     { name = "vethuq-addon-semantic" },
@@ -2822,10 +2822,10 @@ requires-dist = [
     { name = "vethuq-bundle-developer", marker = "extra == 'developer'", directory = "../VethuQ-premium/packages/bundles/developer" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", directory = "../VethuQ-premium/packages/bundles/image" },
     { name = "vethuq-bundle-office", marker = "extra == 'office'", directory = "../VethuQ-premium/packages/bundles/office" },
-    { name = "vethuq-bundle-search-pack", marker = "extra == 'search-pack'", directory = "../VethuQ-premium/packages/bundles/search-pack" },
+    { name = "vethuq-bundle-search", marker = "extra == 'search'", directory = "../VethuQ-premium/packages/bundles/search" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", directory = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "search-pack", "semantic", "web"]
+provides-extras = ["deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "search", "semantic", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -3532,9 +3532,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "vethuq-bundle-search-pack"
+name = "vethuq-bundle-search"
 version = "0.1.0"
-source = { directory = "../VethuQ-premium/packages/bundles/search-pack" }
+source = { directory = "../VethuQ-premium/packages/bundles/search" }
 dependencies = [
     { name = "vethuq-addon-case" },
     { name = "vethuq-addon-exact" },

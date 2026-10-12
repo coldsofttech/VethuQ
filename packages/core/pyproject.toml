@@ -34,7 +34,7 @@ fuzzy = ["vethuq-addon-fuzzy~=0.1"]
 noise-fuzzy = ["vethuq-addon-noise-fuzzy~=0.1"]
 # Every search engine and normalizer: the search pack bundle (adds lexical, proximity, fuzzy, noise-fuzzy,
 # semantic and leetspeak to what VethuQ installs).
-search-pack = ["vethuq-bundle-search-pack~=0.1"]
+search = ["vethuq-bundle-search~=0.1"]
 # Run OCR in your own GitHub account (a free add-on).
 github = ["vethuq-addon-github~=0.1"]
 # Search by meaning (a free add-on; preparing pages costs credits). Brings ONNX Runtime.

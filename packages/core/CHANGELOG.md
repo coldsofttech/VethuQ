@@ -7,7 +7,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 ## [Unreleased]
 
 ### Added (search pack)
-- `vethuq[search-pack]`: the search pack bundle (`vethuq-bundle-search-pack`), which installs every search
+- `vethuq[search]`: the search pack bundle (`vethuq-bundle-search`), which installs every search
   engine and normalizer.
 
 ### Changed (default search engines)

@@ -32,7 +32,7 @@ vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/
 vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png" }
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
 vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
-vethuq-bundle-search-pack = { path = "../VethuQ-premium/packages/bundles/search-pack" }
+vethuq-bundle-search = { path = "../VethuQ-premium/packages/bundles/search" }
 vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
 vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
 vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
