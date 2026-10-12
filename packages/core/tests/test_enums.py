@@ -10,7 +10,12 @@ from vethuq import enums
 
 class TestEnums:
     def test_addon_status_values(self):
-        assert [s.value for s in enums.AddonStatus] == ["loaded", "incompatible", "failed"]
+        assert [s.value for s in enums.AddonStatus] == [
+            "loaded",
+            "incompatible",
+            "failed",
+            "disabled",
+        ]
 
     def test_source_type_values(self):
         assert [t.value for t in enums.SourceType] == ["file", "folder"]
