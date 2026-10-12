@@ -22,7 +22,7 @@ import {
 } from '@fluentui/react-icons';
 import { FileIcon } from '../components/FileIcon.jsx';
 import { baseName } from '../format.js';
-import { describePlace, placeOf } from './form.js';
+import { canPreview, describePlace, placeOf } from './form.js';
 
 const useStyles = makeStyles({
   table: {
@@ -141,8 +141,10 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
       </MenuItem>
       <MenuItem
         icon={<Eye20Regular />}
-        disabled={match.file_type !== 'pdf'}
-        title={match.file_type === 'pdf' ? undefined : 'Preview is for PDF files for now'}
+        disabled={!canPreview(match)}
+        title={
+          canPreview(match) ? undefined : 'Preview is for PDF, text and Markdown files for now'
+        }
         onClick={() => actions.preview(match)}
       >
         Preview

@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import tempfile
+import threading
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 50
+# The text viewer: which files it shows, how many lines it hands out at once, how much of a line it
+# keeps (a minified file can be one line of megabytes), and how long a file's lines stay split.
+TEXT_TYPES = frozenset({"txt", "markdown"})
+TEXT_MAX_LINES = 500
+TEXT_DEFAULT_LINES = 200
+TEXT_LINE_CLIP = 10_000
+TEXT_KEEP_SECONDS = 60.0
+TEXT_KEEP_FILES = 3
 
 
 def _words(value: object, name: str) -> list[str] | None:
@@ -45,9 +55,65 @@ def _number(value: object, name: str, default: int | None, low: int = 0) -> int 
     return value
 
 
+def _whole(value: object, name: str) -> object:
+    """A query-string value as a whole number (anything else is left for `_number` to refuse)."""
+    try:
+        return int(str(value))
+    except ValueError:
+        raise ValueError(f"{name} is a whole number.") from None
+
+
 class SearchService:
     def __init__(self, client: Callable[[], Any]) -> None:
         self._client = client
+        self._texts: dict[tuple[int, int], tuple[float, Any, list[str]]] = {}
+        self._texts_lock = threading.Lock()
+
+    # ----- the text of a file, a window of lines at a time ------------------------------------
+
+    def _lines_of(self, document_id: int, page_number: int) -> tuple[Any, list[str]]:
+        key = (document_id, page_number)
+        now = time.monotonic()
+        with self._texts_lock:
+            kept = self._texts.get(key)
+            if kept is not None and now - kept[0] < TEXT_KEEP_SECONDS:
+                return kept[1], kept[2]
+        page = self._client().search.page_text(document_id, page_number)
+        if page is None:
+            raise LookupError("That page is not in the index.")
+        if page.file_type not in TEXT_TYPES:
+            raise ValueError("Only the text of a text or Markdown file can be shown here.")
+        lines = [line.removesuffix("\r") for line in page.text.split("\n")]
+        with self._texts_lock:
+            self._texts[key] = (now, page, lines)
+            for old in sorted(self._texts, key=lambda k: self._texts[k][0])[:-TEXT_KEEP_FILES]:
+                del self._texts[old]
+        return page, lines
+
+    def text_window(self, query: Mapping[str, Any]) -> dict[str, object]:
+        """`count` lines of a stored text from line `start` (0-based), and how many lines there are.
+        What is stored is what a search matched, so a match's line and column count in it."""
+        query = {k: _whole(v, k) for k, v in query.items()}
+        document_id = _number(query.get("document_id"), "document_id", None, 1)
+        if document_id is None:
+            raise ValueError("document_id is a whole number of 1 or more.")
+        page_number = _number(query.get("page"), "page", 1, 1)
+        start = _number(query.get("start"), "start", 0)
+        count = min(_number(query.get("count"), "count", TEXT_DEFAULT_LINES, 1), TEXT_MAX_LINES)
+        page, lines = self._lines_of(document_id, page_number)
+        window = [
+            line if len(line) <= TEXT_LINE_CLIP else line[:TEXT_LINE_CLIP] + "…"
+            for line in lines[start : start + count]
+        ]
+        return {
+            "total": len(lines),
+            "start": start,
+            "lines": window,
+            "file_name": page.file_name,
+            "file_path": page.file_path,
+            "file_type": page.file_type,
+            "clip": TEXT_LINE_CLIP,
+        }
 
     # ----- what can be asked ------------------------------------------------------------------
 

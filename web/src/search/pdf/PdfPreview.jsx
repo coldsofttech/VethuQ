@@ -2,49 +2,17 @@ import {
   MessageBar,
   MessageBarBody,
   Spinner,
-  Text,
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
-import {
-  ChevronDown20Regular,
-  ChevronUp20Regular,
-  Dismiss20Regular,
-  ZoomIn20Regular,
-  ZoomOut20Regular,
-} from '@fluentui/react-icons';
+import { ZoomIn20Regular, ZoomOut20Regular } from '@fluentui/react-icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ToolButton } from '../../components/ToolButton.jsx';
+import { PreviewFrame } from '../PreviewFrame.jsx';
 import { PdfPage } from './PdfPage.jsx';
 import { documentOptions, loadPdfjs } from './pdfjs.js';
 
 const useStyles = makeStyles({
-  panel: {
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: 0,
-    height: '100%',
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: tokens.borderRadiusMedium,
-    backgroundColor: tokens.colorNeutralBackground2,
-    overflow: 'hidden',
-  },
-  head: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: tokens.spacingHorizontalXS,
-    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-    backgroundColor: tokens.colorNeutralBackground1,
-  },
-  name: {
-    flexGrow: 1,
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  muted: { color: tokens.colorNeutralForeground3, whiteSpace: 'nowrap' },
   body: {
     flexGrow: 1,
     minHeight: 0,
@@ -167,51 +135,36 @@ export default function PdfPreview({ matches, index, onIndex, onClose }) {
     [pdf],
   );
 
+  const zoomTools = (
+    <>
+      <ToolButton
+        label="Zoom out"
+        icon={<ZoomOut20Regular />}
+        appearance="subtle"
+        disabled={zoom <= 0.5}
+        onClick={() => setZoom((z) => z / ZOOM_STEP)}
+      />
+      <ToolButton
+        label="Zoom in"
+        icon={<ZoomIn20Regular />}
+        appearance="subtle"
+        disabled={zoom >= 4}
+        onClick={() => setZoom((z) => z * ZOOM_STEP)}
+      />
+    </>
+  );
+
   return (
-    <section className={styles.panel} aria-label="PDF preview">
-      <div className={styles.head}>
-        <Text weight="semibold" className={styles.name} title={path}>
-          {match.file_name}
-        </Text>
-        <Text className={styles.muted}>
-          Match {index + 1} of {matches.length} · page {match.page_number}
-          {pdf ? ` of ${pdf.numPages}` : ''}
-        </Text>
-        <ToolButton
-          label="Previous match"
-          icon={<ChevronUp20Regular />}
-          appearance="subtle"
-          disabled={index === 0}
-          onClick={() => onIndex(index - 1)}
-        />
-        <ToolButton
-          label="Next match"
-          icon={<ChevronDown20Regular />}
-          appearance="subtle"
-          disabled={index >= matches.length - 1}
-          onClick={() => onIndex(index + 1)}
-        />
-        <ToolButton
-          label="Zoom out"
-          icon={<ZoomOut20Regular />}
-          appearance="subtle"
-          disabled={zoom <= 0.5}
-          onClick={() => setZoom((z) => z / ZOOM_STEP)}
-        />
-        <ToolButton
-          label="Zoom in"
-          icon={<ZoomIn20Regular />}
-          appearance="subtle"
-          disabled={zoom >= 4}
-          onClick={() => setZoom((z) => z * ZOOM_STEP)}
-        />
-        <ToolButton
-          label="Close preview"
-          icon={<Dismiss20Regular />}
-          appearance="subtle"
-          onClick={onClose}
-        />
-      </div>
+    <PreviewFrame
+      label="PDF preview"
+      match={match}
+      index={index}
+      count={matches.length}
+      place={`page ${match.page_number}${pdf ? ` of ${pdf.numPages}` : ''}`}
+      onIndex={onIndex}
+      onClose={onClose}
+      tools={zoomTools}
+    >
       {marked === false && (
         <MessageBar intent="info">
           <MessageBarBody>
@@ -244,6 +197,6 @@ export default function PdfPreview({ matches, index, onIndex, onClose }) {
             />
           ))}
       </div>
-    </section>
+    </PreviewFrame>
   );
 }

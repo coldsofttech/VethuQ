@@ -8,7 +8,7 @@ If `vethuq` is not found after a plain `uv sync`, restore the whole workspace wi
 
 ## User interface (Windows)
 
-`web/` is the React + Fluent UI interface, `packages/api` the Flask API it talks to and
+`web/` is the React + Fluent UI interface (with `viewers/text`, the large-text viewer its search preview uses), `packages/api` the Flask API it talks to and
 `packages/desktop` the pywebview host that shows it in a window (see `packages/desktop/README.md`).
 
     cd web && npm ci && npm run build

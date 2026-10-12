@@ -22,12 +22,19 @@ const pdfjsData = () => ({
 // development run `npm run dev` (rebuilds on change) next to `vethuq-desktop --no-window`.
 export default defineConfig({
   plugins: [react(), pdfjsData()],
+  resolve: {
+    // The text viewer lives outside web/ (viewers/text), which has no node_modules of its own: have
+    // React resolved from here, and once.
+    dedupe: ['react', 'react-dom', '@testing-library/react', '@testing-library/dom'],
+  },
+  server: { fs: { allow: ['..'] } },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1500,
   },
   test: {
+    include: ['src/**/*.test.{js,jsx}', '../viewers/**/*.test.{js,jsx}'],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     restoreMocks: true,

@@ -88,3 +88,6 @@ export const describePlace = (place) => {
   if (place.line) return `Opens at line ${place.line}`;
   return null;
 };
+
+/** The file types the preview can show: PDF, and text or Markdown. */
+export const canPreview = (match) => ['pdf', 'txt', 'markdown'].includes(match.file_type);

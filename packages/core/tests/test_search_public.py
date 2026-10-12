@@ -624,3 +624,26 @@ class TestLocation:
             lines = open(match.file_path, encoding="utf-8").read().split("\n")
             start = match.column - 1
             assert lines[match.line - 1][start : start + 5] == "wheat"
+
+
+class TestPageText:
+    @pytest.fixture
+    def texts(self, client, tmp_path):
+        folder = tmp_path / "t"
+        folder.mkdir()
+        (folder / "story.txt").write_text("first line\nsecond line has wheat", encoding="utf-8")
+        client.sources.create(folder)
+        assert client.index.run().status.value == "completed"
+        return client
+
+    def test_the_stored_text_is_what_a_match_counts_in(self, texts):
+        (match,) = texts.search.run("wheat", engine="like")
+        page = texts.search.page_text(match.document_id, match.page_number)
+        assert (page.file_name, page.file_type) == ("story.txt", "txt")
+        assert page.text == "first line\nsecond line has wheat"
+        assert page.text.split("\n")[match.line - 1][match.column - 1 :].startswith("wheat")
+
+    def test_a_page_that_is_not_there_is_none(self, texts):
+        (match,) = texts.search.run("wheat", engine="like")
+        assert texts.search.page_text(match.document_id, 99) is None
+        assert texts.search.page_text(987654) is None

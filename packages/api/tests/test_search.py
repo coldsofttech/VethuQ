@@ -257,3 +257,56 @@ class TestPdfFile:
             "/api/files/pdf", query_string={"path": "x.pdf"}, base_url=ORIGIN
         )
         assert bare.status_code in (401, 403)
+
+
+class TestTextWindow:
+    @pytest.fixture
+    def http(self, web_dist, library):
+        body = "\n".join(f"line {n} of the harvest" for n in range(1, 1201))
+        (library / "a" / "long.txt").write_text(body + "\nwheat at the end", encoding="utf-8")
+        (library / "a" / "wide.md").write_text("x" * 25000 + "\nnext", encoding="utf-8")
+        (library / "a" / "data.csv").write_text("a,b\nwheat,1\n", encoding="utf-8")
+        core = VethuQCore(library / "vethuq.db")
+        client = core._vethuq()
+        client.settings.index.set_stability_check_seconds(0)
+        client.sources.create(library / "a")
+        client.index.run()
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.docs = {
+            m.file_name: m.document_id
+            for word in ("wheat", "next")
+            for m in client.search.run(word, engine="like")
+        }
+        return test
+
+    def window(self, http, **query):
+        return http.get("/api/files/text", query_string=query, base_url=ORIGIN)
+
+    def test_a_window_of_lines_and_the_total(self, http):
+        reply = self.window(http, document_id=http.docs["long.txt"], start=10, count=3).get_json()
+        assert reply["total"] == 1201 and reply["start"] == 10
+        assert reply["lines"] == [f"line {n} of the harvest" for n in (11, 12, 13)]
+        assert reply["file_name"] == "long.txt" and reply["file_type"] == "txt"
+
+    def test_the_last_window_is_short_and_the_count_is_capped(self, http):
+        doc = http.docs["long.txt"]
+        last = self.window(http, document_id=doc, start=1198, count=50).get_json()
+        assert last["lines"][-1] == "wheat at the end" and len(last["lines"]) == 3
+        assert len(self.window(http, document_id=doc, count=100000).get_json()["lines"]) == 500
+
+    def test_a_very_long_line_is_clipped(self, http):
+        reply = self.window(http, document_id=http.docs["wide.md"]).get_json()
+        assert len(reply["lines"][0]) == 10_001 and reply["lines"][0].endswith("…")
+        assert reply["lines"][1] == "next"
+
+    def test_bad_requests(self, http):
+        assert self.window(http).status_code == 422
+        assert self.window(http, document_id="x").status_code == 422
+        assert self.window(http, document_id=1, start=-1).status_code == 422
+        assert self.window(http, document_id=987654).status_code == 404
+
+    def test_only_text_and_markdown_files(self, http):
+        assert self.window(http, document_id=http.docs["data.csv"]).status_code == 422

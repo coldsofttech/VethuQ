@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/text-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only viewer for large text: shows only the lines in view, loads the rest as it is scrolled, and marks a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

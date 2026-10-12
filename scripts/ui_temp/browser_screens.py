@@ -789,6 +789,14 @@ def preview_screens(browser: Browser, out: Path) -> None:
             ["Outlook", "Next year wheat is expected to recover.", "Rain is the main risk."],
         ],
     )
+    # A long text with one rare word deep inside it.
+    (documents / "field-notes.txt").write_text(
+        "\n".join(
+            f"{n:>6} daily note about the {'zebra' if n == 45123 else 'weather'} on the farm"
+            for n in range(1, 60001)
+        ),
+        encoding="utf-8",
+    )
     home = tempfile.mkdtemp(prefix="vethuq-ui-")
     os.environ["VETHUQ_HOME"] = home
     with VethuQ() as client:
@@ -824,6 +832,19 @@ def preview_screens(browser: Browser, out: Path) -> None:
         )
         print("marked:", marked)
         assert any("wheat" in text for text in marked), marked
+        # The text preview: a rare word deep in a long text.
+        box.fill("zebra")
+        box.press("Enter")
+        expect(table.get_by_text("field-notes.txt").first).to_be_visible(timeout=60000)
+        table.get_by_text("1 of 1").first.click(button="right")
+        page.get_by_role("menuitem", name="Preview").click()
+        text = page.get_by_role("region", name="Text preview")
+        expect(text.get_by_text(re.compile("line 45123"))).to_be_visible()
+        expect(text.locator("mark")).to_have_text("zebra")
+        page.wait_for_timeout(800)
+        shot(page, out, "preview-text")
+        top = text.get_by_role("table").evaluate("e => e.scrollTop")
+        assert top > 900000, top
         print("preview checks passed")
     finally:
         process.terminate()

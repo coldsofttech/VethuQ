@@ -369,6 +369,14 @@ export const api = {
       request('/api/os/open', { method: 'POST', body: { path, ...place } }),
     reveal: (path) => request('/api/os/reveal', { method: 'POST', body: { path } }),
   },
+  files: {
+    /**
+     * A window of a stored text: `count` lines from `start` (0-based) of a text or Markdown file.
+     * @param {{document_id: number, page?: number, start?: number, count?: number}} params
+     * @returns {Promise<{total: number, start: number, lines: string[], file_name: string}>}
+     */
+    textWindow: (params, signal) => request(`/api/files/text${query(params)}`, { signal }),
+  },
   settings: {
     /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */
     list: (section, signal) => request(`/api/settings/${section}`, { signal }),

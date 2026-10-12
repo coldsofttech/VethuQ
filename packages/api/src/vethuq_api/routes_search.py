@@ -20,6 +20,14 @@ def register(api: Blueprint, core: Core) -> None:
     def search_options() -> Response:
         return jsonify(core.search().options())
 
+    @api.get("/files/text")
+    def text_window() -> Response:
+        """A window of lines of a text or Markdown file as it was indexed, for the preview."""
+        try:
+            return jsonify(core.search().text_window(request.args))
+        except LookupError as error:
+            return jsonify(error=str(error)), 404
+
     # A search is read-only; it is a POST only because a query can be long and has many parts.
     @api.post("/search/run")
     def search_run() -> Response:

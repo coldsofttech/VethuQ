@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (text preview)
+- `GET /api/files/text?document_id=&page=&start=&count=` returns a window of lines (at most 500) of a text or Markdown file as it was indexed, with the total, for the text preview. Lines over 10,000 characters are clipped.
+
 ### Added (PDF preview)
 - `GET /api/files/pdf?path=` serves a PDF of a source inline, with ranges, for the in-app viewer. Only a PDF VethuQ reads, inside an active source. The content security policy gains `worker-src 'self'` (pdf.js runs in a worker served by the app).
 

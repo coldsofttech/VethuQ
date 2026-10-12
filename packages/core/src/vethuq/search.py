@@ -29,6 +29,7 @@ from vethuq.enums import ExportFormat, SearchSortBy, SortOrder
 
 __all__ = [
     "NormalizerInfo",
+    "PageText",
     "Search",
     "SearchEngineInfo",
     "SearchIndexRebuildResult",
@@ -38,6 +39,18 @@ __all__ = [
     "SearchSortBy",
     "SearchSyncReport",
 ]
+
+
+@dataclass(frozen=True)
+class PageText:
+    """The text VethuQ stored for one page of a document: what searches ran against."""
+
+    document_id: int
+    page_number: int
+    file_name: str
+    file_path: str  # the earliest indexed file with this content
+    file_type: str | None
+    text: str
 
 
 @dataclass(frozen=True)
@@ -429,6 +442,30 @@ class Search:
                 dict.fromkeys(e for s in specs if s.id in wanted for e in s.extensions)
             )
         return _Scope(extensions, tuple(ids) if ids is not None else None)
+
+    def page_text(self, document_id: int, page_number: int = 1) -> PageText | None:
+        """The text stored for a page of a document, as searches saw it (line breaks included), or
+        None when there is no such page. For a text or Markdown file the one page is the file's
+        text, so a match's `line` and `column` count in it."""
+        with self._database.session() as session:
+            row = session.execute(
+                text(
+                    "SELECT d.file_path, p.text FROM pdf_pages p JOIN document_index d "
+                    "ON d.document_id = p.document_id AND d.status = 'indexed' "
+                    "WHERE p.document_id = :d AND p.page_number = :p ORDER BY d.id LIMIT 1"
+                ),
+                {"d": document_id, "p": page_number},
+            ).first()
+        if row is None:
+            return None
+        return PageText(
+            document_id=document_id,
+            page_number=page_number,
+            file_name=Path(row.file_path).name,
+            file_path=row.file_path,
+            file_type=self._file_type_of(row.file_path),
+            text=row.text or "",
+        )
 
     def _file_type_of(self, path: str) -> str | None:
         """The id of the file type that reads `path` (None when no add-on does)."""

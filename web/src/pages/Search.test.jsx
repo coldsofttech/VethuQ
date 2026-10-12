@@ -264,7 +264,7 @@ describe('Search', () => {
     expect(JSON.parse(localStorage.getItem('vethuq.recent-searches'))).toEqual(['wheat']);
   });
 
-  it('opens the menu of a result, with Open off in a browser and Preview only for PDF files', async () => {
+  it('opens the menu of a result, with Open off in a browser and Preview on for PDF, text and Markdown', async () => {
     mockApi(ROUTES);
     renderWithProviders(<App />, { route: '/search' });
     await type('wheat{Enter}');
@@ -277,12 +277,35 @@ describe('Search', () => {
       'aria-disabled',
       'true',
     );
-    expect(screen.getByRole('menuitem', { name: 'Preview' })).toHaveAttribute(
+    expect(screen.getByRole('menuitem', { name: 'Preview' })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
     expect(screen.getByRole('menuitem', { name: 'Copy path' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Open in Sources' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('has no preview for a file type it cannot show', async () => {
+    mockApi({
+      ...ROUTES,
+      'POST /api/search/run': {
+        ...RESULT,
+        matches: [
+          match({ file_name: 'plan.docx', file_path: '/docs/plan.docx', file_type: 'docx' }),
+        ],
+      },
+    });
+    renderWithProviders(<App />, { route: '/search' });
+    await type('wheat{Enter}');
+    const table = await screen.findByRole('table', { name: 'Search results' });
+    await userEvent.pointer({
+      keys: '[MouseRight]',
+      target: await within(table).findByText('plan.docx'),
+    });
+    expect(await screen.findByRole('menuitem', { name: 'Preview' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -428,6 +451,102 @@ describe('Search', () => {
       expect(await within(panel).findByText(/are not in this page/)).toBeInTheDocument();
       await userEvent.click(within(panel).getByRole('button', { name: 'Close preview' }));
       expect(screen.queryByRole('region', { name: 'PDF preview' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the text preview', () => {
+    const WINDOW = {
+      total: 3,
+      start: 0,
+      lines: ['first line', 'second line has wheat in it', 'third'],
+      file_name: 'notes.txt',
+      file_path: '/docs/notes.txt',
+      file_type: 'txt',
+    };
+    const LINED = {
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'notes.txt',
+          file_path: '/docs/notes.txt',
+          file_type: 'txt',
+          document_id: 4,
+          total_pages: 1,
+          page_number: 1,
+          line: 2,
+          column: 17,
+        }),
+        match({
+          file_name: 'notes.txt',
+          file_path: '/docs/notes.txt',
+          file_type: 'txt',
+          document_id: 4,
+          total_pages: 1,
+          page_number: 1,
+          start: 90,
+          line: 3,
+          column: 1,
+        }),
+      ],
+    };
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+    });
+
+    const open = async () => {
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Text preview' });
+    };
+
+    it('shows the text beside the results at the line of the match, with the words marked', async () => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': LINED,
+        'GET /api/files/text': WINDOW,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const panel = await open();
+      expect(within(panel).getByText(/Match 1 of 2 · line 2/)).toBeInTheDocument();
+      expect(await within(panel).findByText('first line')).toBeInTheDocument();
+      expect(panel.textContent).toContain('second line has wheat in it');
+      expect(panel.querySelector('mark').textContent).toBe('wheat');
+      const asked = fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((u) => u.startsWith('/api/files/text'));
+      expect(asked.some((u) => u.includes('document_id=4') && u.includes('count=200'))).toBe(true);
+    });
+
+    it('steps to the next match and closes', async () => {
+      mockApi({ ...ROUTES, 'POST /api/search/run': LINED, 'GET /api/files/text': WINDOW });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const panel = await open();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Next match' }));
+      expect(await within(panel).findByText(/Match 2 of 2 · line 3/)).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Close preview' }));
+      expect(screen.queryByRole('region', { name: 'Text preview' })).not.toBeInTheDocument();
+    });
+
+    it('says why the text could not be shown', async () => {
+      mockApi({
+        ...ROUTES,
+        'POST /api/search/run': LINED,
+        'GET /api/files/text': Response.json(
+          { error: 'That page is not in the index.' },
+          { status: 404 },
+        ),
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const panel = await open();
+      expect(await within(panel).findByText(/not in the index/)).toBeInTheDocument();
     });
   });
 });
