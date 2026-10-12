@@ -86,7 +86,8 @@ next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` ins
     uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
 
 `--dev` skips compression and reuses an unchanged PyInstaller build. After changing the icon, run
-`python scripts/dev/brand/cli_installer.py` to regenerate the installer's images and license page.
+`python scripts/dev/brand/cli_installer.py` to regenerate the images and license page, which both
+installers share in `installer/shared/` (with the icon and the add-ons runtime hook).
 
 ### The interactive shell
 

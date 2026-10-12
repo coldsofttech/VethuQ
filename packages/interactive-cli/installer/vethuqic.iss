@@ -31,11 +31,11 @@ AppVerName={#MyAppName} Interactive CLI v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 VersionInfoVersion={#MyAppNumericVersion}
-LicenseFile=..\..\cli\installer\LICENSE.rtf
-SetupIconFile=..\..\cli\installer\vethuq.ico
+LicenseFile=..\..\..\installer\shared\LICENSE.rtf
+SetupIconFile=..\..\..\installer\shared\vethuq.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-WizardImageFile=..\..\cli\installer\wizard_large.bmp
-WizardSmallImageFile=..\..\cli\installer\wizard_small.bmp
+WizardImageFile=..\..\..\installer\shared\wizard_large.bmp
+WizardSmallImageFile=..\..\..\installer\shared\wizard_small.bmp
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 ; The CLI's folder, found in InitializeSetup.

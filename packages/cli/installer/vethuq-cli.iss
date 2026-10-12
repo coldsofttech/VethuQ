@@ -34,12 +34,12 @@ AppVerName={#MyAppName} CLI v{#MyAppVersion}
 AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 VersionInfoVersion={#MyAppNumericVersion}
-LicenseFile=LICENSE.rtf
+LicenseFile=..\..\..\installer\shared\LICENSE.rtf
 ; The VethuQ icon: the installer/uninstaller exe, Apps & Features, and the wizard's side and header images.
-SetupIconFile=vethuq.ico
+SetupIconFile=..\..\..\installer\shared\vethuq.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-WizardImageFile=wizard_large.bmp
-WizardSmallImageFile=wizard_small.bmp
+WizardImageFile=..\..\..\installer\shared\wizard_large.bmp
+WizardSmallImageFile=..\..\..\installer\shared\wizard_small.bmp
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 DefaultDirName={autopf}\{#MyAppName}
@@ -66,7 +66,7 @@ LZMANumBlockThreads={#CompressThreads}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "vethuq.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\..\installer\shared\vethuq.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\..\build\cli\vethuq\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\build\cli\vethuq\add-ons\*"; DestDir: "{app}\add-ons"; Flags: ignoreversion recursesubdirs createallsubdirs

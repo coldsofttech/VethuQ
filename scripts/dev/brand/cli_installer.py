@@ -1,7 +1,8 @@
 """Derive the CLI installer's images from the master icon, `icons/icon-512.png`.
 
 Writes the Windows `.ico`, the Inno Setup wizard images and the license page
-(`LICENSE.rtf`, from the repository's `LICENSE`) into `packages/cli/installer/`. Needs only pillow:
+(`LICENSE.rtf`, from the repository's `LICENSE`) into `installer/shared/`, which the CLI and the
+interactive shell installers both use. Needs only pillow:
 
     uv run python scripts/dev/brand/cli_installer.py
 """
@@ -23,7 +24,7 @@ class CliInstallerAssets:
 
     def __init__(self, repo_root: Path = REPO_ROOT) -> None:
         self.license = repo_root / "LICENSE"
-        self.installer = repo_root / "packages" / "cli" / "installer"
+        self.installer = repo_root / "installer" / "shared"
         self.master = Image.open(repo_root / "icons" / "icon-512.png").convert("RGBA")
 
     def write_icon(self) -> None:

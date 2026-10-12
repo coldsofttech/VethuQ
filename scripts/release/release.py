@@ -37,6 +37,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
+SHARED = REPO_ROOT / "installer" / "shared"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 BUILD = REPO_ROOT / "build" / "cli"
 DIST = REPO_ROOT / "dist"
@@ -95,7 +96,13 @@ class Cli:
     def _inputs_key(self) -> str:
         """A fingerprint of what the build is made from, so `--dev` can skip an unchanged build."""
         digest = hashlib.sha256()
-        for path in sorted(INSTALLER.glob("*.py")) + [INSTALLER / "vethuq-cli.spec"]:
+        installer_files = [
+            *INSTALLER.glob("*.py"),
+            *IC_INSTALLER.glob("*.py"),
+            *SHARED.glob("*.py"),
+            INSTALLER / "vethuq-cli.spec",
+        ]
+        for path in sorted(installer_files):
             digest.update(path.read_bytes())
         for path in sorted((REPO_ROOT / "packages").glob("*/src/**/*.py")):
             digest.update(str(path).encode() + path.read_bytes())

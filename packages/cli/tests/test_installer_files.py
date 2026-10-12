@@ -15,6 +15,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[3]
 INSTALLER = ROOT / "packages" / "cli" / "installer"
+SHARED = ROOT / "installer" / "shared"
 DEFAULT_ADDONS = {
     "english",
     "pdf",
@@ -46,34 +47,34 @@ plan = load("plan")
 
 
 class TestInstallerFiles:
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "vethuq-cli.spec",
-            "vethuq-cli.iss",
-            "vethuq_entry.py",
-            "vethuqic_entry.py",
-            "addons_hook.py",
-            "LICENSE.rtf",
-            "vethuq.ico",
-            "wizard_large.bmp",
-            "wizard_small.bmp",
-        ],
-    )
+    @pytest.mark.parametrize("name", ["vethuq-cli.spec", "vethuq-cli.iss", "vethuq_entry.py"])
     def test_the_file_exists(self, name):
         assert (INSTALLER / name).is_file()
 
+    @pytest.mark.parametrize(
+        "name",
+        ["addons_hook.py", "LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"],
+    )
+    def test_what_both_installers_use_is_shared_not_in_either_package(self, name):
+        assert (SHARED / name).is_file()
+        assert not (INSTALLER / name).exists()
+        assert not (IC_INSTALLER / name).exists()
+
+    def test_the_shells_entry_script_is_with_the_shell(self):
+        assert (IC_INSTALLER / "vethuqic_entry.py").is_file()
+        assert not (INSTALLER / "vethuqic_entry.py").exists()
+
     def test_the_wizard_images_have_inno_sizes(self):
-        assert Image.open(INSTALLER / "wizard_large.bmp").size == (164, 314)
-        assert Image.open(INSTALLER / "wizard_small.bmp").size == (55, 55)
+        assert Image.open(SHARED / "wizard_large.bmp").size == (164, 314)
+        assert Image.open(SHARED / "wizard_small.bmp").size == (55, 55)
 
     def test_the_inno_script_uses_the_images_and_is_command_line_only(self):
         script = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
         for line in (
-            "SetupIconFile=vethuq.ico",
-            "WizardImageFile=wizard_large.bmp",
-            "WizardSmallImageFile=wizard_small.bmp",
-            "LicenseFile=LICENSE.rtf",
+            "SetupIconFile=..\\..\\..\\installer\\shared\\vethuq.ico",
+            "WizardImageFile=..\\..\\..\\installer\\shared\\wizard_large.bmp",
+            "WizardSmallImageFile=..\\..\\..\\installer\\shared\\wizard_small.bmp",
+            "LicenseFile=..\\..\\..\\installer\\shared\\LICENSE.rtf",
         ):
             assert line in script
         assert re.search(r"^Source: .*build\\cli\\vethuq\\lib\\", script, re.M)
@@ -165,11 +166,11 @@ class TestInteractiveInstaller:
     def script(self) -> str:
         return (IC_INSTALLER / "vethuqic.iss").read_text(encoding="utf-8")
 
-    def test_it_reuses_the_command_lines_images_license_and_icon(self):
+    def test_it_uses_the_shared_images_license_and_icon(self):
         script = self.script()
         for name in ("LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"):
-            assert f"..\\..\\cli\\installer\\{name}" in script
-            assert (INSTALLER / name).is_file()
+            assert f"..\\..\\..\\installer\\shared\\{name}" in script
+            assert (SHARED / name).is_file()
 
     def test_it_installs_only_the_shell_into_the_cli_folder(self):
         script = self.script()
@@ -191,10 +192,16 @@ class TestInteractiveInstaller:
         cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
         assert 'Name: "{app}\\vethuqic.exe"' in cli
 
+    def test_the_spec_is_not_git_ignored(self):
+        # *.spec is ignored in .gitignore; the spec must be un-ignored or CI never sees it.
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        assert "!packages/cli/installer/vethuq-cli.spec" in ignore
+
     def test_the_spec_builds_both_programs_into_one_folder(self):
         spec = (INSTALLER / "vethuq-cli.spec").read_text(encoding="utf-8")
-        assert '_exe_for("vethuq_entry.py", "vethuq"' in spec
-        assert '"vethuqic_entry.py",\n    "vethuqic"' in spec
+        assert '_exe_for(INSTALLER / "vethuq_entry.py", "vethuq"' in spec
+        assert 'IC_INSTALLER / "vethuqic_entry.py",\n    "vethuqic"' in spec
+        assert 'SHARED / "addons_hook.py"' in spec
         assert spec.count("COLLECT(") == 1
         # The command line has no shell in it.
         assert "CLI_EXCLUDES" in spec and '"questionary"' in spec
