@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from api_support import HOST, ORIGIN, TOKEN
@@ -24,10 +25,18 @@ class FakeWindow:
         self.maximized = False
         self.calls: list[str] = []
         self.picked: str | None = "/chosen/folder"
+        self.picked_file: str | None = "/chosen/file.pdf"
 
     def choose_folder(self, start: str | None = None) -> str | None:
         self.calls.append(f"choose_folder:{start}")
         return self.picked
+
+    def choose_file(self, start: str | None = None) -> str | None:
+        self.calls.append(f"choose_file:{start}")
+        return self.picked_file
+
+    def reveal(self, path: str) -> None:
+        self.calls.append(f"reveal:{path}")
 
     def minimize(self) -> None:
         self.calls.append("minimize")
@@ -67,6 +76,25 @@ class FakeCore:
     def support_report(self) -> str:
         return "## Support\n"
 
+    one_off = False
+
+    def sources(self):
+        return SimpleNamespace(forget=lambda: None)
+
+    def indexing(self):
+        core = self
+
+        class Indexing:
+            def one_off_active(self) -> bool:
+                return core.one_off
+
+            def stop_for_close(self) -> None:
+                core.stopped_for_close = True
+
+        return Indexing()
+
+    stopped_for_close = False
+
     def catalog(self) -> dict[str, list[dict[str, object]]]:
         return {"add_ons": [{"id": "csv", "name": "vethuq-addon-csv", "version": "0.1.0"}]}
 
@@ -87,13 +115,18 @@ def window() -> FakeWindow:
 
 
 @pytest.fixture
-def app(web_dist: Path, window: FakeWindow):
+def fake_core() -> FakeCore:
+    return FakeCore()
+
+
+@pytest.fixture
+def app(web_dist: Path, window: FakeWindow, fake_core: FakeCore):
     application = create_app(
         bootstrap_token=TOKEN,
         web_dist=web_dist,
         window=window,
         host_kind="desktop",
-        core=FakeCore(),
+        core=fake_core,
     )
     allow_host(application, HOST)
     return application

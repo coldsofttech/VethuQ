@@ -9,7 +9,13 @@ from vethuq_api.core import VethuQCore
 class TestPlatform:
     def test_desktop_host_with_window(self, signed_in):
         body = signed_in.get("/api/platform", base_url=ORIGIN).get_json()
-        assert body == {"kind": "desktop", "window_controls": True, "folder_dialog": True}
+        assert body == {
+            "kind": "desktop",
+            "window_controls": True,
+            "folder_dialog": True,
+            "file_dialog": True,
+            "reveal": True,
+        }
 
     def test_web_host_has_no_window_controls_or_window_routes(self, web_dist):
         app = create_app(bootstrap_token="t", web_dist=web_dist)
@@ -20,6 +26,8 @@ class TestPlatform:
             "kind": "web",
             "window_controls": False,
             "folder_dialog": False,
+            "file_dialog": False,
+            "reveal": False,
         }
         assert client.get("/api/window/state", base_url=ORIGIN).status_code == 404
 

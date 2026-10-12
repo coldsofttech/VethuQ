@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from flask import Blueprint, Flask, Response, jsonify, request
 
+from vethuq_api import routes_sources
 from vethuq_api.core import Core
 from vethuq_api.settings import InvalidSettingError, SettingNotFoundError
 from vethuq_api.window import WindowController
@@ -21,6 +22,7 @@ def register(
     window: WindowController | None,
 ) -> None:
     api = Blueprint("api", __name__, url_prefix="/api")
+    routes_sources.register(api, core, window)
 
     @api.get("/health")
     def health() -> Response:
@@ -76,6 +78,8 @@ def register(
             kind=host_kind,
             window_controls=window is not None,
             folder_dialog=callable(getattr(window, "choose_folder", None)),
+            file_dialog=callable(getattr(window, "choose_file", None)),
+            reveal=callable(getattr(window, "reveal", None)),
         )
 
     if window is not None and callable(getattr(window, "choose_folder", None)):
@@ -85,6 +89,15 @@ def register(
             body = request.get_json(silent=True)
             start = body.get("start") if isinstance(body, dict) else None
             chosen = window.choose_folder(start if isinstance(start, str) else None)  # type: ignore[union-attr]
+            return jsonify(path=chosen)
+
+    if window is not None and callable(getattr(window, "choose_file", None)):
+
+        @api.post("/dialog/file")
+        def choose_file() -> Response:
+            body = request.get_json(silent=True)
+            start = body.get("start") if isinstance(body, dict) else None
+            chosen = window.choose_file(start if isinstance(start, str) else None)  # type: ignore[union-attr]
             return jsonify(path=chosen)
 
     if window is not None:
@@ -110,7 +123,16 @@ def register(
 
         @api.post("/window/close")
         def window_close() -> Response:
+            """Close the window, unless this application is running an index of its own: that
+            stops with it, so the interface asks first and calls again with `force`."""
+            body = request.get_json(silent=True)
+            force = isinstance(body, dict) and body.get("force") is True
+            indexing = core.indexing()
+            if not force and indexing.one_off_active():
+                return jsonify(maximized=window.maximized, closing=False, blocked="indexing")
+            if force:
+                indexing.stop_for_close()
             window.close()
-            return _state(window)
+            return jsonify(maximized=window.maximized, closing=True, blocked=None)
 
     app.register_blueprint(api)

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vethuq_api import create_app
+from vethuq_api.core import VethuQCore
 from vethuq_desktop.server import LocalServer
 from vethuq_desktop.webdist import WebDistNotFoundError, resolve_web_dist
 from vethuq_desktop.window import SimulatedWindowController, WebviewWindowController
@@ -39,11 +40,15 @@ def run_desktop(
 
     token = secrets.token_urlsafe(32)
     controller = WebviewWindowController()
+    core = VethuQCore()
+    # A run this application started stops when it closes, so closing is held back to ask first.
+    controller.close_guard = lambda: core.indexing().one_off_active()
     app = create_app(
         bootstrap_token=token,
         web_dist=resolve_web_dist(web_dist),
         window=controller,
         host_kind="desktop",
+        core=core,
     )
     server = LocalServer(app)
     server.start()
@@ -59,6 +64,9 @@ def run_desktop(
             easy_drag=False,
         )
         controller.attach(window)
+        settings = getattr(webview, "settings", None)
+        if isinstance(settings, dict):
+            settings["ALLOW_DOWNLOADS"] = True  # exports are saved through the system dialog
         start_options: dict[str, Any] = {"debug": debug}
         if sys.platform == "win32":
             # Never fall back to the legacy MSHTML engine.

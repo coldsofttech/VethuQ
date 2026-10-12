@@ -6,7 +6,9 @@ import threading
 from pathlib import Path
 from typing import Any, Protocol
 
+from vethuq_api.indexing import IndexingService
 from vethuq_api.settings import SettingsService
+from vethuq_api.sources_service import SourcesService
 from vethuq_api.support import build_report
 
 
@@ -31,6 +33,10 @@ class Core(Protocol):
 
     def support_report(self) -> str: ...
 
+    def sources(self) -> Any: ...
+
+    def indexing(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -40,6 +46,8 @@ class VethuQCore:
         self._lock = threading.Lock()
         self._client: Any = None
         self._settings = SettingsService(self._vethuq, self._release)
+        self._sources = SourcesService(self._vethuq)
+        self._indexing = IndexingService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -53,6 +61,13 @@ class VethuQCore:
         """Forget the client (after the data folder moved), so the next use opens the new one."""
         with self._lock:
             self._client = None
+        self._sources.forget()
+
+    def sources(self) -> SourcesService:
+        return self._sources
+
+    def indexing(self) -> IndexingService:
+        return self._indexing
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()
