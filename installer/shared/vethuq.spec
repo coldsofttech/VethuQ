@@ -1,20 +1,26 @@
-# PyInstaller spec for the VethuQ command line and its interactive shell (Windows and Linux).
+# PyInstaller spec for the VethuQ command line, its interactive shell and its background service
+# (Windows and Linux).
 #
-# Two executables in one folder (build/cli/vethuq/), sharing one lib/ and one add-ons/:
+# Three executables in one folder (build/cli/vethuq/), sharing one lib/ and one add-ons/:
 #
 #   vethuq(.exe)    the command line
 #   vethuqic(.exe)  the interactive shell (arrow-key menus over the same commands)
+#   vethuqbs(.exe)  the background service (works the index queue; a Windows service or systemd unit)
 #   lib/            the Python runtime and every dependency (Paddle, rich, SQLAlchemy, ...)
 #   add-ons/        the default add-ons, one folder each (pdf/, like/, ...); see addons_hook.py
 #
 # Each executable carries its own pure-Python modules; the native libraries and data files are
-# collected once, in lib/. The CLI installer ships `vethuq`, the interactive installer ships
-# `vethuqic` into the same folder, on top of the CLI's lib/ and add-ons/. No UI is built.
+# collected once, in lib/. The CLI installer ships `vethuq`; the interactive shell's and the background
+# service's installers ship `vethuqic` and `vethuqbs` into the same folder, on top of the CLI's lib/ and
+# add-ons/. The `vethuq background ...` commands are the package `vethuq_background`, staged as
+# add-ons/background (release.py moves it out to build/cli/background-plugin for the service's
+# installer). No UI is built.
 # PyInstaller puts data files in `lib/`; scripts/release/release.py moves `lib/add-ons` up beside
 # the executables after the build.
 # The entry scripts sit with their packages: packages/cli/installer/vethuq_entry.py and
-# packages/interactive-cli/installer/vethuqic_entry.py.
-# Built by `python scripts/release/release.py --cli` and `--interactive-cli`.
+# packages/interactive-cli/installer/vethuqic_entry.py and
+# packages/background/installer/vethuqbs_entry.py.
+# Built by `python scripts/release/release.py --cli`, `--interactive-cli` and `--background-service`.
 
 import importlib.metadata as metadata
 import importlib.util
@@ -30,6 +36,7 @@ SHARED = Path(SPECPATH)
 REPO_ROOT = SHARED.parents[1]
 INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
+BS_INSTALLER = REPO_ROOT / "packages" / "background" / "installer"
 
 # The add-ons VethuQ installs by default (its `dependencies` in packages/core/pyproject.toml).
 # Everything else (lexical, proximity, fuzzy, noise-fuzzy, semantic, ...) is an extra.
@@ -159,6 +166,28 @@ for package in ("vethuq_interactive_cli", "questionary", "prompt_toolkit", "wcwi
     ic_hidden.extend(package_hidden)
 
 
+# ---- the background service -------------------------------------------------------------------
+# `vethuqbs --service` hosts itself in the Windows service manager (pywin32), which static analysis
+# can't see. The `vethuq background` commands are a plug-in of the command line: the package and its
+# dist-info (with the `vethuq.cli` entry point) go to add-ons/background, where addons_hook.py puts
+# them on sys.path, so `vethuq` and `vethuqic` find the commands once the service is installed.
+bs_hidden = []
+if sys.platform == "win32":
+    bs_hidden = [
+        "servicemanager",
+        "win32service",
+        "win32serviceutil",
+        "win32event",
+        "win32timezone",
+        "win32api",
+    ]
+_bg_package = importlib.util.find_spec("vethuq_background").submodule_search_locations[0]
+_bg_dist = metadata.distribution("vethuq-background")
+_bg_info = next(p for p in _bg_dist.files if ".dist-info/" in p.as_posix()).as_posix().split("/")[0]
+datas.append((_bg_package, "add-ons/background/vethuq_background"))
+datas.append((str(_bg_dist.locate_file(_bg_info)), f"add-ons/background/{_bg_info}"))
+
+
 def _exe_for(entry, name, extra_datas=(), extra_binaries=(), extra_hidden=(), excludes=()):
     analysis = Analysis(
         [str(entry)],
@@ -196,6 +225,12 @@ ic_a, ic_exe = _exe_for(
     extra_hidden=ic_hidden,
     excludes=EXCLUDES,
 )
+bs_a, bs_exe = _exe_for(
+    BS_INSTALLER / "vethuqbs_entry.py",
+    "vethuqbs",
+    extra_hidden=bs_hidden,
+    excludes=CLI_EXCLUDES,
+)
 coll = COLLECT(
     cli_exe,
     cli_a.binaries,
@@ -203,6 +238,9 @@ coll = COLLECT(
     ic_exe,
     ic_a.binaries,
     ic_a.datas,
+    bs_exe,
+    bs_a.binaries,
+    bs_a.datas,
     name="vethuq",
     upx=False,
 )

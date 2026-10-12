@@ -167,3 +167,58 @@ def test_another_platform_is_unsupported(tmp_path):
 def test_an_unknown_action_is_an_error(linux):
     with pytest.raises(BackgroundServiceError, match="no service action"):
         linux[0].perform("explode")
+
+
+class TestInstalledBuild:
+    """In the installed build the service is `vethuqbs`, next to the running executable."""
+
+    def make(self, tmp_path, platform, runner, name):
+        folder = tmp_path / "app"
+        folder.mkdir()
+        (folder / name).write_text("")
+        (folder / ("vethuq.exe" if platform == "win32" else "vethuq")).write_text("")
+        return BackgroundService(
+            tmp_path / "db" / "vethuq.db",
+            tmp_path / "run" / "service.control",
+            runner=runner,
+            platform=platform,
+            python=str(folder / ("vethuq.exe" if platform == "win32" else "vethuq")),
+            unit_dir=tmp_path / "units",
+            is_admin=lambda: True,
+            frozen=True,
+        )
+
+    def test_systemd_runs_vethuqbs(self, tmp_path):
+        runner = FakeRunner({"is-active": (0, "active\n")})
+        service = self.make(tmp_path, "linux", runner, "vethuqbs")
+        service.perform("install")
+        unit = (tmp_path / "units" / UNIT).read_text()
+        assert f"ExecStart={tmp_path / 'app' / 'vethuqbs'} --service --db " in unit
+        assert "-m vethuq_background" not in unit
+
+    def test_windows_registers_vethuqbs_with_sc_create(self, tmp_path):
+        runner = FakeRunner({"query": (0, "STATE : 4  RUNNING")})
+        service = self.make(tmp_path, "win32", runner, "vethuqbs.exe")
+        service.perform("install", account="PC\\me", password="pw")
+        create = next(c for c in runner.calls if c[:2] == ["sc.exe", "create"])
+        assert create[2] == "VethuQBackground"
+        bin_path = create[create.index("binPath=") + 1]
+        assert bin_path.startswith(str(tmp_path / "app" / "vethuqbs.exe"))
+        assert "--service --db" in bin_path
+        assert create[create.index("start=") + 1] == "auto"
+        assert create[create.index("obj=") + 1] == "PC\\me"
+        assert create[create.index("password=") + 1] == "pw"
+        assert ["sc.exe", "start", "VethuQBackground"] in runner.calls
+        assert not any("winservice" in " ".join(c) for c in runner.calls)
+
+    def test_windows_system_account_has_no_password(self, tmp_path):
+        runner = FakeRunner({"query": (0, "STATE : 4  RUNNING")})
+        service = self.make(tmp_path, "win32", runner, "vethuqbs.exe")
+        service.perform("install", system=True)
+        create = next(c for c in runner.calls if c[:2] == ["sc.exe", "create"])
+        assert create[create.index("obj=") + 1] == "LocalSystem" and "password=" not in create
+
+    def test_a_missing_vethuqbs_says_what_to_install(self, tmp_path):
+        service = self.make(tmp_path, "linux", FakeRunner(), "something-else")
+        with pytest.raises(BackgroundServiceError, match="Background-Service-Setup"):
+            service.command_line()

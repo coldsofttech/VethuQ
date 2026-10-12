@@ -16,7 +16,9 @@ import argparse
 import logging
 import os
 import signal
+import sys
 import threading
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +127,18 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--db", type=Path, help="The database file to serve (default: the user's).")
     parser.add_argument("--once", action="store_true", help="Work what is waiting, then exit.")
     parser.add_argument("--service", action="store_true", help="Run as the installed service.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"vethuq-background {metadata.version('vethuq-background')}",
+    )
     args = parser.parse_args(argv)
+    if args.service and sys.platform == "win32":
+        # Started by the service manager: it hosts the service and runs the loop itself.
+        from vethuq_background import winservice
+
+        winservice.host(str(args.db) if args.db else None)
+        return
     client = vethuq.VethuQ(db_path=args.db) if args.db else vethuq.VethuQ()
     host = ServiceHost(client)
     host.install_signal_handlers()

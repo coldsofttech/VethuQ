@@ -20,6 +20,10 @@ except ImportError:  # pragma: no cover - other platforms
 
 SERVICE_NAME = "VethuQBackground"
 
+# The database to serve when the program hosts itself (`vethuqbs --service --db FILE`); the pywin32
+# `setdb` option below is the other way to say it.
+DATABASE: str | None = None
+
 
 if win32serviceutil is not None:  # pragma: no cover - needs Windows
 
@@ -40,7 +44,7 @@ if win32serviceutil is not None:  # pragma: no cover - needs Windows
             import vethuq
             from vethuq_background.host import ServiceHost
 
-            db = win32serviceutil.GetServiceCustomOption(SERVICE_NAME, "db")
+            db = DATABASE or win32serviceutil.GetServiceCustomOption(SERVICE_NAME, "db")
             client = vethuq.VethuQ(db_path=db) if db else vethuq.VethuQ()
             self._host = ServiceHost(client)
             servicemanager.LogInfoMsg("VethuQ background service started")
@@ -67,6 +71,17 @@ if win32serviceutil is not None:  # pragma: no cover - needs Windows
             if self._host is not None:
                 self._host.resume()
             self.ReportServiceStatus(win32service.SERVICE_RUNNING)
+
+
+def host(db: str | None = None) -> None:  # pragma: no cover - needs Windows
+    """Run as the service: what `vethuqbs.exe --service` does when the service manager starts it."""
+    global DATABASE  # noqa: PLW0603 - read by the service class when the manager starts it
+    if win32serviceutil is None:
+        raise SystemExit("The Windows service needs Windows (and pywin32).")
+    DATABASE = db
+    servicemanager.Initialize()
+    servicemanager.PrepareToHostSingle(VethuQBackgroundService)
+    servicemanager.StartServiceCtrlDispatcher()
 
 
 def main(argv: list[str] | None = None) -> None:  # pragma: no cover - needs Windows

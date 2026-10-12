@@ -3,6 +3,9 @@
 Linux: a `systemd --user` unit (`vethuq-background.service`), which needs no root. systemd has no
 pause, so `pause` and `resume` write the control file the host watches.
 
+In the installed (frozen) build the service is `vethuqbs`, next to `vethuq`: systemd runs it, and on
+Windows `sc.exe create` registers it (it hosts itself in the service manager, see `winservice.py`).
+
 Windows: a Windows service (`VethuQBackground`, `winservice.py`, built on pywin32) that starts with
 the computer and runs as a Windows account chosen at install time (the installing user by default,
 whose password is asked for). Creating or controlling a service needs administrator rights, so when
@@ -76,6 +79,7 @@ class BackgroundService:
         python: str | None = None,
         unit_dir: Path | None = None,
         is_admin: Callable[[], bool] | None = None,
+        frozen: bool | None = None,
     ) -> None:
         self.db_path = Path(db_path)
         self.control_file = Path(control_file)
@@ -84,6 +88,7 @@ class BackgroundService:
         self._python = python or sys.executable
         self._unit_dir = unit_dir or Path.home() / ".config" / "systemd" / "user"
         self._is_admin = is_admin or self._windows_admin
+        self._frozen = getattr(sys, "frozen", False) if frozen is None else frozen
 
     # ----- which backend ----------------------------------------------------------------------
 
@@ -102,8 +107,21 @@ class BackgroundService:
             )
         return backend
 
+    def service_exe(self) -> Path:
+        """`vethuqbs`, beside the executable that is running (the installed build)."""
+        name = "vethuqbs.exe" if self._platform == "win32" else "vethuqbs"
+        exe = Path(self._python).with_name(name)
+        if not exe.exists():
+            raise BackgroundServiceError(
+                f"The background service program was not found at {exe}: install "
+                "VethuQ-Background-Service-Setup.exe (or the vethuq-background-service package)."
+            )
+        return exe
+
     def command_line(self) -> list[str]:
         """What the service runs."""
+        if self._frozen:
+            return [str(self.service_exe()), "--service", "--db", str(self.db_path)]
         return [self._python, "-m", "vethuq_background", "--service", "--db", str(self.db_path)]
 
     # ----- the actions ------------------------------------------------------------------------
@@ -252,6 +270,8 @@ class BackgroundService:
         system: bool = False,
         **_: Any,
     ) -> None:
+        if self._frozen:
+            return self._windows_install_frozen(account, password, system)
         command = [self._python, "-m", "vethuq_background.winservice", "--startup", "auto"]
         if not system:
             account = account or os.environ.get("USERDOMAIN", ".") + "\\" + os.environ.get(
@@ -266,6 +286,37 @@ class BackgroundService:
         self._run_admin(
             [self._python, "-m", "vethuq_background.winservice", "setdb", str(self.db_path)]
         )
+        self._sc("start", WINDOWS_NAME)
+
+    def _windows_install_frozen(
+        self, account: str | None, password: str | None, system: bool
+    ) -> None:
+        """Register `vethuqbs.exe --service --db FILE` with `sc.exe create`: the program hosts
+        itself in the service manager, so there is nothing else to set up (the database is on
+        its command line)."""
+        command_line = subprocess.list2cmdline(self.command_line())
+        command = [
+            "sc.exe",
+            "create",
+            WINDOWS_NAME,
+            "binPath=",
+            command_line,
+            "start=",
+            "auto",
+            "DisplayName=",
+            "VethuQ background indexing",
+        ]
+        if system:
+            command += ["obj=", "LocalSystem"]
+        else:
+            account = account or os.environ.get("USERDOMAIN", ".") + "\\" + os.environ.get(
+                "USERNAME", ""
+            )
+            command += ["obj=", account]
+            if password:
+                command += ["password=", password]
+        self._write_control("run")
+        self._run_admin(command)
         self._sc("start", WINDOWS_NAME)
 
     def _run_admin(self, command: Sequence[str]) -> None:

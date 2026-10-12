@@ -2,13 +2,16 @@
 
     python scripts/release/release.py --cli --version 1.2.0
     python scripts/release/release.py --interactive-cli --version 1.2.0
-    python scripts/release/release.py --cli --interactive-cli --dev     # local iteration
+    python scripts/release/release.py --background-service --version 1.2.0
+    python scripts/release/release.py --cli --interactive-cli --background-service --dev  # local
 
 No desktop app is built. One PyInstaller build makes both programs:
 
   1. PyInstaller turns `installer/shared/vethuq.spec` into `build/cli/vethuq/`:
-     `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `lib/` (the runtime
-     and every dependency, plus `runtime-id.txt`) and `add-ons/` (the default add-ons).
+     `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `vethuqbs(.exe)` (the
+     background service), `lib/` (the runtime and every dependency, plus `runtime-id.txt`) and
+     `add-ons/` (the default add-ons). The `vethuq background` commands (add-ons/background) are
+     moved to `build/cli/background-plugin/` for the service's installer.
   2. `--cli`: Windows: Inno Setup (`iscc`) wraps `vethuq`, `lib/` and `add-ons/` into
      `dist/VethuQ-CLI-Setup.exe`. Linux: `dpkg-deb` packs them into
      `dist/vethuq-cli_<version>_<arch>.deb` (installs to /opt/vethuq, /usr/bin/vethuq).
@@ -16,6 +19,9 @@ No desktop app is built. One PyInstaller build makes both programs:
      whose `lib/` and `add-ons/` it reuses: `dist/VethuQ-Interactive-CLI-Setup.exe`, or
      `dist/vethuq-interactive-cli_<version>_<arch>.deb` (depends on vethuq-cli). Both refuse to
      install over a command line built from different libraries (`runtime-id.txt`).
+  4. `--background-service`: only `vethuqbs` and the `vethuq background` commands are packed, again
+     for the command line's folder: `dist/VethuQ-Background-Service-Setup.exe`, or
+     `dist/vethuq-background-service_<version>_<arch>.deb` (depends on vethuq-cli).
 
 `--version` is the release version (`1.2.0`, or `1.2.0-rc1` for a release candidate). `--dev` skips
 compression and reuses a PyInstaller build whose inputs haven't changed. Run it in an environment
@@ -39,9 +45,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
 SHARED = REPO_ROOT / "installer" / "shared"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
+BS_INSTALLER = REPO_ROOT / "packages" / "background" / "installer"
 BUILD = REPO_ROOT / "build" / "cli"
 DIST = REPO_ROOT / "dist"
 APP = BUILD / "vethuq"
+# The `vethuq background` commands, kept out of the command line's add-ons/.
+PLUGIN = BUILD / "background-plugin"
 
 VERSION = re.compile(r"^(?P<release>\d+\.\d+\.\d+)(?:-?(?P<pre>rc\d+))?$")
 MAINTAINER = "coldsofttech <noreply@github.com>"
@@ -99,6 +108,7 @@ class Cli:
         installer_files = [
             *INSTALLER.glob("*.py"),
             *IC_INSTALLER.glob("*.py"),
+            *BS_INSTALLER.glob("*.py"),
             *SHARED.glob("*.py"),
             SHARED / "vethuq.spec",
         ]
@@ -164,6 +174,10 @@ class Cli:
         if target.exists():
             shutil.rmtree(target)
         shutil.move(str(inside), str(target))
+        # `vethuq background ...` is the background service's installer's, not the command line's.
+        if PLUGIN.exists():
+            shutil.rmtree(PLUGIN)
+        shutil.move(str(target / "background"), str(PLUGIN))
 
     def check_build(self) -> None:
         """What the installers rely on is there."""
@@ -171,8 +185,10 @@ class Cli:
         required = (
             APP / f"vethuq{suffix}",
             APP / f"vethuqic{suffix}",
+            APP / f"vethuqbs{suffix}",
             APP / "lib",
             APP / "add-ons",
+            PLUGIN,
         )
         missing = [p for p in required if not p.exists()]
         if missing:
@@ -283,7 +299,10 @@ class Cli:
         root = self.stage("deb")
         # The interactive shell is a package of its own.
         shutil.copytree(
-            APP, root / "opt" / "vethuq", symlinks=True, ignore=shutil.ignore_patterns("vethuqic")
+            APP,
+            root / "opt" / "vethuq",
+            symlinks=True,
+            ignore=shutil.ignore_patterns("vethuqic", "vethuqbs"),
         )
         (root / "usr" / "bin").mkdir(parents=True)
         (root / "usr" / "bin" / "vethuq").symlink_to("/opt/vethuq/vethuq")
@@ -294,13 +313,16 @@ class Cli:
         )
         return self.pack(root, "vethuq-cli", arch)
 
-    POSTINST = """#!/bin/sh
+    @staticmethod
+    def postinst(package: str) -> str:
+        """Refuse to install on a vethuq-cli built from different libraries."""
+        return f"""#!/bin/sh
 set -e
 if [ "$1" = configure ]; then
-    want="$(cat /usr/share/vethuq-interactive-cli/runtime-id)"
+    want="$(cat /usr/share/{package}/runtime-id)"
     have="$(cat /opt/vethuq/lib/runtime-id.txt 2>/dev/null || echo none)"
     if [ "$want" != "$have" ]; then
-        echo "vethuq-interactive-cli: vethuq-cli was built from different libraries." >&2
+        echo "{package}: vethuq-cli was built from different libraries." >&2
         echo "Update vethuq-cli to the matching release first." >&2
         exit 1
     fi
@@ -338,7 +360,7 @@ Categories=Utility;ConsoleOnly;
         self.changelog(root / "usr" / "share" / "doc" / "vethuq-interactive-cli", "interactive-cli")
         debian = root / "DEBIAN"
         debian.mkdir()
-        (debian / "postinst").write_text(self.POSTINST, encoding="utf-8")
+        (debian / "postinst").write_text(self.postinst("vethuq-interactive-cli"), encoding="utf-8")
         (debian / "postinst").chmod(0o755)
         (debian / "control").write_text(
             self.control(
@@ -354,9 +376,45 @@ Categories=Utility;ConsoleOnly;
         )
         return self.pack(root, "vethuq-interactive-cli", arch)
 
+    def background_deb(self, runtime_id: str) -> Path:
+        """`vethuqbs` and the `vethuq background` commands, into the CLI's /opt/vethuq."""
+        arch = self.architecture()
+        root = self.stage("deb-bs")
+        opt = root / "opt" / "vethuq"
+        opt.mkdir(parents=True)
+        shutil.copy2(APP / "vethuqbs", opt / "vethuqbs")
+        shutil.copytree(PLUGIN, opt / "add-ons" / "background", symlinks=True)
+        (root / "usr" / "bin").mkdir(parents=True)
+        (root / "usr" / "bin" / "vethuqbs").symlink_to("/opt/vethuq/vethuqbs")
+        data = root / "usr" / "share" / "vethuq-background-service"
+        data.mkdir(parents=True)
+        (data / "runtime-id").write_text(runtime_id + "\n", encoding="ascii")
+        self.changelog(root / "usr" / "share" / "doc" / "vethuq-background-service", "background")
+        debian = root / "DEBIAN"
+        debian.mkdir()
+        (debian / "postinst").write_text(
+            self.postinst("vethuq-background-service"), encoding="utf-8"
+        )
+        (debian / "postinst").chmod(0o755)
+        (debian / "control").write_text(
+            self.control(
+                arch,
+                self.installed_size_kb(root),
+                package="vethuq-background-service",
+                summary="VethuQ background indexing service",
+                detail=" Works the index queue in the background; vethuq background install sets\n"
+                " it up as a systemd user unit. Installs into the folder of vethuq-cli.\n",
+                depends="vethuq-cli",
+            ),
+            encoding="utf-8",
+        )
+        return self.pack(root, "vethuq-background-service", arch)
+
     # ----- all --------------------------------------------------------------------------------
 
-    def build(self, *, cli: bool = False, interactive: bool = False) -> list[Path]:
+    def build(
+        self, *, cli: bool = False, interactive: bool = False, background: bool = False
+    ) -> list[Path]:
         if sys.platform not in ("win32", "linux"):
             raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
         self.pyinstaller()
@@ -375,11 +433,21 @@ Categories=Utility;ConsoleOnly;
                         f"/DRuntimeId={runtime_id}",
                     )
                 )
+            if background:
+                built.append(
+                    self.inno(
+                        BS_INSTALLER / "vethuqbs.iss",
+                        "VethuQ-Background-Service-Setup.exe",
+                        f"/DRuntimeId={runtime_id}",
+                    )
+                )
         else:
             if cli:
                 built.append(self.deb())
             if interactive:
                 built.append(self.interactive_deb(runtime_id))
+            if background:
+                built.append(self.background_deb(runtime_id))
         return built
 
 
@@ -389,6 +457,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--cli", action="store_true", help="build the command-line installer")
     parser.add_argument(
+        "--background-service",
+        action="store_true",
+        help="build the background service's installer (it installs into the CLI's folder)",
+    )
+    parser.add_argument(
         "--interactive-cli",
         action="store_true",
         help="build the interactive shell's installer (it installs into the command line's folder)",
@@ -397,11 +470,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
     args = parser.parse_args(argv)
-    if not (args.cli or args.interactive_cli):
-        parser.error("choose what to build: --cli and/or --interactive-cli")
+    if not (args.cli or args.interactive_cli or args.background_service):
+        parser.error("choose what to build: --cli, --interactive-cli and/or --background-service")
     try:
         built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(
-            cli=args.cli, interactive=args.interactive_cli
+            cli=args.cli, interactive=args.interactive_cli, background=args.background_service
         )
     except (ReleaseError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -1,0 +1,13 @@
+The VethuQ background service program (vethuqbs.exe) is installed next to vethuq.exe.
+
+Setup does not create the Windows service itself: that needs administrator rights and the Windows
+account it should run as, which are your choice. Create it from a terminal:
+
+    vethuq background install
+
+Windows asks for permission (and for the account's password), then the service starts with the
+computer and works through the index queue, so "vethuq index run" and its relatives queue their work
+for it. "vethuq background --help" lists the other commands (start, stop, pause, resume, status,
+uninstall).
+
+Uninstalling this removes the service too.

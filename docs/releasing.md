@@ -13,8 +13,8 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The background service is not released here yet; it will ship as a binary. The command line and the
-interactive shell ship as installers: see [Command-line installers](#command-line-installers).
+The command line, the interactive shell and the background service ship as installers: see
+[Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
 
@@ -81,7 +81,7 @@ downloaded the first time OCR runs.
 Build one locally (Windows needs Inno Setup's `iscc` on PATH; Linux needs `dpkg-deb`), from a workspace
 next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` installed:
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
     uv pip install "pyinstaller>=6.10"
     uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
 
@@ -107,5 +107,32 @@ PyInstaller version) must equal the id the shell's installer was built with. So 
 same commit or at least the same `uv.lock`. Uninstalling the command line removes `vethuqic` too. The
 Windows shell's own uninstaller removes only what it added (`vethuqic.exe`).
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
     uv run --no-sync python scripts/release/release.py --cli --interactive-cli --version 1.2.0
+
+### The background service
+
+`vethuq-background-service-vX.Y.Z` (`-rcN` for a release candidate) builds the background service,
+`vethuqbs`, with `.github/workflows/release-background-service.yml`. Like the shell it installs **into the
+command line's folder**, so `vethuq.exe`, `vethuqic.exe` and `vethuqbs.exe` sit side by side on one `lib/`
+and `add-ons/`, and it needs the command line installed first, from the same build (`runtime-id.txt`).
+
+| Platform | File | Installs |
+|---|---|---|
+| Windows | `VethuQ-Background-Service-Setup.exe` | `vethuqbs.exe`, and the `vethuq background` commands in `add-ons\background` |
+| Linux | `vethuq-background-service_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqbs`, `/usr/bin/vethuqbs`, `/opt/vethuq/add-ons/background`; depends on `vethuq-cli` |
+
+`vethuqbs` is what runs: `vethuqbs --service --db FILE`. On Windows it hosts itself in the service manager
+(pywin32), and `vethuq background install` registers it with `sc.exe create` (asking for administrator
+rights and the account to run as); on Linux the `systemd --user` unit's `ExecStart` is the same command.
+**Setup does not create the service**: that is a choice (account, password, which database). Setup does stop
+it while it replaces `vethuqbs.exe` and start it again, and uninstalling Setup removes the service.
+
+The `vethuq background ...` commands (install, uninstall, start, stop, pause, resume, status) are the package
+`vethuq_background`, shipped with its entry point in `add-ons/background`: `vethuq` and `vethuqic` find them
+there, so they appear once this is installed. Uninstalling the command line removes `vethuqbs.exe` too, so
+uninstall the service first (the background service's own uninstaller does).
+
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
+    uv pip install "pywin32>=306"        # Windows only
+    uv run --no-sync python scripts/release/release.py --background-service --version 1.2.0

@@ -181,7 +181,8 @@ class TestInteractiveInstaller:
         ]
         assert '#define MyAppExeName "vethuqic.exe"' in script
         assert "DefaultDirName={code:CliDir}" in script
-        assert "InstallLocation" in script and "runtime-id.txt" in script
+        shared = (SHARED / "into_cli_folder.iss").read_text(encoding="utf-8")
+        assert "InstallLocation" in shared and "runtime-id.txt" in shared
         # The AppId of the command line, to find its folder; its own AppId differs.
         cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
         cli_id = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", cli, re.M)[1]
@@ -221,7 +222,8 @@ class TestInteractiveInstaller:
         assert "vethuq-interactive-cli-v*" in raw["git_describe_command"]
 
     def test_the_deb_checks_the_runtime_and_depends_on_the_cli(self):
-        assert "runtime-id" in release.Cli.POSTINST and "exit 1" in release.Cli.POSTINST
+        postinst = release.Cli.postinst("vethuq-interactive-cli")
+        assert "/usr/share/vethuq-interactive-cli/runtime-id" in postinst and "exit 1" in postinst
         control = release.Cli(release.Version("1.2.0")).control(
             "amd64", 1, package="vethuq-interactive-cli", depends="vethuq-cli"
         )
@@ -236,5 +238,93 @@ class TestInteractiveInstaller:
             assert line.startswith(" ") or re.match(r"^[A-Za-z-]+: ", line), line
 
     def test_a_mode_is_still_required(self):
+        with pytest.raises(SystemExit):
+            release.main(["--dev"])
+
+
+BS_INSTALLER = ROOT / "packages" / "background" / "installer"
+
+
+class TestBackgroundInstaller:
+    """vethuqbs.exe goes into the command line's folder, like the interactive shell."""
+
+    def script(self) -> str:
+        return (BS_INSTALLER / "vethuqbs.iss").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("name", ["vethuqbs.iss", "vethuqbs_entry.py", "AFTER_INSTALL.txt"])
+    def test_the_file_exists(self, name):
+        assert (BS_INSTALLER / name).is_file()
+
+    def test_it_uses_the_shared_images_license_and_icon_and_cli_folder_code(self):
+        script = self.script()
+        for name in ("LICENSE.rtf", "vethuq.ico", "wizard_large.bmp", "wizard_small.bmp"):
+            assert f"..\\..\\..\\installer\\shared\\{name}" in script
+        assert 'include "..\\..\\..\\installer\\shared\\into_cli_folder.iss"' in script
+        assert "DefaultDirName={code:CliDir}" in script
+        assert (SHARED / "into_cli_folder.iss").is_file()
+        # Its own AppId, and the CLI's to find the folder.
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        cli_id = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", cli, re.M)[1]
+        assert f'#define CliAppId "{cli_id}"' in script
+        assert f"AppId={{{{{cli_id}}}" not in script
+
+    def test_it_installs_the_service_and_the_commands_only(self):
+        files = self.script().split("[Files]")[1].split("[Code]")[0]
+        sources = re.findall(r"^Source: .*", files, re.M)
+        assert len(sources) == 2
+        assert "{#MyAppExeName}" in sources[0] and "background-plugin" in sources[1]
+        assert '#define MyAppExeName "vethuqbs.exe"' in self.script()
+
+    def test_setup_does_not_create_the_service_but_cleans_up_after_it(self):
+        script = self.script()
+        assert "sc.exe" in script and "' + ServiceName" in script
+        assert "RunSc('delete ' + ServiceName)" in script
+        # Creating it needs a password and admin rights: left to `vethuq background install`.
+        assert "RunSc('create" not in script
+        assert "vethuq background install" in (BS_INSTALLER / "AFTER_INSTALL.txt").read_text()
+
+    def test_the_shell_and_the_service_share_the_cli_folder_code(self):
+        shell = (IC_INSTALLER / "vethuqic.iss").read_text(encoding="utf-8")
+        assert "into_cli_folder.iss" in shell
+        assert "FindCli" not in shell.split("[Code]")[1].split("#include")[1].split("\n", 1)[1]
+
+    def test_the_spec_builds_the_service_too_and_stages_the_commands(self):
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
+        assert 'BS_INSTALLER / "vethuqbs_entry.py"' in spec and '"vethuqbs"' in spec
+        assert "add-ons/background/vethuq_background" in spec
+        assert spec.count("COLLECT(") == 1
+        for module in ("servicemanager", "win32serviceutil"):
+            assert f'"{module}"' in spec
+
+    def test_the_command_line_installers_leave_the_service_alone(self):
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        assert 'Name: "{app}\\vethuqbs.exe"' in cli
+        assert release.PLUGIN.name == "background-plugin"
+
+    def test_the_tag_is_planned_and_versions_come_from_it(self):
+        result = plan.plan("vethuq-background-service-v1.2.0-rc1")
+        assert (result.dist, result.directory, result.prerelease) == (
+            "vethuq-background",
+            "packages/background",
+            True,
+        )
+        project = tomllib.loads(
+            (ROOT / "packages" / "background" / "pyproject.toml").read_text("utf-8")
+        )
+        raw = project["tool"]["hatch"]["version"]["raw-options"]
+        assert re.match(raw["tag_regex"], "vethuq-background-service-v1.2.0")
+        assert "vethuq-background-service-v*" in raw["git_describe_command"]
+
+    def test_the_deb_checks_the_runtime_and_depends_on_the_cli(self):
+        postinst = release.Cli.postinst("vethuq-background-service")
+        assert "/usr/share/vethuq-background-service/runtime-id" in postinst
+        control = release.Cli(release.Version("1.2.0")).control(
+            "amd64", 1, package="vethuq-background-service", depends="vethuq-cli"
+        )
+        assert (
+            "Package: vethuq-background-service\n" in control and "Depends: vethuq-cli\n" in control
+        )
+
+    def test_a_mode_is_required(self):
         with pytest.raises(SystemExit):
             release.main(["--dev"])

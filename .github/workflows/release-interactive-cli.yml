@@ -76,7 +76,7 @@ jobs:
       - name: Install the command line and the default add-ons
         working-directory: work/VethuQ
         shell: bash
-        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --no-dev
+        run: uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --no-dev
           uv pip install "pyinstaller>=6.10"
       - name: Install the compiled entitlements runtime
         working-directory: work/VethuQ
@@ -153,4 +153,4 @@ jobs:
           if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}" \
             --title "VethuQ interactive shell ${{ needs.plan.outputs.version }}" \
-            --notes "The VethuQ command line (no desktop app). Windows: run VethuQ-CLI-Setup.exe. Linux (Debian, Ubuntu): sudo apt install ./vethuq-cli_*.deb. Installs the default add-ons; see docs/releasing.md."
+            --notes "The VethuQ interactive shell (vethuqic). Install the VethuQ command line first (same release): it installs into the same folder. Windows: VethuQ-Interactive-CLI-Setup.exe. Linux (Debian, Ubuntu): sudo apt install ./vethuq-cli_*.deb ./vethuq-interactive-cli_*.deb."
