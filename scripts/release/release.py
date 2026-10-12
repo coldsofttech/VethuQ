@@ -210,8 +210,9 @@ class Cli:
         shutil.copy(REPO_ROOT / "LICENSE", doc / "copyright")
         changelog = REPO_ROOT / "packages" / "cli" / "CHANGELOG.md"
         if changelog.is_file():
-            with gzip.open(doc / "changelog.gz", "wb", compresslevel=9, mtime=0) as handle:
-                handle.write(changelog.read_bytes())
+            with (doc / "changelog.gz").open("wb") as raw:
+                with gzip.GzipFile("", "wb", 9, raw, mtime=0) as handle:
+                    handle.write(changelog.read_bytes())
         debian = root / "DEBIAN"
         debian.mkdir()
         (debian / "control").write_text(
