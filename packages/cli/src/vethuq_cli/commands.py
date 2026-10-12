@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.text import Text
+from rich.live import Live
 
 from vethuq.enums import SortOrder, SourceSortBy
 from vethuq_cli.console import Theme, console
+from vethuq_cli.display import index_panel, search_panel, stats_panel
 from vethuq_cli.export import exportable
 from vethuq_cli.output import dump, facts, plain, say, table
 from vethuq_cli.state import State
@@ -333,31 +334,22 @@ def index_status(
 ) -> None:
     """Where the latest run is, and how long it has left."""
     status = client().index.status(wait=wait)
-    while live and status is not None and not status.finished and not State.json:
-        console.print(_line(status))
-        time.sleep(2.0)
-        status = client().index.status()
+    if live and status is not None and not status.finished and not State.json:
+        with Live(
+            index_panel(status, animated=True), console=console, refresh_per_second=4
+        ) as view:
+            while not status.finished:
+                time.sleep(2.0)
+                status = client().index.status() or status
+                view.update(index_panel(status, animated=True))
+        return
     if status is None:
         say("No index run yet.", style=Theme.DIM, data={"run": None})
         return
     if State.json:
         dump(status)
         return
-    console.print(_line(status))
-    facts(status.eta, title="Time left")
-
-
-def _line(status) -> Text:
-    run = status.run
-    state = "paused" if status.paused else "stopping" if status.stopping else plain(run.status)
-    if status.stalled:
-        state += " (stalled)"
-    return Text(
-        f"run {run.id} {state} · {run.files_processed}/{run.files_total} files"
-        f" · {run.pages_processed} pages · phase {status.phase or '-'}"
-        f" · workers {status.workers_active}",
-        style=Theme.LABEL,
-    )
+    console.print(index_panel(status))
 
 
 @index_app.command("pause")
@@ -471,18 +463,11 @@ def search_command(
     if State.json:
         dump(result)
         return
-    word = "match" if result.total == 1 else "matches"
-    console.print(f"{result.total} {word} (engine: {result.engine})", style=Theme.LABEL)
+    console.print(search_panel(result))
     if result.index_rebuilt:
         console.print("The search index was rebuilt first.", style=Theme.DIM)
     if result.pending:
         console.print("Some pages are still being indexed.", style=Theme.WARN)
-    for match in result.matches:
-        console.print(f"{match.file_path}  p.{match.page_number}", style="bold")
-        line = Text(match.before)
-        line.append(match.matched, style=Theme.HIT)
-        line.append(match.after)
-        console.print(line)
     if result.total > offset + len(result.matches):
         console.print(f"… more: use --offset {offset + limit}", style=Theme.DIM)
 
@@ -785,6 +770,11 @@ def stats_show(
     overview = client().stats.overview(
         group_by, source=_ident(source) if source else None, since=since, until=until
     )
+    if not State.json and State.export is None:
+        console.print(stats_panel(overview)) if overview.rows else say(
+            "Nothing has been read yet.", style=Theme.DIM
+        )
+        return
     table(
         overview.rows,
         ["key", "files", "pages", "native_pages", "ocr_pages", "confidence", "credits"],

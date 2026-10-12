@@ -155,3 +155,13 @@ def test_source_list_and_files_sort(run, run_json, docs):
     desc = [f["name"] for f in run_json("source", "files", "1", "--order", "desc")]
     assert desc == sorted(asc, reverse=True)
     assert run("source", "files", "1", "--sort-by", "bogus").exit_code != 0
+
+
+def test_rich_panels_for_search_index_and_stats(run, docs):
+    run("source", "add", str(docs))
+    run("index", "run")
+    found = run("search", "museum", "--engine", "like").output
+    assert "Search Results: " in found and "File: " in found and "Page: " in found
+    assert "Index Run" in run("index", "status").output
+    stats = run("stats", "show").output
+    assert "Statistics" in stats and "Total" in stats
