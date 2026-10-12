@@ -77,10 +77,13 @@ Source: "..\..\..\build\cli\vethuq\add-ons\*"; DestDir: "{app}\add-ons"; Flags: 
 Type: files; Name: "{app}\vethuqic.exe"
 Type: files; Name: "{app}\vethuqbs.exe"
 Type: files; Name: "{app}\vethuqw.exe"
-Type: filesandordirs; Name: "{app}\add-ons\background"
 Type: files; Name: "{app}\unins001.*"
 Type: files; Name: "{app}\unins002.*"
 Type: files; Name: "{app}\unins003.*"
+; Add-ons put their own folders in add-ons\ and their dependencies in lib\ (Inno shared files): they go
+; with VethuQ, so nothing is left behind if the command line is removed first.
+Type: filesandordirs; Name: "{app}\add-ons"
+Type: filesandordirs; Name: "{app}\lib"
 
 [Tasks]
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Command line:"; Flags: checkedonce

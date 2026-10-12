@@ -2,13 +2,17 @@
 ;   /DAddonName=xls            the add-on's id (the folder name in add-ons\)
 ;   /DAddonGuid=...            its AppId (derived from the name, so each add-on installs and uninstalls
 ;                              on its own)
-;   /DStageDir=...             the folder to install: the package, its dist-info (which holds the entry
-;                              point VethuQ finds it by) and any dependencies the command line does not
-;                              already carry
+;   /DStageDir=...             the add-on: its package and its dist-info (which holds the entry point
+;                              VethuQ finds it by), installed into <VethuQ>\add-ons\<name>\
+;   /DDepsDir=...              optional: the packages it needs that VethuQ does not already carry,
+;                              installed into the shared <VethuQ>\lib\ as shared files
 ;   /DMyAppVersion, /DMyAppNumericVersion
 ;
 ; The add-on goes into <VethuQ folder>\add-ons\<name>\, where VethuQ puts every folder on sys.path: no
-; PyInstaller step, the add-on is compiled modules and a few packages. VethuQ must be installed first
+; PyInstaller step, the add-on is compiled modules and a few packages. Its dependencies go into the
+; shared lib\ (the same place the default add-ons' dependencies are), at the versions pinned in
+; installer\addon\constraints.txt so every add-on agrees on one. They are Inno shared files: Windows
+; counts how many add-ons installed each file, and the last uninstall removes it. VethuQ must be installed first
 ; (the command line, the interactive shell or the desktop app): Setup says so and stops otherwise.
 ; Setup starts unelevated and asks "Install for all users" or "Install for me only", like the main
 ; installers; use the same choice as VethuQ was installed with so Setup can write to its folder.
@@ -67,6 +71,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}\add-ons\{#AddonName}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef DepsDir
+Source: "{#DepsDir}\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs sharedfile uninsnosharedfileprompt
+#endif
 
 [Code]
 const

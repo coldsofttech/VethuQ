@@ -174,12 +174,35 @@ anyone can download an add-on. (`vethuq-addon-api-vX.Y.Z` is the add-on API pack
 | Linux | `vethuq-addon-<name>_X.Y.Z_amd64.deb` | `/opt/vethuq/add-ons/<name>/`; `Pre-Depends: vethuq-cli` |
 
 An add-on is compiled modules (a `cp311-abi3` wheel) and a few small packages, so there is no PyInstaller
-step. `release.py` builds the wheel from the sibling VethuQ-premium checkout, then stages the wheel's
-package and dist-info (which holds the entry point VethuQ finds it by) and the packages it needs that VethuQ
-does not already carry: it takes the command line's own packages from `uv.lock` (`uv export --package
-vethuq-cli`), resolves the add-on's requirements with `uv pip compile`, and installs the difference with
-`uv pip install --no-deps --target`. For `xls` that is `olefile` and `xlrd`; numpy and Pillow are already
-in VethuQ. The add-on's version in VethuQ-premium must equal the tag's.
+step. `release.py` builds the wheel from the sibling VethuQ-premium checkout and installs it in two parts:
+
+- the add-on itself (its package and dist-info, which holds the entry point VethuQ finds it by) in
+  `<VethuQ>/add-ons/<name>/`, the unit you add or remove;
+- the packages it needs that VethuQ does not already carry in the **shared `<VethuQ>/lib/`**, where the
+  default add-ons' dependencies already live (`lib/` is on the import path, so a package dropped there is
+  imported like any other). The command line's own packages come from `uv.lock` (`uv export --package
+  vethuq-cli`) and are never repeated. For `xls` that is `olefile` and `xlrd`; numpy and Pillow are
+  already in VethuQ.
+
+One version of each package serves every add-on, so the versions are pinned in
+[`installer/addon/constraints.txt`](../installer/addon/constraints.txt): all the add-ons' requirements
+resolved together with the command line's pins. Regenerate it with
+`python scripts/release/release.py --add-on-constraints --premium ../VethuQ-premium` after changing an
+add-on's requirements or `uv.lock`; `release-add-on.yml` (and a test) fail when it is out of date, and
+the command fails, naming the packages, if two add-ons ever need incompatible versions. A package
+that both `docx` and `xlsx` need (`defusedxml`) is therefore installed once, and removed with the last
+add-on that needs it:
+
+- **Windows:** the files go in as Inno *shared files*, so Windows counts the installs.
+- **Linux:** dpkg cannot have two packages own one file, so the `.deb` carries the packages under
+  `/usr/share/vethuq-addon-<name>/deps/` and `postinst` moves each into `lib/` (or drops its copy if
+  another add-on already put it there), leaving a marker `lib/.addon-deps/<package>/<name>`. `prerm`
+  removes the marker and, when it was the last, the package. A file VethuQ itself put in `lib/` is never
+  counted and never removed.
+- Removing the command line removes `lib/` and `add-ons/` entirely (Inno `[UninstallDelete]`, and the
+  `vethuq-cli` `postrm`), so add-ons that are still installed leave nothing behind.
+
+The add-on's version in VethuQ-premium must equal the tag's.
 
 **VethuQ must be installed first.** On Windows Setup looks for the command line, the interactive shell or
 the desktop app (their install folders are in the registry) and stops with a message if none is there; it

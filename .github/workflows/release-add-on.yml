@@ -88,6 +88,11 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
+      - name: constraints.txt is current
+        # The versions every add-on shares in lib/: it must match the add-ons' requirements.
+        if: runner.os == 'Linux'
+        working-directory: work/VethuQ
+        run: uv run --no-project python scripts/release/release.py --add-on-constraints --check --premium ../VethuQ-premium
       - name: Build the installer
         working-directory: work/VethuQ
         shell: bash

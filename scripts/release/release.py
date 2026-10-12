@@ -29,12 +29,14 @@ No desktop app is built. One PyInstaller build makes both programs:
      `dist/VethuQ-Worker-Setup.exe`, or `dist/vethuq-worker_<version>_<arch>.deb` (depends on
      vethuq-cli; `/usr/bin/vethuq-worker` runs it).
   6. `--add-on --name NAME`: one add-on, no PyInstaller (compiled modules + a few packages).
-     The wheel is built from the sibling VethuQ-premium checkout (`--premium PATH`); its
-     dependencies that VethuQ does not already carry are staged beside it, and Inno Setup /
-     `dpkg-deb` pack that
-     into `dist/VethuQ-Addon-<name>-Setup.exe` or
-     `dist/vethuq-addon-<name>_<version>_<arch>.deb`. It installs into
-     `<VethuQ>/add-ons/<name>/` and refuses to run unless VethuQ is installed.
+     The wheel is built from the sibling VethuQ-premium checkout (`--premium PATH`) and installs
+     into `<VethuQ>/add-ons/<name>/`; the packages it needs that VethuQ does not already carry go
+     in the shared `<VethuQ>/lib/`, at the versions pinned in `installer/addon/constraints.txt`,
+     and are removed with the last add-on that needs them. Inno Setup / `dpkg-deb` pack it into
+     `dist/VethuQ-Addon-<name>-Setup.exe` or `dist/vethuq-addon-<name>_<version>_<arch>.deb`. It
+     refuses to run unless VethuQ is installed.
+     `--add-on-constraints` rewrites `installer/addon/constraints.txt` (with `--check`: fails when
+     it is out of date).
 
 `--version` is the release version (`1.2.0`, or `1.2.0-rc1` for a release candidate). `--dev` skips
 compression and reuses a PyInstaller build whose inputs haven't changed. Run it in an environment
@@ -52,6 +54,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 import uuid
 import zipfile
@@ -70,6 +73,7 @@ APP = BUILD / "vethuq"
 PLUGIN = BUILD / "background-plugin"
 UV = shutil.which("uv") or "uv"
 ADDON_INSTALLER = REPO_ROOT / "installer" / "addon"
+CONSTRAINTS = ADDON_INSTALLER / "constraints.txt"
 
 VERSION = re.compile(r"^(?P<release>\d+\.\d+\.\d+)(?:-?(?P<pre>rc\d+))?$")
 MAINTAINER = "coldsofttech <noreply@github.com>"
@@ -319,6 +323,16 @@ class Cli:
                 with gzip.GzipFile("", "wb", 9, raw, mtime=0) as handle:
                     handle.write(changelog.read_bytes())
 
+    # Add-ons put packages in lib/ and folders in add-ons/ that dpkg does not own: they go with
+    # VethuQ.
+    POSTRM = """#!/bin/sh
+set -e
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+    rm -rf /opt/vethuq/lib /opt/vethuq/add-ons
+    rmdir /opt/vethuq 2>/dev/null || true
+fi
+"""
+
     def deb(self) -> Path:
         arch = self.architecture()
         root = self.stage("deb")
@@ -333,6 +347,8 @@ class Cli:
         (root / "usr" / "bin" / "vethuq").symlink_to("/opt/vethuq/vethuq")
         self.changelog(root / "usr" / "share" / "doc" / "vethuq-cli", "cli")
         (root / "DEBIAN").mkdir()
+        (root / "DEBIAN" / "postrm").write_text(self.POSTRM, encoding="utf-8")
+        (root / "DEBIAN" / "postrm").chmod(0o755)
         (root / "DEBIAN" / "control").write_text(
             self.control(arch, self.installed_size_kb(root)), encoding="utf-8"
         )
@@ -591,10 +607,10 @@ class AddOn(Cli):
                 found[normalise(match[1])] = match[2]
         return found
 
-    def provided(self) -> dict[str, str]:
-        """The packages in the command line's build: `vethuq-cli` and, through `vethuq`, the default
-        add-ons and what they need. An add-on is installed beside that, so it ships the
-        rest."""
+    @staticmethod
+    def base_lines() -> list[str]:
+        """The command line's own packages as `name==version [; marker]` lines, from `uv.lock`:
+        `vethuq-cli` and, through `vethuq`, the default add-ons and what they need."""
         result = subprocess.run(  # noqa: S603, S607 - fixed argv
             [
                 UV,
@@ -611,7 +627,15 @@ class AddOn(Cli):
             check=True,
             cwd=REPO_ROOT,
         )
-        return self.pins(result.stdout)
+        return [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*==", line.strip())
+        ]
+
+    def provided(self) -> dict[str, str]:
+        """What VethuQ already carries. An add-on ships only the rest."""
+        return self.pins("\n".join(self.base_lines()))
 
     @staticmethod
     def requirements(wheel: Path) -> list[str]:
@@ -633,69 +657,118 @@ class AddOn(Cli):
 
     # ----- staging ------------------------------------------------------------------------
 
-    def stage_files(self, wheel: Path) -> Path:
-        """The folder that is installed: the add-on's package and dist-info, plus the packages it
-        needs that VethuQ does not carry (pinned by `uv pip compile`, installed without dependencies
-        so nothing VethuQ carries is repeated)."""
+    @staticmethod
+    def addon_requirements(premium: Path) -> list[str]:
+        """What every add-on needs besides VethuQ's own packages, without repeats."""
+        found: set[str] = set()
+        for pyproject in sorted((Path(premium) / "packages" / "add-ons").rglob("pyproject.toml")):
+            if "src" in pyproject.parts:
+                continue
+            project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {})
+            for requirement in project.get("dependencies", []):
+                if not normalise(re.split(r"[\s;\[<>=!~(]", requirement)[0]).startswith("vethuq"):
+                    found.add(requirement.strip())
+        return sorted(found)
+
+    CONSTRAINTS_HEADER = (
+        "# Generated by: python scripts/release/release.py --add-on-constraints (do not edit).\n"
+        "# One version of every package any add-on needs, resolved together with the command\n"
+        "# line's own pins (uv.lock), so add-ons installed side by side share one copy in\n"
+        "# <VethuQ>/lib.\n"
+        "# CI fails when this is out of date.\n"
+    )
+
+    @classmethod
+    def constraints_text(cls, premium: Path) -> str:
+        """All add-ons' requirements resolved together (for every platform) with the base's pins."""
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder) / "base.txt"
+            wanted = Path(folder) / "all.in"
+            base.write_text("\n".join(cls.base_lines()) + "\n", encoding="utf-8")
+            wanted.write_text("\n".join(cls.addon_requirements(premium)) + "\n", encoding="utf-8")
+            result = subprocess.run(  # noqa: S603 - fixed argv
+                [UV, "pip", "compile", "-q", "--no-header", "--no-annotate", "--universal"]
+                + ["-c", str(base), str(wanted)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        if result.returncode != 0:
+            raise ReleaseError(
+                "The add-ons' requirements cannot be resolved together:\n" + result.stderr.strip()
+            )
+        pins = sorted(line for line in result.stdout.splitlines() if "==" in line)
+        return cls.CONSTRAINTS_HEADER + "\n".join(pins) + "\n"
+
+    @classmethod
+    def write_constraints(cls, premium: Path, *, check: bool = False) -> bool:
+        """Rewrite `installer/addon/constraints.txt`; with `check`, say whether it is current."""
+        text = cls.constraints_text(premium)
+        current = CONSTRAINTS.read_text(encoding="utf-8") if CONSTRAINTS.is_file() else ""
+        if check:
+            return text == current
+        CONSTRAINTS.write_text(text, encoding="utf-8")
+        return True
+
+    def stage_files(self, wheel: Path) -> tuple[Path, Path | None]:
+        """Two folders: the add-on (its package and dist-info, which holds the entry point VethuQ
+        finds it by) for `add-ons/<name>/`, and the packages it needs that VethuQ does not carry
+        for the shared `lib/`. Those are pinned by `constraints.txt` (so every add-on agrees on one
+        version) and installed without dependencies, so nothing VethuQ carries is repeated."""
         folder = self.work / "stage"
         if folder.exists():
             shutil.rmtree(folder)
-        folder.mkdir(parents=True)
+        addon, deps = folder / "addon", folder / "deps"
+        addon.mkdir(parents=True)
         with zipfile.ZipFile(wheel) as archive:
-            archive.extractall(folder)  # noqa: S202 - our own wheel
-        needed = self.requirements(wheel)
-        if needed:
-            provided = self.provided()
-            (self.work / "requirements.in").write_text("\n".join(needed) + "\n", encoding="utf-8")
-            compiled = subprocess.run(  # noqa: S603, S607 - fixed argv
-                [
-                    UV,
-                    "pip",
-                    "compile",
-                    "--no-header",
-                    "--no-annotate",
-                    "-q",
-                    str(self.work / "requirements.in"),
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            extra = {n: v for n, v in self.pins(compiled.stdout).items() if n not in provided}
-            if extra:
-                lines = [f"{n}=={v}" for n, v in sorted(extra.items())]
-                (self.work / "requirements.txt").write_text(
-                    "\n".join(lines) + "\n", encoding="utf-8"
-                )
-                run(
-                    [
-                        UV,
-                        "pip",
-                        "install",
-                        "--no-deps",
-                        "--target",
-                        str(folder),
-                        "-r",
-                        str(self.work / "requirements.txt"),
-                    ]
-                )
-        for scripts in ("bin", "Scripts"):
-            shutil.rmtree(folder / scripts, ignore_errors=True)
-        for cache in folder.rglob("__pycache__"):
+            archive.extractall(addon)  # noqa: S202 - our own wheel
+        for cache in addon.rglob("__pycache__"):
             shutil.rmtree(cache)
-        if not list(folder.glob("*.dist-info")):
-            raise ReleaseError(f"The staged add-on has no dist-info: {folder}")
-        return folder
+        if not list(addon.glob("*.dist-info")):
+            raise ReleaseError(f"The staged add-on has no dist-info: {addon}")
+        needed = self.requirements(wheel)
+        if not needed:
+            return addon, None
+        if not CONSTRAINTS.is_file():
+            raise ReleaseError("constraints.txt is missing: run --add-on-constraints.")
+        provided = self.provided()
+        wanted = self.work / "requirements.in"
+        wanted.write_text("\n".join(needed) + "\n", encoding="utf-8")
+        compiled = subprocess.run(  # noqa: S603 - fixed argv
+            [UV, "pip", "compile", "--no-header", "--no-annotate", "-q", "-c", str(CONSTRAINTS)]
+            + [str(wanted)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if compiled.returncode != 0:
+            raise ReleaseError(
+                f"{self.dist_name} needs a package that constraints.txt does not allow: run "
+                f"--add-on-constraints.\n{compiled.stderr.strip()}"
+            )
+        extra = {n: v for n, v in self.pins(compiled.stdout).items() if n not in provided}
+        if not extra:
+            return addon, None
+        lines = [f"{n}=={v}" for n, v in sorted(extra.items())]
+        (self.work / "requirements.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        run(
+            [UV, "pip", "install", "--no-deps", "--target", str(deps)]
+            + ["-r", str(self.work / "requirements.txt")]
+        )
+        for scripts in ("bin", "Scripts"):
+            shutil.rmtree(deps / scripts, ignore_errors=True)
+        for cache in deps.rglob("__pycache__"):
+            shutil.rmtree(cache)
+        return addon, deps
 
     # ----- the installers -----------------------------------------------------------------
 
-    def windows(self, folder: Path) -> Path:
+    def windows(self, addon: Path, deps: Path | None) -> Path:
+        defines = [f"/DAddonName={self.name}", f"/DAddonGuid={self.guid}", f"/DStageDir={addon}"]
+        if deps is not None:
+            defines.append(f"/DDepsDir={deps}")
         return self.inno(
-            ADDON_INSTALLER / "vethuq-addon.iss",
-            f"VethuQ-Addon-{self.name}-Setup.exe",
-            f"/DAddonName={self.name}",
-            f"/DAddonGuid={self.guid}",
-            f"/DStageDir={folder}",
+            ADDON_INSTALLER / "vethuq-addon.iss", f"VethuQ-Addon-{self.name}-Setup.exe", *defines
         )
 
     PREINST = """#!/bin/sh
@@ -708,16 +781,66 @@ if [ "$1" = install ] || [ "$1" = upgrade ]; then
 fi
 """
 
-    def linux(self, folder: Path) -> Path:
+    # The shared packages in lib/ are counted by the add-ons that need them: a marker file
+    # lib/.addon-deps/<entry>/<add-on> per add-on, because dpkg cannot have two packages own one
+    # file. The last add-on to go takes the entry with it. Every path starts with a literal
+    # absolute folder, so nothing can expand to `/`.
+    POSTINST = """#!/bin/sh
+set -e
+mkdir -p /opt/vethuq/lib/.addon-deps
+if [ "$1" = configure ] && [ -d /usr/share/vethuq-addon-@NAME@/deps ]; then
+    for path in /usr/share/vethuq-addon-@NAME@/deps/*; do
+        [ -e "$path" ] || continue
+        entry="$(basename "$path")"
+        [ -n "$entry" ] || continue
+        if [ -e "/opt/vethuq/lib/$entry" ]; then
+            rm -rf "/usr/share/vethuq-addon-@NAME@/deps/$entry"
+            # Already there: ours to count only if another add-on put it there (not VethuQ itself).
+            [ -d "/opt/vethuq/lib/.addon-deps/$entry" ] || continue
+        else
+            mv "/usr/share/vethuq-addon-@NAME@/deps/$entry" "/opt/vethuq/lib/$entry"
+        fi
+        mkdir -p "/opt/vethuq/lib/.addon-deps/$entry"
+        : > "/opt/vethuq/lib/.addon-deps/$entry/@NAME@"
+    done
+fi
+"""
+
+    PRERM = """#!/bin/sh
+set -e
+if [ "$1" = remove ] && [ -d /opt/vethuq/lib/.addon-deps ]; then
+    for path in /opt/vethuq/lib/.addon-deps/*; do
+        entry="$(basename "$path")"
+        [ -n "$entry" ] || continue
+        [ -e "/opt/vethuq/lib/.addon-deps/$entry/@NAME@" ] || continue
+        rm -f "/opt/vethuq/lib/.addon-deps/$entry/@NAME@"
+        # The last add-on that needs it: take the shared package away.
+        if rmdir "/opt/vethuq/lib/.addon-deps/$entry" 2>/dev/null; then
+            rm -rf "/opt/vethuq/lib/$entry"
+        fi
+    done
+    rmdir /opt/vethuq/lib/.addon-deps 2>/dev/null || true
+fi
+"""
+
+    def linux(self, addon: Path, deps: Path | None) -> Path:
         arch = self.architecture()
         package = f"vethuq-addon-{self.name}"
         root = Cli.stage(f"deb-addon-{self.name}")
-        shutil.copytree(folder, root / "opt" / "vethuq" / "add-ons" / self.name, symlinks=True)
+        shutil.copytree(addon, root / "opt" / "vethuq" / "add-ons" / self.name, symlinks=True)
+        if deps is not None:
+            # Staged here, moved into the shared lib/ by postinst (so it exists once on disk).
+            shutil.copytree(deps, root / "usr" / "share" / package / "deps", symlinks=True)
         self.changelog_for(root / "usr" / "share" / "doc" / package, package)
         debian = root / "DEBIAN"
         debian.mkdir()
-        (debian / "preinst").write_text(self.PREINST, encoding="utf-8")
-        (debian / "preinst").chmod(0o755)
+        scripts = {"preinst": self.PREINST}
+        if deps is not None:
+            scripts["postinst"] = self.POSTINST.replace("@NAME@", self.name)
+            scripts["prerm"] = self.PRERM.replace("@NAME@", self.name)
+        for script, text in scripts.items():
+            (debian / script).write_text(text, encoding="utf-8")
+            (debian / script).chmod(0o755)
         control = self.control(
             arch,
             self.installed_size_kb(root),
@@ -741,9 +864,9 @@ fi
             raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
         wheel = self.build_wheel()
         self.check_version(wheel)
-        folder = self.stage_files(wheel)
+        addon, deps = self.stage_files(wheel)
         DIST.mkdir(exist_ok=True)
-        return [self.windows(folder) if sys.platform == "win32" else self.linux(folder)]
+        return [self.windows(addon, deps) if sys.platform == "win32" else self.linux(addon, deps)]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -757,6 +880,14 @@ def main(argv: list[str] | None = None) -> int:
         help="build the installer of one add-on (with --name); it installs into VethuQ's folder",
     )
     parser.add_argument("--name", help="the add-on to build with --add-on, e.g. xls")
+    parser.add_argument(
+        "--add-on-constraints",
+        action="store_true",
+        help="rewrite installer/addon/constraints.txt from the add-ons in --premium",
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="with --add-on-constraints: only say if it is current"
+    )
     parser.add_argument(
         "--premium",
         type=Path,
@@ -782,6 +913,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
     args = parser.parse_args(argv)
+    if args.add_on_constraints:
+        try:
+            current = AddOn.write_constraints(args.premium, check=args.check)
+        except (ReleaseError, subprocess.CalledProcessError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        if args.check and not current:
+            print(
+                "error: installer/addon/constraints.txt is out of date: run "
+                "scripts/release/release.py --add-on-constraints",
+                file=sys.stderr,
+            )
+            return 1
+        print("constraints.txt is current." if args.check else f"Wrote {CONSTRAINTS}")
+        return 0
     if args.add_on and not args.name:
         parser.error("--add-on needs --name, e.g. --add-on --name xls")
     if args.add_on:
