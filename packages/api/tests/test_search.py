@@ -209,3 +209,51 @@ class TestOpenOverHttp:
             bad = http.post("/api/os/open", json={"path": path}, base_url=origin, headers=HEADERS)
             assert bad.status_code == 422
         assert len(window.calls) == 2
+
+
+class TestPdfFile:
+    """The viewer's file route: a PDF of a source, ranges included, and nothing else."""
+
+    @pytest.fixture
+    def http(self, web_dist, library):
+        (library / "a" / "doc.pdf").write_bytes(b"%PDF-1.4\n" + b"x" * 100 + b"\n%%EOF\n")
+        (library / "outside.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        return test
+
+    def get(self, http, path, **headers):
+        return http.get(
+            "/api/files/pdf", query_string={"path": str(path)}, base_url=ORIGIN, headers=headers
+        )
+
+    def test_a_pdf_of_a_source_is_served_inline_and_by_range(self, http, library):
+        whole = self.get(http, library / "a" / "doc.pdf")
+        assert whole.status_code == 200 and whole.mimetype == "application/pdf"
+        assert whole.headers["Content-Disposition"] == "inline"
+        assert whole.headers["Cache-Control"] == "no-store"
+        assert whole.data.startswith(b"%PDF")
+        part = self.get(http, library / "a" / "doc.pdf", Range="bytes=0-7")
+        assert part.status_code == 206 and part.data == b"%PDF-1.4"
+
+    def test_anything_else_is_refused(self, http, library):
+        for path in (
+            library / "outside.pdf",  # outside every source
+            library / "a" / "report.md",  # not a PDF
+            library / "a" / "missing.pdf",
+            library / "a",
+        ):
+            assert self.get(http, path).status_code == 422, path
+        assert http.get("/api/files/pdf", base_url=ORIGIN).status_code == 422
+
+    def test_it_needs_the_session(self, web_dist, library):
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=VethuQCore(library / "x.db"))
+        allow_host(app, "127.0.0.1:5000")
+        bare = app.test_client().get(
+            "/api/files/pdf", query_string={"path": "x.pdf"}, base_url=ORIGIN
+        )
+        assert bare.status_code in (401, 403)

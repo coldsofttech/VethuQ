@@ -20,6 +20,7 @@ CONTENT_SECURITY_POLICY = "; ".join(
         "img-src 'self' data:",
         "font-src 'self' data:",
         "connect-src 'self'",
+        "worker-src 'self'",
         "object-src 'none'",
         "base-uri 'none'",
         "form-action 'self'",

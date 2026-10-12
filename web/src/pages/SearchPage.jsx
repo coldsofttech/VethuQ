@@ -12,7 +12,7 @@ import {
   tokens,
 } from '@fluentui/react-components';
 import { ArrowDownload20Regular } from '@fluentui/react-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
@@ -35,8 +35,19 @@ import { SearchBar } from '../search/SearchBar.jsx';
 import { useSearch } from '../search/useSearch.js';
 import { placeOf } from '../search/form.js';
 
+// pdf.js is large, so the preview loads when a PDF is first previewed.
+const PdfPreview = lazy(() => import('../search/pdf/PdfPreview.jsx'));
+
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM },
+  split: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+    gap: tokens.spacingHorizontalM,
+    alignItems: 'start',
+  },
+  side: { position: 'sticky', top: 0, height: '78vh', minHeight: 0 },
+  results: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM, minWidth: 0 },
   bar: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalS },
   grow: { flexGrow: 1 },
   muted: { color: tokens.colorNeutralForeground3 },
@@ -55,6 +66,7 @@ export function SearchPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [recent, setRecent] = useState(recentSearches);
   const [details, setDetails] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [reindexing, setReindexing] = useState(null);
   const search = useSearch();
 
@@ -128,9 +140,16 @@ export function SearchPage() {
         }
       },
       details: setDetails,
+      preview: (match) => {
+        const same = search.items.filter((m) => m.file_path === match.file_path);
+        const at = same.findIndex(
+          (m) => m.page_number === match.page_number && m.start === match.start,
+        );
+        setPreview({ path: match.file_path, index: Math.max(0, at) });
+      },
       reindex: setReindexing,
     }),
-    [platform.openFile, notify, navigate, sourceFor],
+    [platform.openFile, notify, navigate, sourceFor, search.items],
   );
 
   const exportAll = async (format) => {
@@ -152,6 +171,11 @@ export function SearchPage() {
       });
   };
 
+  const previewMatches = useMemo(
+    () => (preview ? search.items.filter((m) => m.file_path === preview.path) : []),
+    [preview, search.items],
+  );
+  const previewing = preview !== null && previewMatches.length > 0;
   const files = new Set(search.items.map((m) => m.file_path)).size;
   const pending = Object.entries(search.pending);
 
@@ -237,10 +261,32 @@ export function SearchPage() {
           (Similar, Meaning).
         </Text>
       )}
-      {search.items.length > 0 && (
-        <ResultsList matches={search.items} labels={labels} actions={actions} platform={platform} />
-      )}
-      <LoadMore more={search.hasMore} loading={search.loading} onMore={search.more} />
+      <div className={previewing ? styles.split : undefined}>
+        <div className={styles.results}>
+          {search.items.length > 0 && (
+            <ResultsList
+              matches={search.items}
+              labels={labels}
+              actions={actions}
+              platform={platform}
+              compact={previewing}
+            />
+          )}
+          <LoadMore more={search.hasMore} loading={search.loading} onMore={search.more} />
+        </div>
+        {previewing && (
+          <div className={styles.side}>
+            <Suspense fallback={<Spinner size="small" label="Opening the preview" />}>
+              <PdfPreview
+                matches={previewMatches}
+                index={preview.index}
+                onIndex={(index) => setPreview({ ...preview, index })}
+                onClose={() => setPreview(null)}
+              />
+            </Suspense>
+          </div>
+        )}
+      </div>
       <MatchDetails match={details} labels={labels} onClose={() => setDetails(null)} />
       <ConfirmDialog
         open={reindexing !== null}

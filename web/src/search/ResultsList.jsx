@@ -60,6 +60,7 @@ const useStyles = makeStyles({
     cursor: 'default',
     ':hover': { background: tokens.colorNeutralBackground1Hover },
   },
+  compact: { gridTemplateColumns: 'minmax(0, 1fr) 70px' },
   snippet: { overflowWrap: 'anywhere', lineHeight: tokens.lineHeightBase300 },
   hit: {
     background: tokens.colorPaletteYellowBackground2,
@@ -138,8 +139,13 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
       >
         Open
       </MenuItem>
-      <MenuItem icon={<Eye20Regular />} disabled title="The built-in preview is coming later">
-        Preview (coming soon)
+      <MenuItem
+        icon={<Eye20Regular />}
+        disabled={match.file_type !== 'pdf'}
+        title={match.file_type === 'pdf' ? undefined : 'Preview is for PDF files for now'}
+        onClick={() => actions.preview(match)}
+      >
+        Preview
       </MenuItem>
       {platform.reveal && (
         <MenuItem icon={<FolderOpen20Regular />} onClick={() => actions.reveal(match)}>
@@ -194,15 +200,15 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
  * page, the text around it, how it was found and how the page was read. A right-click on a file or a
  * match opens the menu; a double-click opens the file.
  */
-export function ResultsList({ matches, labels, actions, platform }) {
+export function ResultsList({ matches, labels, actions, platform, compact = false }) {
   const styles = useStyles();
   return (
     <div className={styles.table} role="table" aria-label="Search results">
-      <div className={styles.head} role="row">
+      <div className={mergeClasses(styles.head, compact && styles.compact)} role="row">
         <span role="columnheader">Match</span>
         <span role="columnheader">Page</span>
-        <span role="columnheader">Found by</span>
-        <span role="columnheader">Read</span>
+        {!compact && <span role="columnheader">Found by</span>}
+        {!compact && <span role="columnheader">Read</span>}
       </div>
       {group(matches).map((g) => (
         <div key={`${g.path}-${g.first.page_number}-${g.first.start}`} role="rowgroup">
@@ -240,17 +246,25 @@ export function ResultsList({ matches, labels, actions, platform }) {
           {g.matches.map((match) => (
             <Menu key={`${match.page_number}-${match.start}-${match.engine}`} openOnContext>
               <MenuTrigger disableButtonEnhancement>
-                <div className={styles.match} role="row" onDoubleClick={() => actions.open(match)}>
+                <div
+                  className={mergeClasses(styles.match, compact && styles.compact)}
+                  role="row"
+                  onDoubleClick={() => actions.open(match)}
+                >
                   <Snippet match={match} className={styles.snippet} hitClass={styles.hit} />
                   <Text role="cell">
                     {match.page_number} of {match.total_pages}
                   </Text>
-                  <span role="cell">
-                    <FoundBy match={match} labels={labels} />
-                  </span>
-                  <Text role="cell" className={styles.folder}>
-                    {match.source}
-                  </Text>
+                  {!compact && (
+                    <span role="cell">
+                      <FoundBy match={match} labels={labels} />
+                    </span>
+                  )}
+                  {!compact && (
+                    <Text role="cell" className={styles.folder}>
+                      {match.source}
+                    </Text>
+                  )}
                 </div>
               </MenuTrigger>
               <MenuPopover>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 
 from vethuq.errors import (
     CreditsError,
@@ -275,6 +275,23 @@ def register(api: Blueprint, core: Core, window: Any) -> None:
             raise ValueError("Only a file of a source that VethuQ reads can be opened here.")
         place = {name: _place(body, name) for name in ("page", "line", "column")}
         return jsonify(window.open_file(path, **place))
+
+    @api.get("/files/pdf")
+    def pdf_file() -> Response:
+        """A PDF of a source, for the in-app viewer (with ranges, so a page can be fetched alone).
+        The same guard as opening: a PDF VethuQ reads, inside one of the sources, nothing else."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not path.lower().endswith(".pdf")
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a PDF of a source that VethuQ reads can be shown here.")
+        response = send_file(
+            os.path.realpath(path), mimetype="application/pdf", conditional=True, max_age=0
+        )
+        response.headers["Content-Disposition"] = "inline"
+        return response
 
     @api.post("/os/reveal")
     def reveal() -> Response:

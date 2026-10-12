@@ -741,6 +741,95 @@ def credits_screens(browser: Browser, out: Path) -> None:
         process.wait(timeout=10)
 
 
+def make_pdf(path: Path, pages: list[list[str]]) -> None:
+    """A small PDF, one text object per line, built by hand (no PDF library needed)."""
+    objects: list[bytes] = []
+    kids = " ".join(f"{3 + 2 * n} 0 R" for n in range(len(pages)))
+    objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode())
+    font = 3 + 2 * len(pages)
+    for number, lines in enumerate(pages):
+        content = ["BT /F1 16 Tf 60 740 Td 22 TL"]
+        for line in lines:
+            content.append(f"({line}) Tj T*")
+        content.append("ET")
+        stream = "\n".join(content).encode()
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {4 + 2 * number} 0 R "
+            f"/Resources << /Font << /F1 {font} 0 R >> >> >>".encode()
+        )
+        objects.append(f"<< /Length {len(stream)} >>\nstream\n".encode() + stream + b"\nendstream")
+    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    start = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for offset in offsets:
+        out += f"{offset:010} 00000 n \n".encode()
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n".encode()
+    )
+    path.write_bytes(bytes(out))
+
+
+def preview_screens(browser: Browser, out: Path) -> None:
+    from vethuq import VethuQ
+
+    documents = Path(tempfile.mkdtemp(prefix="vethuq-pdf-"))
+    filler = ["Quarterly review", "Nothing about grain on this page.", "More filler text here."]
+    make_pdf(
+        documents / "harvest-report.pdf",
+        [
+            ["Harvest report", *filler],
+            ["Prices", "The price of wheat rose sharply in autumn.", "Barley stayed flat."],
+            ["Stocks", *filler],
+            ["Outlook", "Next year wheat is expected to recover.", "Rain is the main risk."],
+        ],
+    )
+    home = tempfile.mkdtemp(prefix="vethuq-ui-")
+    os.environ["VETHUQ_HOME"] = home
+    with VethuQ() as client:
+        client.settings.index.set_stability_check_seconds(0)
+        client.sources.create(documents)
+        client.index.run()
+    process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+    try:
+        page = open_page(browser, url)
+        page.get_by_role("tab", name="Search").first.click()
+        box = page.get_by_role("searchbox", name="Search text")
+        box.fill("wheat")
+        page.get_by_role("combobox", name="Engine").click()
+        page.get_by_role("option", name=re.compile("Contains")).click()
+        box.press("Enter")
+        table = page.get_by_role("table", name="Search results")
+        expect(table).to_be_visible(timeout=60000)
+        table.get_by_text("2 of 4").first.click(button="right")
+        page.get_by_role("menuitem", name="Preview").click()
+        panel = page.get_by_role("region", name="PDF preview")
+        expect(panel.get_by_text(re.compile("Match 1 of 2"))).to_be_visible()
+        expect(panel.locator("canvas").first).to_be_visible(timeout=30000)
+        page.wait_for_timeout(4000)
+        shot(page, out, "preview-first-match")
+        panel.get_by_role("button", name="Next match").click()
+        expect(panel.get_by_text(re.compile("Match 2 of 2"))).to_be_visible()
+        page.wait_for_timeout(1500)
+        shot(page, out, "preview-second-match")
+        marked = page.evaluate(
+            "() => [...document.querySelectorAll('.pdf-text-layer span')]"
+            ".filter(s => getComputedStyle(s).backgroundColor.startsWith('rgba(255, 196'))"
+            ".map(s => s.textContent)"
+        )
+        print("marked:", marked)
+        assert any("wheat" in text for text in marked), marked
+        print("preview checks passed")
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -748,11 +837,15 @@ def main() -> int:
     parser.add_argument("--executable", help="path to a Chromium binary")
     parser.add_argument("--only-sources", action="store_true")
     parser.add_argument("--only-credits", action="store_true")
+    parser.add_argument("--only-preview", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
+            if args.only_preview:
+                preview_screens(browser, args.out)
+                return 0
             only = args.only_sources or args.only_credits
             if not only:
                 run(browser, args.out)

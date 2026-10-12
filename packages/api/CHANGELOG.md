@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (PDF preview)
+- `GET /api/files/pdf?path=` serves a PDF of a source inline, with ranges, for the in-app viewer. Only a PDF VethuQ reads, inside an active source. The content security policy gains `worker-src 'self'` (pdf.js runs in a worker served by the app).
+
 ### Changed (opening at the place)
 - `POST /api/os/open` accepts `page`, `line` and `column` and returns `{opened, jumped, hint}`.
 
