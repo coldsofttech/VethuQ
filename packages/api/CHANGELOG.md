@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (CSV table preview)
+- `GET /api/files/csv?path=` returns a window of rows of a CSV file of a source, read from disk (the same rows VethuQ indexed: empty rows left out, the delimiter and encoding detected), with the header (guessed), column widths and, for `at_row`/`at_offset`, the position of the matching row and cell. `sort`, `dir`, `filter`, `column` and `header` shape the view on the server. Files over 64 MB are refused.
+
 ### Added (text preview)
 - `GET /api/files/text?document_id=&page=&start=&count=` returns a window of lines (at most 500) of a text or Markdown file as it was indexed, with the total, for the text preview. Lines over 10,000 characters are clipped.
 

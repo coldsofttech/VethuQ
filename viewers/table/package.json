@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/table-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only table for large CSV data: shows only the rows in view, loads the rest as it is scrolled; resizable and sortable columns",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

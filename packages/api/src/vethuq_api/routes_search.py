@@ -28,6 +28,18 @@ def register(api: Blueprint, core: Core) -> None:
         except LookupError as error:
             return jsonify(error=str(error)), 404
 
+    @api.get("/files/csv")
+    def csv_window() -> Response:
+        """A window of rows of a CSV file of a source, read from disk, for the table preview."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_csv(path)
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a CSV file of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().csv_window(path, request.args))
+
     # A search is read-only; it is a POST only because a query can be long and has many parts.
     @api.post("/search/run")
     def search_run() -> Response:

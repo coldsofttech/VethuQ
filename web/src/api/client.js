@@ -376,6 +376,13 @@ export const api = {
      * @returns {Promise<{total: number, start: number, lines: string[], file_name: string}>}
      */
     textWindow: (params, signal) => request(`/api/files/text${query(params)}`, { signal }),
+    /**
+     * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
+     * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,
+     *   filter?: string, column?: number, header?: number, at_row?: number, at_offset?: number}} params
+     * @returns {Promise<object>}
+     */
+    csvWindow: (params, signal) => request(`/api/files/csv${query(params)}`, { signal }),
   },
   settings: {
     /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */

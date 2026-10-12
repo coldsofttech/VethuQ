@@ -76,6 +76,7 @@ export function forgetSearches() {
  */
 export const placeOf = (match) => {
   if (match.file_type === 'pdf' && match.page_number) return { page: match.page_number };
+  if (match.file_type === 'csv') return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
     return match.column != null ? { line: match.line, column: match.column } : { line: match.line };
   }
@@ -89,5 +90,5 @@ export const describePlace = (place) => {
   return null;
 };
 
-/** The file types the preview can show: PDF, and text or Markdown. */
-export const canPreview = (match) => ['pdf', 'txt', 'markdown'].includes(match.file_type);
+/** The file types the preview can show: PDF, text, Markdown and CSV. */
+export const canPreview = (match) => ['pdf', 'txt', 'markdown', 'csv'].includes(match.file_type);

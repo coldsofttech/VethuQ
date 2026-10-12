@@ -79,7 +79,8 @@ class SearchMatch:
     file_type: str | None = None  # what the file is read as (`pdf`, `docx`, ...)
     # Where the match is in a plain-text file (text, Markdown, CSV), counting from 1; None for files
     # whose pages are not the file's own lines (a PDF's page is `page_number`). For CSV the line is
-    # the row and there is no column (the text is shown with the fields spread out).
+    # the Nth non-empty row and the column counts in that row's indexed text (its non-empty cells
+    # joined by " | "), not in the file's own row, which can have empty cells and quoting.
     line: int | None = None
     column: int | None = None
 
@@ -415,9 +416,7 @@ class Search:
                         )
                     before = texts[key][: match.start]
                     line = before.count("\n") + 1
-                    column = (
-                        None if file_type == "csv" else match.start - (before.rfind("\n") + 1) + 1
-                    )
+                    column = match.start - (before.rfind("\n") + 1) + 1
                 out.append(
                     replace(SearchMatch._from(match), file_type=file_type, line=line, column=column)
                 )

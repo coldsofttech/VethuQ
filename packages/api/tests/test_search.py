@@ -310,3 +310,68 @@ class TestTextWindow:
 
     def test_only_text_and_markdown_files(self, http):
         assert self.window(http, document_id=http.docs["data.csv"]).status_code == 422
+
+
+class TestCsvTable:
+    @pytest.fixture
+    def http(self, web_dist, library):
+        rows = "\n".join(f"name {n},{n * 3}" for n in range(1, 301))
+        (library / "a" / "table.csv").write_text(f"name,qty\n{rows}\n", encoding="utf-8")
+        (library / "a" / "odd.csv").write_text("id;note\n1;wheat here\n\n2;x\n", encoding="utf-8")
+        (library / "outside.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+        core = VethuQCore(library / "vethuq.db")
+        client = core._vethuq()
+        client.sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="table.csv", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/csv", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def test_a_window_of_rows_with_the_header_and_sizes(self, http):
+        reply = self.get(http, start=10, count=3).get_json()
+        assert reply["total"] == 300 and reply["all"] == 300 and reply["header"] == ["name", "qty"]
+        assert reply["header_detected"] is True and reply["delimiter"] == ","
+        assert reply["rows"] == [["name 11", "33"], ["name 12", "36"], ["name 13", "39"]]
+        assert reply["numbers"] == [12, 13, 14]  # the header is row 1
+        assert reply["columns"] == 2 and len(reply["widths"]) == 2
+
+    def test_sorting_filtering_and_the_header_switch(self, http):
+        down = self.get(http, sort=1, dir="desc", count=2).get_json()
+        assert down["rows"][0] == ["name 300", "900"]
+        found = self.get(http, **{"filter": "name 29", "column": 0}).get_json()
+        assert found["total"] == 11 and found["all"] == 300
+        plain = self.get(http, header=0, count=1).get_json()
+        assert (
+            plain["header"] is None and plain["rows"] == [["name", "qty"]] and plain["total"] == 301
+        )
+
+    def test_where_a_match_is(self, http):
+        # Row 3 of odd.csv is "2;x" (the empty row is not counted): indexed as "2 | x".
+        reply = self.get(http, "odd.csv", at_row=3, at_offset=5).get_json()
+        assert reply["target"] == {"row_number": 3, "index": 1, "column": 1}
+        assert reply["numbers"] == [2, 3]
+        sorted_ = self.get(http, "table.csv", sort=1, dir="desc", at_row=2, at_offset=1).get_json()
+        assert sorted_["target"]["index"] == 299  # the smallest quantity is last
+
+    def test_only_a_csv_of_a_source(self, http):
+        assert self.get(http, "table.csv").status_code == 200
+        assert (
+            http.get(
+                "/api/files/csv",
+                query_string={"path": str(http.library / "outside.csv")},
+                base_url=ORIGIN,
+            ).status_code
+            == 422
+        )
+        assert self.get(http, "notes.txt").status_code == 422
+        assert self.get(http, "missing.csv").status_code == 422
+        for bad in ({"dir": "up"}, {"start": "x"}, {"count": 0}, {"header": "2"}):
+            assert self.get(http, **bad).status_code == 422, bad

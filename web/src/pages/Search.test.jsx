@@ -549,4 +549,142 @@ describe('Search', () => {
       expect(await within(panel).findByText(/not in the index/)).toBeInTheDocument();
     });
   });
+
+  describe('the table preview', () => {
+    const TABLE = {
+      total: 3,
+      all: 3,
+      start: 0,
+      rows: [
+        ['Ada', '10'],
+        ['Grace', '20'],
+        ['Alan', '30'],
+      ],
+      numbers: [2, 3, 4],
+      header: ['name', 'qty'],
+      header_detected: true,
+      columns: 2,
+      widths: [8, 4],
+      delimiter: ',',
+      encoding: 'utf-8',
+      file_name: 'people.csv',
+      target: { row_number: 3, index: 1, column: 0 },
+    };
+    const CSV = {
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'people.csv',
+          file_path: '/docs/people.csv',
+          file_type: 'csv',
+          document_id: 5,
+          total_pages: 1,
+          page_number: 1,
+          matched: 'Grace',
+          line: 3,
+          column: 5,
+        }),
+      ],
+    };
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(280);
+    });
+
+    const open = async () => {
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Table preview' });
+    };
+
+    const requests = (fetchMock) =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((u) => u.startsWith('/api/files/csv'))
+        .map((u) => new URL(u, 'http://x').searchParams);
+
+    const show = async (extra = {}) => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': CSV,
+        'GET /api/files/csv': TABLE,
+        ...extra,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('grace{Enter}');
+      return { fetchMock, panel: await open() };
+    };
+
+    it('opens on the matching row with the cell and the words marked', async () => {
+      const { fetchMock, panel } = await show();
+      expect(within(panel).getByText(/Match 1 of 1 · row 3/)).toBeInTheDocument();
+      expect(await within(panel).findByRole('columnheader', { name: /name/ })).toBeInTheDocument();
+      expect(await within(panel).findByText('Ada')).toBeInTheDocument();
+      expect(panel.querySelector('mark').textContent).toBe('Grace');
+      expect(within(panel).getByText('3 rows')).toBeInTheDocument();
+      const first = requests(fetchMock)[0];
+      expect(first.get('path')).toBe('/docs/people.csv');
+      expect([first.get('at_row'), first.get('at_offset')]).toEqual(['3', '5']);
+      expect(within(panel).getByRole('switch', { name: 'First row is header' })).toBeChecked();
+    });
+
+    it('sorts by a column from its header: ascending, then descending, then off', async () => {
+      const { fetchMock, panel } = await show();
+      const head = await within(panel).findByRole('button', { name: /name/ });
+      await userEvent.click(head);
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('sort')).toBe('0'));
+      expect(requests(fetchMock).at(-1).get('dir')).toBeNull();
+      await userEvent.click(within(panel).getByRole('button', { name: /name/ }));
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('dir')).toBe('desc'));
+      await userEvent.click(within(panel).getByRole('button', { name: /name/ }));
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('sort')).toBeNull());
+    });
+
+    it('filters the rows in every column or one, and shows how many are left', async () => {
+      const { fetchMock, panel } = await show({
+        'GET /api/files/csv': {
+          ...TABLE,
+          total: 1,
+          target: { row_number: 3, index: 0, column: 0 },
+        },
+      });
+      await userEvent.type(
+        await within(panel).findByRole('textbox', { name: 'Filter rows' }),
+        'gr',
+      );
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('filter')).toBe('gr'));
+      expect(await within(panel).findByText('1 of 3 rows')).toBeInTheDocument();
+      await userEvent.selectOptions(
+        within(panel).getByRole('combobox', { name: 'Filter column' }),
+        'qty',
+      );
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('column')).toBe('1'));
+      await userEvent.click(within(panel).getByRole('button', { name: 'Clear the filter' }));
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('filter')).toBeNull());
+    });
+
+    it('treats the first row as data when the header switch is turned off', async () => {
+      const { fetchMock, panel } = await show();
+      await userEvent.click(
+        await within(panel).findByRole('switch', { name: 'First row is header' }),
+      );
+      await waitFor(() => expect(requests(fetchMock).at(-1).get('header')).toBe('0'));
+    });
+
+    it('says why the table could not be shown, and closes', async () => {
+      const { panel } = await show({
+        'GET /api/files/csv': Response.json(
+          { error: 'This file is 90 MB, too large to preview.' },
+          { status: 422 },
+        ),
+      });
+      expect(await within(panel).findByText(/too large to preview/)).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Close preview' }));
+      expect(screen.queryByRole('region', { name: 'Table preview' })).not.toBeInTheDocument();
+    });
+  });
 });

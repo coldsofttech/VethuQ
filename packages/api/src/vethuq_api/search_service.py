@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
+
+from vethuq_api.csv_rows import CsvCache, clip
 
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 50
@@ -19,6 +22,7 @@ TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
 TEXT_KEEP_SECONDS = 60.0
 TEXT_KEEP_FILES = 3
+_CSV_NUMBERS = frozenset({"start", "count", "sort", "column", "at_row", "at_offset"})
 
 
 def _words(value: object, name: str) -> list[str] | None:
@@ -68,6 +72,7 @@ class SearchService:
         self._client = client
         self._texts: dict[tuple[int, int], tuple[float, Any, list[str]]] = {}
         self._texts_lock = threading.Lock()
+        self._csv = CsvCache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
@@ -89,6 +94,67 @@ class SearchService:
             for old in sorted(self._texts, key=lambda k: self._texts[k][0])[:-TEXT_KEEP_FILES]:
                 del self._texts[old]
         return page, lines
+
+    # ----- a CSV file as a table --------------------------------------------------------------
+
+    def is_csv(self, path: str) -> bool:
+        spec = self._client().file_types.get("csv")
+        return spec is not None and path.lower().endswith(tuple(spec.extensions))
+
+    def csv_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
+        """`count` rows of a CSV file from row `start` of the view (filtered, then sorted), with
+        the header, the sizes and, when asked, where the matching row and cell are in the view."""
+        arg = {k: _whole(v, k) for k, v in query.items() if k in _CSV_NUMBERS}
+        start = _number(arg.get("start"), "start", 0)
+        count = min(_number(arg.get("count"), "count", TEXT_DEFAULT_LINES, 1), TEXT_MAX_LINES)
+        sort = _number(arg.get("sort"), "sort", None)
+        column = _number(arg.get("column"), "column", None)
+        at_row = _number(arg.get("at_row"), "at_row", None, 1)
+        at_offset = _number(arg.get("at_offset"), "at_offset", None, 1)
+        direction = query.get("dir", "asc")
+        if direction not in ("asc", "desc"):
+            raise ValueError("dir is asc or desc.")
+        needle = query.get("filter", "")
+        if not isinstance(needle, str):
+            raise ValueError("filter is text.")
+        file = self._csv.get(path)
+        flag = query.get("header")
+        if flag not in (None, "", "0", "1"):
+            raise ValueError("header is 1 or 0.")
+        header = file.header_detected if flag in (None, "") else flag == "1"
+        header = header and len(file.rows) > 0
+        ids = file.view(header, sort, direction == "desc", needle, column)
+        pad = file.columns
+        rows = [
+            [clip(c) for c in file.rows[i]] + [""] * (pad - len(file.rows[i]))
+            for i in ids[start : start + count]
+        ]
+        target = None
+        if at_row is not None and 0 < at_row <= len(file.rows):
+            row_index = at_row - 1
+            try:
+                position = ids.index(row_index)
+            except ValueError:
+                position = None
+            cell = file.cell_at(file.rows[row_index], at_offset) if at_offset else None
+            target = {"row_number": at_row, "index": position, "column": cell}
+        return {
+            "total": len(ids),
+            "all": len(file.rows) - (1 if header else 0),
+            "start": start,
+            "rows": rows,
+            "numbers": [i + 1 for i in ids[start : start + count]],
+            "header": [clip(c) for c in file.rows[0]] + [""] * (pad - len(file.rows[0]))
+            if header
+            else None,
+            "header_detected": file.header_detected,
+            "columns": pad,
+            "widths": file.widths(ids),
+            "delimiter": file.delimiter,
+            "encoding": file.encoding,
+            "file_name": os.path.basename(path),
+            "target": target,
+        }
 
     def text_window(self, query: Mapping[str, Any]) -> dict[str, object]:
         """`count` lines of a stored text from line `start` (0-based), and how many lines there are.

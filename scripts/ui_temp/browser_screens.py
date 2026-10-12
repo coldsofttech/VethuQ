@@ -797,6 +797,12 @@ def preview_screens(browser: Browser, out: Path) -> None:
         ),
         encoding="utf-8",
     )
+    # A long table, with one rare name in it.
+    people = ["id,name,city,balance"]
+    for n in range(1, 5001):
+        name = "Quillon Zephyr" if n == 2345 else f"Person {n:04}"
+        people.append(f"{n},{name},{('Paris', 'Oslo', 'Lima', 'Pune')[n % 4]},{(n * 37) % 1000}.50")
+    (documents / "people.csv").write_text("\n".join(people), encoding="utf-8")
     home = tempfile.mkdtemp(prefix="vethuq-ui-")
     os.environ["VETHUQ_HOME"] = home
     with VethuQ() as client:
@@ -845,6 +851,22 @@ def preview_screens(browser: Browser, out: Path) -> None:
         shot(page, out, "preview-text")
         top = text.get_by_role("table").evaluate("e => e.scrollTop")
         assert top > 900000, top
+        # The table preview: the matching cell in a long table, then sort and filter.
+        box.fill("Quillon")
+        box.press("Enter")
+        expect(table.get_by_text("people.csv").first).to_be_visible(timeout=60000)
+        table.get_by_text("1 of 1").first.click(button="right")
+        page.get_by_role("menuitem", name="Preview").click()
+        grid = page.get_by_role("region", name="Table preview")
+        expect(grid.locator("mark")).to_have_text("Quillon")
+        page.wait_for_timeout(800)
+        shot(page, out, "preview-table")
+        grid.get_by_role("button", name=re.compile("^name")).click()
+        grid.get_by_role("button", name=re.compile("^name")).click()
+        grid.get_by_role("textbox", name="Filter rows").fill("pune")
+        page.wait_for_timeout(1200)
+        expect(grid.get_by_text(re.compile(r"of 5,000 rows"))).to_be_visible()
+        shot(page, out, "preview-table-sorted-filtered")
         print("preview checks passed")
     finally:
         process.terminate()

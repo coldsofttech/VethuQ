@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js .",
+    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../table && node ../../web/node_modules/eslint/bin/eslint.js .",
     "format": "prettier --write . ../viewers",
     "format:check": "prettier --check . ../viewers",
     "test": "vitest run"
@@ -19,6 +19,7 @@
   "dependencies": {
     "@fluentui/react-components": "^9.74.9",
     "@fluentui/react-icons": "^2.0.344",
+    "@vethuq/table-viewer": "file:../viewers/table",
     "@vethuq/text-viewer": "file:../viewers/text",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.0",

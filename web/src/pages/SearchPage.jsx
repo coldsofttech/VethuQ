@@ -38,6 +38,9 @@ import { placeOf } from '../search/form.js';
 // pdf.js is large, so the previews load when a file is first previewed.
 const PdfPreview = lazy(() => import('../search/pdf/PdfPreview.jsx'));
 const TextPreview = lazy(() => import('../search/text/TextPreview.jsx'));
+const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
+
+const PREVIEWS = { pdf: PdfPreview, csv: TablePreview, txt: TextPreview, markdown: TextPreview };
 
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM },
@@ -177,7 +180,7 @@ export function SearchPage() {
     [preview, search.items],
   );
   const previewing = preview !== null && previewMatches.length > 0;
-  const Preview = previewMatches[0]?.file_type === 'pdf' ? PdfPreview : TextPreview;
+  const Preview = PREVIEWS[previewMatches[0]?.file_type] ?? TextPreview;
   const files = new Set(search.items.map((m) => m.file_path)).size;
   const pending = Object.entries(search.pending);
 

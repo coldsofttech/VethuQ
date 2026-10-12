@@ -25,7 +25,13 @@ export default defineConfig({
   resolve: {
     // The text viewer lives outside web/ (viewers/text), which has no node_modules of its own: have
     // React resolved from here, and once.
-    dedupe: ['react', 'react-dom', '@testing-library/react', '@testing-library/dom'],
+    dedupe: [
+      'react',
+      'react-dom',
+      '@testing-library/react',
+      '@testing-library/dom',
+      '@testing-library/user-event',
+    ],
   },
   server: { fs: { allow: ['..'] } },
   build: {
