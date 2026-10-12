@@ -10,7 +10,7 @@ import {
   tokens,
 } from '@fluentui/react-components';
 import { Dismiss16Regular, Search16Regular } from '@fluentui/react-icons';
-import { TableViewer } from '@vethuq/table-viewer';
+import { TableViewer } from '@vethuq/csv-viewer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { ToolButton } from '../../components/ToolButton.jsx';

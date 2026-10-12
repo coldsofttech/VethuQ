@@ -1,4 +1,4 @@
-# @vethuq/table-viewer
+# @vethuq/csv-viewer
 
 A read-only table for large data (VethuQ's CSV preview). Like `viewers/text` it lives outside `web/`,
 knows nothing about VethuQ or its API, and has no dependency but React (a peer).
