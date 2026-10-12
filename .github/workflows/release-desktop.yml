@@ -1,0 +1,155 @@
+# Builds the VethuQ desktop application's installer when `vethuq-desktop-vX.Y.Z` is pushed:
+#
+#   Windows   VethuQ-Desktop-Setup.exe     PyInstaller (vethuqd.exe, no console) + Inno Setup
+#
+# Windows only (the window is WebView2). It installs into the folder of the command line
+# (vethuq-cli), reusing its lib/ and add-ons/, so the same build also makes the CLI installer; the
+# smoke test installs both, CLI first. The React interface (web/) is built in and frozen into lib/.
+# Add `-rcN` for a release candidate: it is attached to a GitHub prerelease. Nothing goes to PyPI. The free add-ons
+# come from the sibling VethuQ-premium checkout, and the compiled `vethuq_entitlements` runtime from
+# the private VethuQ-entitlements release pinned in packages/core/ENTITLEMENTS_VERSION (both read
+# with PREMIUM_READ_TOKEN, as in release.yml). See docs/releasing.md.
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - "vethuq-desktop-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install packaging
+      - id: plan
+        run: python scripts/release/plan.py "$GITHUB_REF_NAME"
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#vethuq-desktop-v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: windows-latest
+    steps:
+      # The three repositories sit side by side, as the workspace's path sources expect.
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          fetch-depth: 0 # hatch-vcs reads the tag
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: work/VethuQ/web/package-lock.json
+      - name: Test and build the interface
+        working-directory: work/VethuQ/web
+        shell: bash
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: Install the command line, the desktop application and the default add-ons
+        working-directory: work/VethuQ
+        shell: bash
+        run: |
+          uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
+          uv pip install "pyinstaller>=6.10"
+      - name: Install the compiled entitlements runtime
+        working-directory: work/VethuQ
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PREMIUM_READ_TOKEN }}
+        run: |
+          version="$(tr -d '[:space:]' < packages/core/ENTITLEMENTS_VERSION)"
+          gh release download "vethuq-entitlements-v${version}" \
+            --repo coldsofttech/VethuQ-entitlements --dir entitlements
+          (cd entitlements && sha256sum --check SHA256SUMS)
+          uv pip install --no-deps --find-links entitlements vethuq-entitlements
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build the installers
+        working-directory: work/VethuQ
+        shell: bash
+        run: uv run --no-sync python scripts/release/release.py --cli --desktop --version "${{ needs.plan.outputs.version }}"
+
+      - name: Smoke test
+        working-directory: work/VethuQ
+        shell: pwsh
+        run: |
+          # The application goes into the command line's folder, so the command line comes first.
+          $dir = "$env:RUNNER_TEMP\vethuq"
+          Start-Process -Wait dist\VethuQ-CLI-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER","/MERGETASKS=!addtopath","/DIR=$dir"
+          Start-Process -Wait dist\VethuQ-Desktop-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER"
+          if (-not (Test-Path "$dir\vethuqd.exe")) { throw "vethuqd.exe is not beside vethuq.exe" }
+          if (-not (Test-Path "$dir\vethuq.exe")) { throw "the command line is gone" }
+          if (-not (Test-Path "$dir\lib\vethuq_desktop\web\index.html")) { throw "the interface is not in the build" }
+          # No window on a runner: serve only, fetch the page, stop.
+          $out = "$env:RUNNER_TEMP\vethuqd.out"
+          $proc = Start-Process -PassThru -NoNewWindow -RedirectStandardOutput $out "$dir\vethuqd.exe" -ArgumentList "--no-window"
+          $url = $null
+          for ($i = 0; $i -lt 60 -and -not $url; $i++) {
+            Start-Sleep -Milliseconds 500
+            if ((Test-Path $out) -and (Get-Content $out -Raw)) { $url = ((Get-Content $out -Raw) | ConvertFrom-Json).url }
+          }
+          if (-not $url) { Stop-Process $proc -Force; throw "vethuqd did not print its address" }
+          try {
+            $page = Invoke-WebRequest -UseBasicParsing $url
+            if ($page.StatusCode -ne 200) { throw "the page answered $($page.StatusCode)" }
+          } finally {
+            Stop-Process $proc -Force
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: work/VethuQ/dist/VethuQ-Desktop-Setup.exe
+          if-no-files-found: error
+
+  github-release:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "${{ needs.plan.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}" \
+            --title "VethuQ desktop ${{ needs.plan.outputs.version }}" \
+            --notes "The VethuQ desktop application (Windows 11). Install the VethuQ command line first (same release): the application installs into the same folder. Run VethuQ-CLI-Setup.exe, then VethuQ-Desktop-Setup.exe."

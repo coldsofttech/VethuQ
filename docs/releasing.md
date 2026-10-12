@@ -13,7 +13,7 @@ and come from the tag (hatch-vcs).
 
 Add `-rcN` (`vethuq-v1.0.0-rc1`) for a release candidate: it goes to TestPyPI only.
 
-The command line, the interactive shell, the background service, the worker, and each add-on and bundle ship as installers: see
+The command line, the interactive shell, the background service, the worker, the desktop application, and each add-on and bundle ship as installers: see
 [Command-line installers](#command-line-installers).
 
 ## What the workflow does (`.github/workflows/release.yml`)
@@ -81,7 +81,7 @@ downloaded the first time OCR runs.
 Build one locally (Windows needs Inno Setup's `iscc` on PATH; Linux needs `dpkg-deb`), from a workspace
 next to a `VethuQ-premium` checkout, with the compiled `vethuq_entitlements` installed:
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
     uv pip install "pyinstaller>=6.10"
     uv run --no-sync python scripts/release/release.py --cli --version 1.2.0
 
@@ -107,8 +107,31 @@ PyInstaller version) must equal the id the shell's installer was built with. So 
 same commit or at least the same `uv.lock`. Uninstalling the command line removes `vethuqic` too. The
 Windows shell's own uninstaller removes only what it added (`vethuqic.exe`).
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
     uv run --no-sync python scripts/release/release.py --cli --interactive-cli --version 1.2.0
+
+### The desktop application
+
+`vethuq-desktop-vX.Y.Z` (`-rcN` for a release candidate) builds the desktop application, `vethuqd.exe`,
+with `.github/workflows/release-desktop.yml`. Windows only: the window is pywebview over WebView2
+(included in Windows 11). Like the shell it installs **into the command line's folder** on the shared
+`lib/` and `add-ons/`, and needs the command line installed first, from the same build (`runtime-id.txt`).
+
+| Platform | File | Installs |
+|---|---|---|
+| Windows | `VethuQ-Desktop-Setup.exe` | `vethuqd.exe` (a GUI program, no console), a Start menu entry, an optional desktop shortcut |
+
+The React interface (`web/`) is built first (`npm ci && npm run build`, done by `release.py` when
+`web/dist` is missing) and frozen into `lib/vethuq_desktop/web`; the program serves it from a local
+port and shows it in the window. Every Windows build of the shared folder includes `vethuqd.exe` when
+`vethuq-desktop` is installed, which is why the other release workflows sync it too: the CLI's `lib/`
+must hold what the desktop application needs. Linux has no desktop build.
+
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
+    uv run --no-sync python scripts/release/release.py --cli --desktop --version 1.2.0
+
+`vethuqd.exe --no-window` serves the interface without a window and prints its address; the release
+smoke test uses it.
 
 ### The background service
 
@@ -133,7 +156,7 @@ The `vethuq background ...` commands (install, uninstall, start, stop, pause, re
 there, so they appear once this is installed. Uninstalling the command line removes `vethuqbs.exe` too, so
 uninstall the service first (the background service's own uninstaller does).
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
     uv pip install "pywin32>=306"        # Windows only
     uv run --no-sync python scripts/release/release.py --background-service --version 1.2.0
 
@@ -158,7 +181,7 @@ in the installers; `bake-models` downloads them, and `VETHUQ_MODELS` points the 
 nothing to configure at install time and no service to clean up; uninstalling the command line removes
 `vethuqw.exe` too.
 
-    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+    uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
     uv run --no-sync python scripts/release/release.py --worker --version 1.2.0
 
 ### Add-ons

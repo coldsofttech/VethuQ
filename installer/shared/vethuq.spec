@@ -1,12 +1,14 @@
-# PyInstaller spec for the VethuQ command line, its interactive shell, its background service and its
-# worker (Windows and Linux).
+# PyInstaller spec for the VethuQ command line, its interactive shell, its background service, its
+# worker (Windows and Linux) and its desktop application (Windows only).
 #
-# Four executables in one folder (build/cli/vethuq/), sharing one lib/ and one add-ons/:
+# Up to five executables in one folder (build/cli/vethuq/), sharing one lib/ and one add-ons/:
 #
 #   vethuq(.exe)    the command line
 #   vethuqic(.exe)  the interactive shell (arrow-key menus over the same commands)
 #   vethuqbs(.exe)  the background service (works the index queue; a Windows service or systemd unit)
 #   vethuqw(.exe)   the worker (reads a job's pages for a GitHub runner: `vethuqw run --job-id ...`)
+#   vethuqd.exe     the desktop application (a window, no console; Windows only, built when
+#                   vethuq-desktop is installed; its React interface is frozen into lib/)
 #   lib/            the Python runtime and every dependency (Paddle, rich, SQLAlchemy, ...)
 #   add-ons/        the default add-ons, one folder each (pdf/, like/, ...); see addons_hook.py
 #
@@ -21,7 +23,9 @@
 # The entry scripts sit with their packages: packages/cli/installer/vethuq_entry.py and
 # packages/interactive-cli/installer/vethuqic_entry.py and
 # packages/background/installer/vethuqbs_entry.py and packages/worker/installer/vethuqw_entry.py.
-# Built by `python scripts/release/release.py --cli`, `--interactive-cli`, `--background-service` and `--worker`.
+# packages/desktop/installer/vethuqd_entry.py.
+# Built by `python scripts/release/release.py --cli`, `--interactive-cli`, `--background-service`,
+# `--worker` and `--desktop` (the last needs web/dist: `npm run build` in web/).
 
 import importlib.metadata as metadata
 import importlib.util
@@ -40,6 +44,8 @@ INSTALLER = REPO_ROOT / "packages" / "cli" / "installer"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 BS_INSTALLER = REPO_ROOT / "packages" / "background" / "installer"
 W_INSTALLER = REPO_ROOT / "packages" / "worker" / "installer"
+D_INSTALLER = REPO_ROOT / "packages" / "desktop" / "installer"
+WEB_DIST = REPO_ROOT / "web" / "dist"
 
 # The add-ons VethuQ installs by default (its `dependencies` in packages/core/pyproject.toml).
 # Everything else (lexical, proximity, fuzzy, noise-fuzzy, semantic, ...) is an extra.
@@ -52,7 +58,14 @@ DEFAULT_ADDONS = tuple(
 # Not part of the command line.
 EXCLUDES = ["tkinter", "vethuq_ui", "pytest"]
 # The command line has no shell in it: `vethuq --interactive` says to run `vethuqic`.
-CLI_EXCLUDES = [*EXCLUDES, "vethuq_interactive_cli", "questionary", "prompt_toolkit"]
+CLI_EXCLUDES = [
+    *EXCLUDES,
+    "vethuq_interactive_cli",
+    "questionary",
+    "prompt_toolkit",
+    "vethuq_desktop",
+    "webview",
+]
 
 # Paddle's own packages are collected below with the handling they need.
 PADDLE_PACKAGES = {"paddle", "paddlex", "paddleocr", "paddlepaddle"}
@@ -196,7 +209,45 @@ for package in ("vethuq_worker", "jsonschema", "jsonschema_specifications", "ref
     w_hidden.extend(package_hidden)
 
 
-def _exe_for(entry, name, extra_datas=(), extra_binaries=(), extra_hidden=(), excludes=()):
+# ---- the desktop application (Windows) --------------------------------------------------------
+# A window (pywebview over WebView2) on the local Flask API, which serves the React interface from
+# vethuq_desktop/web inside lib/. Flask, werkzeug, pywebview and pythonnet (clr_loader) load pieces
+# by name, so they are collected whole. No console: it is a GUI program.
+desktop = sys.platform == "win32" and importlib.util.find_spec("vethuq_desktop") is not None
+d_datas, d_binaries, d_hidden = [], [], []
+if desktop:
+    for dist in ("vethuq-desktop", "vethuq-api", "pywebview", "flask", "werkzeug"):
+        d_datas.extend(copy_metadata(dist))
+    for package in (
+        "vethuq_desktop",
+        "vethuq_api",
+        "webview",
+        "clr_loader",
+        "pythonnet",
+        "proxy_tools",
+        "bottle",
+        "flask",
+        "werkzeug",
+        "jinja2",
+        "itsdangerous",
+        "blinker",
+    ):
+        if importlib.util.find_spec(package) is None:
+            continue
+        package_datas, package_binaries, package_hidden = collect_all(package)
+        d_datas.extend(package_datas)
+        d_binaries.extend(package_binaries)
+        d_hidden.extend(package_hidden)
+    # The credential store the GitHub token goes into (Windows Credential Manager).
+    d_hidden.extend(["keyring.backends.Windows", "win32ctypes.core"])
+    if WEB_DIST.is_dir():
+        # webdist.py looks beside the package first.
+        d_datas.append((str(WEB_DIST), "vethuq_desktop/web"))
+
+
+def _exe_for(
+    entry, name, extra_datas=(), extra_binaries=(), extra_hidden=(), excludes=(), console=True
+):
     analysis = Analysis(
         [str(entry)],
         pathex=[],
@@ -215,7 +266,7 @@ def _exe_for(entry, name, extra_datas=(), extra_binaries=(), extra_hidden=(), ex
         [],
         exclude_binaries=True,
         name=name,
-        console=True,
+        console=console,
         icon=str(SHARED / "vethuq.ico") if os.name == "nt" else None,
         upx=False,
         # Everything but the executables goes in lib/ (COLLECT follows the EXE).
@@ -247,7 +298,18 @@ w_a, w_exe = _exe_for(
     extra_hidden=w_hidden,
     excludes=CLI_EXCLUDES,
 )
-coll = COLLECT(
+d_a, d_exe = None, None
+if desktop:
+    d_a, d_exe = _exe_for(
+        D_INSTALLER / "vethuqd_entry.py",
+        "vethuqd",
+        extra_datas=d_datas,
+        extra_binaries=d_binaries,
+        extra_hidden=d_hidden,
+        excludes=EXCLUDES,
+        console=False,
+    )
+parts = [
     cli_exe,
     cli_a.binaries,
     cli_a.datas,
@@ -260,6 +322,11 @@ coll = COLLECT(
     w_exe,
     w_a.binaries,
     w_a.datas,
+]
+if desktop:
+    parts += [d_exe, d_a.binaries, d_a.datas]
+coll = COLLECT(
+    *parts,
     name="vethuq",
     upx=False,
 )

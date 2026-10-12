@@ -4,15 +4,18 @@
     python scripts/release/release.py --interactive-cli --version 1.2.0
     python scripts/release/release.py --background-service --version 1.2.0
     python scripts/release/release.py --worker --version 1.2.0
+    python scripts/release/release.py --desktop --version 1.2.0
     python scripts/release/release.py --add-on --name xls --version 0.1.0
     python scripts/release/release.py --bundle --name office --version 0.1.0
     python scripts/release/release.py --cli --interactive-cli --background-service --worker --dev
 
-No desktop app is built. One PyInstaller build makes both programs:
+One PyInstaller build makes every program (the desktop application on Windows only):
 
   1. PyInstaller turns `installer/shared/vethuq.spec` into `build/cli/vethuq/`:
      `vethuq(.exe)` (the command line), `vethuqic(.exe)` (the shell), `vethuqbs(.exe)` (the
-     background service), `vethuqw(.exe)` (the worker), `lib/` (the runtime and every dependency,
+     background service), `vethuqw(.exe)` (the worker), `vethuqd.exe` (the desktop
+     application: Windows only, built when `vethuq-desktop` is installed, with the React interface
+     from `web/dist` inside `lib/`), `lib/` (the runtime and every dependency,
      plus `runtime-id.txt`) and `add-ons/` (the default add-ons). The `vethuq background`
      commands (add-ons/background) are moved to `build/cli/background-plugin/` for the service's
      installer.
@@ -29,14 +32,17 @@ No desktop app is built. One PyInstaller build makes both programs:
   5. `--worker`: only `vethuqw` is packed, again for the command line's folder:
      `dist/VethuQ-Worker-Setup.exe`, or `dist/vethuq-worker_<version>_<arch>.deb` (depends on
      vethuq-cli; `/usr/bin/vethuq-worker` runs it).
-  6. `--add-on --name NAME`: one add-on, no PyInstaller (compiled modules + a few packages).
+  6. `--desktop`: only `vethuqd.exe` is packed, again for the command line's folder:
+     `dist/VethuQ-Desktop-Setup.exe` (Windows 11 only: a WebView2 window, with a Start menu entry).
+     The interface is built first (`npm ci && npm run build` in `web/`) when `web/dist` is missing.
+  7. `--add-on --name NAME`: one add-on, no PyInstaller (compiled modules + a few packages).
      The wheel is built from the sibling VethuQ-premium checkout (`--premium PATH`) and installs
      into `<VethuQ>/add-ons/<name>/`; the packages it needs that VethuQ does not already carry go
      in the shared `<VethuQ>/lib/`, at the versions pinned in `installer/addon/constraints.txt`,
      and are removed with the last add-on that needs them. Inno Setup / `dpkg-deb` pack it into
      `dist/VethuQ-Addon-<name>-Setup.exe` or `dist/vethuq-addon-<name>_<version>_<arch>.deb`. It
      refuses to run unless VethuQ is installed.
-  7. `--bundle --name NAME`: the same for a bundle: all its add-ons (less the ones VethuQ
+  8. `--bundle --name NAME`: the same for a bundle: all its add-ons (less the ones VethuQ
      installs by default) and the bundle's own package in one installer,
      `dist/VethuQ-Bundle-<name>-Setup.exe` or
      `dist/vethuq-bundle-<name>_<version>_<arch>.deb`. An add-on shared with another installer is
@@ -54,6 +60,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -73,6 +80,8 @@ SHARED = REPO_ROOT / "installer" / "shared"
 IC_INSTALLER = REPO_ROOT / "packages" / "interactive-cli" / "installer"
 BS_INSTALLER = REPO_ROOT / "packages" / "background" / "installer"
 W_INSTALLER = REPO_ROOT / "packages" / "worker" / "installer"
+D_INSTALLER = REPO_ROOT / "packages" / "desktop" / "installer"
+WEB = REPO_ROOT / "web"
 BUILD = REPO_ROOT / "build" / "cli"
 DIST = REPO_ROOT / "dist"
 APP = BUILD / "vethuq"
@@ -140,6 +149,7 @@ class Cli:
             *IC_INSTALLER.glob("*.py"),
             *BS_INSTALLER.glob("*.py"),
             *W_INSTALLER.glob("*.py"),
+            *D_INSTALLER.glob("*.py"),
             *SHARED.glob("*.py"),
             SHARED / "vethuq.spec",
         ]
@@ -147,6 +157,10 @@ class Cli:
             digest.update(path.read_bytes())
         for path in sorted((REPO_ROOT / "packages").glob("*/src/**/*.py")):
             digest.update(str(path).encode() + path.read_bytes())
+        if (WEB / "dist").is_dir():
+            for path in sorted((WEB / "dist").rglob("*")):
+                if path.is_file():
+                    digest.update(str(path).encode() + path.read_bytes())
         return digest.hexdigest()
 
     def pyinstaller(self) -> None:
@@ -214,7 +228,20 @@ class Cli:
             for cache in folder.rglob("__pycache__"):
                 shutil.rmtree(cache)
 
-    def check_build(self) -> None:
+    @staticmethod
+    def build_web() -> None:
+        """The React interface the desktop application shows: `web/dist`, built when missing."""
+        if (WEB / "dist" / "index.html").is_file():
+            return
+        npm = shutil.which("npm")
+        if npm is None:
+            raise ReleaseError("web/dist is missing and npm was not found to build it.")
+        run([npm, "ci"], cwd=WEB)
+        run([npm, "run", "build"], cwd=WEB)
+        if not (WEB / "dist" / "index.html").is_file():
+            raise ReleaseError("The interface did not build: web/dist/index.html is missing.")
+
+    def check_build(self, *, desktop: bool = False) -> None:
         """What the installers rely on is there."""
         suffix = ".exe" if os.name == "nt" else ""
         required = (
@@ -226,6 +253,8 @@ class Cli:
             APP / "add-ons",
             PLUGIN,
         )
+        if desktop:
+            required = (*required, APP / "vethuqd.exe")
         missing = [p for p in required if not p.exists()]
         if missing:
             raise ReleaseError("The build is missing: " + ", ".join(str(p) for p in missing))
@@ -498,12 +527,19 @@ Categories=Utility;ConsoleOnly;
         interactive: bool = False,
         background: bool = False,
         worker: bool = False,
+        desktop: bool = False,
     ) -> list[Path]:
         if sys.platform not in ("win32", "linux"):
             raise ReleaseError(f"This builds on Windows and Linux, not {sys.platform}.")
+        if desktop and sys.platform != "win32":
+            raise ReleaseError("The desktop application is for Windows (WebView2).")
+        if sys.platform == "win32" and importlib.util.find_spec("vethuq_desktop") is not None:
+            # The Windows build carries the desktop application (and so the interface) whichever
+            # installer is asked for, so the command line's shared lib/ is the same in all of them.
+            self.build_web()
         self.pyinstaller()
         runtime_id = self.stamp_runtime()
-        self.check_build()
+        self.check_build(desktop=desktop)
         DIST.mkdir(exist_ok=True)
         built = []
         if sys.platform == "win32":
@@ -530,6 +566,14 @@ Categories=Utility;ConsoleOnly;
                     self.inno(
                         W_INSTALLER / "vethuqw.iss",
                         "VethuQ-Worker-Setup.exe",
+                        f"/DRuntimeId={runtime_id}",
+                    )
+                )
+            if desktop:
+                built.append(
+                    self.inno(
+                        D_INSTALLER / "vethuqd.iss",
+                        "VethuQ-Desktop-Setup.exe",
                         f"/DRuntimeId={runtime_id}",
                     )
                 )
@@ -1046,6 +1090,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="build the interactive shell's installer (it installs into the command line's folder)",
     )
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="build the desktop application's installer (Windows; installs into the CLI's folder)",
+    )
     parser.add_argument("--version", default="0.1.0", help="release version (X.Y.Z or X.Y.Z-rcN)")
     parser.add_argument("--dev", action="store_true", help="local iteration: quick, uncompressed")
     parser.add_argument("--clean", action="store_true", help="start from an empty build folder")
@@ -1081,10 +1130,12 @@ def main(argv: list[str] | None = None) -> int:
         for path in built:
             print(f"Built {path}")
         return 0
-    if not (args.cli or args.interactive_cli or args.background_service or args.worker):
+    if not (
+        args.cli or args.interactive_cli or args.background_service or args.worker or args.desktop
+    ):
         parser.error(
             "choose what to build: --cli, --interactive-cli, --background-service, --worker, "
-            "--add-on or --bundle"
+            "--desktop, --add-on or --bundle"
         )
     try:
         built = Cli(Version(args.version), dev=args.dev, clean=args.clean).build(
@@ -1092,6 +1143,7 @@ def main(argv: list[str] | None = None) -> int:
             interactive=args.interactive_cli,
             background=args.background_service,
             worker=args.worker,
+            desktop=args.desktop,
         )
     except (ReleaseError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)

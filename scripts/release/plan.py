@@ -18,6 +18,8 @@ Tags (one per package, versions independent; `-rcN` is a release candidate, publ
     vethuq-bundle-<name>-vX.Y.Z   a bundle     not on PyPI: release-bundle.yml builds its installer
     vethuq-background-service-vX.Y.Z   the service   not on PyPI: release-background-service.yml
                                                    builds its installers (they need the CLI)
+    vethuq-desktop-vX.Y.Z           the app         not on PyPI: release-desktop.yml builds its
+                                                   Windows installer, which needs the CLI installed
     vethuq-interactive-cli-vX.Y.Z   the shell        not on PyPI: release-interactive-cli.yml builds
                                                    its installers, which need the CLI installed
 
@@ -41,13 +43,14 @@ PACKAGES = {
     "vethuq-worker": ("vethuq-worker", "packages/worker", False),
     "vethuq-cli": ("vethuq-cli", "packages/cli", False),
     "vethuq-interactive-cli": ("vethuq-interactive-cli", "packages/interactive-cli", False),
+    "vethuq-desktop": ("vethuq-desktop", "packages/desktop", False),
     "vethuq-background-service": ("vethuq-background", "packages/background", False),
     # `vethuq-worker-vX.Y.Z` releases the PyPI package; this one builds the worker program.
     "vethuq-worker-bin": ("vethuq-worker", "packages/worker", False),
     "vethuq": ("vethuq", "packages/core", True),
 }
 TAG = re.compile(
-    r"^(?P<prefix>vethuq-addon-api|vethuq-worker-bin|vethuq-worker|vethuq-interactive-cli|vethuq-background-service|vethuq-cli|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
+    r"^(?P<prefix>vethuq-addon-api|vethuq-worker-bin|vethuq-worker|vethuq-interactive-cli|vethuq-desktop|vethuq-background-service|vethuq-cli|vethuq)-v(?P<version>\d+\.\d+\.\d+(?:-?rc\d+)?)$"
 )
 
 
@@ -119,7 +122,8 @@ def plan(tag: str) -> Plan:
         raise ReleaseError(
             f"{tag!r} is not a release tag. Use vethuq-addon-api-vX.Y.Z, vethuq-worker-vX.Y.Z, "
             "vethuq-cli-vX.Y.Z, vethuq-interactive-cli-vX.Y.Z, vethuq-background-service-vX.Y.Z, "
-            "vethuq-addon-<name>-vX.Y.Z, vethuq-bundle-<name>-vX.Y.Z or vethuq-vX.Y.Z "
+            "vethuq-desktop-vX.Y.Z, vethuq-addon-<name>-vX.Y.Z, vethuq-bundle-<name>-vX.Y.Z "
+            "or vethuq-vX.Y.Z "
             "(add -rcN for a release candidate)."
         )
     dist, directory, platform = PACKAGES[match["prefix"]]

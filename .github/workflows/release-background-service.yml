@@ -76,7 +76,7 @@ jobs:
         working-directory: work/VethuQ
         shell: bash
         run: |
-          uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --no-dev
+          uv sync --package vethuq-cli --package vethuq-interactive-cli --package vethuq-background --package vethuq-worker --package vethuq-desktop --no-dev
           if [ "$RUNNER_OS" = Windows ]; then uv pip install "pywin32>=306"; fi
           uv pip install "pyinstaller>=6.10"
       - name: Install the compiled entitlements runtime

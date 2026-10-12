@@ -754,3 +754,72 @@ class TestBundleInstaller:
     def test_a_mode_is_required_for_a_bundle_too(self):
         with pytest.raises(SystemExit):
             release.main(["--bundle"])
+
+
+D_INSTALLER = ROOT / "packages" / "desktop" / "installer"
+
+
+class TestDesktopInstaller:
+    """vethuqd.exe goes into the command line's folder, like the shell and the service."""
+
+    def script(self) -> str:
+        return (D_INSTALLER / "vethuqd.iss").read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("name", ["vethuqd.iss", "vethuqd_entry.py"])
+    def test_the_file_exists(self, name):
+        assert (D_INSTALLER / name).is_file()
+
+    def test_it_installs_only_the_program_into_the_cli_folder(self):
+        script = self.script()
+        assert '#define MyAppExeName "vethuqd.exe"' in script
+        assert "DefaultDirName={code:CliDir}" in script
+        assert 'include "..\\..\\..\\installer\\shared\\into_cli_folder.iss"' in script
+        files = script.split("[Files]")[1].split("[Icons]")[0]
+        assert len(re.findall(r"^Source: .*", files, re.M)) == 1
+        assert "OutputBaseFilename=VethuQ-Desktop-Setup" in script
+
+    def test_its_ids_are_its_own_and_it_finds_the_cli_by_its_id(self):
+        cli = (INSTALLER / "vethuq-cli.iss").read_text(encoding="utf-8")
+        cli_id = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", cli, re.M)[1]
+        assert f'#define CliAppId "{cli_id}"' in self.script()
+        own = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", self.script(), re.M)[1]
+        ids = set()
+        for path in ROOT.glob("packages/*/installer/*.iss"):
+            found = re.search(r"^AppId=\{\{([0-9A-F-]+)\}", path.read_text("utf-8"), re.M)
+            if found and path.name != "vethuqd.iss":
+                ids.add(found[1])
+        assert own not in ids
+
+    def test_the_entry_script_runs_the_launcher(self):
+        entry = (D_INSTALLER / "vethuqd_entry.py").read_text(encoding="utf-8")
+        assert "from vethuq_desktop.launcher import main" in entry and "freeze_support" in entry
+
+    def test_the_spec_builds_a_windowed_program_with_the_interface(self):
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
+        assert 'D_INSTALLER / "vethuqd_entry.py"' in spec and "console=False" in spec
+        assert '"vethuq_desktop/web"' in spec and 'sys.platform == "win32"' in spec
+        assert spec.count("COLLECT(") == 1
+
+    def test_the_desktop_tag_is_planned(self):
+        result = plan.plan("vethuq-desktop-v1.2.0")
+        assert (result.dist, result.directory) == ("vethuq-desktop", "packages/desktop")
+        assert plan.plan("vethuq-desktop-v1.2.0-rc1").prerelease
+
+    def test_the_desktop_workflow_builds_on_windows_from_the_desktop_tag(self):
+        flow = (ROOT / ".github" / "workflows" / "release-desktop.yml").read_text("utf-8")
+        assert '"vethuq-desktop-v*"' in flow and "windows-latest" in flow
+        assert (
+            "release.py --cli --desktop" in flow
+            and "ubuntu" not in flow.split("  build:")[1].split("  github-release:")[0]
+        )
+
+    def test_every_release_workflow_syncs_the_desktop_package(self):
+        for path in (ROOT / ".github" / "workflows").glob("release-*.yml"):
+            text = path.read_text("utf-8")
+            if "--package vethuq-cli" in text:
+                assert "--package vethuq-desktop" in text, path.name
+
+    def test_it_can_only_be_built_on_windows(self, monkeypatch):
+        monkeypatch.setattr(release.sys, "platform", "linux")
+        with pytest.raises(release.ReleaseError, match="Windows"):
+            release.Cli(release.Version("1.2.0")).build(desktop=True)

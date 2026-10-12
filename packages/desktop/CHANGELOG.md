@@ -4,6 +4,9 @@ All notable changes to `vethuq-desktop`.
 
 ## [Unreleased]
 
+### Added (installer)
+- `vethuqd.exe`, the frozen desktop application (PyInstaller, no console), and `VethuQ-Desktop-Setup.exe` (Inno Setup), which installs it into the command line's folder. Released with tag `vethuq-desktop-vX.Y.Z` (`release-desktop.yml`); built by `scripts/release/release.py --desktop`.
+
 ### Added (opening at the place)
 - `open_file(path, page, line, column)` opens a file in its default application at a page or line where it can (browsers, Adobe/Foxit/Sumatra PDF, VS Code, Notepad++, Sublime) and otherwise at the top, returning `{opened, jumped, hint}`.
 
