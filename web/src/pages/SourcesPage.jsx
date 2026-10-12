@@ -264,6 +264,7 @@ export function SourcesPage() {
                         : 'descending'
                       : undefined
                   }
+                  style={column.key === 'name' ? { width: '36%' } : undefined}
                   onClick={SORTABLE.has(column.key) ? () => sortBy(column.key) : undefined}
                 >
                   {column.label}

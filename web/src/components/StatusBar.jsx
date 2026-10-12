@@ -48,7 +48,7 @@ const useStyles = makeStyles({
     padding: 0,
     font: 'inherit',
   },
-  label: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' },
+  label: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '480px' },
   bar: { width: '110px' },
   dot: {
     width: '12px',

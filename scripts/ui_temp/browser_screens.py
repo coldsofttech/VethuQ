@@ -318,12 +318,13 @@ def make_documents() -> Path:
         )
         (folder / f"document-{number:03}.{kind}").write_text(body, encoding="utf-8")
     (root / "locked.bin").write_bytes(b"\x00\x01")
-    (root / "single.txt").write_text("a lone file\n", encoding="utf-8")
     return root
 
 
 def sources_and_indexing(browser: Browser, out: Path) -> None:
     documents = make_documents()
+    lone = Path(tempfile.mkdtemp(prefix="vethuq-lone-")) / "single.txt"
+    lone.write_text("a lone file\n", encoding="utf-8")
     process, url = start_host()
     try:
         page = open_page(browser, url)
@@ -335,11 +336,12 @@ def sources_and_indexing(browser: Browser, out: Path) -> None:
         page.get_by_role("button", name="Add folder").click()
         page.get_by_label("Path of the folder").fill(str(documents))
         page.get_by_role("button", name="Add", exact=True).click()
-        expect(page.get_by_text(f"Added {documents.name}")).to_be_visible()
+        expect(page.get_by_text(f"Added {documents.name}").first).to_be_visible()
+        page.wait_for_timeout(800)  # the first dialog finishes closing
         page.get_by_role("button", name="Add file").click()
-        page.get_by_label("Path of the file").fill(str(documents / "single.txt"))
+        page.get_by_label("Path of the file").fill(str(lone))
         page.get_by_role("button", name="Add", exact=True).click()
-        expect(page.get_by_text("Added single.txt")).to_be_visible()
+        expect(page.get_by_text("Added single.txt").first).to_be_visible()
         row = page.get_by_role("row").filter(has_text=documents.name)
         expect(row).to_be_visible()
         row.click()
@@ -372,7 +374,7 @@ def sources_and_indexing(browser: Browser, out: Path) -> None:
         page.get_by_role("button", name="Keep going").click()
 
         # Let it finish.
-        expect(page.get_by_text("Indexing finished")).to_be_visible(timeout=120000)
+        expect(page.get_by_text("Indexing finished").first).to_be_visible(timeout=120000)
         shot(page, out, "indexing-finished-toast")
         page.get_by_role("tab", name="History").click()
         expect(page.get_by_role("table", name="History")).to_be_visible()
@@ -404,12 +406,14 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("shots"))
     parser.add_argument("--channel", help="browser channel to use, e.g. msedge")
     parser.add_argument("--executable", help="path to a Chromium binary")
+    parser.add_argument("--only-sources", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
-            run(browser, args.out)
+            if not args.only_sources:
+                run(browser, args.out)
             sources_and_indexing(browser, args.out)
         finally:
             browser.close()
