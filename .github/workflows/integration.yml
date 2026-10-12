@@ -1,28 +1,77 @@
-# Integration tests (tests marked `integration`). There are none yet, so a run that collects
-# nothing passes with a warning. Manual only: these tests will need real engines or network.
+# Integration tests (tests marked `integration`). Started by hand (Actions > integration > Run
+# workflow); never on a push or pull request. These tests need the real OCR engine, so they are
+# far too heavy for test.yml.
+#
+# The inputs choose what is tested. The tests read them from the environment (VETHUQ_IT_*) and
+# say what they cover with markers: lang_<id> and type_<id>. There are no integration tests yet,
+# so a run that collects nothing passes with a warning.
 name: integration
 
 on:
   workflow_dispatch:
     inputs:
-      python:
-        description: "Python version"
-        required: false
-        default: "3.12"
-        type: string
-      markers:
-        description: "pytest -m expression"
-        required: false
-        default: "integration"
-        type: string
+      language:
+        description: OCR language
+        type: choice
+        options: [en, te]
+        default: en
+      ocr-engine:
+        description: OCR engine
+        type: choice
+        options: [paddle]
+        default: paddle
+      autoscale:
+        description: Run with the autoscale add-on
+        type: boolean
+        default: false
+      ocr-mode:
+        description: OCR mode
+        type: choice
+        options: [quick, moderate, deep]
+        default: quick
+      file-type:
+        description: File type
+        type: choice
+        options:
+          - pdf
+          - png
+          - jpg
+          - tiff
+          - txt
+          - csv
+          - markdown
+          - html
+          - xml
+          - css
+          - js
+          - json
+          - yaml
+          - doc
+          - docx
+          - xls
+          - xlsx
+          - ppt
+          - pptx
+          - rtf
+          - eml
+        default: pdf
 
 permissions:
   contents: read
 
 jobs:
   integration:
+    name: integration (${{ inputs.language }}, ${{ inputs.ocr-engine }}, ${{ inputs.ocr-mode }}, autoscale ${{ inputs.autoscale }}, ${{ inputs.file-type }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      VETHUQ_IT_LANGUAGE: ${{ inputs.language }}
+      VETHUQ_IT_OCR_ENGINE: ${{ inputs.ocr-engine }}
+      VETHUQ_IT_AUTOSCALE: ${{ inputs.autoscale }}
+      VETHUQ_IT_OCR_MODE: ${{ inputs.ocr-mode }}
+      VETHUQ_IT_FILE_TYPE: ${{ inputs.file-type }}
+      # The OCR models live here so they can be cached between runs.
+      PADDLE_PDX_CACHE_HOME: ${{ github.workspace }}/.paddlex-cache
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,20 +91,38 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ inputs.python }}
+          python-version: "3.12"
       - name: Install
         working-directory: work/VethuQ
-        run: uv sync --all-packages
+        run: uv sync --all-packages --group dev
+      # Model files are tied to the PaddleOCR version in uv.lock, so the lock file keys the cache.
+      - name: Restore the OCR models
+        uses: actions/cache@v4
+        with:
+          path: .paddlex-cache
+          key: paddle-models-${{ runner.os }}-${{ hashFiles('work/VethuQ/uv.lock') }}
+          restore-keys: paddle-models-${{ runner.os }}-
+      - name: Show the selection
+        run: |
+          {
+            echo "### Integration run"
+            echo "- Language: $VETHUQ_IT_LANGUAGE"
+            echo "- OCR engine: $VETHUQ_IT_OCR_ENGINE"
+            echo "- OCR mode: $VETHUQ_IT_OCR_MODE"
+            echo "- Autoscale: $VETHUQ_IT_AUTOSCALE"
+            echo "- File type: $VETHUQ_IT_FILE_TYPE"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Run integration tests
         working-directory: work/VethuQ
-        env:
-          MARKERS: ${{ inputs.markers }}
         run: |
+          expr="integration and lang_${VETHUQ_IT_LANGUAGE} and type_${VETHUQ_IT_FILE_TYPE}"
+          echo "pytest -m \"$expr\""
           set +e
-          uv run pytest -m "$MARKERS" --junitxml=junit-integration.xml
+          uv run pytest -m "$expr" -ra --durations=15 --junitxml=junit-integration.xml
           code=$?
+          # pytest exits 5 when nothing matched: say so, but pass.
           if [ "$code" -eq 5 ]; then
-            echo "::warning::No integration tests collected yet."
+            echo "::warning::No integration tests matched: $expr"
             code=0
           fi
           exit "$code"
@@ -63,6 +130,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: junit-integration
+          name: junit-integration-${{ inputs.language }}-${{ inputs.ocr-mode }}-${{ inputs.file-type }}
           path: work/VethuQ/junit-integration.xml
           if-no-files-found: ignore
