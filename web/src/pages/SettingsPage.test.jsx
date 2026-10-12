@@ -285,11 +285,80 @@ const GENERAL = () => ({
       min: 1,
     }),
     setting({
+      id: 'updates.check',
+      label: 'Check for updates',
+      type: 'choice',
+      value: 'on',
+      default: 'on',
+      options: [
+        { value: 'on', label: 'On: check and offer to update', available: true, reason: '' },
+        { value: 'notify-only', label: 'Notify only', available: true, reason: '' },
+        { value: 'off', label: 'Off: never check', available: true, reason: '' },
+      ],
+      note: 'The VETHUQ_UPDATE_CHECK environment variable switches update checks off.',
+    }),
+    setting({
       id: 'metrics.opt_in',
       label: 'Share anonymous usage metrics',
       type: 'boolean',
       value: false,
       default: false,
+    }),
+    setting({
+      id: 'updates.skipped_version',
+      label: 'Skipped update',
+      type: 'text',
+      value: '9.9.9',
+      default: null,
+      is_default: false,
+      readonly: true,
+      advanced: true,
+    }),
+    setting({
+      id: 'updates.snoozed_until',
+      label: 'Update notice snoozed until',
+      type: 'text',
+      value: null,
+      default: null,
+      readonly: true,
+      advanced: true,
+    }),
+  ],
+});
+
+const SYSTEM = () => ({
+  section: 'system',
+  settings: [
+    setting({
+      id: 'logs.level',
+      label: 'Log detail',
+      type: 'choice',
+      value: 'info',
+      default: 'info',
+      options: [
+        { value: 'debug', label: 'Debug: everything', available: true, reason: '' },
+        { value: 'info', label: 'Info: normal activity', available: true, reason: '' },
+      ],
+      note: 'Takes effect at once.',
+    }),
+    setting({
+      id: 'logs.retention_days',
+      label: 'Keep log files for',
+      type: 'integer',
+      value: 15,
+      default: 15,
+      min: 1,
+      unit: 'days',
+    }),
+    setting({
+      id: 'database.integrity_check_interval_minutes',
+      label: 'Time between automatic checks',
+      type: 'integer',
+      value: 1440,
+      default: 1440,
+      min: 1,
+      unit: 'minutes',
+      advanced: true,
     }),
   ],
 });
@@ -369,6 +438,7 @@ const MORE = {
   'GET /api/settings/sources': SOURCES,
   'GET /api/settings/tiers': TIERS,
   'GET /api/settings/results': RESULTS,
+  'GET /api/settings/system': SYSTEM,
 };
 
 describe('humanMinutes', () => {
@@ -515,6 +585,77 @@ describe('Settings > Results', () => {
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringContaining('confidence.bands'),
       expect.objectContaining({ method: 'PUT' }),
+    );
+  });
+});
+
+describe('Settings > General > updates', () => {
+  it('shows why the update check is off when the environment forces it', async () => {
+    mockApi(MORE);
+    renderWithProviders(<App />, { route: '/settings/general' });
+    expect(await screen.findByText('Check for updates')).toBeInTheDocument();
+    expect(screen.getByText(/VETHUQ_UPDATE_CHECK environment variable/)).toBeInTheDocument();
+  });
+
+  it('shows the skipped version read-only and clears it', async () => {
+    const fetchMock = mockApi({
+      ...MORE,
+      'DELETE /api/settings/general/updates.skipped_version': () => ({
+        ...GENERAL().settings[3],
+        value: null,
+        is_default: true,
+      }),
+    });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByText('Check for updates');
+    expect(screen.queryByText('Skipped update')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: 'Show advanced settings' }));
+
+    const row = screen.getByTestId('setting-updates.skipped_version');
+    expect(within(row).getByText('9.9.9')).toBeInTheDocument();
+    expect(within(row).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(row).queryByRole('spinbutton')).not.toBeInTheDocument();
+    await userEvent.click(within(row).getByRole('button', { name: 'Clear: Skipped update' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/settings/general/updates.skipped_version',
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
+    );
+    await waitFor(() => expect(within(row).getByText('None')).toBeInTheDocument());
+    expect(within(row).getByRole('button', { name: 'Clear: Skipped update' })).toBeDisabled();
+  });
+});
+
+describe('Settings > System', () => {
+  it('lists the log and database settings and hides the advanced one', async () => {
+    mockApi(MORE);
+    renderWithProviders(<App />, { route: '/settings/system' });
+    expect(await screen.findByText('Log detail')).toBeInTheDocument();
+    expect(screen.getByText('Keep log files for')).toBeInTheDocument();
+    expect(screen.queryByText('Time between automatic checks')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('switch', { name: 'Show advanced settings' }));
+    const row = screen.getByTestId('setting-database.integrity_check_interval_minutes');
+    expect(within(row).getByText('1 day')).toBeInTheDocument();
+  });
+
+  it('changes the log level', async () => {
+    const fetchMock = mockApi({
+      ...MORE,
+      'PUT /api/settings/system/logs.level': (body) => ({
+        ...SYSTEM().settings[0],
+        value: body.value,
+        is_default: false,
+      }),
+    });
+    renderWithProviders(<App />, { route: '/settings/system' });
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Log detail' }));
+    await userEvent.click(await screen.findByRole('option', { name: /Debug/ }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/settings/system/logs.level',
+        expect.objectContaining({ body: '{"value":"debug"}' }),
+      ),
     );
   });
 });

@@ -43,6 +43,12 @@ export function humanMinutes(minutes) {
   return `${count} ${name}${count === 1 ? '' : 's'}`;
 }
 
+/** Text as shown: a timestamp in the person's own format, anything else as it is. */
+function formatText(value) {
+  const stamp = /^\d{4}-\d\d-\d\dT/.test(value) ? new Date(value) : null;
+  return stamp && !Number.isNaN(stamp.getTime()) ? stamp.toLocaleString() : String(value);
+}
+
 /** A value as the person would read it, for the "reset to" tooltip. */
 function describe(setting, value) {
   if (setting.type === 'multichoice') {
@@ -52,6 +58,7 @@ function describe(setting, value) {
     return names.length ? names.join(', ') : text.none;
   }
   if (setting.type === 'bands') return value.join(' / ');
+  if (setting.type === 'text') return value === null ? text.none : formatText(value);
   if (setting.type === 'boolean') return value ? text.on : text.off;
   return String(setting.options?.find((option) => option.value === value)?.label ?? value);
 }
@@ -60,6 +67,10 @@ function describe(setting, value) {
 function Control({ setting, disabled, onChange }) {
   const styles = useStyles();
   const labelledBy = { 'aria-label': setting.label };
+
+  if (setting.type === 'text') {
+    return <Text>{setting.value === null ? text.none : formatText(setting.value)}</Text>;
+  }
 
   if (setting.type === 'boolean') {
     return (
@@ -195,13 +206,17 @@ export function SettingRow({ setting, busy, problem, onChange, onReset }) {
           )}
           <span className={styles.status}>{busy && <Spinner size="extra-tiny" />}</span>
           <Tooltip
-            content={`${text.resetTo} ${describe(setting, setting.default)}`}
+            content={
+              setting.readonly
+                ? text.clear
+                : `${text.resetTo} ${describe(setting, setting.default)}`
+            }
             relationship="label"
           >
             <Button
               appearance="subtle"
               icon={<ArrowCounterclockwise20Regular />}
-              aria-label={`${text.reset}: ${setting.label}`}
+              aria-label={`${setting.readonly ? text.clear : text.reset}: ${setting.label}`}
               disabled={busy || setting.is_default}
               onClick={onReset}
             />

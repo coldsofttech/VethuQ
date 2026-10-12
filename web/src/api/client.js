@@ -22,11 +22,12 @@
  * @property {string} id
  * @property {string} label
  * @property {string} description
- * @property {'boolean' | 'integer' | 'number' | 'choice' | 'multichoice' | 'bands'} type
- * @property {string | number | boolean | Array<string | number>} value
+ * @property {'boolean' | 'integer' | 'number' | 'choice' | 'multichoice' | 'bands' | 'text'} type
+ * @property {string | number | boolean | Array<string | number> | null} value
  * @property {string | number | boolean | Array<string | number>} default
  * @property {boolean} is_default
  * @property {boolean} advanced
+ * @property {boolean} [readonly]  Shown but not editable; reset clears it.
  * @property {string} note  When the change takes effect, or ''.
  * @property {SettingOption[]} [options]  For a choice or multichoice.
  * @property {string[]} [labels]  The names of the three fields of `bands`.

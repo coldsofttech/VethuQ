@@ -6,7 +6,7 @@ import { SettingsSection } from '../components/SettingsSection.jsx';
 import { strings } from '../strings.js';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 
-const SECTIONS = ['general', 'indexing', 'sources', 'tiers', 'results'];
+const SECTIONS = ['general', 'indexing', 'sources', 'tiers', 'results', 'system'];
 
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalL },

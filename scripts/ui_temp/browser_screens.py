@@ -126,6 +126,18 @@ def run(browser: Browser, out: Path) -> None:
         expect(metrics).not_to_be_checked()
         shot(page, out, "settings-general")
 
+        # General: the update check, and the read-only skipped/snoozed update notices.
+        updates = page.get_by_role("combobox", name="Check for updates")
+        updates.click()
+        page.get_by_role("option", name="Notify only: check and tell me").click()
+        expect(updates).to_have_text("Notify only: check and tell me")
+        page.get_by_role("switch", name="Show advanced settings").click()
+        expect(page.get_by_test_id("setting-updates.skipped_version")).to_contain_text("None")
+        expect(page.get_by_role("button", name="Clear: Skipped update")).to_be_disabled()
+        shot(page, out, "settings-general-updates")
+        page.get_by_role("button", name="Reset to default: Check for updates").click()
+        expect(updates).to_have_text("On: check and offer to update")
+
         # Sources: retention in minutes, with a readable duration.
         page.get_by_role("tab", name="Sources").click()
         expect(page.get_by_text("7 days", exact=True)).to_be_visible()
@@ -172,6 +184,32 @@ def run(browser: Browser, out: Path) -> None:
         expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("60")
         page.get_by_role("button", name="Reset to default: Confidence bands").click()
         expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("70")
+
+        # System: logs and database.
+        page.get_by_role("tab", name="System").click()
+        level = page.get_by_role("combobox", name="Log detail")
+        level.click()
+        page.get_by_role("option", name="Debug: everything, for troubleshooting").click()
+        expect(level).to_have_text("Debug: everything, for troubleshooting")
+        days = page.get_by_role("spinbutton", name="Keep log files for")
+        days.fill("30")
+        days.press("Tab")
+        expect(page.get_by_test_id("setting-logs.retention_days")).to_contain_text("Takes effect")
+        page.get_by_role("switch", name="Show advanced settings").click()
+        expect(page.get_by_text("1 day", exact=True)).to_be_visible()
+        shot(page, out, "settings-system")
+        page.reload()
+        page.get_by_role("tab", name="System").click()
+        expect(page.get_by_role("combobox", name="Log detail")).to_have_text(
+            "Debug: everything, for troubleshooting"
+        )
+        expect(page.get_by_role("spinbutton", name="Keep log files for")).to_have_value("30")
+        page.get_by_role("button", name="Reset to default: Log detail").click()
+        page.get_by_role("button", name="Reset to default: Keep log files for").click()
+        expect(page.get_by_role("combobox", name="Log detail")).to_have_text(
+            "Info: normal activity"
+        )
+        expect(page.get_by_role("spinbutton", name="Keep log files for")).to_have_value("15")
 
         # Title-bar buttons talk to the host (simulated here).
         page.get_by_role("tab", name="Home").click()

@@ -48,7 +48,14 @@ class TestListing:
                 assert row["is_default"] is True, row["id"]
 
     def test_sections_in_the_order_the_screen_shows_them(self, service):
-        assert service.sections() == ["indexing", "general", "sources", "tiers", "results"]
+        assert service.sections() == [
+            "indexing",
+            "general",
+            "sources",
+            "tiers",
+            "results",
+            "system",
+        ]
 
     def test_advanced_settings_are_marked(self, service):
         rows = by_id(service.list("indexing"))
@@ -138,9 +145,21 @@ class TestChanging:
 
 class TestOtherSections:
     def test_each_section_lists_its_settings(self, service):
-        assert list(by_id(service.list("general"))) == ["languages.languages", "metrics.opt_in"]
+        assert list(by_id(service.list("general"))) == [
+            "languages.languages",
+            "updates.check",
+            "metrics.opt_in",
+            "updates.skipped_version",
+            "updates.snoozed_until",
+        ]
         assert list(by_id(service.list("sources"))) == ["sources.removed_retention_minutes"]
         assert list(by_id(service.list("results"))) == ["confidence.bands"]
+        assert list(by_id(service.list("system"))) == [
+            "logs.level",
+            "logs.retention_days",
+            "database.integrity_check",
+            "database.integrity_check_interval_minutes",
+        ]
         assert list(by_id(service.list("tiers"))) == [
             "tiers.default",
             "tiers.phases",
@@ -237,6 +256,91 @@ class TestOtherSections:
         assert by_id(service.list(section))[setting]["value"] == before
 
 
+class TestSystemAndUpdates:
+    def test_choices_are_plain_values_not_enum_members(self, service):
+        rows = by_id(service.list("system")) | by_id(service.list("general"))
+        for key in ("logs.level", "updates.check", "database.integrity_check"):
+            assert type(rows[key]["value"]) is str, key
+        assert [o["value"] for o in rows["updates.check"]["options"]] == [
+            "on",
+            "notify-only",
+            "off",
+        ]
+        assert [o["value"] for o in rows["logs.level"]["options"]] == [
+            "debug",
+            "info",
+            "warning",
+            "error",
+        ]
+
+    def test_values_reach_the_core_and_reset(self, service, vethuq):
+        service.update("system", "logs.level", "warning")
+        service.update("system", "logs.retention_days", 3)
+        service.update("system", "database.integrity_check", "disable")
+        service.update("system", "database.integrity_check_interval_minutes", 60)
+        service.update("general", "updates.check", "off")
+        assert vethuq.settings.logs.get_level().value == "warning"
+        assert vethuq.settings.logs.get_retention_days() == 3
+        assert vethuq.settings.database.get_integrity_check().value == "disable"
+        assert vethuq.settings.database.get_integrity_check_interval_minutes() == 60
+        assert vethuq.settings.updates.get_check().value == "off"
+        for section, key in [
+            ("system", "logs.level"),
+            ("system", "logs.retention_days"),
+            ("system", "database.integrity_check"),
+            ("system", "database.integrity_check_interval_minutes"),
+            ("general", "updates.check"),
+        ]:
+            assert service.reset(section, key)["is_default"] is True
+
+    @pytest.mark.parametrize(
+        ("section", "setting", "value"),
+        [
+            ("system", "logs.level", "verbose"),
+            ("system", "logs.level", "INFO"),
+            ("system", "logs.retention_days", 0),
+            ("system", "logs.retention_days", 2.5),
+            ("system", "database.integrity_check", "sometimes"),
+            ("system", "database.integrity_check_interval_minutes", 0),
+            ("general", "updates.check", "yes"),
+            ("general", "updates.check", True),
+        ],
+    )
+    def test_a_bad_value_is_refused(self, service, section, setting, value):
+        with pytest.raises(InvalidSettingError):
+            service.update(section, setting, value)
+
+    def test_the_skipped_version_and_snooze_are_shown_read_only_and_can_be_cleared(
+        self, service, vethuq
+    ):
+        rows = by_id(service.list("general"))
+        for key in ("updates.skipped_version", "updates.snoozed_until"):
+            assert rows[key]["readonly"] is True
+            assert rows[key]["type"] == "text"
+            assert rows[key]["value"] is None
+            assert rows[key]["advanced"] is True
+
+        vethuq.settings.updates.skip_version("9.9.9")
+        vethuq.settings.updates.snooze(2)
+        rows = by_id(service.list("general"))
+        assert rows["updates.skipped_version"]["value"] == "9.9.9"
+        assert rows["updates.skipped_version"]["is_default"] is False
+        assert "T" in rows["updates.snoozed_until"]["value"]  # an ISO timestamp
+
+        with pytest.raises(InvalidSettingError, match="cannot be changed"):
+            service.update("general", "updates.skipped_version", "1.0")
+
+        assert service.reset("general", "updates.skipped_version")["value"] is None
+        assert service.reset("general", "updates.snoozed_until")["value"] is None
+
+    def test_the_update_check_says_when_the_environment_overrides_it(self, service, monkeypatch):
+        monkeypatch.delenv("VETHUQ_UPDATE_CHECK", raising=False)
+        assert by_id(service.list("general"))["updates.check"]["note"] == ""
+        monkeypatch.setenv("VETHUQ_UPDATE_CHECK", "off")
+        note = by_id(service.list("general"))["updates.check"]["note"]
+        assert "VETHUQ_UPDATE_CHECK" in note
+
+
 class TestHttp:
     @pytest.fixture
     def http(self, web_dist, tmp_path):
@@ -280,6 +384,15 @@ class TestHttp:
     def test_a_missing_value_is_a_422(self, http):
         response = http.put(
             "/api/settings/indexing/ocr.gpu", json={}, base_url=ORIGIN, headers=HEADERS
+        )
+        assert response.status_code == 422
+
+    def test_a_read_only_setting_cannot_be_written_over_http(self, http):
+        response = http.put(
+            "/api/settings/general/updates.skipped_version",
+            json={"value": "1.0"},
+            base_url=ORIGIN,
+            headers=HEADERS,
         )
         assert response.status_code == 422
 

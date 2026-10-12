@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 BOOLEAN, INTEGER, NUMBER, CHOICE = "boolean", "integer", "number", "choice"
-MULTI, BANDS = "multichoice", "bands"
+MULTI, BANDS, TEXT = "multichoice", "bands", "text"
 
 _NEXT_RUN = "Applies from the next indexing run."
 
@@ -36,15 +36,15 @@ class Spec:
     kind: str
     default: Any  # the value, or a function of the client when it depends on the installation
     read: Callable[[Any], Any]
-    write: Callable[[Any, Any], None]
-    reset: Callable[[Any], None]
+    write: Callable[[Any, Any], None] | None  # None: shown, but not changed here
+    reset: Callable[[Any], None]  # for a read-only setting, clears it
     options: Callable[[Any], list[dict[str, object]]] | None = None
     labels: tuple[str, ...] = ()
     minimum: float | None = None
     maximum: float | None = None
     unit: str = ""
     advanced: bool = False
-    note: str = ""
+    note: str | Callable[[Any], str] = ""
 
 
 def _workers_options(_client: Any) -> list[dict[str, object]]:
@@ -127,6 +127,52 @@ def _hybrid_phase_options(client: Any) -> list[dict[str, object]]:
         if value not in offered:
             options.append({"value": value, "label": value.capitalize()})
     return options
+
+
+def _text(value: Any) -> str:
+    """An enum as its plain value (`LogLevel.INFO` as "info")."""
+    return str(getattr(value, "value", value))
+
+
+def _log_level_options(_client: Any) -> list[dict[str, object]]:
+    return [
+        {"value": "debug", "label": "Debug: everything, for troubleshooting"},
+        {"value": "info", "label": "Info: normal activity"},
+        {"value": "warning", "label": "Warning: warnings and errors"},
+        {"value": "error", "label": "Error: errors only"},
+    ]
+
+
+def _update_check_options(_client: Any) -> list[dict[str, object]]:
+    return [
+        {"value": "on", "label": "On: check and offer to update"},
+        {"value": "notify-only", "label": "Notify only: check and tell me"},
+        {"value": "off", "label": "Off: never check"},
+    ]
+
+
+def _update_check_note(client: Any) -> str:
+    from vethuq.settings import UpdateSettings
+
+    if UpdateSettings.disabled_by_environment():
+        return (
+            f"The {UpdateSettings.ENV_VAR} environment variable switches update checks off, "
+            "whatever this says."
+        )
+    return ""
+
+
+def _snoozed_until(client: Any) -> str | None:
+    until = client.settings.updates.get_snoozed_until()
+    return until.isoformat() if until is not None else None
+
+
+def _integrity_options(_client: Any) -> list[dict[str, object]]:
+    return [
+        {"value": "auto", "label": "Automatic: when the database opens, at most once per interval"},
+        {"value": "enable", "label": "Every time the database opens"},
+        {"value": "disable", "label": "Never by itself"},
+    ]
 
 
 def _specs() -> tuple[Spec, ...]:
@@ -232,6 +278,20 @@ def _specs() -> tuple[Spec, ...]:
             note="Applies to sources added or indexed from now on.",
         ),
         Spec(
+            id="updates.check",
+            section="general",
+            label="Check for updates",
+            description="Whether VethuQ looks for a newer version, and whether it offers to "
+            "install it.",
+            kind=CHOICE,
+            default="on",
+            read=lambda c: _text(c.settings.updates.get_check()),
+            write=lambda c, v: c.settings.updates.set_check(v),
+            reset=lambda c: c.settings.updates.reset_check(),
+            options=_update_check_options,
+            note=_update_check_note,
+        ),
+        Spec(
             id="metrics.opt_in",
             section="general",
             label="Share anonymous usage metrics",
@@ -242,6 +302,31 @@ def _specs() -> tuple[Spec, ...]:
             read=lambda c: c.settings.metrics.get_opt_in(),
             write=lambda c, v: c.settings.metrics.set_opt_in(v),
             reset=lambda c: c.settings.metrics.reset_opt_in(),
+        ),
+        Spec(
+            id="updates.skipped_version",
+            section="general",
+            label="Skipped update",
+            description="The version you chose not to be told about. A newer version is announced "
+            "again.",
+            kind=TEXT,
+            default=None,
+            read=lambda c: c.settings.updates.get_skipped_version(),
+            write=None,
+            reset=lambda c: c.settings.updates.clear_skip(),
+            advanced=True,
+        ),
+        Spec(
+            id="updates.snoozed_until",
+            section="general",
+            label="Update notice snoozed until",
+            description='When "remind me later" ends. Clearing it shows the notice again.',
+            kind=TEXT,
+            default=None,
+            read=_snoozed_until,
+            write=None,
+            reset=lambda c: c.settings.updates.clear_snooze(),
+            advanced=True,
         ),
         Spec(
             id="sources.removed_retention_minutes",
@@ -360,6 +445,62 @@ def _specs() -> tuple[Spec, ...]:
             maximum=100,
             unit="%",
         ),
+        Spec(
+            id="logs.level",
+            section="system",
+            label="Log detail",
+            description="How much VethuQ writes to its log files.",
+            kind=CHOICE,
+            default="info",
+            read=lambda c: _text(c.settings.logs.get_level()),
+            write=lambda c, v: c.settings.logs.set_level(v),
+            reset=lambda c: c.settings.logs.reset_level(),
+            options=_log_level_options,
+            note="Takes effect at once.",
+        ),
+        Spec(
+            id="logs.retention_days",
+            section="system",
+            label="Keep log files for",
+            description="Older daily log files are deleted.",
+            kind=INTEGER,
+            default=15,
+            read=lambda c: c.settings.logs.get_retention_days(),
+            write=lambda c, v: c.settings.logs.set_retention_days(v),
+            reset=lambda c: c.settings.logs.reset_retention_days(),
+            minimum=1,
+            unit="days",
+            note="Takes effect at once.",
+        ),
+        Spec(
+            id="database.integrity_check",
+            section="system",
+            label="Check the database for damage",
+            description="When VethuQ checks that its database is intact. A check can always be "
+            "run by hand.",
+            kind=CHOICE,
+            default="auto",
+            read=lambda c: _text(c.settings.database.get_integrity_check()),
+            write=lambda c, v: c.settings.database.set_integrity_check(v),
+            reset=lambda c: c.settings.database.reset_integrity_check(),
+            options=_integrity_options,
+            note="Applies the next time the database is opened.",
+        ),
+        Spec(
+            id="database.integrity_check_interval_minutes",
+            section="system",
+            label="Time between automatic checks",
+            description="In Automatic mode, the database is checked at most this often.",
+            kind=INTEGER,
+            default=1440,
+            read=lambda c: c.settings.database.get_integrity_check_interval_minutes(),
+            write=lambda c, v: c.settings.database.set_integrity_check_interval_minutes(v),
+            reset=lambda c: c.settings.database.reset_integrity_check_interval_minutes(),
+            minimum=1,
+            unit="minutes",
+            advanced=True,
+            note="Used in Automatic mode. Applies the next time the database is opened.",
+        ),
     )
 
 
@@ -382,6 +523,8 @@ class SettingsService:
 
     def update(self, section: str, setting_id: str, value: object) -> dict[str, object]:
         spec = self._spec(section, setting_id)
+        if spec.write is None:
+            raise InvalidSettingError("This setting cannot be changed here.")
         client = self._client()
         value = self._check(client, spec, value)
         # Imported here so the module loads without the core (tests of the pure parts).
@@ -481,7 +624,8 @@ class SettingsService:
             "default": default,
             "is_default": is_default,
             "advanced": spec.advanced,
-            "note": spec.note,
+            "note": spec.note(client) if callable(spec.note) else spec.note,
+            "readonly": spec.write is None,
         }
         if spec.options is not None:
             item["options"] = [

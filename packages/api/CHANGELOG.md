@@ -15,3 +15,5 @@ All notable changes to `vethuq-api`.
 - Settings sections `general` (default languages, usage metrics), `sources` (removed-source retention),
   `tiers` (default processing tier, hybrid OCR phases and size rule, remote job limits, wait timeout) and
   `results` (confidence bands), with list, multi-choice and three-number (`bands`) setting types.
+- Settings: the update check (with the skipped version and snooze shown read-only and clearable) in
+  `general`, and a `system` section with log level and retention and the database integrity check.
