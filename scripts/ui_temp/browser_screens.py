@@ -60,7 +60,7 @@ def run(browser: Browser, out: Path) -> None:
         for scheme in ("light", "dark"):
             page.emulate_media(color_scheme=scheme)
             page.get_by_role("tab", name="Home").click()
-            expect(page.get_by_text("Welcome to VethuQ")).to_be_visible()
+            expect(page.get_by_text("Document intelligence and evidence")).to_be_visible()
             shot(page, out, f"home-{scheme}")
             page.get_by_role("tab", name="About").click()
             expect(page.get_by_text("Database schema")).to_be_visible()

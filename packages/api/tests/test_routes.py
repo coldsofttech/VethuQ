@@ -68,3 +68,22 @@ class TestCatalog:
         body = client.get("/api/catalog", base_url=ORIGIN).get_json()
         assert set(body) == {"add_ons", "file_types", "search_engines", "languages", "ocr_engines"}
         assert all(isinstance(rows, list) for rows in body.values())
+
+
+class TestBrand:
+    def test_needs_a_session(self, client):
+        assert client.get("/api/brand", base_url=ORIGIN).status_code == 401
+
+    def test_real_core_reports_name_tagline_and_both_palettes(self, web_dist, tmp_path):
+        app = create_app(
+            bootstrap_token="t", web_dist=web_dist, core=VethuQCore(tmp_path / "vethuq.db")
+        )
+        allow_host(app, "127.0.0.1:5000")
+        client = app.test_client()
+        client.get("/?t=t", base_url=ORIGIN)
+        body = client.get("/api/brand", base_url=ORIGIN).get_json()
+        assert body["name"] == "VethuQ"
+        assert body["tagline"]
+        for scheme in ("light", "dark"):
+            assert body["palette"][scheme]["primary"].startswith("#")
+        assert body["palette"]["light"].keys() == body["palette"]["dark"].keys()

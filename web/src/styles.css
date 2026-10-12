@@ -5,7 +5,18 @@ body,
   margin: 0;
 }
 
+/* Before the theme loads, follow the system so there is no white flash in dark mode. */
+html {
+  color-scheme: light dark;
+  background: Canvas;
+}
+
 body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2 {
+  margin: 0;
 }

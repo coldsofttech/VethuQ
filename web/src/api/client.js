@@ -5,6 +5,13 @@
  * @property {string} platform
  * @property {number} db_schema
  *
+ * @typedef {Record<string, string>} PaletteScheme  Design tokens by name, as "#RRGGBB".
+ *
+ * @typedef {object} Brand
+ * @property {string} name
+ * @property {string} tagline
+ * @property {{ light: PaletteScheme, dark: PaletteScheme }} palette
+ *
  * @typedef {object} CatalogAddon
  * @property {string} id
  * @property {string} name
@@ -95,6 +102,8 @@ export const api = {
   health: (signal) => request('/api/health', { signal }),
   /** @returns {Promise<AboutDetails>} */
   about: (signal) => request('/api/about', { signal }),
+  /** @returns {Promise<Brand>} */
+  brand: (signal) => request('/api/brand', { signal }),
   /** @returns {Promise<Catalog>} */
   catalog: (signal) => request('/api/catalog', { signal }),
   /** @returns {Promise<PlatformInfo>} */

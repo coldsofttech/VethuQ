@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import { usePlatform } from '../platform/PlatformProvider.jsx';
+import { useBrand } from '../brand/BrandProvider.jsx';
 import { strings } from '../strings.js';
 
 const useStyles = makeStyles({
@@ -52,6 +53,7 @@ const useStyles = makeStyles({
 export function TitleBar() {
   const styles = useStyles();
   const { windowControls } = usePlatform();
+  const brand = useBrand();
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export function TitleBar() {
         onDoubleClick={windowControls ? toggleMaximize : undefined}
       >
         <img className={styles.logo} src="/icon.svg" alt="" />
-        <Text size={200}>{strings.appName}</Text>
+        <Text size={200}>{brand.name}</Text>
       </div>
       {windowControls && (
         <div className={styles.controls}>

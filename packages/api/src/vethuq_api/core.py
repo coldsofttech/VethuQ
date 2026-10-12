@@ -14,6 +14,8 @@ class Core(Protocol):
 
     def catalog(self) -> dict[str, list[dict[str, object]]]: ...
 
+    def brand(self) -> dict[str, object]: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -33,6 +35,20 @@ class VethuQCore:
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()
+
+    def brand(self) -> dict[str, object]:
+        """The app's name, tagline and colour palette, so every surface looks the same."""
+        import vethuq
+
+        # The palette is the core's shared design tokens; it has no public accessor yet, and its
+        # module is documented as the thing a web layer reuses.
+        from vethuq._brand import _Palette
+
+        return {
+            "name": vethuq.APP_NAME,
+            "tagline": vethuq.APP_TAGLINE,
+            "palette": _Palette.schemes(),
+        }
 
     def catalog(self) -> dict[str, list[dict[str, object]]]:
         """What is installed and what each piece offers (what the CLI lists with `... list`)."""

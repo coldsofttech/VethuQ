@@ -1,7 +1,8 @@
 // Every user-visible string lives here so the interface can be translated later.
 export const strings = {
+  // Fallbacks only: the real name, tagline and colours come from the core (GET /api/brand).
   appName: 'VethuQ',
-  tagline: 'Document intelligence and evidence infrastructure',
+  tagline: 'Document intelligence and evidence infrastructure.',
   nav: { home: 'Home', about: 'About', settings: 'Settings' },
   window: {
     minimize: 'Minimize',
@@ -10,8 +11,7 @@ export const strings = {
     close: 'Close',
   },
   home: {
-    title: 'Welcome to VethuQ',
-    lead: 'Search, retrieve and structure your documents, offline and on your own machine.',
+    welcome: 'Search, retrieve and structure your documents, offline and on your own machine.',
     engineTitle: 'Engine',
     engineReady: 'Ready',
     engineVersion: (version) => `VethuQ ${version}`,

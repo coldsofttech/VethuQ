@@ -1,5 +1,7 @@
-import { FluentProvider, webDarkTheme, webLightTheme } from '@fluentui/react-components';
+import { FluentProvider } from '@fluentui/react-components';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useBrand } from '../brand/BrandProvider.jsx';
+import { buildTheme } from './brandTheme.js';
 
 /** @typedef {'system' | 'light' | 'dark'} ThemeChoice */
 
@@ -30,6 +32,7 @@ const ThemeContext = createContext({
 export function ThemeProvider({ children }) {
   const [choice, setChoiceState] = useState(readChoice);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  const { palette } = useBrand();
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
@@ -54,14 +57,16 @@ export function ThemeProvider({ children }) {
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
   }, [isDark]);
 
+  const theme = useMemo(
+    () => buildTheme(isDark ? 'dark' : 'light', palette?.[isDark ? 'dark' : 'light']),
+    [isDark, palette],
+  );
+
   const value = useMemo(() => ({ choice, setChoice, isDark }), [choice, setChoice, isDark]);
 
   return (
     <ThemeContext.Provider value={value}>
-      <FluentProvider
-        theme={isDark ? webDarkTheme : webLightTheme}
-        style={{ height: '100%', background: 'transparent' }}
-      >
+      <FluentProvider theme={theme} style={{ height: '100%', background: 'transparent' }}>
         {children}
       </FluentProvider>
     </ThemeContext.Provider>

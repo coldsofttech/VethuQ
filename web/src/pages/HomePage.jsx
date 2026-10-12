@@ -7,16 +7,21 @@ import {
   MessageBarTitle,
   Spinner,
   Text,
+  Title2,
   makeStyles,
   tokens,
 } from '@fluentui/react-components';
 import { CheckmarkCircle20Filled, Library20Regular, Rocket20Regular } from '@fluentui/react-icons';
 import { api } from '../api/client.js';
 import { useApi } from '../api/useApi.js';
-import { PageHeader } from '../components/PageHeader.jsx';
+import { useBrand } from '../brand/BrandProvider.jsx';
 import { strings } from '../strings.js';
 
 const useStyles = makeStyles({
+  hero: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalL },
+  logo: { width: '56px', height: '56px', flexShrink: 0 },
+  heroText: { display: 'flex', flexDirection: 'column' },
+  tagline: { color: tokens.colorNeutralForeground2 },
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalXL },
   cards: {
     display: 'grid',
@@ -30,10 +35,18 @@ const useStyles = makeStyles({
 export function HomePage() {
   const styles = useStyles();
   const { data, error, loading } = useApi(api.about);
+  const brand = useBrand();
 
   return (
     <div className={styles.page}>
-      <PageHeader title={strings.home.title} lead={strings.home.lead} />
+      <div className={styles.hero}>
+        <img className={styles.logo} src="/icon.svg" alt="" />
+        <div className={styles.heroText}>
+          <Title2 as="h1">{brand.name}</Title2>
+          <Body1 className={styles.tagline}>{brand.tagline}</Body1>
+        </div>
+      </div>
+      <Body1>{strings.home.welcome}</Body1>
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>

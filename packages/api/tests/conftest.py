@@ -32,6 +32,9 @@ class FakeCore:
     def about(self) -> dict[str, object]:
         return {"vethuq": "9.9.9", "python": "3.12.0", "platform": "test", "db_schema": 1}
 
+    def brand(self) -> dict[str, object]:
+        return {"name": "Brand", "tagline": "Tag.", "palette": {"light": {}, "dark": {}}}
+
     def catalog(self) -> dict[str, list[dict[str, object]]]:
         return {"add_ons": [{"id": "csv", "name": "vethuq-addon-csv", "version": "0.1.0"}]}
 

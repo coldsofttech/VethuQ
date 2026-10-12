@@ -29,6 +29,10 @@ def register(
     def get_about() -> Response:
         return jsonify(core.about())
 
+    @api.get("/brand")
+    def brand() -> Response:
+        return jsonify(core.brand())
+
     @api.get("/catalog")
     def catalog() -> Response:
         return jsonify(core.catalog())

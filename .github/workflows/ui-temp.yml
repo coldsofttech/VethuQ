@@ -26,6 +26,9 @@ jobs:
   ui:
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      # The packages are installed (not editable), so tell the host where the built interface is.
+      VETHUQ_WEB_DIST: ${{ github.workspace }}/web/dist
     defaults:
       run:
         shell: bash

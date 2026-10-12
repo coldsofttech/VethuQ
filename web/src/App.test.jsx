@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from './App.jsx';
-import { ABOUT, CATALOG, mockApi, renderWithProviders } from './test/helpers.jsx';
+import { ABOUT, BRAND, CATALOG, mockApi, renderWithProviders } from './test/helpers.jsx';
 
 const ROUTES = {
   'GET /api/platform': { kind: 'web', window_controls: false },
@@ -16,6 +16,23 @@ describe('App', () => {
     renderWithProviders(<App />);
     expect(await screen.findByText('VethuQ 1.2.3')).toBeInTheDocument();
     expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+  });
+
+  it('shows the brand name and tagline from the core on the home page', async () => {
+    mockApi({
+      ...ROUTES,
+      'GET /api/brand': { ...BRAND, name: 'BrandName', tagline: 'A brand tagline.' },
+    });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('heading', { name: 'BrandName' })).toBeInTheDocument();
+    expect(screen.getByText('A brand tagline.')).toBeInTheDocument();
+    expect(document.title).toBe('BrandName');
+  });
+
+  it('still renders with the built-in names when the brand cannot be loaded', async () => {
+    mockApi({ ...ROUTES, 'GET /api/brand': new Error('unreachable') });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('heading', { name: 'VethuQ' })).toBeInTheDocument();
   });
 
   it('navigates to the about page and lists the installation details', async () => {
