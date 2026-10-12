@@ -1,5 +1,4 @@
 import {
-  Button,
   Checkbox,
   Dropdown,
   Input,
@@ -12,6 +11,7 @@ import {
   MessageBarBody,
   Option,
   Spinner,
+  Tooltip,
   SplitButton,
   Table,
   TableBody,
@@ -40,6 +40,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { SourceIcon } from '../components/FileIcon.jsx';
+import { ToolButton } from '../components/ToolButton.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { download, formatDate } from '../format.js';
@@ -147,24 +148,34 @@ export function SourcesPage() {
     <div className={styles.page}>
       <PageHeader title="Sources" lead="The folders and files that VethuQ reads." />
       <Toolbar className={styles.toolbar} aria-label="Sources">
-        <Button icon={<FolderAdd20Regular />} onClick={() => add.pick('folder')}>
-          Add folder
-        </Button>
-        <Button icon={<DocumentAdd20Regular />} onClick={() => add.pick('file')}>
-          Add file
-        </Button>
+        <ToolButton
+          label="Add folder"
+          icon={<FolderAdd20Regular />}
+          onClick={() => add.pick('folder')}
+        />
+        <ToolButton
+          label="Add file"
+          icon={<DocumentAdd20Regular />}
+          onClick={() => add.pick('file')}
+        />
         <ToolbarDivider />
         <Menu positioning="below-end">
           <MenuTrigger disableButtonEnhancement>
             {(triggerProps) => (
-              <SplitButton
-                icon={<Play20Regular />}
-                disabled={running}
-                menuButton={triggerProps}
-                primaryActionButton={{ onClick: () => run('run', selectedRow) }}
+              <Tooltip
+                content={selectedRow ? 'Index selected' : 'Index all'}
+                relationship="description"
               >
-                {selectedRow ? 'Index selected' : 'Index'}
-              </SplitButton>
+                <SplitButton
+                  icon={<Play20Regular />}
+                  disabled={running}
+                  menuButton={triggerProps}
+                  primaryActionButton={{
+                    'aria-label': selectedRow ? 'Index selected' : 'Index',
+                    onClick: () => run('run', selectedRow),
+                  }}
+                />
+              </Tooltip>
             )}
           </MenuTrigger>
           <MenuPopover>
@@ -180,24 +191,24 @@ export function SourcesPage() {
         </Menu>
         {running && (
           <>
-            <Button
+            <ToolButton
+              label={state.paused ? 'Resume' : 'Pause'}
               icon={state.paused ? <Play20Regular /> : <Pause20Regular />}
               onClick={state.paused ? resume : pause}
-            >
-              {state.paused ? 'Resume' : 'Pause'}
-            </Button>
-            <Button icon={<Stop20Regular />} disabled={state.stopping} onClick={requestStop}>
-              Stop
-            </Button>
+            />
+            <ToolButton
+              label="Stop"
+              icon={<Stop20Regular />}
+              disabled={state.stopping}
+              onClick={requestStop}
+            />
           </>
         )}
         <ToolbarDivider />
-        <Button icon={<ArrowSync20Regular />} onClick={refresh}>
-          Refresh
-        </Button>
+        <ToolButton label="Refresh" icon={<ArrowSync20Regular />} onClick={refresh} />
         <Menu>
           <MenuTrigger disableButtonEnhancement>
-            <Button icon={<ArrowDownload20Regular />}>Export</Button>
+            <ToolButton label="Export" icon={<ArrowDownload20Regular />} />
           </MenuTrigger>
           <MenuPopover>
             <MenuList>

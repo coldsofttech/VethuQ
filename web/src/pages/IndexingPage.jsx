@@ -26,6 +26,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
+import { ToolButton } from '../components/ToolButton.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { baseName, formatBytes, formatDate, formatDuration } from '../format.js';
@@ -224,9 +225,7 @@ export function IndexingPage() {
             </Tab>
           ))}
         </TabList>
-        <Button icon={<ArrowSync20Regular />} onClick={refresh}>
-          Refresh
-        </Button>
+        <ToolButton label="Refresh" icon={<ArrowSync20Regular />} onClick={refresh} />
       </div>
       {current === 'activity' && <Activity />}
       {current === 'history' && (
