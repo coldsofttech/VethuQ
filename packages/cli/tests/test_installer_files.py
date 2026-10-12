@@ -403,7 +403,7 @@ ADDON_INSTALLER = ROOT / "installer" / "addon"
 
 
 class TestAddOnInstaller:
-    """One generic installer per add-on: into VethuQ's add-ons/ folder, and only if VethuQ is there."""
+    """One installer per add-on: into VethuQ's add-ons/ folder, and only if VethuQ is there."""
 
     def script(self) -> str:
         return (ADDON_INSTALLER / "vethuq-addon.iss").read_text(encoding="utf-8")
