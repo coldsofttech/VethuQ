@@ -93,6 +93,15 @@ class FakeCore:
     def addons(self):
         return SimpleNamespace()
 
+    def logs(self):
+        return SimpleNamespace()
+
+    def github(self):
+        return SimpleNamespace()
+
+    def maintenance(self):
+        return SimpleNamespace()
+
     def indexing(self):
         core = self
 

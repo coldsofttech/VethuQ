@@ -1,6 +1,13 @@
 import { Radio, RadioGroup, Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { GroupHeading } from '../components/GroupHeading.jsx';
+import {
+  DatabasePanel,
+  PolicyPanel,
+  SearchIndexPanel,
+  TiersPanel,
+  UpdatesPanel,
+} from '../maintenance/panels.jsx';
 import { OcrPanel } from '../ocr/OcrPanel.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { SettingFrame } from '../components/SettingFrame.jsx';
@@ -18,6 +25,7 @@ const SECTIONS = [
   'results',
   'system',
   'addons',
+  'policy',
 ];
 
 const useStyles = makeStyles({
@@ -46,6 +54,7 @@ function General() {
         </RadioGroup>
       </SettingFrame>
       <SettingsSection section="general" />
+      <UpdatesPanel />
     </div>
   );
 }
@@ -75,15 +84,21 @@ export function SettingsPage() {
         <Route index element={<Navigate to="general" replace />} />
         <Route path="general" element={<General />} />
         <Route path="ocr" element={<OcrPanel />} />
-        {SECTIONS.filter((id) => id !== 'general' && id !== 'ocr').map((id) => (
+        <Route path="policy" element={<PolicyPanel />} />
+        {SECTIONS.filter((id) => !['general', 'ocr', 'policy'].includes(id)).map((id) => (
           <Route
             key={id}
             path={id}
             element={
-              <SettingsSection
-                section={id}
-                empty={id === 'addons' ? strings.settings.noAddons : undefined}
-              />
+              <>
+                {id === 'tiers' && <TiersPanel />}
+                <SettingsSection
+                  section={id}
+                  empty={id === 'addons' ? strings.settings.noAddons : undefined}
+                />
+                {id === 'search' && <SearchIndexPanel />}
+                {id === 'system' && <DatabasePanel />}
+              </>
             }
           />
         ))}

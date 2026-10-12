@@ -169,6 +169,7 @@ describe('Settings tabs', () => {
       'Results',
       'Logs and database',
       'Add-ons',
+      'Policy',
     ];
     const tabs = names.map((name) => screen.getAllByRole('tab', { name }).at(-1));
     tabs.slice(1).forEach((tab, index) => {
@@ -185,7 +186,7 @@ describe('Settings > grouping', () => {
     renderWithProviders(<App />, { route: '/settings/general' });
     await screen.findByTestId('setting-metrics.opt_in');
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Appearance', 'Languages', 'Data', 'Privacy']);
+    expect(headings).toEqual(['Appearance', 'Languages', 'Data', 'Privacy', 'Updates']); // Updates: the status panel
   });
 
   it('shows a note under a group heading and one heading per group', async () => {
@@ -193,7 +194,12 @@ describe('Settings > grouping', () => {
     renderWithProviders(<App />, { route: '/settings/search' });
     await screen.findByTestId('setting-search.engine');
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Searching', 'How text is matched', 'Similar (fuzzy) engine']);
+    expect(headings).toEqual([
+      'Searching',
+      'How text is matched',
+      'Similar (fuzzy) engine',
+      'Search index', // the maintenance panel
+    ]);
     expect(screen.getByText('What counts as the same character in a search.')).toBeInTheDocument();
   });
 

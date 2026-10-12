@@ -496,6 +496,78 @@ def seed_credits(home: str, documents: Path) -> None:
             daily.remaining_milli -= spent_today
 
 
+def github_fixtures(page: Page) -> None:
+    """Answer the GitHub endpoints with a set-up runner and jobs (the add-on is not installed)."""
+    runner = {
+        "owner": "me",
+        "repo": "vethuq-runner",
+        "private": True,
+        "workflow_ref": "v1",
+        "image": "ghcr.io/vethuq/worker:1",
+        "protocol": 1,
+        "key_fingerprint": "9f3a-c21e",
+        "set_up_at": "2026-10-01T10:00:00+00:00",
+        "url": "https://github.com/me/vethuq-runner",
+    }
+    jobs = [
+        {
+            "id": 4,
+            "run_id": 5,
+            "tier": "github",
+            "status": "completed",
+            "images": 18,
+            "size_bytes": 5_400_000,
+            "credits": 18,
+            "submitted_at": "2026-10-12T09:00:00+00:00",
+            "completed_at": "2026-10-12T09:06:00+00:00",
+            "error": None,
+        },
+        {
+            "id": 3,
+            "run_id": 4,
+            "tier": "github",
+            "status": "submitted",
+            "images": 40,
+            "size_bytes": 12_000_000,
+            "credits": 40,
+            "submitted_at": "2026-10-12T10:00:00+00:00",
+            "completed_at": None,
+            "error": None,
+        },
+        {
+            "id": 2,
+            "run_id": 3,
+            "tier": "github",
+            "status": "failed",
+            "images": 7,
+            "size_bytes": 900_000,
+            "credits": 0,
+            "submitted_at": "2026-10-11T10:00:00+00:00",
+            "completed_at": None,
+            "error": "The job timed out.",
+        },
+    ]
+    answers = {
+        "/api/github": {
+            "installed": True,
+            "enabled": True,
+            "reason": "",
+            "token": {"environment": False, "session": True},
+            "runner": runner,
+            "versions": [{"workflow_ref": "v1", "status": "current"}],
+            "tier": {"id": "github", "available": True, "reason": ""},
+        },
+        "/api/github/availability": {"installed": True, "enabled": True, "reason": ""},
+        "/api/github/jobs": {"jobs": jobs},
+    }
+
+    def handle(route):
+        path = route.request.url.split("/api", 1)[1].split("?")[0]
+        route.fulfill(json=answers.get("/api" + path, {}))
+
+    page.route("**/api/github**", handle)
+
+
 def credits_screens(browser: Browser, out: Path) -> None:
     documents = make_documents()
     home = tempfile.mkdtemp(prefix="vethuq-ui-")
@@ -549,6 +621,48 @@ def credits_screens(browser: Browser, out: Path) -> None:
         # Put the add-on back on, so the next checks see what they expect.
         page.get_by_role("tab", name="Installed").click()
         page.get_by_role("switch", name="Turn csv on or off").click()
+        # Logs: a real one (this run's own), filtered, with the follow switch on.
+        page.get_by_role("tab", name="Logs").first.click()
+        expect(page.get_by_role("log", name="Log entries")).to_be_visible()
+        page.wait_for_timeout(600)
+        shot(page, out, "logs")
+        page.get_by_role("combobox", name="Level").click()
+        page.get_by_role("option", name="Warnings and errors").click()
+        page.wait_for_timeout(500)
+        page.get_by_role("button", name="Follow new entries").click()
+        page.wait_for_timeout(500)
+        shot(page, out, "logs-filtered-following")
+        # Settings: the maintenance panels beside the settings they belong with.
+        page.get_by_role("tab", name="Settings").click()
+        page.get_by_role("tab", name="Logs and database").click()
+        page.get_by_role("button", name="Quick check").click()
+        expect(page.get_by_text("No problems found")).to_be_visible(timeout=20000)
+        shot(page, out, "settings-database-check")
+        page.get_by_role("tab", name="General", exact=True).click()
+        expect(page.get_by_role("heading", name="Updates")).to_be_visible()
+        page.get_by_role("heading", name="Updates").scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        shot(page, out, "settings-updates")
+        page.get_by_role("tab", name="Search", exact=True).click()
+        expect(page.get_by_role("heading", name="Search index")).to_be_visible()
+        page.get_by_role("heading", name="Search index").scroll_into_view_if_needed()
+        page.wait_for_timeout(300)
+        shot(page, out, "settings-search-index")
+        page.get_by_role("tab", name="Cloud OCR").click()
+        expect(page.get_by_role("table", name="Processing tiers")).to_be_visible()
+        shot(page, out, "settings-tiers")
+        page.get_by_role("tab", name="Policy").click()
+        expect(page.get_by_role("heading", name="Signed policy")).to_be_visible()
+        shot(page, out, "settings-policy")
+        # GitHub: its add-on is not installed here, so the answers are made up for the picture.
+        github_fixtures(page)
+        page.goto(page.url.split("#")[0] + "#/github")
+        expect(page.get_by_role("link", name="me/vethuq-runner")).to_be_visible()
+        shot(page, out, "github-runner")
+        page.get_by_role("tab", name="Jobs").click()
+        expect(page.get_by_role("table", name="GitHub jobs")).to_be_visible()
+        shot(page, out, "github-jobs")
+        page.unroute("**/api/github**")
         # Statistics.
         page.get_by_role("tab", name="Statistics").first.click()
         expect(page.get_by_text("Pages read", exact=True)).to_be_visible()

@@ -5,6 +5,13 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Logs: `/api/logs` (the files), `/api/logs/<component>` (a day's entries, filtered, with a cursor so the
+  interface can follow) and `/api/logs/<component>/export`.
+- Maintenance: the database check, update status and check, the signed policy, the search index (status and
+  rebuild) and the processing tiers (`/api/db`, `/updates`, `/policy`, `/search-index`, `/tiers`), with slow work
+  on background tasks.
+- GitHub tier: `/api/github/*` (availability, the runner's setup, status, update and removal, the jobs sent to
+  GitHub, and a token kept in memory for the session only). The GitHub add-on is imported only when asked.
 - Add-ons: `/api/addons` (installed add-ons with status, update announced by the signed policy, licence entered,
   and the packs VethuQ names as extras), turning one off or on, and installing a pack or updating an add-on with
   pip on a background job. Only VethuQ's own pack names and announced updates reach pip; a packaged copy refuses.

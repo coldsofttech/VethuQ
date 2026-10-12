@@ -8,7 +8,10 @@ from typing import Any, Protocol
 
 from vethuq_api.addons_service import AddonsService
 from vethuq_api.credits_service import CreditsService
+from vethuq_api.github_service import GitHubService
 from vethuq_api.indexing import IndexingService
+from vethuq_api.logs_service import LogsService
+from vethuq_api.maintenance_service import MaintenanceService
 from vethuq_api.ocr_service import OcrService
 from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
@@ -49,6 +52,12 @@ class Core(Protocol):
 
     def addons(self) -> Any: ...
 
+    def logs(self) -> Any: ...
+
+    def github(self) -> Any: ...
+
+    def maintenance(self) -> Any: ...
+
 
 class VethuQCore:
     """`Core` backed by a `vethuq.VethuQ` client, created on first use."""
@@ -64,6 +73,9 @@ class VethuQCore:
         self._stats = StatsService(self._vethuq)
         self._ocr = OcrService(self._vethuq)
         self._addons = AddonsService(self._vethuq)
+        self._logs = LogsService(self._vethuq)
+        self._github = GitHubService(self._vethuq)
+        self._maintenance = MaintenanceService(self._vethuq)
 
     def _vethuq(self) -> Any:
         with self._lock:
@@ -96,6 +108,15 @@ class VethuQCore:
 
     def addons(self) -> AddonsService:
         return self._addons
+
+    def logs(self) -> LogsService:
+        return self._logs
+
+    def github(self) -> GitHubService:
+        return self._github
+
+    def maintenance(self) -> MaintenanceService:
+        return self._maintenance
 
     def about(self) -> dict[str, object]:
         return self._vethuq().version.to_dict()

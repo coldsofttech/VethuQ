@@ -239,6 +239,37 @@ export const api = {
     requests: (signal) => request('/api/index/requests', { signal }),
     cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
   },
+  logs: {
+    list: (signal) => request('/api/logs', { signal }),
+    entries: (component, params = {}, signal) =>
+      request(`/api/logs/${encodeURIComponent(component)}${query(params)}`, { signal }),
+    exportUrl: (component, params = {}) =>
+      `/api/logs/${encodeURIComponent(component)}/export${query(params)}`,
+  },
+  maintenance: {
+    tasks: (signal) => request('/api/maintenance/tasks', { signal }),
+    db: (signal) => request('/api/db', { signal }),
+    dbCheck: (quick) => request('/api/db/check', { method: 'POST', body: { quick } }),
+    updates: (signal) => request('/api/updates', { signal }),
+    updatesCheck: (force) => request('/api/updates/check', { method: 'POST', body: { force } }),
+    policy: (signal) => request('/api/policy', { signal }),
+    policyRefresh: (force) => request('/api/policy/refresh', { method: 'POST', body: { force } }),
+    searchIndex: (signal) => request('/api/search-index', { signal }),
+    searchRebuild: () => request('/api/search-index/rebuild', { method: 'POST' }),
+    tiers: (signal) => request('/api/tiers', { signal }),
+    tiersUse: (tier) => request('/api/tiers/use', { method: 'POST', body: { tier } }),
+    tiersReset: () => request('/api/tiers/reset', { method: 'POST' }),
+  },
+  github: {
+    overview: (signal) => request('/api/github', { signal }),
+    availability: (signal) => request('/api/github/availability', { signal }),
+    status: (token) => request('/api/github/status', { method: 'POST', body: { token } }),
+    setup: (body) => request('/api/github/setup', { method: 'POST', body }),
+    update: (body) => request('/api/github/update', { method: 'POST', body }),
+    remove: (body) => request('/api/github/remove', { method: 'POST', body }),
+    token: (token) => request('/api/github/token', { method: 'POST', body: { token } }),
+    jobs: (signal) => request('/api/github/jobs', { signal }),
+  },
   addons: {
     list: (signal) => request('/api/addons', { signal }),
     job: (signal) => request('/api/addons/job', { signal }),
