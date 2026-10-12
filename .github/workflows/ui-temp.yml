@@ -1,0 +1,128 @@
+# TEMPORARY. Lets the UI be looked at without a Windows machine: builds the interface on a Windows
+# runner, takes screenshots in a browser (Edge, the WebView2 engine) and of the real pywebview/WebView2
+# window, and uploads them as the `ui-screenshots` artifact (Actions > this run > Artifacts).
+# Remove this file and scripts/ui_temp/ when it is no longer needed.
+name: ui-temp
+
+on:
+  push:
+    branches: [feat/new-feature]
+    paths:
+      - web/**
+      - packages/api/**
+      - packages/desktop/**
+      - scripts/ui_temp/**
+      - .github/workflows/ui-temp.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-temp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          persist-credentials: false
+      # The workspace resolves the premium add-ons from a sibling checkout (see test.yml).
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          ref: feat/new-feature
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          ref: feat/new-feature
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: work/VethuQ/web/package-lock.json
+
+      - name: Install the desktop host
+        working-directory: work/VethuQ
+        run: |
+          uv sync --package vethuq-desktop
+          uv pip install playwright pillow
+
+      - name: Web - install, lint, test, build
+        working-directory: work/VethuQ/web
+        run: |
+          npm ci
+          npm run lint
+          npm run format:check
+          npm test
+          npm run build
+
+      - name: Screenshots in Edge (browser)
+        working-directory: work/VethuQ
+        run: uv run --no-sync python scripts/ui_temp/browser_screens.py --out "$GITHUB_WORKSPACE/shots" --channel msedge
+
+      - name: Make sure the WebView2 runtime is present
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          if (Test-Path $key) {
+            "WebView2 runtime: $((Get-ItemProperty $key).pv)"
+          } else {
+            "WebView2 runtime not found; installing"
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$env:RUNNER_TEMP\wv2.exe"
+            Start-Process "$env:RUNNER_TEMP\wv2.exe" -ArgumentList '/silent', '/install' -Wait
+          }
+
+      - name: Screenshots of the real window (pywebview + WebView2)
+        id: desktop
+        continue-on-error: true
+        working-directory: work/VethuQ
+        run: uv run --no-sync python scripts/ui_temp/desktop_smoke.py --out "$GITHUB_WORKSPACE/shots"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## UI screenshots"
+            echo "Download the **ui-screenshots** artifact from this run."
+            echo
+            echo '```'
+            ls "$GITHUB_WORKSPACE/shots" 2>/dev/null || echo "(no screenshots)"
+            echo '```'
+            if [ -f "$GITHUB_WORKSPACE/shots/desktop-result.json" ]; then
+              echo "Desktop window result:"
+              echo '```json'
+              cat "$GITHUB_WORKSPACE/shots/desktop-result.json"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: shots/
+          if-no-files-found: warn
+
+      - name: Fail if the real window check failed
+        if: steps.desktop.outcome == 'failure'
+        run: |
+          echo "The desktop window check failed; see the step log and desktop-result.json."
+          exit 1
