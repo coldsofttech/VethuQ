@@ -50,9 +50,9 @@ def run(browser: Browser, out: Path) -> None:
     process, url = start_host()
     try:
         page = open_page(browser, url)
-        assert page.url.rstrip("/").endswith(
-            url.split("/?")[0]
-        ), "token should be gone from the URL"
+        assert page.url.rstrip("/").endswith(url.split("/?")[0]), (
+            "token should be gone from the URL"
+        )
         assert "?t=" not in page.url
 
         # The start-up link works once.
@@ -118,7 +118,7 @@ def run(browser: Browser, out: Path) -> None:
 
         # Indexing settings: change, persist across a reload, show errors, reset.
         page.get_by_role("tab", name="Settings").click()
-        page.get_by_role("tab", name="Indexing").click()
+        page.get_by_role("tab", name="Indexing").last.click()
         expect(page.get_by_text("Files indexed at once")).to_be_visible()
         shot(page, out, "settings-indexing")
         gpu = page.get_by_role("switch", name="Use the graphics card for OCR")
@@ -131,7 +131,7 @@ def run(browser: Browser, out: Path) -> None:
         expect(page.get_by_text("Wait for files to stop changing")).to_be_visible()
         shot(page, out, "settings-indexing-changed")
         page.reload()
-        page.get_by_role("tab", name="Indexing").click()
+        page.get_by_role("tab", name="Indexing").last.click()
         expect(page.get_by_role("switch", name="Use the graphics card for OCR")).to_be_checked()
         expect(page.get_by_role("combobox", name="Files indexed at once")).to_have_text("4")
         page.get_by_role("button", name="Reset to default: Files indexed at once").click()
@@ -145,7 +145,7 @@ def run(browser: Browser, out: Path) -> None:
         retries.press("Tab")
         expect(page.get_by_test_id("setting-index.retry_attempts")).to_contain_text("Applies")
         page.reload()
-        page.get_by_role("tab", name="Indexing").click()
+        page.get_by_role("tab", name="Indexing").last.click()
         expect(page.get_by_role("spinbutton", name="Retries for a failed file")).to_have_value("7")
         page.get_by_role("button", name="Reset to default: Retries for a failed file").click()
         expect(page.get_by_role("spinbutton", name="Retries for a failed file")).to_have_value("3")
@@ -195,7 +195,7 @@ def run(browser: Browser, out: Path) -> None:
         shot(page, out, "settings-general-data")
 
         # Sources: retention in minutes, with a readable duration.
-        page.get_by_role("tab", name="Sources").click()
+        page.get_by_role("tab", name="Sources").last.click()
         expect(page.get_by_text("7 days", exact=True)).to_be_visible()
         retention = page.get_by_role("spinbutton", name="Keep a removed source for")
         retention.fill("120")
@@ -305,6 +305,100 @@ def run(browser: Browser, out: Path) -> None:
         process.wait(timeout=10)
 
 
+def make_documents() -> Path:
+    """A folder of plain text, CSV and Markdown files: enough of them for a run to take a moment."""
+    root = Path(tempfile.mkdtemp(prefix="vethuq-docs-"))
+    (root / "reports").mkdir()
+    (root / "notes").mkdir()
+    for number in range(240):
+        folder = root / ("reports" if number % 2 else "notes")
+        kind = ("txt", "csv", "md")[number % 3]
+        body = "\n".join(
+            f"line {line} of document {number}: quarterly figures" for line in range(400)
+        )
+        (folder / f"document-{number:03}.{kind}").write_text(body, encoding="utf-8")
+    (root / "locked.bin").write_bytes(b"\x00\x01")
+    (root / "single.txt").write_text("a lone file\n", encoding="utf-8")
+    return root
+
+
+def sources_and_indexing(browser: Browser, out: Path) -> None:
+    documents = make_documents()
+    process, url = start_host()
+    try:
+        page = open_page(browser, url)
+        page.get_by_role("tab", name="Sources").first.click()
+        expect(page.get_by_text("No sources yet")).to_be_visible()
+        shot(page, out, "sources-empty")
+
+        # Without a native picker the path is typed.
+        page.get_by_role("button", name="Add folder").click()
+        page.get_by_label("Path of the folder").fill(str(documents))
+        page.get_by_role("button", name="Add", exact=True).click()
+        expect(page.get_by_text(f"Added {documents.name}")).to_be_visible()
+        page.get_by_role("button", name="Add file").click()
+        page.get_by_label("Path of the file").fill(str(documents / "single.txt"))
+        page.get_by_role("button", name="Add", exact=True).click()
+        expect(page.get_by_text("Added single.txt")).to_be_visible()
+        row = page.get_by_role("row").filter(has_text=documents.name)
+        expect(row).to_be_visible()
+        row.click()
+        shot(page, out, "sources-list")
+
+        # The right-click menu.
+        row.click(button="right")
+        expect(page.get_by_role("menuitem", name="Reindex everything")).to_be_visible()
+        shot(page, out, "sources-menu")
+        page.keyboard.press("Escape")
+
+        # Index the folder, then pause it part-way to look at the status bar.
+        page.get_by_role("button", name="Index selected").first.click()
+        expect(
+            page.get_by_test_id("status-bar").get_by_text("Indexing", exact=True)
+        ).to_be_visible()
+        bar = page.get_by_test_id("status-bar")
+        bar.get_by_role("button", name="Pause").click()
+        expect(bar.get_by_text("Paused:")).to_be_visible(timeout=20000)
+        shot(page, out, "status-bar-paused")
+        bar.get_by_role("button", name="Resume").click()
+        page.get_by_role("tab", name="Indexing").first.click()
+        expect(page.get_by_text("Running in this application")).to_be_visible()
+        shot(page, out, "indexing-activity")
+
+        # Stopping asks first.
+        bar.get_by_role("button", name="Stop").click()
+        expect(page.get_by_text("Stop indexing?")).to_be_visible()
+        shot(page, out, "stop-confirm")
+        page.get_by_role("button", name="Keep going").click()
+
+        # Let it finish.
+        expect(page.get_by_text("Indexing finished")).to_be_visible(timeout=120000)
+        shot(page, out, "indexing-finished-toast")
+        page.get_by_role("tab", name="History").click()
+        expect(page.get_by_role("table", name="History")).to_be_visible()
+        shot(page, out, "indexing-history")
+        for tab in ("Remote jobs", "Queue"):
+            page.get_by_role("tab", name=tab).click()
+            page.wait_for_timeout(300)
+        shot(page, out, "indexing-queue")
+
+        # The files of the source: type and status, and a password-protected-looking lock for none here.
+        page.get_by_role("tab", name="Sources").first.click()
+        page.get_by_role("row").filter(has_text=documents.name).dblclick()
+        table = page.get_by_role("table", name="Files")
+        expect(table).to_be_visible()
+        expect(table.get_by_text("document-000.txt").first).to_be_visible()
+        shot(page, out, "source-files")
+        page.get_by_role("combobox", name="File type").click()
+        page.get_by_role("option", name="csv").click()
+        page.wait_for_timeout(500)
+        shot(page, out, "source-files-filtered")
+        print("sources and indexing checks passed")
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -316,6 +410,7 @@ def main() -> int:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
             run(browser, args.out)
+            sources_and_indexing(browser, args.out)
         finally:
             browser.close()
     return 0

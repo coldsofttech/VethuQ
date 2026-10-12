@@ -8,11 +8,20 @@ import { api } from '../api/client.js';
  * @property {'desktop' | 'web'} kind
  * @property {boolean} windowControls
  * @property {boolean} folderDialog  The host can show a folder picker.
+ * @property {boolean} fileDialog  The host can show a file picker.
+ * @property {boolean} reveal  The host can show a file in the file manager.
  * @property {boolean} ready  False until the host has answered.
  */
 
 /** @type {Platform} */
-const UNKNOWN = { kind: 'web', windowControls: false, folderDialog: false, ready: false };
+const UNKNOWN = {
+  kind: 'web',
+  windowControls: false,
+  folderDialog: false,
+  fileDialog: false,
+  reveal: false,
+  ready: false,
+};
 
 const PlatformContext = createContext(UNKNOWN);
 
@@ -27,6 +36,8 @@ export function PlatformProvider({ children }) {
           kind: info.kind,
           windowControls: info.window_controls,
           folderDialog: info.folder_dialog === true,
+          fileDialog: info.file_dialog === true,
+          reveal: info.reveal === true,
           ready: true,
         }),
       (error) => {

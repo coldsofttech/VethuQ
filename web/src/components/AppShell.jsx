@@ -1,6 +1,9 @@
 import { makeStyles, tokens } from '@fluentui/react-components';
 import { Outlet } from 'react-router-dom';
+import { CloseGuard } from './CloseGuard.jsx';
+import { DropTarget } from './DropTarget.jsx';
 import { NavRail } from './NavRail.jsx';
+import { StatusBar } from './StatusBar.jsx';
 import { TitleBar } from './TitleBar.jsx';
 
 const useStyles = makeStyles({
@@ -37,6 +40,9 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <StatusBar />
+      <CloseGuard />
+      <DropTarget />
     </div>
   );
 }

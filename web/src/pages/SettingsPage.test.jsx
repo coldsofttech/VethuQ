@@ -253,7 +253,7 @@ describe('Settings > Indexing', () => {
     mockApi(BASE);
     renderWithProviders(<App />, { route: '/settings' });
     expect(await screen.findByText('Use my system setting')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: 'Indexing' }));
+    await userEvent.click(screen.getAllByRole('tab', { name: 'Indexing' }).at(-1));
     expect(await screen.findByTestId('setting-index.workers')).toBeInTheDocument();
   });
 });

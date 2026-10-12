@@ -3,7 +3,13 @@ export const strings = {
   // Fallbacks only: the real name, tagline and colours come from the core (GET /api/brand).
   appName: 'VethuQ',
   tagline: 'Document intelligence and evidence infrastructure.',
-  nav: { home: 'Home', about: 'About', settings: 'Settings' },
+  nav: {
+    home: 'Home',
+    sources: 'Sources',
+    indexing: 'Indexing',
+    about: 'About',
+    settings: 'Settings',
+  },
   window: {
     minimize: 'Minimize',
     maximize: 'Maximize',

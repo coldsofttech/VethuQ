@@ -76,7 +76,10 @@ export function TitleBar() {
   const perform = useCallback(
     (action) =>
       api.window.perform(action).then(
-        (state) => setMaximized(state.maximized),
+        (state) => {
+          if (state.blocked) window.dispatchEvent(new CustomEvent('vethuq:close-blocked'));
+          else setMaximized(state.maximized);
+        },
         () => {},
       ),
     [],

@@ -40,6 +40,51 @@
  * @property {number} [max]
  * @property {string} [unit]
  *
+ * @typedef {object} SourceRow
+ * @property {number} id
+ * @property {string} path
+ * @property {string} name
+ * @property {string} parent
+ * @property {'file' | 'folder'} type
+ * @property {string} status
+ * @property {string[] | null} languages
+ * @property {string} added_at
+ * @property {string | null} last_scanned_at
+ * @property {string | null} removed_at
+ * @property {boolean} active
+ * @property {number} files_total
+ * @property {number} files_processed
+ * @property {boolean} missing  The path is no longer on disk.
+ *
+ * @typedef {object} FileRow
+ * @property {string} path
+ * @property {string} relative_path
+ * @property {string} name
+ * @property {number} size_bytes
+ * @property {string} modified_at
+ * @property {string | null} status
+ * @property {string | null} file_type  Null when no add-on reads this kind of file.
+ * @property {boolean} protected  A known kind of file that needs a password.
+ * @property {string | null} [error]
+ * @property {number | null} [pages]
+ * @property {number | null} [confidence]
+ * @property {string | null} [band]
+ * @property {string[] | null} [languages]
+ *
+ * @typedef {object} IndexState
+ * @property {object | null} run
+ * @property {boolean} active
+ * @property {boolean} paused
+ * @property {boolean} stopping
+ * @property {boolean} stalled
+ * @property {object | null} eta
+ * @property {string[]} current_files
+ * @property {number} remote_jobs_open
+ * @property {number} queued
+ * @property {{ mode: 'idle' | 'one-off' | 'service' | 'external', service_running: boolean }} runner
+ * @property {string | null} error
+ * @property {{ colour: string, label: string, tooltip: string, state: string } | null} service
+ *
  * @typedef {object} CatalogAddon
  * @property {string} id
  * @property {string} name
@@ -69,6 +114,8 @@
  * @property {'desktop' | 'web'} kind
  * @property {boolean} window_controls  Whether the host window can be minimised/maximised/closed.
  * @property {boolean} folder_dialog  Whether the host can show a folder picker.
+ * @property {boolean} file_dialog  Whether the host can show a file picker.
+ * @property {boolean} reveal  Whether the host can show a file in its folder.
  *
  * @typedef {object} WindowState
  * @property {boolean} maximized
@@ -93,6 +140,15 @@ export class ApiError extends Error {
  * @param {{ method?: string, body?: unknown, signal?: AbortSignal }} [options]
  * @returns {Promise<T>}
  */
+/** A query string from the values that are set (empty ones are left out). */
+export function query(params) {
+  const pairs = Object.entries(params).filter(
+    ([, v]) => v !== undefined && v !== null && v !== '' && v !== false,
+  );
+  if (pairs.length === 0) return '';
+  return `?${new URLSearchParams(pairs.map(([k, v]) => [k, v === true ? '1' : String(v)])).toString()}`;
+}
+
 export async function request(path, { method = 'GET', body, signal } = {}) {
   /** @type {RequestInit} */
   const init = {
@@ -147,6 +203,49 @@ export const api = {
   health: (signal) => request('/api/health', { signal }),
   /** @returns {Promise<AboutDetails>} */
   about: (signal) => request('/api/about', { signal }),
+  sources: {
+    /** @param {Record<string, string | boolean>} [filters] @returns {Promise<{ sources: SourceRow[] }>} */
+    list: (filters = {}, signal) => request(`/api/sources${query(filters)}`, { signal }),
+    /** @returns {Promise<SourceRow>} */
+    get: (id, signal) => request(`/api/sources/${id}`, { signal }),
+    /** @returns {Promise<SourceRow>} */
+    add: (path, languages) =>
+      request('/api/sources', { method: 'POST', body: { path, languages } }),
+    remove: (id) => request(`/api/sources/${id}`, { method: 'DELETE' }),
+    restore: (id) => request(`/api/sources/${id}/restore`, { method: 'POST' }),
+    purge: (id) => request(`/api/sources/${id}/purge`, { method: 'POST' }),
+    setLanguages: (id, languages) =>
+      request(`/api/sources/${id}/languages`, { method: 'PUT', body: { languages } }),
+    /** @returns {Promise<{ total: number, all: number, items: FileRow[], facets: { status: Record<string, number>, type: Record<string, number> } }>} */
+    files: (id, params = {}, signal) =>
+      request(`/api/sources/${id}/files${query(params)}`, { signal }),
+    exportUrl: (format, params = {}) => `/api/sources/export${query({ format, ...params })}`,
+    filesExportUrl: (id, format, params = {}) =>
+      `/api/sources/${id}/files/export${query({ format, ...params })}`,
+  },
+  index: {
+    /** @returns {Promise<IndexState>} */
+    state: (signal) => request('/api/index/state', { signal }),
+    /** Collect finished remote results, then the state. @returns {Promise<IndexState>} */
+    refresh: (signal) => request('/api/index/refresh', { method: 'POST', signal }),
+    /** @param {'run' | 'restart' | 'reindex' | 'file'} mode @param {number | string | null} [target] */
+    start: (mode, target = null) =>
+      request('/api/index/start', { method: 'POST', body: { mode, target } }),
+    pause: () => request('/api/index/pause', { method: 'POST' }),
+    resume: () => request('/api/index/resume', { method: 'POST' }),
+    stop: () => request('/api/index/stop', { method: 'POST' }),
+    history: (params = {}, signal) => request(`/api/index/history${query(params)}`, { signal }),
+    jobs: (signal) => request('/api/index/jobs', { signal }),
+    requests: (signal) => request('/api/index/requests', { signal }),
+    cancelRequest: (id) => request(`/api/index/requests/${id}/cancel`, { method: 'POST' }),
+  },
+  service: {
+    /** @param {'start' | 'stop' | 'pause' | 'resume'} action */
+    perform: (action) => request(`/api/service/${action}`, { method: 'POST' }),
+  },
+  os: {
+    reveal: (path) => request('/api/os/reveal', { method: 'POST', body: { path } }),
+  },
   settings: {
     /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */
     list: (section, signal) => request(`/api/settings/${section}`, { signal }),
@@ -168,6 +267,8 @@ export const api = {
   dialog: {
     /** @param {string} [start] @returns {Promise<{ path: string | null }>} */
     folder: (start) => request('/api/dialog/folder', { method: 'POST', body: { start } }),
+    /** @param {string} [start] @returns {Promise<{ path: string | null }>} */
+    file: (start) => request('/api/dialog/file', { method: 'POST', body: { start } }),
   },
   /** @returns {Promise<Brand>} */
   brand: (signal) => request('/api/brand', { signal }),
@@ -178,7 +279,7 @@ export const api = {
   window: {
     /** @returns {Promise<WindowState>} */
     state: () => request('/api/window/state'),
-    /** @param {'minimize' | 'maximize' | 'restore' | 'close'} action @returns {Promise<WindowState>} */
-    perform: (action) => request(`/api/window/${action}`, { method: 'POST' }),
+    /** @param {'minimize' | 'maximize' | 'restore' | 'close'} action @param {{ force?: boolean }} [body] */
+    perform: (action, body) => request(`/api/window/${action}`, { method: 'POST', body }),
   },
 };

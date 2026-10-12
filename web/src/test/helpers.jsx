@@ -2,6 +2,8 @@ import { render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { BrandProvider } from '../brand/BrandProvider.jsx';
+import { NotifyProvider } from '../components/Notifications.jsx';
+import { IndexingProvider } from '../indexing/IndexingProvider.jsx';
 import { PlatformProvider } from '../platform/PlatformProvider.jsx';
 import { ThemeProvider } from '../theme/ThemeProvider.jsx';
 
@@ -12,6 +14,24 @@ export const BRAND = {
     light: { primary: '#005FB8', 'primary-hover': '#004A91', bg: '#FAFAFA', surface: '#FFFFFF' },
     dark: { primary: '#57C8FF', 'primary-hover': '#8AD8FF', bg: '#1C1C1C', surface: '#2B2B2B' },
   },
+};
+
+export const IDLE = {
+  run: null,
+  active: false,
+  paused: false,
+  stopping: false,
+  finished: false,
+  stalled: false,
+  control: null,
+  eta: null,
+  current_files: [],
+  workers_active: 0,
+  remote_jobs_open: 0,
+  queued: 0,
+  runner: { mode: 'idle', service_running: false, one_off: false },
+  error: null,
+  service: null,
 };
 
 export const ABOUT = { vethuq: '1.2.3', python: '3.12.0', platform: 'Windows-11', db_schema: 7 };
@@ -39,8 +59,11 @@ export const CATALOG = {
  */
 export function mockApi(routes) {
   const fetchMock = vi.fn(async (path, init = {}) => {
-    const key = `${init.method ?? 'GET'} ${path}`;
+    // Routes are written without a query string; one with it wins when given.
+    const full = `${init.method ?? 'GET'} ${path}`;
+    const key = full in routes ? full : full.split('?')[0];
     if (key === 'GET /api/brand' && !(key in routes)) return Response.json(BRAND);
+    if (key === 'GET /api/index/state' && !(key in routes)) return Response.json(IDLE);
     if (!(key in routes))
       return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
     // A route can be a function of the request (parsed JSON body), or a ready-made Response.
@@ -59,7 +82,11 @@ export function renderWithProviders(ui, { route = '/' } = {}) {
     <BrandProvider>
       <ThemeProvider>
         <PlatformProvider>
-          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+          <NotifyProvider>
+            <IndexingProvider>
+              <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+            </IndexingProvider>
+          </NotifyProvider>
         </PlatformProvider>
       </ThemeProvider>
     </BrandProvider>,

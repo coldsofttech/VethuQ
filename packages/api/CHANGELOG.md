@@ -5,6 +5,12 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Sources and indexing: `/api/sources` (list, add, remove, restore, delete for good, languages, files with
+  filter, sort and paging from a short-lived scan, CSV/JSON export) and `/api/index/*` (state, refresh,
+  start, pause, resume, stop, history, remote jobs, queued requests). A run goes to the background
+  service's queue when one is working, else it runs on a thread inside the application. The Windows
+  service is probed read-only (`sc query`) for the status bar, and `/api/service/<action>` controls it.
+  `/api/dialog/file`, `/api/os/reveal`, and `/api/window/close` that holds back while a one-off run is going.
 - The Flask application for the user interface: `create_app()`, a one-time start-up token that is
   exchanged for a session cookie, Host and Origin checks, a strict Content-Security-Policy, the
   `/api/health`, `/api/about`, `/api/platform` and `/api/window/*` endpoints, and serving of the built

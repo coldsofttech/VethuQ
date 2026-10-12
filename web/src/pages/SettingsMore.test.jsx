@@ -169,7 +169,7 @@ describe('Settings tabs', () => {
       'Logs and database',
       'Add-ons',
     ];
-    const tabs = names.map((name) => screen.getByRole('tab', { name }));
+    const tabs = names.map((name) => screen.getAllByRole('tab', { name }).at(-1));
     tabs.slice(1).forEach((tab, index) => {
       expect(
         tabs[index].compareDocumentPosition(tab) & Node.DOCUMENT_POSITION_FOLLOWING,
