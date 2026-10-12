@@ -41,10 +41,14 @@ class TestListing:
 
     def test_the_stated_defaults_are_the_cores_defaults(self, service):
         """The defaults are written in this module; this fails if the core's change."""
-        for row in service.list("indexing"):
-            assert row["value"] == row["default"], row["id"]
-            assert type(row["value"]) is type(row["default"]), row["id"]
-            assert row["is_default"] is True
+        for section in service.sections():
+            for row in service.list(section):
+                assert row["value"] == row["default"], row["id"]
+                assert type(row["value"]) is type(row["default"]), row["id"]
+                assert row["is_default"] is True, row["id"]
+
+    def test_sections_in_the_order_the_screen_shows_them(self, service):
+        assert service.sections() == ["indexing", "general", "sources", "tiers", "results"]
 
     def test_advanced_settings_are_marked(self, service):
         rows = by_id(service.list("indexing"))
@@ -130,6 +134,107 @@ class TestChanging:
             service.update("indexing", "index.nope", 1)
         with pytest.raises(SettingNotFoundError):
             service.reset("nope", "index.workers")
+
+
+class TestOtherSections:
+    def test_each_section_lists_its_settings(self, service):
+        assert list(by_id(service.list("general"))) == ["languages.languages", "metrics.opt_in"]
+        assert list(by_id(service.list("sources"))) == ["sources.removed_retention_minutes"]
+        assert list(by_id(service.list("results"))) == ["confidence.bands"]
+        assert list(by_id(service.list("tiers"))) == [
+            "tiers.default",
+            "tiers.phases",
+            "tiers.min_size_factor",
+            "tiers.max_job_pages",
+            "tiers.max_job_megabytes",
+            "tiers.wait_timeout_minutes",
+        ]
+        advanced = {r["id"] for r in service.list("tiers") if r["advanced"]}
+        assert advanced == {
+            "tiers.max_job_pages",
+            "tiers.max_job_megabytes",
+            "tiers.wait_timeout_minutes",
+        }
+
+    def test_values_are_saved_in_the_core_and_can_be_reset(self, service, vethuq):
+        service.update("general", "metrics.opt_in", True)
+        service.update("sources", "sources.removed_retention_minutes", 0)
+        service.update("tiers", "tiers.phases", ["moderate", "deep"])
+        service.update("tiers", "tiers.min_size_factor", 3)
+        service.update("tiers", "tiers.max_job_pages", 50)
+        service.update("tiers", "tiers.max_job_megabytes", 20)
+        service.update("tiers", "tiers.wait_timeout_minutes", 5)
+        service.update("results", "confidence.bands", [50, 60, 70])
+        assert vethuq.settings.metrics.get_opt_in() is True
+        assert vethuq.settings.sources.get_removed_retention_minutes() == 0
+        assert vethuq.settings.tiers.get_phases() == ["moderate", "deep"]
+        assert vethuq.settings.tiers.get_min_size_factor() == 3.0
+        assert vethuq.settings.tiers.get_max_job_pages() == 50
+        assert vethuq.settings.tiers.get_max_job_megabytes() == 20
+        assert vethuq.settings.tiers.get_wait_timeout_minutes() == 5
+        assert vethuq.settings.confidence.get_bands() == (50, 60, 70)
+
+        for section in ("general", "sources", "tiers", "results"):
+            for row in service.list(section):
+                assert service.reset(section, row["id"])["is_default"] is True
+
+    def test_the_languages_offered_are_the_cores_and_one_is_required(self, service, vethuq):
+        row = by_id(service.list("general"))["languages.languages"]
+        assert [o["value"] for o in row["options"]] == [
+            language.id for language in vethuq.languages.list_all()
+        ]
+        assert row["min"] == 1
+        with pytest.raises(InvalidSettingError, match="at least 1"):
+            service.update("general", "languages.languages", [])
+
+    def test_the_default_languages_follow_the_core(self, service, vethuq):
+        row = by_id(service.list("general"))["languages.languages"]
+        assert row["default"] == [lang.id for lang in vethuq.languages.list_all() if lang.default]
+
+    def test_the_default_tier_is_chosen_from_the_available_ones(self, service, vethuq):
+        row = by_id(service.list("tiers"))["tiers.default"]
+        assert {o["value"] for o in row["options"]} >= {"local"}
+        assert row["value"] == vethuq.tiers.current().id
+        unavailable = [o for o in row["options"] if not o["available"]]
+        for option in unavailable:
+            with pytest.raises(InvalidSettingError):
+                service.update("tiers", "tiers.default", option["value"])
+
+    def test_bands_describe_their_three_fields(self, service):
+        row = by_id(service.list("results"))["confidence.bands"]
+        assert row["labels"] == ["Low from", "Medium from", "High from"]
+        assert (row["min"], row["max"]) == (0, 100)
+
+    @pytest.mark.parametrize(
+        ("section", "setting", "value"),
+        [
+            ("general", "languages.languages", ["xx"]),
+            ("general", "languages.languages", "en"),
+            ("general", "languages.languages", ["en", "en"]),
+            ("general", "metrics.opt_in", "on"),
+            ("sources", "sources.removed_retention_minutes", -1),
+            ("sources", "sources.removed_retention_minutes", 1.5),
+            ("tiers", "tiers.phases", ["nope"]),
+            ("tiers", "tiers.phases", "moderate"),
+            ("tiers", "tiers.min_size_factor", -1),
+            ("tiers", "tiers.min_size_factor", "big"),
+            ("tiers", "tiers.max_job_pages", 0),
+            ("tiers", "tiers.max_job_megabytes", 0),
+            ("tiers", "tiers.wait_timeout_minutes", 0),
+            ("tiers", "tiers.default", "mars"),
+            ("results", "confidence.bands", [90, 80, 70]),
+            ("results", "confidence.bands", [70, 80]),
+            ("results", "confidence.bands", [70, 80, 101]),
+            ("results", "confidence.bands", [70.5, 80, 90]),
+            ("results", "confidence.bands", [True, 80, 90]),
+            ("results", "confidence.bands", "70,80,90"),
+        ],
+    )
+    def test_a_bad_value_is_refused_and_nothing_changes(self, service, section, setting, value):
+        before = by_id(service.list(section))[setting]["value"]
+        with pytest.raises(InvalidSettingError):
+            service.update(section, setting, value)
+        assert by_id(service.list(section))[setting]["value"] == before
 
 
 class TestHttp:

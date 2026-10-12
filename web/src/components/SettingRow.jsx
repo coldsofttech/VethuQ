@@ -13,24 +13,48 @@ import {
 } from '@fluentui/react-components';
 import { ArrowCounterclockwise20Regular } from '@fluentui/react-icons';
 import { strings } from '../strings.js';
+import { BandsControl } from './BandsControl.jsx';
+import { readSpin } from './numberInput.js';
+import { SettingFrame } from './SettingFrame.jsx';
 
 const text = strings.settings;
 
 const useStyles = makeStyles({
-  row: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 300px)',
-    gap: tokens.spacingHorizontalXXL,
-    alignItems: 'start',
-    padding: `${tokens.spacingVerticalM} 0`,
-    borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
-  },
-  about: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalXXS },
-  hint: { color: tokens.colorNeutralForeground3 },
   control: { display: 'flex', alignItems: 'center', gap: tokens.spacingHorizontalS },
   grow: { flexGrow: 1, minWidth: 0 },
   status: { width: '20px', display: 'inline-flex', justifyContent: 'center' },
+  human: {
+    color: tokens.colorNeutralForeground3,
+    display: 'block',
+    marginTop: tokens.spacingVerticalXXS,
+  },
 });
+
+/** "10080" minutes as "7 days", for a figure that is easier to read that way. */
+export function humanMinutes(minutes) {
+  if (minutes === 0) return 'immediately';
+  const units = [
+    ['day', 1440],
+    ['hour', 60],
+    ['minute', 1],
+  ];
+  const [name, size] = units.find(([, size]) => minutes % size === 0) ?? units[2];
+  const count = minutes / size;
+  return `${count} ${name}${count === 1 ? '' : 's'}`;
+}
+
+/** A value as the person would read it, for the "reset to" tooltip. */
+function describe(setting, value) {
+  if (setting.type === 'multichoice') {
+    const names = (value ?? []).map(
+      (item) => setting.options?.find((option) => option.value === item)?.label ?? item,
+    );
+    return names.length ? names.join(', ') : text.none;
+  }
+  if (setting.type === 'bands') return value.join(' / ');
+  if (setting.type === 'boolean') return value ? text.on : text.off;
+  return String(setting.options?.find((option) => option.value === value)?.label ?? value);
+}
 
 /** The control for one setting, by its type. */
 function Control({ setting, disabled, onChange }) {
@@ -79,21 +103,57 @@ function Control({ setting, disabled, onChange }) {
     );
   }
 
-  // integer and number
-  const step = setting.type === 'integer' ? 1 : 0.5;
+  if (setting.type === 'multichoice') {
+    const options = setting.options ?? [];
+    const chosen = /** @type {string[]} */ (setting.value);
+    return (
+      <Dropdown
+        {...labelledBy}
+        multiselect
+        className={styles.grow}
+        disabled={disabled}
+        placeholder={text.none}
+        value={describe(setting, chosen) === text.none ? '' : describe(setting, chosen)}
+        selectedOptions={chosen}
+        onOptionSelect={(_, data) => onChange(data.selectedOptions)}
+      >
+        {options.map((option) => (
+          <Option
+            key={String(option.value)}
+            value={String(option.value)}
+            text={option.label}
+            disabled={!option.available}
+          >
+            {option.label}
+            {!option.available && option.reason ? ` (${option.reason})` : ''}
+          </Option>
+        ))}
+      </Dropdown>
+    );
+  }
+
+  return <NumberControl setting={setting} disabled={disabled} onChange={onChange} />;
+}
+
+/**
+ * A number, saved when it is committed: stepping with the arrows, or Enter / leaving the field after
+ * typing. (Fluent reports a typed number once, at that moment, as text.)
+ */
+function NumberControl({ setting, disabled, onChange }) {
+  const styles = useStyles();
   return (
     <SpinButton
-      {...labelledBy}
+      aria-label={setting.label}
       className={styles.grow}
       disabled={disabled}
       value={Number(setting.value)}
       min={setting.min}
       max={setting.max}
-      step={step}
+      step={setting.type === 'integer' ? 1 : 0.5}
       precision={setting.type === 'integer' ? 0 : 1}
       onChange={(_, data) => {
-        // Only a committed number counts: stepping, or Enter/blur after typing.
-        if (typeof data.value === 'number' && data.value !== setting.value) onChange(data.value);
+        const { number } = readSpin(data);
+        if (number !== null && number !== setting.value) onChange(number);
       }}
     />
   );
@@ -111,24 +171,31 @@ export function SettingRow({ setting, busy, problem, onChange, onReset }) {
   const hint = [setting.unit && `${text.unit}: ${setting.unit}`, setting.note]
     .filter(Boolean)
     .join(' · ');
+  const wide = setting.type === 'bands';
 
   return (
-    <div className={styles.row} data-testid={`setting-${setting.id}`}>
-      <div className={styles.about}>
-        <Text weight="semibold">{setting.label}</Text>
-        <Text className={styles.hint}>{setting.description}</Text>
-        {hint && (
-          <Text size={200} className={styles.hint}>
-            {hint}
-          </Text>
-        )}
-      </div>
+    <SettingFrame
+      testId={`setting-${setting.id}`}
+      label={setting.label}
+      description={setting.description}
+      hint={hint}
+      stacked={wide}
+    >
       <Field validationState={problem ? 'error' : 'none'} validationMessage={problem || undefined}>
         <div className={styles.control}>
-          <Control setting={setting} disabled={busy} onChange={onChange} />
+          {wide ? (
+            <BandsControl
+              key={String(setting.value)}
+              setting={setting}
+              disabled={busy}
+              onChange={onChange}
+            />
+          ) : (
+            <Control setting={setting} disabled={busy} onChange={onChange} />
+          )}
           <span className={styles.status}>{busy && <Spinner size="extra-tiny" />}</span>
           <Tooltip
-            content={`${text.resetTo} ${String(setting.options?.find((o) => o.value === setting.default)?.label ?? setting.default)}`}
+            content={`${text.resetTo} ${describe(setting, setting.default)}`}
             relationship="label"
           >
             <Button
@@ -141,6 +208,11 @@ export function SettingRow({ setting, busy, problem, onChange, onReset }) {
           </Tooltip>
         </div>
       </Field>
-    </div>
+      {setting.unit === 'minutes' && typeof setting.value === 'number' && (
+        <Text size={200} className={styles.human}>
+          {humanMinutes(setting.value)}
+        </Text>
+      )}
+    </SettingFrame>
   );
 }

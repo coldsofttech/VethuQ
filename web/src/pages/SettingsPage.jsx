@@ -1,19 +1,12 @@
-import {
-  Field,
-  Radio,
-  RadioGroup,
-  Tab,
-  TabList,
-  makeStyles,
-  tokens,
-} from '@fluentui/react-components';
+import { Radio, RadioGroup, Tab, TabList, makeStyles, tokens } from '@fluentui/react-components';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { SettingFrame } from '../components/SettingFrame.jsx';
 import { SettingsSection } from '../components/SettingsSection.jsx';
 import { strings } from '../strings.js';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 
-const SECTIONS = ['general', 'indexing'];
+const SECTIONS = ['general', 'indexing', 'sources', 'tiers', 'results'];
 
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalL },
@@ -22,13 +15,24 @@ const useStyles = makeStyles({
 function General() {
   const { choice, setChoice } = useTheme();
   return (
-    <Field label={strings.settings.themeTitle}>
-      <RadioGroup value={choice} onChange={(_, data) => setChoice(data.value)}>
-        <Radio value="system" label={strings.settings.themeSystem} />
-        <Radio value="light" label={strings.settings.themeLight} />
-        <Radio value="dark" label={strings.settings.themeDark} />
-      </RadioGroup>
-    </Field>
+    <div>
+      <SettingFrame
+        label={strings.settings.themeTitle}
+        description={strings.settings.themeDescription}
+        testId="setting-theme"
+      >
+        <RadioGroup
+          aria-label={strings.settings.themeTitle}
+          value={choice}
+          onChange={(_, data) => setChoice(data.value)}
+        >
+          <Radio value="system" label={strings.settings.themeSystem} />
+          <Radio value="light" label={strings.settings.themeLight} />
+          <Radio value="dark" label={strings.settings.themeDark} />
+        </RadioGroup>
+      </SettingFrame>
+      <SettingsSection section="general" />
+    </div>
   );
 }
 
@@ -54,7 +58,9 @@ export function SettingsPage() {
       <Routes>
         <Route index element={<Navigate to="general" replace />} />
         <Route path="general" element={<General />} />
-        <Route path="indexing" element={<SettingsSection section="indexing" />} />
+        {SECTIONS.filter((id) => id !== 'general').map((id) => (
+          <Route key={id} path={id} element={<SettingsSection section={id} />} />
+        ))}
         <Route path="*" element={<Navigate to="general" replace />} />
       </Routes>
     </div>

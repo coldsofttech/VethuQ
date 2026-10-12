@@ -101,6 +101,78 @@ def run(browser: Browser, out: Path) -> None:
             "Automatic (sized to this computer)"
         )
 
+        # Typed numbers save when committed (Enter or leaving the field).
+        retries = page.get_by_role("spinbutton", name="Retries for a failed file")
+        retries.fill("7")
+        retries.press("Tab")
+        expect(page.get_by_test_id("setting-index.retry_attempts")).to_contain_text("Applies")
+        page.reload()
+        page.get_by_role("tab", name="Indexing").click()
+        expect(page.get_by_role("spinbutton", name="Retries for a failed file")).to_have_value("7")
+        page.get_by_role("button", name="Reset to default: Retries for a failed file").click()
+        expect(page.get_by_role("spinbutton", name="Retries for a failed file")).to_have_value("3")
+
+        # General: languages and metrics.
+        page.get_by_role("tab", name="General").click()
+        expect(page.get_by_test_id("setting-languages.languages")).to_be_visible()
+        metrics = page.get_by_role("switch", name="Share anonymous usage metrics")
+        metrics.click()
+        expect(metrics).to_be_checked()
+        page.get_by_role("combobox", name="Languages to read documents in").click()
+        expect(page.get_by_role("menuitemcheckbox", name="English")).to_be_visible()
+        shot(page, out, "settings-general-languages")
+        page.keyboard.press("Escape")
+        page.get_by_role("button", name="Reset to default: Share anonymous usage metrics").click()
+        expect(metrics).not_to_be_checked()
+        shot(page, out, "settings-general")
+
+        # Sources: retention in minutes, with a readable duration.
+        page.get_by_role("tab", name="Sources").click()
+        expect(page.get_by_text("7 days", exact=True)).to_be_visible()
+        retention = page.get_by_role("spinbutton", name="Keep a removed source for")
+        retention.fill("120")
+        retention.press("Enter")
+        expect(page.get_by_text("2 hours", exact=True)).to_be_visible()
+        shot(page, out, "settings-sources")
+        page.get_by_role("button", name="Reset to default: Keep a removed source for").click()
+        expect(page.get_by_text("7 days", exact=True)).to_be_visible()
+
+        # Processing: tiers and the hybrid options.
+        page.get_by_role("tab", name="Processing").click()
+        expect(page.get_by_test_id("setting-tiers.default")).to_be_visible()
+        page.get_by_role("combobox", name="OCR phases sent to GitHub").click()
+        page.get_by_role("menuitemcheckbox", name="Deep").click()
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("combobox", name="OCR phases sent to GitHub")).to_contain_text(
+            "Deep"
+        )
+        page.get_by_role("switch", name="Show advanced settings").click()
+        expect(page.get_by_text("Most pages in one remote job")).to_be_visible()
+        shot(page, out, "settings-processing")
+        page.get_by_role("button", name="Reset to default: OCR phases sent to GitHub").click()
+
+        # Results: confidence bands, saved together and refused when they do not rise.
+        page.get_by_role("tab", name="Results").click()
+        expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("70")
+        page.get_by_role("spinbutton", name="Medium from").fill("95")
+        page.get_by_role("spinbutton", name="Medium from").press("Tab")
+        expect(page.get_by_text("Each band must start higher")).to_be_visible()
+        expect(page.get_by_role("button", name="Apply")).to_be_disabled()
+        page.get_by_role("spinbutton", name="Medium from").fill("75")
+        page.get_by_role("spinbutton", name="Medium from").press("Tab")
+        page.get_by_role("spinbutton", name="Low from").fill("60")
+        page.get_by_role("spinbutton", name="Low from").press("Tab")
+        page.get_by_role("button", name="Apply").click()
+        expect(
+            page.get_by_role("button", name="Reset to default: Confidence bands")
+        ).to_be_enabled()
+        shot(page, out, "settings-results")
+        page.reload()
+        page.get_by_role("tab", name="Results").click()
+        expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("60")
+        page.get_by_role("button", name="Reset to default: Confidence bands").click()
+        expect(page.get_by_role("spinbutton", name="Low from")).to_have_value("70")
+
         # Title-bar buttons talk to the host (simulated here).
         page.get_by_role("tab", name="Home").click()
         page.get_by_role("button", name="Maximize").click()

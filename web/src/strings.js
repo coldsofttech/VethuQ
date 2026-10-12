@@ -57,8 +57,15 @@ export const strings = {
   settings: {
     title: 'Settings',
     lead: 'Personalise VethuQ and choose how it works.',
-    sections: { general: 'General', indexing: 'Indexing' },
+    sections: {
+      general: 'General',
+      indexing: 'Indexing',
+      sources: 'Sources',
+      tiers: 'Processing',
+      results: 'Results',
+    },
     themeTitle: 'Theme',
+    themeDescription: 'Choose light or dark, or follow your system.',
     themeSystem: 'Use my system setting',
     themeLight: 'Light',
     themeDark: 'Dark',
@@ -68,6 +75,14 @@ export const strings = {
     on: 'On',
     off: 'Off',
     unit: 'Unit',
+    none: 'None',
+    apply: 'Apply',
+    bands: {
+      unreliable: 'Unreliable',
+      names: ['Low', 'Medium', 'High'],
+      invalid: 'Each band must start higher than the one before, between 0 and 100.',
+      below: (low) => `Below ${low}%`,
+    },
   },
   errors: {
     offlineTitle: 'Cannot reach the VethuQ service',

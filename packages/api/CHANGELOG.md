@@ -12,3 +12,6 @@ All notable changes to `vethuq-api`.
 - Settings endpoints, starting with the `indexing` section: index workers, retries, stability wait and
   stale-lock handling, OCR depth and GPU use. `/api/brand` and `/api/catalog` for the app's name and
   colours and for what is installed.
+- Settings sections `general` (default languages, usage metrics), `sources` (removed-source retention),
+  `tiers` (default processing tier, hybrid OCR phases and size rule, remote job limits, wait timeout) and
+  `results` (confidence bands), with list, multi-choice and three-number (`bands`) setting types.
