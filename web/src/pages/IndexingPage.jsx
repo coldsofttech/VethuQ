@@ -28,6 +28,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { ToolButton } from '../components/ToolButton.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { ServiceDot } from '../components/ServiceDot.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
 import { baseName, formatBytes, formatDate, formatDuration } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
@@ -84,6 +85,12 @@ function Activity() {
   return (
     <div className={styles.card}>
       <Text weight="semibold">{RUNNERS[state.runner.mode] ?? state.runner.mode}</Text>
+      {state.service && (
+        <div className={styles.bar} data-testid="service-status">
+          <ServiceDot colour={state.service.colour} aria-hidden="true" />
+          <Text>Background service: {state.service.label}</Text>
+        </div>
+      )}
       {state.error && (
         <MessageBar intent="error">
           <MessageBarBody>{state.error}</MessageBarBody>
@@ -128,15 +135,17 @@ function Activity() {
           {run.error && <Text>{run.error}</Text>}
           {live && (
             <div className={styles.bar}>
-              <Button
+              <ToolButton
+                label={state.paused ? 'Resume' : 'Pause'}
                 icon={state.paused ? <Play20Regular /> : <Pause20Regular />}
                 onClick={state.paused ? resume : pause}
-              >
-                {state.paused ? 'Resume' : 'Pause'}
-              </Button>
-              <Button icon={<Stop20Regular />} disabled={state.stopping} onClick={requestStop}>
-                Stop
-              </Button>
+              />
+              <ToolButton
+                label="Stop"
+                icon={<Stop20Regular />}
+                disabled={state.stopping}
+                onClick={requestStop}
+              />
             </div>
           )}
         </>

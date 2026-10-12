@@ -191,4 +191,16 @@ describe('Indexing', () => {
       expect(fetchMock.mock.calls.some(([path]) => path === '/api/index/refresh')).toBe(true),
     );
   });
+
+  it('shows the background service as a coloured dot, in the status bar and on the page', async () => {
+    mockApi({
+      'GET /api/index/state': {
+        ...IDLE,
+        service: { colour: 'amber', label: 'Processing', tooltip: 'Working', state: 'RUNNING' },
+      },
+    });
+    renderWithProviders(<App />, { route: '/indexing' });
+    expect(await screen.findByTestId('service-dot')).toBeInTheDocument();
+    expect(await screen.findByText('Background service: Processing')).toBeInTheDocument();
+  });
 });

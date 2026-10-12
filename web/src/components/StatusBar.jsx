@@ -9,7 +9,6 @@ import {
   Text,
   Tooltip,
   makeStyles,
-  mergeClasses,
   tokens,
 } from '@fluentui/react-components';
 import {
@@ -19,6 +18,7 @@ import {
   Stop16Regular,
 } from '@fluentui/react-icons';
 import { useNavigate } from 'react-router-dom';
+import { ServiceDot } from './ServiceDot.jsx';
 import { baseName, formatDuration } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
 
@@ -50,19 +50,14 @@ const useStyles = makeStyles({
   },
   label: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '480px' },
   bar: { width: '110px' },
-  dot: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
+  dotButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    background: 'transparent',
     border: 'none',
-    padding: 0,
+    padding: tokens.spacingHorizontalXS,
     cursor: 'pointer',
-    display: 'inline-block',
   },
-  green: { background: tokens.colorPaletteGreenForeground1 },
-  amber: { background: tokens.colorPaletteMarigoldBackground3 },
-  red: { background: tokens.colorPaletteRedBackground3 },
-  grey: { background: tokens.colorNeutralForeground4 },
 });
 
 const VERBS = {
@@ -160,11 +155,13 @@ export function StatusBar() {
               <Tooltip content={`${service.label}: ${service.tooltip}`} relationship="description">
                 <button
                   type="button"
-                  className={mergeClasses(styles.dot, styles[service.colour])}
+                  className={styles.dotButton}
                   aria-label={`Background service: ${service.label}`}
                   data-testid="service-dot"
                   onClick={() => navigate('/indexing')}
-                />
+                >
+                  <ServiceDot colour={service.colour} />
+                </button>
               </Tooltip>
             </MenuTrigger>
             <MenuPopover>
