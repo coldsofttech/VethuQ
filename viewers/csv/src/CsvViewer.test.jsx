@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHUNK, TableViewer } from './TableViewer.jsx';
+import { CHUNK, CsvViewer } from './CsvViewer.jsx';
 
 const data = (start, count, total, tag = 'cell') => ({
   rows: Array.from({ length: Math.max(0, Math.min(count, total - start)) }, (_, i) => [
@@ -31,10 +31,10 @@ const props = (over = {}) => ({
   ...over,
 });
 
-describe('TableViewer', () => {
+describe('CsvViewer', () => {
   it('shows the header and only the rows in view, and asks for just the first chunk', async () => {
     const loadRows = source(1_000_000);
-    render(<TableViewer {...props({ total: 1_000_000, loadRows })} />);
+    render(<CsvViewer {...props({ total: 1_000_000, loadRows })} />);
     expect(await screen.findByText('cell 1')).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /name/ })).toBeInTheDocument();
     expect(screen.queryByText('cell 5000')).not.toBeInTheDocument();
@@ -47,23 +47,23 @@ describe('TableViewer', () => {
   });
 
   it('names a column without a header "Column N"', async () => {
-    render(<TableViewer {...props({ header: null })} />);
+    render(<CsvViewer {...props({ header: null })} />);
     expect(await screen.findByRole('columnheader', { name: /Column 2/ })).toBeInTheDocument();
   });
 
   it('asks to sort by a column: ascending, then descending, then off', async () => {
     const onSort = vi.fn();
-    const { rerender } = render(<TableViewer {...props({ onSort })} />);
+    const { rerender } = render(<CsvViewer {...props({ onSort })} />);
     await userEvent.click(screen.getByRole('button', { name: /name/ }));
     expect(onSort).toHaveBeenLastCalledWith(0, false);
-    rerender(<TableViewer {...props({ onSort, sort: { column: 0, descending: false } })} />);
+    rerender(<CsvViewer {...props({ onSort, sort: { column: 0, descending: false } })} />);
     expect(screen.getByRole('columnheader', { name: /name/ })).toHaveAttribute(
       'aria-sort',
       'ascending',
     );
     await userEvent.click(screen.getByRole('button', { name: /name/ }));
     expect(onSort).toHaveBeenLastCalledWith(0, true);
-    rerender(<TableViewer {...props({ onSort, sort: { column: 0, descending: true } })} />);
+    rerender(<CsvViewer {...props({ onSort, sort: { column: 0, descending: true } })} />);
     await userEvent.click(screen.getByRole('button', { name: /name/ }));
     expect(onSort).toHaveBeenLastCalledWith(null, false);
     // Another column starts ascending.
@@ -72,7 +72,7 @@ describe('TableViewer', () => {
   });
 
   it('resizes a column with the arrow keys and by dragging its edge', async () => {
-    render(<TableViewer {...props()} />);
+    render(<CsvViewer {...props()} />);
     const widthOf = () => screen.getByRole('columnheader', { name: /name/ }).style.width;
     const before = parseInt(widthOf(), 10);
     const grip = screen.getByRole('separator', { name: 'Resize name' });
@@ -95,7 +95,7 @@ describe('TableViewer', () => {
   it('scrolls to the target row and marks its cell and the text in it', async () => {
     const loadRows = source(1000);
     render(
-      <TableViewer {...props({ loadRows, target: { index: 500, column: 0, text: 'ELL 501' } })} />,
+      <CsvViewer {...props({ loadRows, target: { index: 500, column: 0, text: 'ELL 501' } })} />,
     );
     const mark = await screen.findByText((_, el) => el?.tagName === 'MARK');
     expect(mark.textContent).toBe('ell 501');
@@ -108,27 +108,27 @@ describe('TableViewer', () => {
   });
 
   it('marks only the row when no cell is known', async () => {
-    render(<TableViewer {...props({ target: { index: 3, column: null } })} />);
+    render(<CsvViewer {...props({ target: { index: 3, column: null } })} />);
     await screen.findByText('cell 4');
     expect(document.querySelector('mark')).toBeNull();
   });
 
   it('starts again with other rows, and says when rows cannot be loaded', async () => {
-    const { rerender } = render(<TableViewer {...props()} />);
+    const { rerender } = render(<CsvViewer {...props()} />);
     await screen.findByText('cell 1');
-    rerender(<TableViewer {...props({ loadRows: source(1000, 'other') })} />);
+    rerender(<CsvViewer {...props({ loadRows: source(1000, 'other') })} />);
     expect(await screen.findByText('other 1')).toBeInTheDocument();
     expect(screen.queryByText('cell 1')).not.toBeInTheDocument();
     const broken = vi.fn(async () => {
       throw new Error('gone');
     });
-    rerender(<TableViewer {...props({ loadRows: broken })} />);
+    rerender(<CsvViewer {...props({ loadRows: broken })} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be loaded: gone');
   });
 
   it('copes with no rows', () => {
     const loadRows = source(0);
-    render(<TableViewer {...props({ total: 0, loadRows })} />);
+    render(<CsvViewer {...props({ total: 0, loadRows })} />);
     expect(loadRows).not.toHaveBeenCalled();
     expect(screen.queryAllByRole('cell')).toHaveLength(0);
     expect(waitFor).toBeDefined();

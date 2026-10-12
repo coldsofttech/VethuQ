@@ -1,1 +1,1 @@
-export { TableViewer } from './TableViewer.jsx';
+export { CsvViewer } from './CsvViewer.jsx';

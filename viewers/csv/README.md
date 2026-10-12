@@ -4,7 +4,7 @@ A read-only table for large data (VethuQ's CSV preview). Like `viewers/text` it 
 knows nothing about VethuQ or its API, and has no dependency but React (a peer).
 
 ```jsx
-<TableViewer
+<CsvViewer
   columns={5}
   header={['id', 'name', ...]}                       // or null
   widths={[4, 20, ...]}                              // a starting width per column, in characters

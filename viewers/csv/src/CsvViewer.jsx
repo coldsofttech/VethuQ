@@ -118,7 +118,7 @@ function Cell({ value, width, hit, text }) {
  * @param {number} [props.rowHeight]
  * @param {string} [props.label]
  */
-export function TableViewer({
+export function CsvViewer({
   columns,
   header = null,
   widths,
