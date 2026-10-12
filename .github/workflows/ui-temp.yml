@@ -32,22 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: work/VethuQ
-          persist-credentials: false
-      # The workspace resolves the premium add-ons from a sibling checkout (see test.yml).
-      - uses: actions/checkout@v4
-        with:
-          repository: coldsofttech/VethuQ-premium
-          ref: feat/new-feature
-          path: work/VethuQ-premium
-          token: ${{ secrets.PREMIUM_READ_TOKEN }}
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: coldsofttech/VethuQ-entitlements
-          ref: feat/new-feature
-          path: work/VethuQ-entitlements
-          token: ${{ secrets.PREMIUM_READ_TOKEN }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@v5
         with:
@@ -56,16 +40,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: work/VethuQ/web/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
+      # The UI needs the real core but not the premium add-ons, so it is installed without them into a
+      # plain virtual environment (outside the repo, so the workspace's uv settings do not apply).
       - name: Install the desktop host
-        working-directory: work/VethuQ
+        working-directory: ${{ runner.temp }}
         run: |
-          uv sync --package vethuq-desktop
-          uv pip install playwright pillow
+          uv venv ui-venv
+          UI_PY="$RUNNER_TEMP/ui-venv/Scripts/python.exe"
+          echo "UI_PY=$UI_PY" >> "$GITHUB_ENV"
+          P="$GITHUB_WORKSPACE/packages"
+          uv pip install --python "$UI_PY" --no-deps "$P/addon-api" "$P/core" "$P/api" "$P/desktop"
+          uv pip install --python "$UI_PY" platformdirs cryptography packaging sqlalchemy psutil flask "pywebview>=6.0" playwright pillow
 
       - name: Web - install, lint, test, build
-        working-directory: work/VethuQ/web
+        working-directory: web
         run: |
           npm ci
           npm run lint
@@ -74,8 +64,7 @@ jobs:
           npm run build
 
       - name: Screenshots in Edge (browser)
-        working-directory: work/VethuQ
-        run: uv run --no-sync python scripts/ui_temp/browser_screens.py --out "$GITHUB_WORKSPACE/shots" --channel msedge
+        run: '"$UI_PY" scripts/ui_temp/browser_screens.py --out "$GITHUB_WORKSPACE/shots" --channel msedge'
 
       - name: Make sure the WebView2 runtime is present
         shell: pwsh
@@ -92,8 +81,7 @@ jobs:
       - name: Screenshots of the real window (pywebview + WebView2)
         id: desktop
         continue-on-error: true
-        working-directory: work/VethuQ
-        run: uv run --no-sync python scripts/ui_temp/desktop_smoke.py --out "$GITHUB_WORKSPACE/shots"
+        run: '"$UI_PY" scripts/ui_temp/desktop_smoke.py --out "$GITHUB_WORKSPACE/shots"'
 
       - name: Summary
         if: always()
