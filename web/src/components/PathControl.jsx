@@ -55,10 +55,28 @@ export function PathControl({ setting, busy, problem, onChange, onReset }) {
   const locked = Boolean(setting.locked);
   const current = String(setting.value);
 
-  const open = (next) => {
-    setDraft(next === 'reset' ? String(setting.default) : current);
+  const [picking, setPicking] = useState(false);
+
+  const open = (next, start = next === 'reset' ? String(setting.default) : current) => {
+    setDraft(start);
     setMove(true);
     setMode(next);
+  };
+
+  // Where the host has a folder picker, changing a folder starts there: choose the folder first,
+  // then confirm it (and whether to move the data) in the dialog. Cancelling the picker changes
+  // nothing. Without a picker the dialog opens straight away and the folder is typed.
+  const change = async () => {
+    if (!folderDialog) return open('change');
+    setPicking(true);
+    try {
+      const { path } = await api.dialog.folder(current);
+      if (path) open('change', path);
+    } catch {
+      open('change'); // the picker failed; the folder can still be typed
+    } finally {
+      setPicking(false);
+    }
   };
 
   const confirm = async () => {
@@ -86,12 +104,12 @@ export function PathControl({ setting, busy, problem, onChange, onReset }) {
         {current}
       </Text>
       <div className={styles.actions}>
-        <Button disabled={locked || busy} onClick={() => open('change')}>
+        <Button disabled={locked || busy || picking} onClick={change}>
           {text.change}
         </Button>
         <Button
           appearance="subtle"
-          disabled={locked || busy || setting.is_default}
+          disabled={locked || busy || picking || setting.is_default}
           onClick={() => open('reset')}
         >
           {text.resetFolder}

@@ -64,3 +64,56 @@ def test_simulated_controller_tracks_state_and_signals_close():
     assert not controller.closed.is_set()
     controller.close()
     assert controller.closed.is_set()
+
+
+class _PickerWindow(_FakeWindow):
+    def __init__(self, answer):
+        super().__init__()
+        self.answer = answer
+        self.asked: list[tuple[object, str]] = []
+
+    def create_file_dialog(self, kind, directory=""):
+        self.asked.append((kind, directory))
+        return self.answer
+
+
+def _fake_webview(monkeypatch, **attributes):
+    import sys
+    import types
+
+    module = types.ModuleType("webview")
+    for name, value in attributes.items():
+        setattr(module, name, value)
+    monkeypatch.setitem(sys.modules, "webview", module)
+
+
+def test_choose_folder_shows_the_system_folder_picker_at_the_start_folder(monkeypatch):
+    import types
+
+    folder = object()
+    _fake_webview(monkeypatch, FileDialog=types.SimpleNamespace(FOLDER=folder))
+    window = _PickerWindow(["D:/Chosen"])
+    controller = WebviewWindowController()
+    controller.attach(window)
+
+    assert controller.choose_folder("C:/Start") == "D:/Chosen"
+    assert window.asked == [(folder, "C:/Start")]
+
+
+def test_choose_folder_returns_none_when_cancelled(monkeypatch):
+    import types
+
+    _fake_webview(monkeypatch, FileDialog=types.SimpleNamespace(FOLDER=object()))
+    controller = WebviewWindowController()
+    controller.attach(_PickerWindow(None))
+    assert controller.choose_folder() is None
+
+
+def test_choose_folder_works_with_an_older_pywebview(monkeypatch):
+    legacy = object()
+    _fake_webview(monkeypatch, FOLDER_DIALOG=legacy)
+    window = _PickerWindow(("E:/Old",))
+    controller = WebviewWindowController()
+    controller.attach(window)
+    assert controller.choose_folder() == "E:/Old"
+    assert window.asked == [(legacy, "")]

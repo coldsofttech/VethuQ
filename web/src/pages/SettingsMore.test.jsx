@@ -148,6 +148,7 @@ const ADDONS = () => ({
 
 const ROUTES = {
   'GET /api/platform': PLATFORM,
+  'POST /api/dialog/folder': { path: 'D:\\Picked' },
   'GET /api/settings/general': () => GENERAL(),
   'GET /api/settings/search': SEARCH,
   'GET /api/settings/addons': ADDONS,
@@ -328,38 +329,102 @@ describe('Settings > folders', () => {
     );
   });
 
-  it('offers Browse only when the host can show a folder picker, and uses its answer', async () => {
-    mockApi({
-      ...ROUTES,
-      'POST /api/dialog/folder': { path: 'E:\\Picked' },
-    });
+  it('starts with the system folder picker, then confirms the folder it returned', async () => {
+    const fetchMock = mockApi({ ...ROUTES, 'POST /api/dialog/folder': { path: 'E:\\Picked' } });
     renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByTestId('setting-metrics.opt_in');
     await userEvent.click(
-      within(await screen.findByTestId('setting-location.backups')).getByRole('button', {
+      within(screen.getByTestId('setting-location.backups')).getByRole('button', {
         name: /Change/,
       }),
     );
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Browse…' }));
-    await waitFor(() =>
-      expect(within(dialog).getByRole('textbox', { name: 'Folder' })).toHaveValue('E:\\Picked'),
+    expect(within(dialog).getByRole('textbox', { name: 'Folder' })).toHaveValue('E:\\Picked');
+    // The picker started at the folder in use.
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/dialog/folder',
+      expect.objectContaining({
+        body: JSON.stringify({ start: 'C:\\Users\\me\\AppData\\Local\\VethuQ\\db\\backups' }),
+      }),
     );
+    // Nothing is saved until the dialog is confirmed.
+    expect(
+      fetchMock.mock.calls.some(
+        ([path, init]) => path.includes('location') && init?.method === 'PUT',
+      ),
+    ).toBe(false);
     expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('has no Browse button on a host without a picker', async () => {
+  it('offers to move the data for the data folder the picker chose', async () => {
+    mockApi({ ...ROUTES, 'POST /api/dialog/folder': { path: 'E:\\Picked' } });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByTestId('setting-metrics.opt_in');
+    await userEvent.click(
+      within(screen.getByTestId('setting-location.data')).getByRole('button', { name: /Change/ }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('textbox', { name: 'Folder' })).toHaveValue('E:\\Picked');
+    expect(within(dialog).getByRole('checkbox', { name: /Move my existing data/ })).toBeChecked();
+  });
+
+  it('changes nothing when the picker is cancelled', async () => {
+    const fetchMock = mockApi({ ...ROUTES, 'POST /api/dialog/folder': { path: null } });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByTestId('setting-metrics.opt_in');
+    await userEvent.click(
+      within(screen.getByTestId('setting-location.data')).getByRole('button', { name: /Change/ }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/dialog/folder', expect.anything()),
+    );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([path, init]) => path.includes('location') && init?.method === 'PUT',
+      ),
+    ).toBe(false);
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('setting-location.data')).getByRole('button', { name: /Change/ }),
+      ).toBeEnabled(),
+    );
+  });
+
+  it('falls back to typing the folder when the picker fails', async () => {
     mockApi({
+      ...ROUTES,
+      'POST /api/dialog/folder': new Response('{}', { status: 500 }),
+    });
+    renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByTestId('setting-metrics.opt_in');
+    await userEvent.click(
+      within(screen.getByTestId('setting-location.data')).getByRole('button', { name: /Change/ }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('textbox', { name: 'Folder' })).toHaveValue(
+      'C:\\Users\\me\\AppData\\Local\\VethuQ',
+    );
+  });
+
+  it('opens the dialog at once, with the folder to type, on a host without a picker', async () => {
+    const fetchMock = mockApi({
       ...ROUTES,
       'GET /api/platform': { kind: 'web', window_controls: false, folder_dialog: false },
     });
     renderWithProviders(<App />, { route: '/settings/general' });
+    await screen.findByTestId('setting-metrics.opt_in');
     await userEvent.click(
-      within(await screen.findByTestId('setting-location.backups')).getByRole('button', {
+      within(screen.getByTestId('setting-location.backups')).getByRole('button', {
         name: /Change/,
       }),
     );
     const dialog = await screen.findByRole('dialog');
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/dialog/folder', expect.anything());
     expect(within(dialog).queryByRole('button', { name: 'Browse…' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: 'Folder' })).toHaveValue(
+      'C:\\Users\\me\\AppData\\Local\\VethuQ\\db\\backups',
+    );
   });
 
   it('is locked, with the reason, when an environment variable sets the data folder', async () => {

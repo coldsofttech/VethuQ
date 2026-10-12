@@ -33,6 +33,13 @@ exercised in a browser.
 2. `vethuq_desktop/web/` inside the installed package (for the packaged application)
 3. `web/dist` of a source checkout
 
+## Folder picker
+
+Settings that name a folder (the data and backups folders) start with the system folder picker: the
+window controller shows it (`choose_folder`, through `POST /api/dialog/folder`), and the chosen folder
+is then confirmed in the interface. A host without a picker (`--no-window`, a browser) types the
+folder instead.
+
 ## Known limits
 
 - Windows only. The window is created with `gui="edgechromium"` and never falls back to the old
