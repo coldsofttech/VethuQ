@@ -288,6 +288,14 @@ class TestBackgroundInstaller:
         assert "into_cli_folder.iss" in shell
         assert "FindCli" not in shell.split("[Code]")[1].split("#include")[1].split("\n", 1)[1]
 
+    def test_the_spec_imports_what_it_uses(self):
+        spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
+        for module in ("os", "re", "sys", "importlib.util", "importlib.metadata"):
+            if re.search(rf"\b{re.escape(module.split('.')[0])}\.", spec):
+                assert re.search(rf"^import {re.escape(module)}", spec, re.M) or (
+                    module == "importlib.util" and "import importlib.util" in spec
+                ), module
+
     def test_the_spec_builds_the_service_too_and_stages_the_commands(self):
         spec = (SHARED / "vethuq.spec").read_text(encoding="utf-8")
         assert 'BS_INSTALLER / "vethuqbs_entry.py"' in spec and '"vethuqbs"' in spec

@@ -26,6 +26,7 @@ import importlib.metadata as metadata
 import importlib.util
 import os
 import re
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
