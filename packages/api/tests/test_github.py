@@ -58,6 +58,26 @@ class FakeGitHub:
         FakeGitHub.calls.append(("update", token, workflow_ref))
         return Runner(workflow_ref=workflow_ref or "v2")
 
+    stored: str | None = None
+    store_exists = True
+
+    def token_source(self):
+        return "credential-manager" if FakeGitHub.stored else None
+
+    def credential_store_available(self):
+        return FakeGitHub.store_exists
+
+    def remember_token(self, token, *, verify=True):
+        FakeGitHub.calls.append(("remember", token))
+        if token == "bad":
+            raise AddonError("The token was rejected.", "Make a new one.")
+        FakeGitHub.stored = token
+
+    def forget_token(self):
+        had = FakeGitHub.stored is not None
+        FakeGitHub.stored = None
+        return had
+
     def remove(self, token=None, *, delete_repo=False, delete_key=False):
         FakeGitHub.calls.append(("remove", token, delete_repo, delete_key))
         FakeGitHub.set_up = None
@@ -88,6 +108,8 @@ LOADED = SimpleNamespace(status=SimpleNamespace(value="loaded"), detail="")
 def _reset(monkeypatch):
     FakeGitHub.set_up = None
     FakeGitHub.calls = []
+    FakeGitHub.stored = None
+    FakeGitHub.store_exists = True
     for name in TOKEN_VARIABLES:
         monkeypatch.delenv(name, raising=False)
 
@@ -162,12 +184,17 @@ class TestRunner:
 class TestToken:
     def test_a_remembered_token_is_kept_in_memory_and_the_variable_only(self):
         svc = service()
-        assert svc.token_state() == {"environment": False, "session": False}
-        assert svc.remember_token("secret") == {"environment": True, "session": True}
+        assert svc.token_state() == {
+            "environment": False,
+            "session": False,
+            "stored": False,
+            "store_available": True,
+        }
+        assert svc.remember_token("secret")["session"] is True
         assert os.environ[TOKEN_VARIABLES[0]] == "secret"
         svc.status(None)
         assert FakeGitHub.calls[-1] == ("status", "secret")  # used when none is given
-        assert svc.remember_token(None) == {"environment": False, "session": False}
+        assert svc.remember_token(None)["session"] is False
         assert TOKEN_VARIABLES[0] not in os.environ
 
     def test_a_token_from_the_environment_is_left_alone_when_forgetting(self, monkeypatch):
@@ -182,6 +209,35 @@ class TestToken:
         svc.status("given")
         assert FakeGitHub.calls[-1] == ("status", "given")
         svc.remember_token(None)
+
+
+class TestTheCredentialStore:
+    def test_a_token_is_saved_in_the_store_and_reported_as_stored(self):
+        svc = service()
+        state = svc.store_token("ghp_good")
+        assert state["stored"] is True and state["session"] is False
+        assert FakeGitHub.calls[-1] == ("remember", "ghp_good")
+        assert "ghp_good" not in os.environ.get(TOKEN_VARIABLES[0], "")
+
+    def test_forgetting_clears_the_session_and_the_store_but_not_the_environment(self, monkeypatch):
+        svc = service()
+        svc.store_token("ghp_good")
+        svc.remember_token("session-only")
+        monkeypatch.setenv(TOKEN_VARIABLES[1], "mine")
+        state = svc.forget_token()
+        assert (state["stored"], state["session"]) == (False, False)
+        assert os.environ[TOKEN_VARIABLES[1]] == "mine"
+
+    def test_a_computer_with_no_store_says_so(self):
+        FakeGitHub.store_exists = False
+        assert service().token_state()["store_available"] is False
+
+    def test_an_old_add_on_without_the_feature_is_told_to_update(self):
+        old = GitHubService(
+            lambda: client_with(LOADED), factory=lambda c: SimpleNamespace(runner=lambda: None)
+        )
+        with pytest.raises(ValueError, match="Update it"):
+            old.store_token("x")
 
 
 class TestJobs:
@@ -234,4 +290,6 @@ class TestHttp:
         assert post("setup", private="yes").status_code == 422
         assert post("remove", delete_repo="yes").status_code == 422
         assert post("token", token=5).status_code == 422
+        assert post("token").status_code == 422  # nothing to keep
+        assert post("token", token="x", store="yes").status_code == 422
         assert http.post("/api/github/token", json={}, base_url=ORIGIN).status_code == 403

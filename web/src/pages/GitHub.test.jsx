@@ -20,7 +20,7 @@ const OVERVIEW = {
   installed: true,
   enabled: true,
   reason: '',
-  token: { environment: false, session: false },
+  token: { environment: false, session: false, stored: false, store_available: false },
   runner: null,
   versions: [{ workflow_ref: 'v1', status: 'current' }],
   tier: { id: 'github', available: false, reason: 'no runner' },
@@ -76,18 +76,84 @@ describe('GitHub', () => {
     });
   });
 
-  it('keeps a token for the session only when asked, and forgets it', async () => {
+  it('saves a token in Credential Manager when asked, and says so', async () => {
     const fetchMock = mockApi({
       'GET /api/github/availability': { enabled: true },
-      'GET /api/github': OVERVIEW,
-      'POST /api/github/token': { environment: true, session: true },
+      'GET /api/github': {
+        ...OVERVIEW,
+        token: { environment: false, session: false, stored: false, store_available: true },
+      },
+      'POST /api/github/token': {
+        environment: false,
+        session: false,
+        stored: true,
+        store_available: true,
+      },
+      'POST /api/github/token/forget': {
+        environment: false,
+        session: false,
+        stored: false,
+        store_available: true,
+      },
     });
     renderWithProviders(<App />, { route: '/github' });
     await userEvent.type(await screen.findByLabelText('GitHub token'), 'tok');
+    await userEvent.click(screen.getByRole('button', { name: 'Save in Credential Manager' }));
+    await waitFor(() =>
+      expect(body(fetchMock, '/api/github/token')).toEqual({ token: 'tok', store: true }),
+    );
+    expect(
+      await screen.findByText('A token is saved in Windows Credential Manager.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('GitHub token')).toHaveValue('');
+    await userEvent.click(screen.getByRole('button', { name: 'Forget' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([p]) => p === '/api/github/token/forget')).toBe(true),
+    );
+    expect(await screen.findByText(/No token yet/)).toBeInTheDocument();
+  });
+
+  it('keeps a token for the session only when asked', async () => {
+    const fetchMock = mockApi({
+      'GET /api/github/availability': { enabled: true },
+      'GET /api/github': OVERVIEW,
+      'POST /api/github/token': {
+        environment: true,
+        session: true,
+        stored: false,
+        store_available: false,
+      },
+    });
+    renderWithProviders(<App />, { route: '/github' });
+    await userEvent.type(await screen.findByLabelText('GitHub token'), 'tok');
+    expect(
+      screen.queryByRole('button', { name: 'Save in Credential Manager' }),
+    ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Use for this session' }));
-    await waitFor(() => expect(body(fetchMock, '/api/github/token')).toEqual({ token: 'tok' }));
-    expect(await screen.findByText('A token is kept for this session.')).toBeInTheDocument();
-    expect(screen.getByText('VethuQ never writes the token to disk.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(body(fetchMock, '/api/github/token')).toEqual({ token: 'tok', store: false }),
+    );
+    expect(await screen.findByText('A token is kept for this session only.')).toBeInTheDocument();
+  });
+
+  it('offers to save the token when setting up, and passes the choice', async () => {
+    const fetchMock = mockApi({
+      'GET /api/github/availability': { enabled: true },
+      'GET /api/github': {
+        ...OVERVIEW,
+        token: { environment: false, session: false, stored: false, store_available: true },
+      },
+      'POST /api/github/setup': RUNNER,
+    });
+    renderWithProviders(<App />, { route: '/github' });
+    await userEvent.type(await screen.findByLabelText('GitHub token'), 'tok');
+    await userEvent.click(
+      screen.getByRole('checkbox', { name: 'Save the token in Windows Credential Manager' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    await waitFor(() =>
+      expect(body(fetchMock, '/api/github/setup')).toMatchObject({ token: 'tok', store: true }),
+    );
   });
 
   it('shows the runner, checks it, and updates it', async () => {

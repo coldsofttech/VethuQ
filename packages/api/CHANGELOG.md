@@ -5,6 +5,8 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- GitHub token: it can be saved in the operating system's credential store (Windows Credential Manager) through the
+  GitHub add-on, kept for the session only, or forgotten (`/api/github/token`, `/api/github/token/forget`).
 - Logs: `/api/logs` (the files), `/api/logs/<component>` (a day's entries, filtered, with a cursor so the
   interface can follow) and `/api/logs/<component>/export`.
 - Maintenance: the database check, update status and check, the signed policy, the search index (status and

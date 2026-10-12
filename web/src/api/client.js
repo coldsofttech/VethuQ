@@ -267,7 +267,10 @@ export const api = {
     setup: (body) => request('/api/github/setup', { method: 'POST', body }),
     update: (body) => request('/api/github/update', { method: 'POST', body }),
     remove: (body) => request('/api/github/remove', { method: 'POST', body }),
-    token: (token) => request('/api/github/token', { method: 'POST', body: { token } }),
+    /** Keep a token: in the credential store (`store`), else for this session only. */
+    token: (token, store = false) =>
+      request('/api/github/token', { method: 'POST', body: { token, store } }),
+    forgetToken: () => request('/api/github/token/forget', { method: 'POST' }),
     jobs: (signal) => request('/api/github/jobs', { signal }),
   },
   addons: {

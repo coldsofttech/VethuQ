@@ -61,10 +61,41 @@ class GitHubService:
 
     # ----- the token --------------------------------------------------------------------------
 
+    def _addon(self) -> Any | None:
+        """The add-on's GitHub class, or None when it is not there to ask."""
+        try:
+            return self._github() if self.availability()["enabled"] else None
+        except Exception:  # noqa: BLE001 - the token bar must still draw
+            return None
+
     def token_state(self) -> dict[str, object]:
-        in_environment = any(os.environ.get(v) for v in TOKEN_VARIABLES)
+        """Where a token is: the environment, this session's memory, the credential store."""
+        github = self._addon()
+        source = github.token_source() if github and hasattr(github, "token_source") else None
+        store = getattr(github, "credential_store_available", lambda: False)() if github else False
         with self._lock:
-            return {"environment": in_environment, "session": self._session_token is not None}
+            return {
+                "environment": any(os.environ.get(v) for v in TOKEN_VARIABLES),
+                "session": self._session_token is not None,
+                "stored": source == "credential-manager",
+                "store_available": bool(store),
+            }
+
+    def store_token(self, token: str) -> dict[str, object]:
+        """Save the token in the operating system's credential store (Credential Manager)."""
+        github = self._github()
+        if not hasattr(github, "remember_token"):
+            raise ValueError("This version of the GitHub add-on cannot save a token. Update it.")
+        github.remember_token(token)
+        return self.token_state()
+
+    def forget_token(self) -> dict[str, object]:
+        """Forget the session's token and the saved one (a token in the environment stays)."""
+        self.remember_token(None)
+        github = self._addon()
+        if github is not None and hasattr(github, "forget_token"):
+            github.forget_token()
+        return self.token_state()
 
     def remember_token(self, token: str | None) -> dict[str, object]:
         """Keep a token for this session (None forgets it). It is never written to disk."""

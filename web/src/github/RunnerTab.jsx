@@ -51,7 +51,7 @@ function Facts({ rows }) {
   );
 }
 
-function SetupForm({ versions, token, onDone }) {
+function SetupForm({ versions, token, storeAvailable, onDone }) {
   const styles = useStyles();
   const notify = useNotify();
   const [repo, setRepo] = useState('vethuq-runner');
@@ -59,6 +59,7 @@ function SetupForm({ versions, token, onDone }) {
   const [isPrivate, setPrivate] = useState(true);
   const [ref, setRef] = useState('');
   const [existing, setExisting] = useState(false);
+  const [save, setSave] = useState(false);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -76,6 +77,7 @@ function SetupForm({ versions, token, onDone }) {
         create: !existing,
         adopt: existing,
         master_key: key,
+        store: save,
       });
       token.set('');
       notify({ title: 'The GitHub runner is set up' });
@@ -113,6 +115,13 @@ function SetupForm({ versions, token, onDone }) {
         checked={existing}
         onChange={(_, d) => setExisting(d.checked === true)}
       />
+      {storeAvailable && (
+        <Checkbox
+          label="Save the token in Windows Credential Manager"
+          checked={save}
+          onChange={(_, d) => setSave(d.checked === true)}
+        />
+      )}
       <Field label="Runner version">
         <FilterSelect label="Runner version" value={ref} options={options} onChange={setRef} />
       </Field>
@@ -136,7 +145,9 @@ function SetupForm({ versions, token, onDone }) {
         <Button appearance="primary" disabled={busy || !repo.trim()} onClick={submit}>
           {busy ? <Spinner size="tiny" /> : 'Set up'}
         </Button>
-        <Text className={styles.muted}>The token above is used once and not kept.</Text>
+        <Text className={styles.muted}>
+          Unless you save it, the token above is used once and not kept.
+        </Text>
       </div>
     </div>
   );
@@ -291,6 +302,11 @@ export function RunnerTab({ data, token, onChanged }) {
   return data.runner ? (
     <RunnerCard data={data} token={token} onChanged={onChanged} />
   ) : (
-    <SetupForm versions={data.versions} token={token} onDone={onChanged} />
+    <SetupForm
+      versions={data.versions}
+      token={token}
+      storeAvailable={data.token.store_available}
+      onDone={onChanged}
+    />
   );
 }

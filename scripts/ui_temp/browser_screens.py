@@ -552,7 +552,12 @@ def github_fixtures(page: Page) -> None:
             "installed": True,
             "enabled": True,
             "reason": "",
-            "token": {"environment": False, "session": True},
+            "token": {
+                "environment": False,
+                "session": False,
+                "stored": True,
+                "store_available": True,
+            },
             "runner": runner,
             "versions": [{"workflow_ref": "v1", "status": "current"}],
             "tier": {"id": "github", "available": True, "reason": ""},

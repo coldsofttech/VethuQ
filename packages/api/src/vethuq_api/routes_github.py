@@ -67,8 +67,8 @@ def register(api: Blueprint, core: Core) -> None:
             create=_flag(body, "create", True),
             adopt=_flag(body, "adopt"),
         )
-        if body.get("remember") is True:
-            service().remember_token(_text(body, "token"))
+        if _flag(body, "store") and _text(body, "token"):
+            service().store_token(_text(body, "token"))  # type: ignore[arg-type]
         return jsonify(runner), 201
 
     @api.post("/github/update")
@@ -89,7 +89,18 @@ def register(api: Blueprint, core: Core) -> None:
 
     @api.post("/github/token")
     def github_token() -> Response:
-        return jsonify(service().remember_token(_text(_body(), "token")))
+        """Keep a token: in the credential store with `store`, else for this session only."""
+        body = _body()
+        token = _text(body, "token")
+        if not token:
+            raise ValueError("Paste a GitHub token.")
+        if _flag(body, "store"):
+            return jsonify(service().store_token(token))
+        return jsonify(service().remember_token(token))
+
+    @api.post("/github/token/forget")
+    def github_token_forget() -> Response:
+        return jsonify(service().forget_token())
 
     @api.get("/github/jobs")
     def github_jobs() -> Response:
