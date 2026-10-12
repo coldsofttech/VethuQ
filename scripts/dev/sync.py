@@ -23,7 +23,7 @@ class Sync:
         self.root = root
 
     def run(self) -> int:
-        return subprocess.call(self.COMMAND, cwd=self.root)
+        return subprocess.call(self.COMMAND, cwd=self.root)  # noqa: S603 - fixed command
 
 
 if __name__ == "__main__":
