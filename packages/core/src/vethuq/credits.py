@@ -51,8 +51,7 @@ class CreditBalance:
     daily: float  # what is left of today's allowance, with any metrics bonus
     promotional: float  # what is left of a promotion running today
     one_off: float  # starter and licence credits
-    grace: float  # the small allowance used only when everything else is gone
-    total: float  # everything that can be spent, grace included
+    total: float  # everything that can be spent: daily, promotional and one-off
     daily_allowance: float  # today's allowance in full, bonus and promotion included
     bonus_active: bool  # the metrics-sharing bonus is part of today's allowance
     bonus: float  # how much of today's allowance it is
@@ -121,7 +120,7 @@ class CreditGrant:
 
     id: int
     wallet: str
-    kind: str  # daily, promo, one_off or grace
+    kind: str  # daily, promo or one_off
     name: str  # a promotion's name, else where the credits came from
     origin: str
     scope: str | None  # an add-on the credits can only be spent on, or None for all work
@@ -217,8 +216,7 @@ class Credits:
             daily=balance.daily_milli / 1000,
             promotional=balance.promo_milli / 1000,
             one_off=balance.one_off_milli / 1000,
-            grace=balance.grace_milli / 1000,
-            total=balance.total_milli / 1000,
+            total=(balance.daily_milli + balance.promo_milli + balance.one_off_milli) / 1000,
             daily_allowance=(base + bonus + promo) / 1000,
             bonus_active=bonus > 0,
             bonus=bonus / 1000,
@@ -281,10 +279,10 @@ class Credits:
         offset: int = 0,
     ) -> list[CreditGrant]:
         """Every grant of credits, newest first: the daily allowances, promotions, one-off
-        starter and licence bundles. `kind` is daily, promo, one_off or grace; `scope` keeps the
+        starter and licence bundles. `kind` is daily, promo or one_off; `scope` keeps the
         credits that only an add-on can spend. Raises `ValueError` for a value that isn't valid."""
-        if kind is not None and kind not in ("daily", "promo", "one_off", "grace"):
-            raise ValueError("kind is daily, promo, one_off or grace.")
+        if kind is not None and kind not in ("daily", "promo", "one_off"):
+            raise ValueError("kind is daily, promo or one_off.")
         name = None if wallet is None else self._wallet(wallet)
         with self._database.session() as session:
             self._credits.sync(session)
@@ -441,7 +439,7 @@ class CreditEstimate:
     ocr_pages: int  # pages that need OCR
     credits: float  # the cost
     maximum: float  # the most it can cost: a charge is capped at 125% of the estimate
-    affordable: bool  # the wallet (grace included) covers it
+    affordable: bool  # the wallet covers it
 
     def to_dict(self) -> dict[str, object]:
         return dict(self.__dict__)

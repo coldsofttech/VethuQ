@@ -833,7 +833,7 @@ client.index.collect(wait=True, timeout=30)  # ... or keep asking for up to 30 m
 
 Reading pages costs credits; searching and everything else is free. **One credit is the work of reading one A4 page once, upright, in one language.** Pages that need no OCR (native text), duplicate files and unchanged files cost nothing. A page's price is its size against A4 (reduced by 5%, rounded up to a quarter, at least 0.25, and nothing above A0), times the pass rate. A page that is partly text is charged for the share of it the images cover (at least 0.25), a blank page costs 0.25, and a page that couldn't be read (or whose remote job failed) is refunded. The numbers come from the signed policy (`rate_card`, `wallets`, `caps`) and fall back to built-in defaults offline; a policy change applies from the next UTC day. The full rules are in `docs/credits.md` of the support repository.
 
-The free **local wallet** gets 500 credits a day (reset at 00:00 UTC, no rollover) and a one-off 2,000 starter, plus a 2% free grace used only when everything else is gone. Spending order: promotional, daily (with the metrics bonus), scoped one-off, general one-off, grace.
+The free **local wallet** gets 500 credits a day (reset at 00:00 UTC, no rollover) and a one-off 2,000 starter. Spending order: promotional, daily (with the metrics bonus), scoped one-off, general one-off.
 
 ```python
 balance = client.credits.balance()  # a wallet: balance("github")
@@ -848,9 +848,9 @@ client.credits.redeem([{"id": "LIC-1-g1", "amount": 250}])  # a licence's grants
 client.credits.redeem_licence(token)  # verify with vethuq-entitlements, then redeem
 ```
 
-`CreditBalance` has `daily`, `promotional`, `one_off`, `grace`, `total`, `daily_allowance`, `bonus_active`, `bonus` and `next_reset`. `history(kind=None, source=None, run_id=None, since=None, until=None, sort_by=CreditSortBy.AT, order=SortOrder.DESC, limit=None, offset=0)` gives `CreditEntry`s (`CreditEntryKind`: grant, charge, refund, expire); charges are written page by page, so the balance is always the latest. Purging a source deletes the charges made for it; the balance is not affected. Everything has `to_dict()` and `to_json()`.
+`CreditBalance` has `daily`, `promotional`, `one_off`, `total`, `daily_allowance`, `bonus_active`, `bonus` and `next_reset`. `history(kind=None, source=None, run_id=None, since=None, until=None, sort_by=CreditSortBy.AT, order=SortOrder.DESC, limit=None, offset=0)` gives `CreditEntry`s (`CreditEntryKind`: grant, charge, refund, expire); charges are written page by page, so the balance is always the latest. Purging a source deletes the charges made for it; the balance is not affected. Everything has `to_dict()` and `to_json()`.
 
-**Running out.** Pages are paid for as they are read. When the wallet (grace included) can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, and the file in progress keeps the pages it read (saved and paid for) and waits as `PENDING`. The next `index.run()` after the reset carries on with the page after the last one saved.
+**Running out.** Pages are paid for as they are read. When the wallet can't cover the next page the run stops as `IndexRunStatus.WAITING_CREDITS`: files already indexed stay indexed, and the file in progress keeps the pages it read (saved and paid for) and waits as `PENDING`. The next `index.run()` after the reset carries on with the page after the last one saved.
 
 **Add-on wallets.** An add-on that does paid work has a sub-wallet named after it, listed in `client.credits.wallets()` (`semantic` is the first). It is separate from `local` and `github`: nothing is spent from one for another's work. Its daily allowance and price come from the policy (`wallets.addons.<id>`, `rate_card.semantic`), and an add-on spends from it through `Host.credits` (add-on API 0.6.0).
 

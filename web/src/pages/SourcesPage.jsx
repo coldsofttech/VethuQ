@@ -43,7 +43,7 @@ import { SourceIcon } from '../components/FileIcon.jsx';
 import { ToolButton } from '../components/ToolButton.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
-import { download, formatDate } from '../format.js';
+import { download, formatCredits, formatDate } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
 import { AddPathDialog } from '../sources/AddPathDialog.jsx';
 import { LanguagesDialog } from '../sources/LanguagesDialog.jsx';
@@ -80,6 +80,7 @@ const COLUMNS = [
   { key: 'name', label: 'Name' },
   { key: 'status', label: 'Status' },
   { key: 'files_processed', label: 'Files' },
+  { key: 'credits', label: 'Credits' },
   { key: 'languages', label: 'Languages' },
   { key: 'added_at', label: 'Added' },
   { key: 'last_scanned_at', label: 'Last scanned' },
@@ -314,6 +315,7 @@ export function SourcesPage() {
                     <TableCell>
                       {source.files_processed} of {source.files_total}
                     </TableCell>
+                    <TableCell>{formatCredits(source.credits)}</TableCell>
                     <TableCell>
                       {source.languages ? source.languages.join(', ') : 'Default'}
                     </TableCell>

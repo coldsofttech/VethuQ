@@ -218,3 +218,34 @@ class TestHttp:
             "/api/credits/redeem", json={"token": "not-a-licence"}, base_url=ORIGIN, headers=HEADERS
         )
         assert bad.status_code == 422
+
+
+class TestCostsOnOtherPages:
+    def test_sources_and_their_files_carry_what_they_cost(self, vethuq, with_work, tmp_path):
+        from vethuq_api.sources_service import SourcesService
+
+        sources = SourcesService(lambda: vethuq)
+        (listed,) = sources.list()
+        assert listed["credits"] == 2.5
+        assert sources.get(listed["id"])["credits"] == 2.5
+        page = sources.files(listed["id"], sort="credits", order="desc")
+        assert [(f["name"], f["credits"]) for f in page["items"]] == [("a.pdf", 2.0)]
+
+    def test_grace_is_never_in_the_balances(self, service):
+        for wallet in service.wallets():
+            assert "grace" not in wallet
+        assert all(g["kind"] != "grace" for g in _everything(service))
+
+
+def _everything(service):
+    return service.grants(
+        wallet=None,
+        kind=None,
+        scope=None,
+        include_expired=True,
+        q="",
+        sort="granted_at",
+        order="desc",
+        offset=0,
+        limit=100,
+    )["items"]

@@ -125,14 +125,14 @@ class IndexingService:
 
     @staticmethod
     def _enough_credits(client: Any, mode: str, target: int | str | None) -> None:
-        """Block a run whose OCR the wallet (its grace included) cannot pay for."""
+        """Block a run whose OCR the wallet cannot pay for."""
         if mode == "file":
             return  # the estimate is for sources; a single file is cheap and the run says if not
         estimate = client.credits.estimate(target)
         if estimate.ocr_pages and not estimate.affordable:
             raise IndexingRefusedError(
                 f"Not enough credits: this run needs up to {estimate.maximum:g} and the wallet "
-                "(grace included) cannot cover it. Credits reset at 00:00 UTC.",
+                "cannot cover it. Credits reset at 00:00 UTC.",
                 402,
             )
 

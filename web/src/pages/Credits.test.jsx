@@ -9,7 +9,6 @@ const WALLET = {
   daily: 420,
   promotional: 0,
   one_off: 50,
-  grace: 25,
   total: 495,
   daily_allowance: 500,
   daily_used: 80,
@@ -109,6 +108,13 @@ describe('Credits', () => {
     mockApi({ ...ROUTES, 'GET /api/credits/summary': { ...SUMMARY, daily: 0, level: 'empty' } });
     renderWithProviders(<App />, { route: '/' });
     expect(await screen.findByTestId('credits-status')).toHaveTextContent("Today's credits used");
+  });
+
+  it('does not mention the grace anywhere', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/credits/overview' });
+    await screen.findByText('420 left of 500');
+    expect(screen.queryByText(/grace/i)).not.toBeInTheDocument();
   });
 
   it('has no credits item when there is no wallet', async () => {

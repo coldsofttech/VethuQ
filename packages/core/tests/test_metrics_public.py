@@ -8,6 +8,7 @@ import pytest
 
 import vethuq
 from tests import fake_pipeline as fp
+from tests.credits_helpers import grace_of
 from vethuq import errors
 from vethuq._credits import _Clock
 from vethuq._indexing import _Indexer
@@ -357,7 +358,7 @@ class TestBonus:
         client.metrics.send()
         time.next_day()
         balance = client.credits.balance()
-        assert (balance.one_off, balance.grace) == (2000, 11)  # 2% of 550
+        assert (balance.one_off, grace_of(client)) == (2000, 11)  # 2% of 550
 
     def test_it_lapses_after_seven_days_without_a_send(self, client, time):
         client.metrics.opt_in()

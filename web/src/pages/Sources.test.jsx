@@ -19,6 +19,7 @@ const SOURCE = {
   active: true,
   files_total: 3,
   files_processed: 2,
+  credits: 12.5,
   missing: false,
 };
 
@@ -35,6 +36,7 @@ const FILES = {
       status: 'indexed',
       file_type: 'pdf',
       protected: false,
+      credits: 3.25,
     },
     {
       path: 'C:\\docs\\b.pdf',
@@ -74,6 +76,7 @@ describe('Sources', () => {
     expect(await screen.findByText('docs')).toBeInTheDocument();
     expect(screen.getByText('2 of 3')).toBeInTheDocument();
     expect(screen.getByText('completed')).toBeInTheDocument();
+    expect(screen.getByText('12.5')).toBeInTheDocument(); // what the source cost
   });
 
   it('starts indexing the selected source', async () => {
@@ -108,6 +111,7 @@ describe('Sources', () => {
     expect(within(table).getByLabelText('Password protected')).toBeInTheDocument();
     expect(within(table).getByLabelText('Unsupported format')).toBeInTheDocument();
     expect(within(table).getByText('indexed')).toBeInTheDocument();
+    expect(within(table).getByText('3.25')).toBeInTheDocument(); // what the file cost
     expect(within(table).getAllByText('unsupported').length).toBeGreaterThan(0);
   });
 });
@@ -170,6 +174,7 @@ describe('Indexing', () => {
             files_total: 3,
             files_processed: 3,
             files_failed: 0,
+            credits_charged: 4.5,
             started_at: '2026-01-01T10:00:00Z',
             completed_at: null,
           },
@@ -177,7 +182,8 @@ describe('Indexing', () => {
       },
     });
     renderWithProviders(<App />, { route: '/indexing/history' });
-    expect(await screen.findByRole('table', { name: 'History' })).toBeInTheDocument();
+    const history = await screen.findByRole('table', { name: 'History' });
+    expect(within(history).getByText('4.5')).toBeInTheDocument(); // the run's cost
     for (const name of ['Activity', 'History', 'Remote jobs', 'Queue']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
     }

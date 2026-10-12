@@ -10,6 +10,7 @@ from sqlalchemy import select
 import vethuq
 from tests import fake_pipeline as fp
 from tests import fake_tiers as ft
+from tests.credits_helpers import grace_of
 from vethuq import errors
 from vethuq._credits import _Clock
 from vethuq._db import _IndexRun
@@ -264,7 +265,7 @@ class TestWallets:
         assert tier_wallets(client) == ["local", "github"]
         balance = client.credits.balance("github")
         assert balance.wallet == "github"
-        assert (balance.daily, balance.one_off, balance.grace) == (20, 0, 0.4)
+        assert (balance.daily, balance.one_off, grace_of(client, "github")) == (20, 0, 0.4)
         assert client.credits.balance().wallet == "local"
         assert [e.wallet for e in client.credits.history(wallet="github")] == ["github"]
 

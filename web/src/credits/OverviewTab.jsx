@@ -120,11 +120,6 @@ export function OverviewTab() {
           note="Starter and licence credits"
         />
         <Card
-          title="Grace"
-          value={formatCredits(current.grace)}
-          note="Used only when all else is gone"
-        />
-        <Card
           title="Available now"
           value={formatCredits(current.total)}
           note="Everything that can be spent"

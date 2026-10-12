@@ -46,7 +46,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { FileIcon, SourceIcon } from '../components/FileIcon.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
-import { download, formatBytes, formatDate } from '../format.js';
+import { download, formatBytes, formatCredits, formatDate } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
 import { usePlatform } from '../platform/PlatformProvider.jsx';
 import { LanguagesDialog } from '../sources/LanguagesDialog.jsx';
@@ -78,6 +78,7 @@ const COLUMNS = [
   { key: 'name', label: 'File' },
   { key: 'type', label: 'File type' },
   { key: 'status', label: 'Status' },
+  { key: 'credits', label: 'Credits' },
 ];
 
 /** What a file's status reads as; a locked file says why. */
@@ -189,6 +190,7 @@ export function SourceDetailPage() {
             </Text>
             <Text className={styles.muted}>
               {source.path} · {source.files_processed} of {source.files_total} files ·{' '}
+              {formatCredits(source.credits)} credits ·{' '}
               {source.languages ? source.languages.join(', ') : 'default languages'}
             </Text>
           </div>
@@ -313,6 +315,7 @@ export function SourceDetailPage() {
                     <TableCell>
                       <StatusBadge status={shown.status} title={shown.title} />
                     </TableCell>
+                    <TableCell>{formatCredits(file.credits)}</TableCell>
                   </TableRow>
                 </MenuTrigger>
                 <MenuPopover>
@@ -379,6 +382,8 @@ export function SourceDetailPage() {
                   <Text>
                     {details.protected ? 'password protected' : (details.status ?? 'pending')}
                   </Text>
+                  <Text weight="semibold">Credits</Text>
+                  <Text>{formatCredits(details.credits)}</Text>
                   <Text weight="semibold">Size</Text>
                   <Text>{formatBytes(details.size_bytes)}</Text>
                   <Text weight="semibold">Modified</Text>

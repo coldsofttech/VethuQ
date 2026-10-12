@@ -594,7 +594,7 @@ def credits_history(limit: int = typer.Option(20, "--limit")) -> None:
 @credits_app.command("grants")
 @exportable("Credit grants", "grants", facets=("kind", "wallet"))
 def credits_grants(
-    kind: str = typer.Option(None, "--kind", help="daily, promo, one_off or grace."),
+    kind: str = typer.Option(None, "--kind", help="daily, promo or one_off."),
     expired: bool = typer.Option(False, "--expired", help="Include lapsed grants."),
     limit: int = typer.Option(20, "--limit"),
 ) -> None:

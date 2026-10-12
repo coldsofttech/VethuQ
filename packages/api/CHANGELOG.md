@@ -5,6 +5,7 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added
+- Sources and their files carry what they cost (`credits`), and files sort by it.
 - Credits: `/api/credits/*` (summary for the status bar, wallets with lifetime totals, grants, usage by
   day, source or file, the daily series per wallet, the ledger, CSV/JSON exports, and redeeming a licence).
 - Sources and indexing: `/api/sources` (list, add, remove, restore, delete for good, languages, files with

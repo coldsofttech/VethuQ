@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 
 import vethuq
+from tests.credits_helpers import grace_of
 from vethuq._addons.host import _Host
 from vethuq._credits import _Terms
 from vethuq_addon_api import Credits, CreditsExhaustedError
@@ -82,7 +83,8 @@ class TestCredits:
         assert host.credits.rate("semantic", 0.0) == 0.5
         balance = client.credits.balance("semantic")
         assert (balance.daily, balance.one_off) == (50.0, 0.0)
-        assert host.credits.balance_milli() == balance.total * 1000  # the grace included
+        # The add-on's own balance counts the internal grace; the public total does not.
+        assert host.credits.balance_milli() == (balance.total + grace_of(client, "semantic")) * 1000
 
     def test_a_charge_comes_off_the_addons_wallet_and_nothing_else(self, host, client):
         local = client.credits.balance("local").total

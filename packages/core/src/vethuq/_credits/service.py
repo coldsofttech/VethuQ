@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from vethuq._credits.clock import _Clock
@@ -171,7 +171,7 @@ class _Credits:
 
         sort = _Sources._coerce(CreditSortBy, sort_by, "sort_by")  # type: ignore[type-var]
         direction = _Sources._coerce(SortOrder, order, "order")
-        statement = select(_CreditLedger)
+        statement = select(_CreditLedger).where(self._not_grace(_CreditLedger))
         if kind is not None:
             wanted = _Sources._coerce(CreditEntryKind, kind, "kind")  # type: ignore[type-var]
             statement = statement.where(_CreditLedger.kind == _LedgerKind(wanted.value))
@@ -199,6 +199,13 @@ class _Credits:
             statement = statement.offset(offset)
         return list(session.scalars(statement))
 
+    @staticmethod
+    def _not_grace(ledger: type[_CreditLedger]) -> Any:
+        """Keep out what the internal grace allowance paid for: it is goodwill, not credits the
+        user spent or holds."""
+        grace = select(_CreditGrant.id).where(_CreditGrant.kind == _GrantKind.GRACE)
+        return or_(ledger.grant_id.is_(None), ledger.grant_id.not_in(grace))
+
     def grants(
         self,
         session: Session,
@@ -216,7 +223,8 @@ class _Credits:
         terms = self.terms(session)
         names = {p.id: p.name for p in terms.promotions}
         now = _Clock.now(session).astimezone(UTC).isoformat()
-        statement = select(_CreditGrant)
+        # The grace is an internal goodwill allowance, not credits the user holds.
+        statement = select(_CreditGrant).where(_CreditGrant.kind != _GrantKind.GRACE)
         if wallet is not None:
             statement = statement.where(_CreditGrant.wallet == wallet)
         if kind is not None:
@@ -287,7 +295,11 @@ class _Credits:
             raise ValueError("group_by is day, source or file.")
         statement = (
             select(*columns, net.label("milli"), pages.label("pages"), func.max(L.at).label("last"))
-            .where(L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]), key.is_not(None))
+            .where(
+                L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]),
+                key.is_not(None),
+                self._not_grace(L),
+            )
             .group_by(key)
         )
         if wallet is not None:
@@ -341,7 +353,11 @@ class _Credits:
                 func.min(L.source_id).label("source_id"),
                 func.max(L.at).label("last"),
             )
-            .where(L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]), L.note.is_not(None))
+            .where(
+                L.kind.in_([_LedgerKind.CHARGE, _LedgerKind.REFUND]),
+                L.note.is_not(None),
+                self._not_grace(L),
+            )
             .group_by(L.kind, L.note)
         )
         if wallet is not None:

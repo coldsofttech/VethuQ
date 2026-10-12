@@ -84,8 +84,8 @@ class CreditsService:
         """Received, consumed, lapsed and remaining for a wallet since it began."""
         credits = self._client().credits
         grants = credits.grants(wallet=wallet)
-        received = sum(g.amount for g in grants if g.kind != "grace")
-        lapsed = sum(g.remaining for g in grants if g.expired and g.kind != "grace")
+        received = sum(g.amount for g in grants)
+        lapsed = sum(g.remaining for g in grants if g.expired)
         consumed = sum(u.credits for u in credits.usage("day", wallet=wallet))
         balance = credits.balance(wallet)
         return {

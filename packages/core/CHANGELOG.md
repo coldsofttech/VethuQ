@@ -6,6 +6,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Changed (the grace is internal)
+- The grace allowance is no longer shown anywhere: `CreditBalance` has no `grace` and its `total` is daily,
+  promotional and one-off credits only; `credits.grants()` no longer lists it (`kind="grace"` is refused), and
+  pages it paid for are left out of `history()` and `usage()`. The wallet still spends it, so a run is not
+  stopped the moment the credits run out. `CreditEstimate.affordable` is unchanged.
+
 ### Added (credits: grants and usage)
 - `credits.grants()` lists every grant of credits (daily allowances, promotions by name, one-off starter and
   licence bundles) with what was used and what is left; `credits.usage()` totals what was spent by day, source

@@ -22,6 +22,7 @@ _FILE_SORTS = {
     "type": lambda f: f["file_type"] or "",
     "pages": lambda f: f["pages"] or 0,
     "confidence": lambda f: f["confidence"] if f["confidence"] is not None else -1,
+    "credits": lambda f: f.get("credits") or 0,
 }
 _MIMES = {"json": "application/json", "html": "text/html"}
 
@@ -119,10 +120,22 @@ class SourcesService:
             order=order,
         )
         needle = q.strip().casefold()
-        return [source_dict(row) for row in rows if not needle or needle in row.path.casefold()]
+        spent = {int(u.key): u.credits for u in self._client().credits.usage("source")}
+        out = []
+        for row in rows:
+            if needle and needle not in row.path.casefold():
+                continue
+            data = source_dict(row)
+            data["credits"] = spent.get(row.id, 0.0)
+            out.append(data)
+        return out
 
     def get(self, source_id: int) -> dict[str, object]:
-        return source_dict(self._client().sources.get(source_id, include_removed=True))
+        client = self._client()
+        data = source_dict(client.sources.get(source_id, include_removed=True))
+        spent = {int(u.key): u.credits for u in client.credits.usage("source")}
+        data["credits"] = spent.get(source_id, 0.0)
+        return data
 
     def add(self, path: str, languages: list[str] | None = None) -> dict[str, object]:
         source = self._client().sources.create(path, languages=languages or None)
@@ -160,6 +173,9 @@ class SourcesService:
             return hit[0], hit[2]
         items = self._client().sources.list_files(source_id, detailed=True)
         rows = [file_dict(item) for item in items]
+        spent = {u.key: u.credits for u in self._client().credits.usage("file", source=source_id)}
+        for row in rows:
+            row["credits"] = spent.get(row["path"], 0.0)
         with self._lock:
             self._cache[source_id] = (now, items, rows)
         return now, rows

@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 import vethuq
 from tests import fake_pipeline as fp
+from tests.credits_helpers import grace_of
 from vethuq import errors
 from vethuq._credits import _Clock
 from vethuq._db import _CreditGrant
@@ -76,8 +77,8 @@ class TestBalance:
         assert isinstance(client.credits, Credits)
         balance = client.credits.balance()
         assert isinstance(balance, CreditBalance)
-        assert (balance.daily, balance.one_off, balance.grace) == (500, 2000, 10)
-        assert balance.total == 2510
+        assert (balance.daily, balance.one_off, grace_of(client)) == (500, 2000, 10)
+        assert balance.total == 2500
         assert balance.daily_allowance == 500 and not balance.bonus_active
         assert balance.next_reset == "2026-10-13T00:00:00+00:00"
         assert client.credits.next_reset() == balance.next_reset
@@ -101,7 +102,7 @@ class TestBalance:
     def test_the_policy_sets_the_numbers(self, client):
         policy(client, wallets={"local": {"daily": 20, "starter": 0}}, grace_percent=10)
         balance = client.credits.balance()
-        assert (balance.daily, balance.one_off, balance.grace) == (20, 0, 2)
+        assert (balance.daily, balance.one_off, grace_of(client)) == (20, 0, 2)
 
     def test_a_policy_change_applies_from_the_next_day(self, client, time):
         policy(client, wallets={"local": {"daily": 20, "starter": 0}})
@@ -167,7 +168,7 @@ class TestBalance:
         write(root, "a.pdf", scan("x one"), scan("x two"), scan("x three"))
         client.sources.create(root)
         client.index.run(workers=0)  # 2 daily + 1 grace
-        assert client.credits.balance().grace == 0
+        assert grace_of(client) == 0
         time.next_day()
         assert client.credits.balance().daily == 1  # 2 less the 1 of grace used yesterday
 
@@ -331,7 +332,7 @@ class TestRunningOut:
         assert files["b.pdf"].status is FileStatus.PENDING  # waiting, not an error
         assert files["b.pdf"].retry_count == 0
         balance = client.credits.balance()
-        assert balance.daily == 0 and balance.grace == pytest.approx(0.04)
+        assert balance.daily == 0 and grace_of(client) == pytest.approx(0.04)
         assert run.credits_charged == 2.0  # b's first page was read and paid for, and is kept
         assert run.files_failed == 0 and run.files_processed == 1
         assert b.exists() and a.exists()
@@ -350,7 +351,7 @@ class TestRunningOut:
         run = client.index.run(workers=0)  # 100 + 2 of grace = 102 pages
         assert run.status is IndexRunStatus.COMPLETED
         balance = client.credits.balance()
-        assert (balance.daily, balance.grace) == (0, 0)
+        assert (balance.daily, grace_of(client)) == (0, 0)
 
     def test_grace_is_spent_last_and_free(self, client, root, time):
         policy(client, wallets={"local": {"daily": 1, "starter": 0}}, grace_percent=100)
@@ -551,7 +552,7 @@ class TestRedeem:
         client.sources.create(root)
         client.index.run(workers=0)
         balance = client.credits.balance()
-        assert (balance.daily, balance.one_off, balance.grace) == (0, 8, pytest.approx(0.02))
+        assert (balance.daily, balance.one_off, grace_of(client)) == (0, 8, pytest.approx(0.02))
 
     def test_a_grant_expires(self, client, time):
         expires = (time.now + timedelta(days=2)).isoformat()
@@ -664,10 +665,11 @@ class TestSpendOrder:
                 g.kind.value
                 for g in session.scalars(select(_CreditGrant).order_by(_CreditGrant.id))
             ]
-        assert len(spent) == 5 and "promo" in kinds
+        assert len(spent) == 4 and "promo" in kinds
         balance = client.credits.balance()
         # 1 promotional + 2 daily + 1 general one-off + 1 of the 1 grace: all gone but the scoped
-        assert (balance.promotional, balance.daily, balance.one_off, balance.grace) == (0, 0, 0, 0)
+        spent_all = (balance.promotional, balance.daily, balance.one_off)
+        assert spent_all == (0, 0, 0) and grace_of(client) == 0
 
 
 class TestGrantsAndUsage:
@@ -748,3 +750,27 @@ class TestGrantsAndUsage:
         time.next_day()
         assert client.credits.grants(wallet="local")
         assert client.credits.history(wallet="local") is not None
+
+
+class TestGraceStaysInternal:
+    def test_the_balance_and_grants_leave_the_grace_out(self, client):
+        balance = client.credits.balance()
+        assert not hasattr(balance, "grace") and "grace" not in balance.to_dict()
+        assert balance.total == balance.daily + balance.promotional + balance.one_off
+        assert grace_of(client) > 0  # it is still there, for the wallet's own use
+        assert "grace" not in {g.kind for g in client.credits.grants()}
+        with pytest.raises(ValueError):
+            client.credits.grants(kind="grace")
+
+    def test_a_page_paid_by_the_grace_is_not_shown_as_spent(self, client, root):
+        write(root, "a.pdf", scan())
+        client.sources.create(root)
+        client.credits.balance()  # today's grants are made on first use
+        with client._db().session() as session:
+            for grant in session.scalars(select(_CreditGrant)):
+                if grant.kind.value != "grace":
+                    grant.remaining_milli = 0
+        run = client.index.run()
+        assert run.ocr_pages == 1  # the grace let the page through
+        assert client.credits.history(kind=CreditEntryKind.CHARGE) == []
+        assert client.credits.usage("day") == [] and client.credits.usage("file") == []

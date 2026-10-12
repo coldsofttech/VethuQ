@@ -407,7 +407,7 @@ def seed_credits(home: str, documents: Path) -> None:
     from datetime import UTC, datetime, timedelta
 
     from vethuq import VethuQ
-    from vethuq._db import _CreditGrant, _CreditLedger
+    from vethuq._db import _CreditGrant, _CreditLedger, _IndexRun
     from vethuq._db.values import _GrantKind, _LedgerKind
 
     os.environ["VETHUQ_HOME"] = home
@@ -441,6 +441,24 @@ def seed_credits(home: str, documents: Path) -> None:
                             note=str(name),
                         )
                     )
+            from vethuq.enums import IndexRunStatus
+
+            for day in range(5):
+                started = (now - timedelta(days=day)).isoformat()
+                session.add(
+                    _IndexRun(
+                        source_id=source.id,
+                        status=IndexRunStatus.COMPLETED,
+                        total_files=12,
+                        processed_files=12,
+                        processed_pages=40,
+                        ocr_pages=9 - day,
+                        credits_milli=(9 - day) * 1000,
+                        workers=2,
+                        started_at=started,
+                        completed_at=started,
+                    )
+                )
             # Today's charges come out of today's allowance, as a real run would take them.
             daily = (
                 session.query(_CreditGrant).filter_by(wallet="local", kind=_GrantKind.DAILY).one()
@@ -474,6 +492,19 @@ def credits_screens(browser: Browser, out: Path) -> None:
         expect(page.get_by_role("table", name="Ledger")).to_be_visible()
         page.wait_for_timeout(500)
         shot(page, out, "credits-ledger")
+        # The cost on the other pages.
+        page.get_by_role("tab", name="Sources").first.click()
+        expect(page.get_by_role("columnheader", name="Credits")).to_be_visible()
+        shot(page, out, "sources-credits")
+        page.get_by_role("row").filter(has_text=documents.name).dblclick()
+        expect(page.get_by_role("table", name="Files")).to_be_visible()
+        page.wait_for_timeout(500)
+        shot(page, out, "source-files-credits")
+        page.get_by_role("tab", name="Indexing").first.click()
+        page.get_by_role("tab", name="History").click()
+        expect(page.get_by_role("table", name="History")).to_be_visible()
+        shot(page, out, "indexing-history-credits")
+        page.get_by_role("tab", name="Credits").first.click()
         page.get_by_role("button", name="Redeem a licence").click()
         expect(page.get_by_placeholder("Paste the licence text")).to_be_visible()
         page.get_by_placeholder("Paste the licence text").fill("not a licence")

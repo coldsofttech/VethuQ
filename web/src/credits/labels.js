@@ -9,7 +9,6 @@ export const KIND_LABELS = {
   daily: 'Daily allowance',
   promo: 'Promotion',
   one_off: 'One-off',
-  grace: 'Grace',
 };
 
 export const ENTRY_LABELS = {

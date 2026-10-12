@@ -30,7 +30,7 @@ import { ToolButton } from '../components/ToolButton.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { ServiceDot } from '../components/ServiceDot.jsx';
 import { StatusBadge } from '../components/StatusBadge.jsx';
-import { baseName, formatBytes, formatDate, formatDuration } from '../format.js';
+import { baseName, formatBytes, formatCredits, formatDate, formatDuration } from '../format.js';
 import { useIndexing } from '../indexing/IndexingProvider.jsx';
 
 const useStyles = makeStyles({
@@ -116,6 +116,7 @@ function Activity() {
             <Stat label="Failed" value={run.files_failed} />
             <Stat label="Pages" value={run.pages_processed} />
             <Stat label="OCR pages" value={run.ocr_pages} />
+            <Stat label="Credits" value={formatCredits(run.credits_charged)} />
             {live && state.eta?.seconds > 0 && (
               <Stat label="Time left" value={formatDuration(state.eta.seconds)} />
             )}
@@ -242,13 +243,14 @@ export function IndexingPage() {
           label="History"
           load={loadHistory}
           empty="No runs yet."
-          columns={['Run', 'Target', 'Status', 'Files', 'Failed', 'Started', 'Finished']}
+          columns={['Run', 'Target', 'Status', 'Files', 'Failed', 'Credits', 'Started', 'Finished']}
           row={(run) => [
             run.id,
             run.target ? baseName(run.target) : 'All sources',
             <StatusBadge key="s" status={run.status} title={run.error ?? undefined} />,
             `${run.files_processed} of ${run.files_total}`,
             run.files_failed,
+            formatCredits(run.credits_charged),
             formatDate(run.started_at),
             formatDate(run.completed_at),
           ]}
