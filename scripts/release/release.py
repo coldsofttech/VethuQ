@@ -178,6 +178,10 @@ class Cli:
         if PLUGIN.exists():
             shutil.rmtree(PLUGIN)
         shutil.move(str(target / "background"), str(PLUGIN))
+        # Add-ons installed from a checkout carry their __pycache__; the installers don't need it.
+        for folder in (target, PLUGIN):
+            for cache in folder.rglob("__pycache__"):
+                shutil.rmtree(cache)
 
     def check_build(self) -> None:
         """What the installers rely on is there."""
