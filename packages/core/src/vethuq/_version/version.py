@@ -70,7 +70,7 @@ class _Version:
         if manager is None:
             return ()
         return tuple(sorted({spec.id for spec in getattr(manager, method)()}))
-    
+
     BUNDLE_GROUP = "vethuq.bundles"
 
     @staticmethod

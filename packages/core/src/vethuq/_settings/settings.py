@@ -306,7 +306,9 @@ class _FileTypeSettings:
     @staticmethod
     def set_disabled(session: Session, ids: list[str]) -> None:
         if ids:
-            _Settings.set(session, _FileTypeSettings.DISABLED_KEY, _FileTypeSettings.SEPARATOR.join(ids))
+            _Settings.set(
+                session, _FileTypeSettings.DISABLED_KEY, _FileTypeSettings.SEPARATOR.join(ids)
+            )
         else:
             _Settings.reset(session, _FileTypeSettings.DISABLED_KEY)
 

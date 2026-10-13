@@ -100,7 +100,7 @@ class Languages:
         with self._database.session() as session:
             view = _Languages.get(session, self._catalog.specs(), language_id)
         return Language._from_view(view)
-    
+
     def default(self) -> Language:
         """The system default language: English. It is the fallback when nothing else is usable.
 

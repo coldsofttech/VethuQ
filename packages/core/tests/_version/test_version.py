@@ -92,6 +92,7 @@ class TestInstalledLists:
     def test_add_ons_are_the_running_ones(self, manager):
         assert _Version.add_ons(manager) == ("english", "pdf")
 
+
 class TestBundles:
     def test_none_installed(self, monkeypatch):
         monkeypatch.setattr(metadata, "entry_points", lambda group: [])

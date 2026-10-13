@@ -66,9 +66,7 @@ class Tiers:
         tiers add-ons provide, then hybrid."""
         default = self._default()
         return [
-            Tier(
-                v.id, v.label, v.wallet, v.available, v.reason, v.id == default, v.asynchronous
-            )
+            Tier(v.id, v.label, v.wallet, v.available, v.reason, v.id == default, v.asynchronous)
             for v in self._tiers.views()
         ]
 

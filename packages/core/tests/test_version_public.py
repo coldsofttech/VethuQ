@@ -74,6 +74,7 @@ class TestClientVersion:
         assert "paddle" in version.ocr_engines
         assert "en" in version.ocr_languages
         assert "english" in version.add_ons and "pdf" in version.add_ons
+
     def test_reading_it_does_not_open_or_create_the_database(self, tmp_path):
         client = vethuq.VethuQ(db_path=tmp_path / "db" / "vethuq.db")
 

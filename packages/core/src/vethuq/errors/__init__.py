@@ -36,7 +36,6 @@ from vethuq.errors.index import (
     SearchUnavailableError,
 )
 from vethuq.errors.language import LanguageUnavailableError, LastLanguageError
-from vethuq.errors.language import LanguageUnavailableError, LastLanguageError
 from vethuq.errors.logs import InvalidLogRequestError, LogError, LogNotFoundError
 from vethuq.errors.settings import InvalidSettingValueError, SettingsError
 from vethuq.errors.sources import (
@@ -47,8 +46,8 @@ from vethuq.errors.sources import (
     SourceOverlapError,
     SourcePathError,
 )
-
 from vethuq.errors.tier import TierError, TierNotFoundError, TierUnavailableError
+
 __all__ = [
     "CorruptDatabaseError",
     "CreditsError",

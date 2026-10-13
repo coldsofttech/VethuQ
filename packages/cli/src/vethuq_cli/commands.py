@@ -523,7 +523,10 @@ types_app = typer.Typer(help="The file types VethuQ can read.", no_args_is_help=
 @exportable("File types", "file_types")
 def types_list() -> None:
     """File types, with whether each is available."""
-    table(client().file_types.list_all(), ["id", "label", "extensions", "available", "enabled", "reason"])
+    table(
+        client().file_types.list_all(),
+        ["id", "label", "extensions", "available", "enabled", "reason"],
+    )
 
 
 languages_app = typer.Typer(help="Languages for reading documents.", no_args_is_help=True)

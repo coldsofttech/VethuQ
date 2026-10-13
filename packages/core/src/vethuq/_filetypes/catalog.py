@@ -27,9 +27,7 @@ class _FileTypeCatalog:
     def extension(path: str | Path) -> str:
         return Path(path).suffix.lower()
 
-    def for_path(
-        self, path: str | Path, include_disabled: bool = False
-    ) -> FileTypeSpec | None:
+    def for_path(self, path: str | Path, include_disabled: bool = False) -> FileTypeSpec | None:
         """The available, enabled file type that reads `path`, or None (not supported, its
         add-on isn't installed or can't be used now, or it is switched off). With
         `include_disabled` a switched-off type is still named: for telling what a file is,

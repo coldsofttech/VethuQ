@@ -7,11 +7,10 @@ from vethuq import errors
 from vethuq._errors import (
     _CorruptDatabaseError,
     _DataFolderNotWritableError,
+    _FileTypeUnavailableError,
     _InvalidConfigError,
     _InvalidLogRequestError,
     _InvalidSettingValueError,
-    _FileTypeUnavailableError,
-    _TierNotFoundError,
     _LanguageUnavailableError,
     _LastLanguageError,
     _LogError,
@@ -27,6 +26,7 @@ from vethuq._errors import (
     _SourcePathError,
     _StaleLockError,
     _StartupError,
+    _TierNotFoundError,
     _VethuQError,
 )
 from vethuq._paths import _Paths

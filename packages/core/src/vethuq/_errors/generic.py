@@ -1,5 +1,4 @@
-"""X
-"""
+"""X"""
 
 from __future__ import annotations
 
