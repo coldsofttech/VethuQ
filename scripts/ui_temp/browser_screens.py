@@ -900,6 +900,138 @@ def preview_screens(browser: Browser, out: Path) -> None:
         process.wait(timeout=10)
 
 
+SAMPLE_CSS = """/* Farm site: base styles */
+:root {
+  --green: #2e7d32;
+  --gap: 1.25rem;
+}
+
+@import url("fonts.css");
+@charset "utf-8";
+
+html, body {
+  margin: 0;
+  font: 16px/1.5 "Segoe UI", system-ui, sans-serif;
+  background: #fafafa url(img/paper.png) repeat;
+}
+
+.card > .title:hover,
+a[href^="http"]::after {
+  color: var(--green);
+  padding: calc(var(--gap) * 2) 0.5em !important;
+  transition: color 0.2s ease-in-out, transform 150ms;
+}
+
+@media (min-width: 600px) and (max-width: 900px) {
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    /* three columns on tablets */
+    gap: var(--gap);
+  }
+  .grid .quokka { opacity: .85; }
+}
+
+@font-face {
+  font-family: "Farm Sans";
+  src: url(fonts/farm.woff2) format("woff2");
+}
+
+@keyframes grow {
+  from { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  to { transform: scale(1); }
+}
+"""
+
+
+def css_preview_screens(browser: Browser, out: Path) -> None:
+    """The CSS preview. The css add-on is licensed code, so the search result and the file are
+    answered by the test itself; what is shown is the interface's own work."""
+    documents = Path(tempfile.mkdtemp(prefix="vethuq-css-"))
+    (documents / "readme.txt").write_text("quokka", encoding="utf-8")
+    minified = re.sub(r"/\*.*?\*/", "", SAMPLE_CSS, flags=re.S)
+    minified = re.sub(r"\s+", " ", minified).replace("{ ", "{").replace("; ", ";") * 40
+    for theme, name in (("light", "css-light"), ("dark", "css-dark")):
+        home = tempfile.mkdtemp(prefix="vethuq-ui-")
+        process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+        try:
+            context = browser.new_context(viewport=VIEWPORT, color_scheme=theme)
+            context.add_init_script(f"localStorage.setItem('vethuq.theme', '{theme}')")
+            page = context.new_page()
+            page.goto(url)
+            expect(page.get_by_test_id("app-shell")).to_be_visible()
+
+            def run(route):
+                route.fulfill(
+                    json={
+                        "query": "quokka",
+                        "engine": "like",
+                        "total": 1,
+                        "levels": {},
+                        "index_rebuilt": False,
+                        "pending": {},
+                        "options": {},
+                        "matches": [
+                            {
+                                "file_id": 1,
+                                "document_id": 1,
+                                "file_name": "site.css",
+                                "file_path": "/x/site.css",
+                                "file_type": "css",
+                                "page_number": 1,
+                                "total_pages": 1,
+                                "before": "} @media (min-width: 600px) and "
+                                "(max-width: 900px) { .grid { display: grid; gap: var(--gap); } "
+                                ".grid .",
+                                "matched": "quokka",
+                                "after": " { opacity: .85; } }",
+                                "truncated_before": True,
+                                "truncated_after": False,
+                                "duplicate_of_path": None,
+                                "source": "native",
+                                "score": None,
+                                "start": 10,
+                                "end": 16,
+                                "engine": "like",
+                                "matched_by": ["like"],
+                                "modifiers": [],
+                            }
+                        ],
+                    }
+                )
+
+            page.route("**/api/search/run", run)
+            page.route(
+                "**/api/files/css**",
+                lambda route: route.fulfill(
+                    json={
+                        "text": SAMPLE_CSS if "min" not in route.request.url else minified,
+                        "encoding": "utf-8",
+                        "file_name": "site.css",
+                        "longest_line": 90,
+                    }
+                ),
+            )
+            page.get_by_role("tab", name="Search").first.click()
+            box = page.get_by_role("searchbox", name="Search text")
+            box.fill("quokka")
+            box.press("Enter")
+            table = page.get_by_role("table", name="Search results")
+            expect(table).to_be_visible(timeout=30000)
+            table.get_by_text("1 of 1").first.click(button="right")
+            page.get_by_role("menuitem", name="Preview").click()
+            code = page.get_by_role("region", name="Code preview")
+            expect(code.locator("mark")).to_have_text("quokka", timeout=30000)
+            page.wait_for_timeout(600)
+            shot(page, out, name)
+            context.close()
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+    print("css preview checks passed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -908,11 +1040,15 @@ def main() -> int:
     parser.add_argument("--only-sources", action="store_true")
     parser.add_argument("--only-credits", action="store_true")
     parser.add_argument("--only-preview", action="store_true")
+    parser.add_argument("--only-css", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
+            if args.only_css:
+                css_preview_screens(browser, args.out)
+                return 0
             if args.only_preview:
                 preview_screens(browser, args.out)
                 return 0

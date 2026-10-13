@@ -1,0 +1,54 @@
+/**
+ * Colours like Visual Studio Code's default Dark+ and Light+ themes: the editor's own, and the
+ * colour of each kind of token (see `css.js`).
+ */
+
+export const vscodeDark = {
+  editor: {
+    background: '#1e1e1e',
+    foreground: '#d4d4d4',
+    gutterForeground: '#858585',
+    gutterBackground: '#1e1e1e',
+    gutterBorder: 'transparent',
+    currentLine: '#2a2d2e',
+    hitBackground: 'rgba(234, 92, 0, 0.33)',
+    hitOutline: 'rgba(255, 255, 255, 0.25)',
+  },
+  tokens: {
+    comment: '#6a9955',
+    atrule: '#c586c0',
+    selector: '#d7ba7d',
+    property: '#9cdcfe',
+    value: '#ce9178',
+    string: '#ce9178',
+    number: '#b5cea8',
+    function: '#dcdcaa',
+    important: '#569cd6',
+    punct: '#d4d4d4',
+  },
+};
+
+export const vscodeLight = {
+  editor: {
+    background: '#ffffff',
+    foreground: '#000000',
+    gutterForeground: '#6e7681',
+    gutterBackground: '#ffffff',
+    gutterBorder: 'transparent',
+    currentLine: '#f3f3f3',
+    hitBackground: 'rgba(234, 92, 0, 0.25)',
+    hitOutline: 'rgba(0, 0, 0, 0.2)',
+  },
+  tokens: {
+    comment: '#008000',
+    atrule: '#af00db',
+    selector: '#800000',
+    property: '#e50000',
+    value: '#0451a5',
+    string: '#a31515',
+    number: '#098658',
+    function: '#795e26',
+    important: '#0000ff',
+    punct: '#000000',
+  },
+};

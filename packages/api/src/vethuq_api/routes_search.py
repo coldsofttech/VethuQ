@@ -40,7 +40,20 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError(
                 "Only a Markdown file of a source that VethuQ reads can be shown here."
             )
-        return jsonify(core.search().markdown_file(path))
+        return jsonify(core.search().source_file(path))
+
+    @api.get("/files/css")
+    def css_file() -> Response:
+        """A stylesheet of a source as it is on disk, for the code preview. (The index re-flows it
+        to a rule a line, so its lines are not the file's.)"""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_type(path, "css")
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a stylesheet of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().source_file(path))
 
     @api.get("/files/csv")
     def csv_window() -> Response:

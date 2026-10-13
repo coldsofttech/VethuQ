@@ -143,7 +143,9 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
         icon={<Eye20Regular />}
         disabled={!canPreview(match)}
         title={
-          canPreview(match) ? undefined : 'Preview is for PDF, text, Markdown and CSV files for now'
+          canPreview(match)
+            ? undefined
+            : 'Preview is for PDF, text, Markdown, CSV and CSS files for now'
         }
         onClick={() => actions.preview(match)}
       >

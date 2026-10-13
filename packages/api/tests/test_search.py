@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 from api_support import ORIGIN
 
@@ -407,5 +409,65 @@ class TestMarkdownFile:
         ):
             assert self.get(http, path).status_code == 422, path
         assert http.get("/api/files/markdown", base_url=ORIGIN).status_code == 422
-        monkeypatch.setattr("vethuq_api.search_service.MARKDOWN_MAX_BYTES", 5)
+        monkeypatch.setattr("vethuq_api.search_service.SOURCE_MAX_BYTES", 5)
         assert self.get(http, http.library / "a" / "big.md").status_code == 422
+
+
+class TestCssFile:
+    """The stylesheet route. The css add-on is licensed code that this checkout may not have, so
+    the type checks are replaced where it is missing; what is tested is the route and the file."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        (library / "a" / "site.css").write_text(
+            "a{color:red}\n/* note */\n" + "b{top:0}" * 10, encoding="utf-8"
+        )
+        (library / "outside.css").write_text("a{}", encoding="utf-8")
+        probe = VethuQ(library / "probe.db")
+        try:
+            css = probe.file_types.get("css")
+            installed = css is not None and css.available
+        finally:
+            probe.close()
+        if not installed:
+            monkeypatch.setattr(
+                SearchService,
+                "is_type",
+                lambda self, path, kind: kind == "css" and path.lower().endswith(".css"),
+            )
+            real = SourcesService.may_open
+            inside = os.path.realpath(library / "a")
+
+            def may_open(self, path):
+                real_path = os.path.realpath(path)
+                return real(self, path) or (
+                    os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+                )
+
+            monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, path):
+        return http.get("/api/files/css", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def test_the_stylesheet_as_it_is_on_disk_with_its_longest_line(self, http):
+        reply = self.get(http, http.library / "a" / "site.css").get_json()
+        assert reply["text"].startswith("a{color:red}\n/* note */\n")
+        assert reply["longest_line"] == 80 and reply["file_name"] == "site.css"
+
+    def test_only_a_stylesheet_of_a_source(self, http):
+        for path in (
+            http.library / "outside.css",
+            http.library / "a" / "notes.txt",
+            http.library / "a" / "report.md",
+            http.library / "a" / "missing.css",
+        ):
+            assert self.get(http, path).status_code == 422, path
+        assert http.get("/api/files/css", base_url=ORIGIN).status_code == 422

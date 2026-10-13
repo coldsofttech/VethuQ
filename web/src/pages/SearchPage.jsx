@@ -39,6 +39,7 @@ import { placeOf } from '../search/form.js';
 const PdfPreview = lazy(() => import('../search/pdf/PdfPreview.jsx'));
 const TextPreview = lazy(() => import('../search/text/TextPreview.jsx'));
 const MarkdownPreview = lazy(() => import('../search/markdown/MarkdownPreview.jsx'));
+const CssPreview = lazy(() => import('../search/css/CssPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 
 const PREVIEWS = {
@@ -46,6 +47,7 @@ const PREVIEWS = {
   csv: TablePreview,
   txt: TextPreview,
   markdown: MarkdownPreview,
+  css: CssPreview,
 };
 
 const useStyles = makeStyles({

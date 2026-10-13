@@ -76,9 +76,9 @@ export function forgetSearches() {
  */
 export const placeOf = (match) => {
   if (match.file_type === 'pdf' && match.page_number) return { page: match.page_number };
-  // A CSV's line is its Nth row with something in it and a Markdown file's has no line (the index
-  // keeps its words without the markup): neither is a line to open an editor at.
-  if (match.file_type === 'markdown') return {};
+  // A CSV's line is its Nth row with something in it and a Markdown or CSS file's has no line (the index
+  // keeps the words without the markup, or the sheet re-flowed to a rule a line): neither is a line to open an editor at.
+  if (match.file_type === 'markdown' || match.file_type === 'css') return {};
   if (match.file_type === 'csv') return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
     return match.column != null ? { line: match.line, column: match.column } : { line: match.line };
@@ -93,5 +93,6 @@ export const describePlace = (place) => {
   return null;
 };
 
-/** The file types the preview can show: PDF, text, Markdown and CSV. */
-export const canPreview = (match) => ['pdf', 'txt', 'markdown', 'csv'].includes(match.file_type);
+/** The file types the preview can show: PDF, text, Markdown, CSV and CSS. */
+export const canPreview = (match) =>
+  ['pdf', 'txt', 'markdown', 'csv', 'css'].includes(match.file_type);

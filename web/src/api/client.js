@@ -383,6 +383,12 @@ export const api = {
      */
     markdown: (params, signal) => request(`/api/files/markdown${query(params)}`, { signal }),
     /**
+     * A stylesheet of a source as it is on disk, for the code preview.
+     * @param {{path: string}} params
+     * @returns {Promise<{text: string, encoding: string, file_name: string, longest_line: number}>}
+     */
+    css: (params, signal) => request(`/api/files/css${query(params)}`, { signal }),
+    /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
      * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,
      *   filter?: string, column?: number, header?: number, at_row?: number, at_offset?: number}} params

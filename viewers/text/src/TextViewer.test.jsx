@@ -100,4 +100,49 @@ describe('TextViewer', () => {
     expect(loadLines).not.toHaveBeenCalled();
     expect(screen.queryAllByRole('row')).toHaveLength(0);
   });
+
+  it("colours lines with `tokens` in the theme's colours and keeps the mark inside them", async () => {
+    const tokens = (text) => [
+      ['property', text.slice(0, 4)],
+      ['value', text.slice(4)],
+    ];
+    const theme = {
+      editor: {
+        background: '#111111',
+        foreground: '#eeeeee',
+        gutterForeground: '#888888',
+        gutterBackground: '#111111',
+        gutterBorder: 'transparent',
+        currentLine: '#222222',
+        hitBackground: 'rgba(1, 2, 3, 0.4)',
+        hitOutline: 'rgba(4, 5, 6, 0.4)',
+      },
+      tokens: { property: '#9cdcfe', value: '#ce9178' },
+    };
+    render(
+      <TextViewer
+        total={3}
+        loadLines={source(3)}
+        tokens={tokens}
+        theme={theme}
+        target={{ line: 2, column: 3, length: 4 }}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('[data-line="1"]')).not.toBeNull());
+    expect(screen.getByRole('table')).toHaveStyle({ background: '#111111' });
+    const row = document.querySelector('[data-line="2"]');
+    const parts = [...row.querySelectorAll('span span, mark')].map((n) => [
+      n.textContent,
+      n.style.color,
+      n.tagName,
+    ]);
+    // "line 2" is cut at the mark "ne 2" (characters 3-6), and the mark keeps its token's colour.
+    expect(parts).toEqual([
+      ['li', 'rgb(156, 220, 254)', 'SPAN'],
+      ['ne', 'rgb(156, 220, 254)', 'MARK'],
+      [' 2', 'rgb(206, 145, 120)', 'MARK'],
+    ]);
+    expect(row.querySelector('mark').style.background).toContain('rgba(1, 2, 3');
+    expect(row.style.background).toContain('rgb(34, 34, 34)');
+  });
 });

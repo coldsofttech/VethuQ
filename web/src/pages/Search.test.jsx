@@ -801,4 +801,90 @@ describe('Search', () => {
       );
     });
   });
+
+  describe('the CSS preview', () => {
+    const SHEET = 'a {\n  color: red;\n}\n.card {\n  margin: 0;\n}\n';
+    const FILE = { text: SHEET, encoding: 'utf-8', file_name: 'site.css', longest_line: 14 };
+    const found = (over = {}) => ({
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'site.css',
+          file_path: '/docs/site.css',
+          file_type: 'css',
+          document_id: 7,
+          total_pages: 1,
+          page_number: 1,
+          before: 'a { color: red; } .card { ',
+          matched: 'margin',
+          after: ': 0; }',
+          ...over,
+        }),
+      ],
+    });
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+    });
+
+    const show = async (file = FILE, result = found()) => {
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/css': file });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('margin{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Code preview' });
+    };
+
+    it('shows the sheet with line numbers and colours, at the line of the match, marked', async () => {
+      const panel = await show();
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('margin'));
+      expect(within(panel).getByText(/Match 1 of 1 · line 5/)).toBeInTheDocument();
+      const row = panel.querySelector('[data-line="5"]');
+      expect(row.querySelector('mark').style.color).not.toBe('');
+      // The selector and the property are different colours (the light theme here).
+      const colours = (line) =>
+        [...panel.querySelector(`[data-line="${line}"]`).querySelectorAll('span span')].map((n) => [
+          n.textContent.trim(),
+          n.style.color,
+        ]);
+      const selector = colours(4).find(([text]) => text === '.card');
+      const property = colours(2).find(([text]) => text === 'color');
+      expect(selector[1]).not.toBe('');
+      expect(selector[1]).not.toBe(property[1]);
+      expect(within(panel).getByRole('tab', { name: 'Source' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('opens a minified sheet formatted, and the switch shows the source', async () => {
+      const minified = {
+        text: 'a{color:red}.card{margin:0}',
+        encoding: 'utf-8',
+        file_name: 'site.min.css',
+        longest_line: 5000,
+      };
+      const panel = await show(minified);
+      expect(within(panel).getByRole('tab', { name: 'Formatted' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('margin'));
+      // Formatted: "a {", "  color:red;", "}", ".card {", "  margin:0", "}": line 5.
+      expect(within(panel).getByText(/line 5/)).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('tab', { name: 'Source' }));
+      await waitFor(() => expect(within(panel).getByText(/line 1\b/)).toBeInTheDocument());
+      expect(panel.querySelector('mark')?.textContent).toBe('margin');
+    });
+
+    it('says when the words are not in the file as it is now', async () => {
+      const panel = await show(FILE, found({ matched: 'zebra' }));
+      expect(await within(panel).findByText(/not in the file as it is now/)).toBeInTheDocument();
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { piecesOf } from './pieces.js';
 
 /** Lines are fetched in chunks of this many, so scrolling asks for few, large requests. */
 export const CHUNK = 200;
@@ -37,8 +38,11 @@ const css = {
   },
 };
 
-/** One line, with `mark` (`{from, to}` in characters) marked when given. */
-function Line({ number, text, mark, current, top, height, digits }) {
+/** One line, with `mark` (`{from, to}` in characters) marked and `segments` coloured, when given. */
+function Line({ number, text, segments, mark, current, top, height, digits, theme, colors }) {
+  const hit = theme
+    ? { ...css.hit, background: theme.hitBackground, outline: `1px solid ${theme.hitOutline}` }
+    : css.hit;
   return (
     <div
       role="row"
@@ -50,22 +54,41 @@ function Line({ number, text, mark, current, top, height, digits }) {
         lineHeight: `${height}px`,
         minWidth: '100%',
         width: 'max-content',
-        background: current ? 'var(--colorNeutralBackground1Hover, #f5f5f5)' : undefined,
+        background: current
+          ? (theme?.currentLine ?? 'var(--colorNeutralBackground1Hover, #f5f5f5)')
+          : undefined,
       }}
     >
-      <span style={{ ...css.gutter, width: `${digits + 2}ch`, height }} aria-hidden="true">
+      <span
+        style={{
+          ...css.gutter,
+          ...(theme && {
+            color: theme.gutterForeground,
+            background: theme.gutterBackground,
+            borderRight: `1px solid ${theme.gutterBorder}`,
+          }),
+          width: `${digits + 2}ch`,
+          height,
+        }}
+        aria-hidden="true"
+      >
         {number}
       </span>
       <span style={css.text}>
-        {mark ? (
-          <>
-            {text.slice(0, mark.from)}
-            <mark style={css.hit}>{text.slice(mark.from, mark.to)}</mark>
-            {text.slice(mark.to)}
-          </>
-        ) : (
-          text
-        )}
+        {segments || mark
+          ? piecesOf(text, segments, mark).map((piece, i) => {
+              const style = piece.kind && colors ? { color: colors[piece.kind] } : undefined;
+              return piece.hit ? (
+                <mark key={i} style={{ ...hit, ...style }}>
+                  {piece.text}
+                </mark>
+              ) : (
+                <span key={i} style={style}>
+                  {piece.text}
+                </span>
+              );
+            })
+          : text}
       </span>
     </div>
   );
@@ -82,9 +105,21 @@ function Line({ number, text, mark, current, top, height, digits }) {
  * @param {{line: number, column?: number | null, length?: number}} [props.target] A line (from 1)
  *   to scroll to and the words on it to mark. Moving it scrolls again.
  * @param {number} [props.lineHeight] The height of every line, in pixels.
+ * @param {(text: string, index: number) => Array<[string, string]> | null} [props.tokens] Colours a
+ *   line: its `[kind, text]` pieces, which make up the line (null: draw it plain).
+ * @param {{editor: object, tokens: Record<string, string>}} [props.theme] The editor's colours and
+ *   the colour of each kind of token (`vscodeDark`, `vscodeLight`); default: the page's own.
  * @param {string} [props.label] The accessible name.
  */
-export function TextViewer({ total, loadLines, target, lineHeight = 20, label = 'Text' }) {
+export function TextViewer({
+  total,
+  loadLines,
+  target,
+  lineHeight = 20,
+  tokens,
+  theme,
+  label = 'Text',
+}) {
   const root = useRef(null);
   const [chunks, setChunks] = useState(() => new Map());
   const asked = useRef(new Set());
@@ -174,6 +209,9 @@ export function TextViewer({ total, loadLines, target, lineHeight = 20, label = 
           key={number}
           number={number}
           text={text}
+          segments={tokens ? tokens(text, index) : null}
+          theme={theme?.editor}
+          colors={theme?.tokens}
           mark={mark}
           current={Boolean(here)}
           top={index * lineHeight}
@@ -183,14 +221,17 @@ export function TextViewer({ total, loadLines, target, lineHeight = 20, label = 
       );
     }
     return out;
-  }, [chunks, first, last, target, lineHeight, digits]);
+  }, [chunks, first, last, target, lineHeight, digits, tokens, theme]);
 
   return (
     <div
       ref={root}
       role="table"
       aria-label={label}
-      style={css.root}
+      style={{
+        ...css.root,
+        ...(theme && { background: theme.editor.background, color: theme.editor.foreground }),
+      }}
       onScroll={measure}
       tabIndex={0}
     >

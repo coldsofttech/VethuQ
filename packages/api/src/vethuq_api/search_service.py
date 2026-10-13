@@ -22,7 +22,7 @@ TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
 TEXT_KEEP_SECONDS = 60.0
 TEXT_KEEP_FILES = 3
-MARKDOWN_MAX_BYTES = 100 * 1024 * 1024
+SOURCE_MAX_BYTES = 100 * 1024 * 1024
 _CSV_NUMBERS = frozenset({"start", "count", "sort", "column", "at_row", "at_offset"})
 
 
@@ -96,18 +96,22 @@ class SearchService:
                 del self._texts[old]
         return page, lines
 
-    def is_markdown(self, path: str) -> bool:
-        spec = self._client().file_types.get("markdown")
+    def is_type(self, path: str, file_type: str) -> bool:
+        """Whether `path` is a file of the type `file_type` (`css`, `markdown`...)."""
+        spec = self._client().file_types.get(file_type)
         return spec is not None and path.lower().endswith(tuple(spec.extensions))
 
-    def markdown_file(self, path: str) -> dict[str, object]:
-        """A Markdown file's text as it is on disk, to be rendered. (The index keeps the words
-        without the markup, so it cannot be rendered.)"""
+    def is_markdown(self, path: str) -> bool:
+        return self.is_type(path, "markdown")
+
+    def source_file(self, path: str) -> dict[str, object]:
+        """A text file's text as it is on disk (for a preview that needs what the index does not
+        keep: Markdown's markup, a stylesheet's own layout), and the length of its longest line."""
         size = os.path.getsize(path)
-        if size > MARKDOWN_MAX_BYTES:
+        if size > SOURCE_MAX_BYTES:
             raise ValueError(
                 f"This file is {size // (1024 * 1024)} MB, too large to preview "
-                f"(the limit is {MARKDOWN_MAX_BYTES // (1024 * 1024)} MB). Open it instead."
+                f"(the limit is {SOURCE_MAX_BYTES // (1024 * 1024)} MB). Open it instead."
             )
         with open(path, "rb") as handle:
             text, encoding = decode(handle.read())
@@ -116,6 +120,7 @@ class SearchService:
             "encoding": encoding,
             "file_name": os.path.basename(path),
             "file_path": path,
+            "longest_line": max((len(line) for line in text.split("\n")), default=0),
         }
 
     # ----- a CSV file as a table --------------------------------------------------------------
