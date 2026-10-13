@@ -9,20 +9,20 @@ import vethuq
 from vethuq._db import _Schema
 
 
-class TestVersionDetails:
+class TestVersion:
     def test_fields_and_defaults(self):
-        details = vethuq.VersionDetails(vethuq="1.0.0", python="3.13", platform="x", db_schema=1)
+        details = vethuq.Version(vethuq="1.0.0", python="3.13", platform="x", db_schema=1)
 
         assert details.file_types == details.search_engines == details.ocr_engines == ()
         assert details.ocr_languages == details.add_ons == details.bundles == ()
 
     def test_is_frozen(self):
-        details = vethuq.VersionDetails("1", "3", "x", 1)
+        details = vethuq.Version("1", "3", "x", 1)
         with pytest.raises(AttributeError):
             details.vethuq = "2"
 
     def test_to_dict_uses_lists_and_has_every_field(self):
-        details = vethuq.VersionDetails("1.0.0", "3.13", "x", 2, file_types=("pdf",))
+        details = vethuq.Version("1.0.0", "3.13", "x", 2, file_types=("pdf",))
 
         assert details.to_dict() == {
             "vethuq": "1.0.0",
@@ -38,13 +38,13 @@ class TestVersionDetails:
         }
 
     def test_to_json_matches_to_dict(self):
-        details = vethuq.VersionDetails("1.0.0", "3.13", "x", 2)
+        details = vethuq.Version("1.0.0", "3.13", "x", 2)
 
         assert json.loads(details.to_json()) == details.to_dict()
         assert "\n" in details.to_json(indent=2)
 
     def test_is_exported_from_the_package(self):
-        assert vethuq.VersionDetails is vethuq.version.VersionDetails
+        assert vethuq.Version is vethuq.version.Version
 
 
 class TestClientVersion:
@@ -54,7 +54,7 @@ class TestClientVersion:
             yield client
 
     def test_returns_version_details(self, client):
-        assert isinstance(client.version, vethuq.VersionDetails)
+        assert isinstance(client.version, vethuq.Version)
 
     def test_vethuq_is_the_app_version(self, client):
         assert client.version.vethuq == vethuq.APP_VERSION
@@ -66,13 +66,14 @@ class TestClientVersion:
     def test_db_schema_is_the_current_version(self, client):
         assert client.version.db_schema == _Schema.VERSION == 1
 
-    def test_the_placeholders_are_empty(self, client):
+    def test_the_installed_lists_come_from_the_add_ons(self, client):
         version = client.version
 
-        assert version.file_types == () and version.search_engines == ()
-        assert version.ocr_engines == () and version.ocr_languages == ()
-        assert version.add_ons == () and version.bundles == ()
-
+        assert "pdf" in version.file_types
+        assert "like" in version.search_engines and "exact" in version.search_engines
+        assert "paddle" in version.ocr_engines
+        assert "en" in version.ocr_languages
+        assert "english" in version.add_ons and "pdf" in version.add_ons
     def test_reading_it_does_not_open_or_create_the_database(self, tmp_path):
         client = vethuq.VethuQ(db_path=tmp_path / "db" / "vethuq.db")
 
@@ -91,7 +92,7 @@ class TestClientVersion:
 
         assert data["vethuq"] == vethuq.APP_VERSION
         assert data["db_schema"] == 1
-        assert data["add_ons"] == [] and data["bundles"] == []
+        assert "english" in data["add_ons"] and isinstance(data["bundles"], list)
 
     def test_a_database_from_a_newer_vethuq_is_refused_but_version_still_reads(self, tmp_path):
         import sqlite3

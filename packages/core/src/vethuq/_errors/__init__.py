@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+from vethuq._errors.file_types import _FileTypeUnavailableError
 from vethuq._errors.generic import (
     _CorruptDatabaseError,
     _DataFolderNotWritableError,
     _InvalidConfigError,
-    _LanguageUnavailableError,
-    _LastLanguageError,
     _OcrModelMissingError,
     _SchemaVersionError,
     _StaleLockError,
@@ -30,9 +29,9 @@ from vethuq._errors.index import (
     _SearchOptionError,
     _SearchQueryError,
     _SearchUnavailableError,
-    _TierError,
-    _TierUnavailableError,
 )
+from vethuq._errors.language import _LanguageUnavailableError, _LastLanguageError
+from vethuq._errors.language import _LanguageUnavailableError, _LastLanguageError
 from vethuq._errors.logs import _InvalidLogRequestError, _LogError, _LogNotFoundError
 from vethuq._errors.settings import _InvalidSettingValueError, _SettingsError
 from vethuq._errors.sources import (
@@ -44,9 +43,11 @@ from vethuq._errors.sources import (
     _SourcePathError,
 )
 
+from vethuq._errors.tier import _TierError, _TierNotFoundError, _TierUnavailableError
 __all__ = [
     "_CorruptDatabaseError",
     "_TierError",
+    "_TierNotFoundError",
     "_TierUnavailableError",
     "_CreditsError",
     "_CreditsExhaustedError",
@@ -60,6 +61,7 @@ __all__ = [
     "_IndexNotRunningError",
     "_IndexRunNotFoundError",
     "_IndexingError",
+    "_FileTypeUnavailableError",
     "_InvalidConfigError",
     "_InvalidLogRequestError",
     "_InvalidSettingValueError",

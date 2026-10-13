@@ -452,7 +452,7 @@ for language in client.languages.list_all():
 # te Telugu True
 
 client.languages.list_enabled()  # only the languages that are used
-client.languages.get("te")  # one Language, or None if VethuQ doesn't know it
+client.languages.get("te")  # one Language; raises LanguageUnavailableError if VethuQ doesn't know it
 client.languages.default()  # the system default language: English
 client.languages.disable("te")  # stop using Telugu (and the credits it costs)
 client.languages.enable("te")  # use it again
@@ -738,8 +738,12 @@ Each also has a `get_...` and `reset_...`. The stability check waits once per ru
 `client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. Image files (PNG, JPG, TIFF) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
 
 ```python
-client.file_types.list()  # [FileType(id="pdf", label="PDF", extensions=(".pdf",), available=True, reason="")]
-client.file_types.get("pdf")  # a FileType, or None
+client.file_types.list_all()      # every file type, with `available` and `enabled`
+client.file_types.list_enabled()  # the ones that are read: available and enabled
+client.file_types.defaults()      # the ones installed with VethuQ: csv, markdown, pdf, txt
+client.file_types.get("pdf")      # a FileType; raises FileTypeUnavailableError if none is installed
+client.file_types.disable("pdf")  # files of this type are skipped from now on; indexed ones stay
+client.file_types.enable("pdf")   # back on (it must be available)
 ```
 
 ## OCR
@@ -797,8 +801,8 @@ VethuQ always extracts a file's pages and decides, on your computer, which need 
 | `hybrid` | local first; the pages the settings pick (large ones, later the deeper OCR phases) go to GitHub | `local` and `github` |
 
 ```python
-client.tiers.list()  # [TierInfo(id="local", available=True, selected=True, ...), ...]
-client.tiers.use("github")  # make it the default (it must be a tier VethuQ knows)
+client.tiers.list()  # [Tier(id="local", available=True, selected=True, ...), ...]
+client.tiers.set("github")  # make it the default (it must be a tier VethuQ knows)
 client.tiers.current()
 client.tiers.reset()  # back to local
 client.index.run(tier="local")  # or name it for one run
@@ -806,7 +810,7 @@ client.credits.wallets()  # ["local", "github"]: the wallets of the tiers you ca
 client.credits.balance("github")
 ```
 
-A `TierInfo` has `id`, `label`, `wallet`, `available`, `reason` (why not), `selected` and `remote` (its work finishes later). An unavailable tier can be chosen, but a run with it raises `TierUnavailableError` saying why; nothing falls back silently. `hybrid` is available when `github` is. `IndexRun.tier` records the tier a run used.
+A `Tier` has `id`, `label`, `wallet`, `available`, `reason` (why not), `selected` and `remote` (its work finishes later). An unavailable tier can be chosen, but a run with it raises `TierUnavailableError` saying why; nothing falls back silently. `hybrid` is available when `github` is. `IndexRun.tier` records the tier a run used.
 
 Tiers come from add-ons (`Addon.processing_tiers()` in the add-on API 0.4.0): each brings an `OcrExecutor` that reads images, either at once (`recognize`) or as a batch that finishes later (`submit`, `poll`, `collect`). Each tier is paid from its own wallet; the GitHub wallet gets 20 credits a day for a private runner repository and 200 for a public one, and the metrics bonus applies to it as it does to `local`.
 
@@ -1340,7 +1344,7 @@ print(version.db_schema)  # 1
 print(version.to_json(indent=2))
 ```
 
-It returns a `VersionDetails`:
+It returns a `Version`:
 
 | Field | Description |
 |---|---|
@@ -1357,7 +1361,7 @@ It returns a `VersionDetails`:
 
 `bundles` lists the names of the installed bundles (`vethuq-bundle-<name>` packages register under the `vethuq.bundles` entry point group). The other five of the last six are placeholders: they are empty tuples for now and will fill in as those features arrive. `to_dict()` and `to_json(indent=None)` give the same details as a dict or JSON, with these as lists.
 
-Searching is in `vethuq.search`, processing tiers are in `vethuq.tiers`, the GitHub runner is in the GitHub add-on (`vethuq.addons.github`), credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `VersionDetails` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
+Searching is in `vethuq.search`, processing tiers are in `vethuq.tiers`, the GitHub runner is in the GitHub add-on (`vethuq.addons.github`), credits are in `vethuq.credits`, statistics in `vethuq.stats`, metrics in `vethuq.metrics`, indexing is in `vethuq.index`, file types in `vethuq.file_types` and OCR in `vethuq.ocr`. Import `Language`, `Paths`, `Version` and `VethuQ` from `vethuq`. Everything about sources is in `vethuq.sources` (`Source`, `SourceFile`, `PurgeResult` and the enums `FileIndex` and the enums `SourceType`, `SourceStatus`, `FileStatus`, `SourceSortBy` and `SortOrder`), everything about logs is in `vethuq.logs` (`LogEntry`, `LogFile`, `Log` and its subclasses, and the enums `LogLevel`, `LogComponent` and `SortOrder`), everything about the database is in `vethuq.db`, everything about the policy is in `vethuq.policy`, everything about updates is in `vethuq.updates`, and the errors are in `vethuq.errors`. Everything else under `vethuq` is internal and may change without notice.
 
 ## Add-ons
 

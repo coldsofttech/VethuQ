@@ -3,28 +3,10 @@
 from __future__ import annotations
 
 from vethuq import errors
-from vethuq._errors.generic import _VethuQError
 
-
-class _SourceError(_VethuQError, errors.SourceError):
-    exit_code = 20
-
-
-class _SourcePathError(_SourceError, errors.SourcePathError):
-    exit_code = 21
-
-
-class _SourceAlreadyExistsError(_SourceError, errors.SourceAlreadyExistsError):
-    exit_code = 22
-
-
-class _SourceNotFoundError(_SourceError, errors.SourceNotFoundError):
-    exit_code = 23
-
-
-class _SourceNotRemovedError(_SourceError, errors.SourceNotRemovedError):
-    exit_code = 24
-
-
-class _SourceOverlapError(_SourceError, errors.SourceOverlapError):
-    exit_code = 25
+_SourceError = errors.SourceError
+_SourcePathError = errors.SourcePathError
+_SourceAlreadyExistsError = errors.SourceAlreadyExistsError
+_SourceNotFoundError = errors.SourceNotFoundError
+_SourceNotRemovedError = errors.SourceNotRemovedError
+_SourceOverlapError = errors.SourceOverlapError

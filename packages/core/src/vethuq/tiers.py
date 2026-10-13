@@ -18,16 +18,16 @@ import json
 from dataclasses import dataclass
 
 from vethuq._db import _Database
-from vethuq._errors import _TierUnavailableError
+from vethuq._errors import _TierNotFoundError
 from vethuq._settings import _TierSettings
 from vethuq._tiers import _Tiers
 from vethuq.enums import ProcessingTier
 
-__all__ = ["ProcessingTier", "TierInfo", "Tiers"]
+__all__ = ["ProcessingTier", "Tier", "Tiers"]
 
 
 @dataclass(frozen=True)
-class TierInfo:
+class Tier:
     """A processing tier."""
 
     id: str  # for example "local"
@@ -61,42 +61,57 @@ class Tiers:
         with self._database.session() as session:
             return _TierSettings.get_default(session)
 
-    def list(self) -> list[TierInfo]:
+    def list(self) -> list[Tier]:
         """Every tier VethuQ knows, with whether it can be used now: local first, then the
         tiers add-ons provide, then hybrid."""
         default = self._default()
         return [
-            TierInfo(
+            Tier(
                 v.id, v.label, v.wallet, v.available, v.reason, v.id == default, v.asynchronous
             )
             for v in self._tiers.views()
         ]
 
-    def get(self, tier: str) -> TierInfo | None:
-        """One tier by id, or None if VethuQ doesn't know it."""
-        wanted = str(tier).strip().lower()
-        return next((t for t in self.list() if t.id == wanted), None)
+    def get(self, tier: str | ProcessingTier) -> Tier:
+        """One tier by id.
 
-    def current(self) -> TierInfo:
+        Raises `TierNotFoundError` if VethuQ doesn't know it (the hint lists the tiers it does).
+        """
+        wanted = self._clean(tier)
+        found = next((t for t in self.list() if t.id == wanted), None)
+        if found is None:
+            raise self._unknown(wanted)
+        return found
+
+    @staticmethod
+    def _clean(tier: str | ProcessingTier) -> str:
+        return str(tier.value if isinstance(tier, ProcessingTier) else tier).strip().lower()
+
+    def _unknown(self, wanted: str) -> _TierNotFoundError:
+        return _TierNotFoundError(
+            f"There is no processing tier {wanted!r}.", f"Tiers: {self._tiers.known()}."
+        )
+
+    def current(self) -> Tier:
         """The default tier. It may be unavailable (for example its add-on was removed): a run
         then raises `TierUnavailableError`."""
         default = self._default()
-        found = self.get(default)
-        return found if found is not None else self.get("local")  # type: ignore[return-value]
+        try:
+            return self.get(default)
+        except _TierNotFoundError:
+            return self.get("local")
 
-    def use(self, tier: str | ProcessingTier) -> TierInfo:
+    def set(self, tier: str | ProcessingTier) -> Tier:
         """Make `tier` the default. It must be one VethuQ knows (`list()`), but may be
-        unavailable for now. Raises `TierUnavailableError` for an unknown id."""
-        wanted = str(tier.value if isinstance(tier, ProcessingTier) else tier).strip().lower()
+        unavailable for now. Raises `TierNotFoundError` for an unknown id."""
+        wanted = self._clean(tier)
         if self._tiers.get(wanted) is None:
-            raise _TierUnavailableError(
-                f"There is no processing tier {wanted!r}.", f"Tiers: {self._tiers.known()}."
-            )
+            raise self._unknown(wanted)
         with self._database.session() as session:
             _TierSettings.set_default(session, wanted)
         return self.current()
 
-    def reset(self) -> TierInfo:
+    def reset(self) -> Tier:
         """Go back to the local tier as the default."""
         with self._database.session() as session:
             _TierSettings.reset_default(session)

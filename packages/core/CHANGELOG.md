@@ -6,6 +6,13 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Changed (languages, file types and tiers)
+- Asking for a language, file type or tier VethuQ doesn't know now raises an error, instead of returning nothing.
+- File types can be switched off and on (`file_types.disable` and `enable`); files of a switched-off type are no longer read. `file_types.list()` is now `list_all()`, with `list_enabled()` and `defaults()` added.
+- `tiers.use()` is now `tiers.set()`, `TierInfo` is `Tier` and `VersionDetails` is `Version`.
+- `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
+- Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
+
 ### Added (where on a picture a match is)
 - A page read by OCR keeps where each line was read (`pdf_line_boxes`, from the engine's `OcrResult.boxes`), and a search match carries `boxes`: the box of each line it covers on the picture, narrowed to the words' share of the line (near, not exact). Kept for the first read of a scanned page and for the lines a language pass or a deeper phase adds at the upright angle; a page read again has its boxes replaced. None for a page with a text layer, and for an engine that does not say where.
 

@@ -42,19 +42,55 @@ class TestVersion:
         assert _Version.db_schema() == 7
 
     @pytest.mark.parametrize(
-        "placeholder",
-        [
-            "file_types",
-            "search_engines",
-            "ocr_engines",
-            "ocr_languages",
-            "add_ons",
-            "bundles",
-        ],
+        "kind",
+        ["file_types", "search_engines", "ocr_engines", "ocr_languages", "add_ons"],
     )
-    def test_placeholders_are_empty_for_now(self, placeholder):
-        assert getattr(_Version, placeholder)() == ()
+    def test_without_a_manager_the_lists_are_empty(self, kind):
+        assert getattr(_Version, kind)() == ()
 
+
+class TestInstalledLists:
+    class Spec:
+        def __init__(self, id):
+            self.id = id
+
+    class Item:
+        def __init__(self, id, running=True):
+            self.id = id
+            self.addon = object() if running else None
+
+    class Manager:
+        def __init__(self, items):
+            self._items = items
+
+        def loaded(self):
+            return {item.id: item for item in self._items}
+
+        def file_type_specs(self):
+            return [TestInstalledLists.Spec(i) for i in ("pdf", "csv")]
+
+        def search_engine_specs(self):
+            return [TestInstalledLists.Spec(i) for i in ("like", "exact")]
+
+        def ocr_engine_providers(self):
+            return [TestInstalledLists.Spec("paddle")]
+
+        def language_specs(self):
+            return [TestInstalledLists.Spec("en")]
+
+    @pytest.fixture
+    def manager(self):
+        item = TestInstalledLists.Item
+        return self.Manager([item("pdf"), item("broken", running=False), item("english")])
+
+    def test_each_kind_lists_the_ids_sorted(self, manager):
+        assert _Version.file_types(manager) == ("csv", "pdf")
+        assert _Version.search_engines(manager) == ("exact", "like")
+        assert _Version.ocr_engines(manager) == ("paddle",)
+        assert _Version.ocr_languages(manager) == ("en",)
+
+    def test_add_ons_are_the_running_ones(self, manager):
+        assert _Version.add_ons(manager) == ("english", "pdf")
 
 class TestBundles:
     def test_none_installed(self, monkeypatch):

@@ -4,18 +4,23 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from vethuq._version import _Version
 
-__all__ = ["VersionDetails"]
+if TYPE_CHECKING:
+    from vethuq._addons import _AddonManager
+
+__all__ = ["Version"]
 
 
 @dataclass(frozen=True)
-class VersionDetails:
+class Version:
     """What this install is running: VethuQ, Python, the platform and the database schema.
 
-    The last six fields list what is installed; they are empty for now and fill in as those
-    features arrive.
+    The last six fields list what is installed, by id, sorted: the file types, search engines,
+    OCR engines and OCR languages the running add-ons provide, the running add-ons themselves,
+    and the bundles.
     """
 
     vethuq: str
@@ -30,17 +35,17 @@ class VersionDetails:
     bundles: tuple[str, ...] = ()
 
     @classmethod
-    def _collect(cls) -> VersionDetails:
+    def _collect(cls, manager: _AddonManager | None = None) -> Version:
         return cls(
             vethuq=_Version.app_version(),
             python=_Version.python_version(),
             platform=_Version.platform_name(),
             db_schema=_Version.db_schema(),
-            file_types=_Version.file_types(),
-            search_engines=_Version.search_engines(),
-            ocr_engines=_Version.ocr_engines(),
-            ocr_languages=_Version.ocr_languages(),
-            add_ons=_Version.add_ons(),
+            file_types=_Version.file_types(manager),
+            search_engines=_Version.search_engines(manager),
+            ocr_engines=_Version.ocr_engines(manager),
+            ocr_languages=_Version.ocr_languages(manager),
+            add_ons=_Version.add_ons(manager),
             bundles=_Version.bundles(),
         )
 

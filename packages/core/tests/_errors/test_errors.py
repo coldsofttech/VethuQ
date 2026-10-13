@@ -10,6 +10,8 @@ from vethuq._errors import (
     _InvalidConfigError,
     _InvalidLogRequestError,
     _InvalidSettingValueError,
+    _FileTypeUnavailableError,
+    _TierNotFoundError,
     _LanguageUnavailableError,
     _LastLanguageError,
     _LogError,
@@ -39,6 +41,8 @@ _PAIRS = [
     (_StaleLockError, errors.StaleLockError, 15),
     (_LanguageUnavailableError, errors.LanguageUnavailableError, 16),
     (_LastLanguageError, errors.LastLanguageError, 17),
+    (_FileTypeUnavailableError, errors.FileTypeUnavailableError, 18),
+    (_TierNotFoundError, errors.TierNotFoundError, 82),
     (_SourceError, errors.SourceError, 20),
     (_SourcePathError, errors.SourcePathError, 21),
     (_SourceAlreadyExistsError, errors.SourceAlreadyExistsError, 22),
@@ -65,6 +69,8 @@ _RUNTIME = (
     errors.OcrModelMissingError,
     errors.LanguageUnavailableError,
     errors.LastLanguageError,
+    errors.FileTypeUnavailableError,
+    errors.TierNotFoundError,
 )
 _SOURCE = (
     errors.SourceError,

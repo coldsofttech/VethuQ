@@ -150,7 +150,7 @@ class MaintenanceService:
         return [t.to_dict() for t in self._client().tiers.list()]
 
     def tiers_use(self, tier: str) -> dict[str, object]:
-        return self._client().tiers.use(tier).to_dict()
+        return self._client().tiers.set(tier).to_dict()
 
     def tiers_reset(self) -> dict[str, object]:
         return self._client().tiers.reset().to_dict()

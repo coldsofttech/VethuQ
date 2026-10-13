@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from vethuq.errors import FileTypeUnavailableError
 from vethuq_api import images
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
@@ -99,8 +100,11 @@ class SearchService:
 
     def is_type(self, path: str, file_type: str) -> bool:
         """Whether `path` is a file of the type `file_type` (`css`, `markdown`...)."""
-        spec = self._client().file_types.get(file_type)
-        return spec is not None and path.lower().endswith(tuple(spec.extensions))
+        try:
+            spec = self._client().file_types.get(file_type)
+        except FileTypeUnavailableError:
+            return False
+        return path.lower().endswith(tuple(spec.extensions))
 
     def tiff_frame(self, path: str, query: Mapping[str, Any]) -> bytes:
         """Frame `page` (from 1, default 1) of a TIFF as PNG bytes."""
@@ -132,8 +136,7 @@ class SearchService:
     # ----- a CSV file as a table --------------------------------------------------------------
 
     def is_csv(self, path: str) -> bool:
-        spec = self._client().file_types.get("csv")
-        return spec is not None and path.lower().endswith(tuple(spec.extensions))
+        return self.is_type(path, "csv")
 
     def csv_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
         """`count` rows of a CSV file from row `start` of the view (filtered, then sorted), with
@@ -224,7 +227,7 @@ class SearchService:
         return {
             "engines": [e.to_dict() for e in client.search.engines()],
             "normalizers": [n.to_dict() for n in client.search.normalizers()],
-            "file_types": [t.to_dict() for t in client.file_types.list() if t.available],
+            "file_types": [t.to_dict() for t in client.file_types.list_all() if t.available],
             "defaults": {
                 "engine": client.settings.search.get_engine(),
                 "context_chars": client.settings.search.get_snippet_context_chars(),

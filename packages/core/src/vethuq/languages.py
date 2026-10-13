@@ -91,21 +91,23 @@ class Languages:
         """The languages that are used: available and enabled."""
         return [language for language in self.list_all() if language.usable]
 
-    def get(self, language_id: str) -> Language | None:
-        """One language by id, or None if VethuQ doesn't know it."""
-        with self._database.session() as session:
-            view = _Languages.find(session, self._catalog.specs(), language_id)
-        return Language._from_view(view) if view is not None else None
+    def get(self, language_id: str) -> Language:
+        """One language by id.
 
+        Raises `LanguageUnavailableError` if VethuQ doesn't know it (the hint lists the
+        languages that are available).
+        """
+        with self._database.session() as session:
+            view = _Languages.get(session, self._catalog.specs(), language_id)
+        return Language._from_view(view)
+    
     def default(self) -> Language:
         """The system default language: English. It is the fallback when nothing else is usable.
 
         Raises `LanguageUnavailableError` if no installed add-on provides one.
         """
         spec = _Languages.default(self._catalog.specs())
-        language = self.get(spec.id)
-        assert language is not None  # noqa: S101 - the default spec is always known
-        return language
+        return self.get(spec.id)
 
     def enable(self, language_id: str) -> Language:
         """Switch a language back on and return it. It must be available.

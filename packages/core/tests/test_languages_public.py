@@ -75,8 +75,9 @@ class TestLanguages:
         assert ids(listed) == ["en", "te"]
         assert listed[1].native_label == "తెలుగు" and not listed[1].default
 
-    def test_get_unknown_is_none(self, client):
-        assert client.languages.get("xx") is None
+    def test_get_unknown_raises(self, client):
+        with pytest.raises(errors.LanguageUnavailableError, match="Unknown language 'xx'"):
+            client.languages.get("xx")
 
     def test_get_is_case_insensitive(self, client):
         assert client.languages.get(" EN ").id == "en"

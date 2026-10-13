@@ -6,6 +6,7 @@ import pytest
 from api_support import ORIGIN
 
 from vethuq import VethuQ
+from vethuq.errors import FileTypeUnavailableError
 from vethuq_api import allow_host, create_app
 from vethuq_api.core import VethuQCore
 from vethuq_api.search_service import MAX_LIMIT, SearchService
@@ -440,8 +441,10 @@ class TestSourceFiles:
         (library / f"outside{extension}").write_text(text, encoding="utf-8")
         probe = VethuQ(library / "probe.db")
         try:
-            spec = probe.file_types.get(kind)
-            installed = spec is not None and spec.available
+            try:
+                installed = probe.file_types.get(kind).available
+            except FileTypeUnavailableError:
+                installed = False
         finally:
             probe.close()
         if not installed:
@@ -515,8 +518,10 @@ class TestPictures:
         red.save(library / f"outside{extension}")
         probe = VethuQ(library / "probe.db")
         try:
-            spec = probe.file_types.get(kind)
-            installed = spec is not None and spec.available
+            try:
+                installed = probe.file_types.get(kind).available
+            except FileTypeUnavailableError:
+                installed = False
         finally:
             probe.close()
         if not installed:

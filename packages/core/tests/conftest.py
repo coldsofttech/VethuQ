@@ -9,6 +9,27 @@ from tests.language_addons import ENGLISH, LanguageAddonFactory
 from vethuq._paths import _Paths
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _fast_sqlite():
+    """Skip SQLite's fsync in tests: a fresh database per test is mostly commits, and on
+    Windows each one waits for the disk. Durability after a power cut isn't under test."""
+    from vethuq._db import _Database
+
+    original = _Database._configure_connection
+
+    def configure(dbapi_connection, record):
+        original(dbapi_connection, record)
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA synchronous = OFF")
+        finally:
+            cursor.close()
+
+    _Database._configure_connection = staticmethod(configure)
+    yield
+    _Database._configure_connection = staticmethod(original)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_data_root(tmp_path_factory, monkeypatch):
     """Keep tests from reading or creating folders in the real per-user data/config dirs."""

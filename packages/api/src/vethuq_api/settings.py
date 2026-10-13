@@ -491,7 +491,7 @@ def _specs() -> tuple[Spec, ...]:
             kind=CHOICE,
             default="local",
             read=lambda c: c.tiers.current().id,
-            write=lambda c, v: c.tiers.use(v),
+            write=lambda c, v: c.tiers.set(v),
             reset=lambda c: c.tiers.reset(),
             options=_tier_options,
         ),

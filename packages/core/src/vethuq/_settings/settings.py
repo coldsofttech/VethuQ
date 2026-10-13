@@ -293,6 +293,24 @@ class _LanguageSettings:
         _LanguageSettings._write(session, _LanguageSettings.DEFAULT_KEY, ids)
 
 
+class _FileTypeSettings:
+    DISABLED_KEY = "file_types_disabled"
+    SEPARATOR = ","
+
+    @staticmethod
+    def get_disabled(session: Session) -> list[str]:
+        """The file type ids the user has switched off. File types not listed here are on."""
+        value = _Settings.get(session, _FileTypeSettings.DISABLED_KEY) or ""
+        return [item for item in value.split(_FileTypeSettings.SEPARATOR) if item]
+
+    @staticmethod
+    def set_disabled(session: Session, ids: list[str]) -> None:
+        if ids:
+            _Settings.set(session, _FileTypeSettings.DISABLED_KEY, _FileTypeSettings.SEPARATOR.join(ids))
+        else:
+            _Settings.reset(session, _FileTypeSettings.DISABLED_KEY)
+
+
 class _LogSettings:
     @staticmethod
     def get_level(session: Session) -> LogLevel:

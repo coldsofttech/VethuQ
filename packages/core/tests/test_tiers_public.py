@@ -16,7 +16,7 @@ from vethuq._credits import _Clock
 from vethuq._db import _IndexRun
 from vethuq._indexing import _Indexer
 from vethuq.enums import IndexRunStatus, ProcessingTier
-from vethuq.tiers import TierInfo, Tiers
+from vethuq.tiers import Tier, Tiers
 from vethuq_addon_api import TierSpec
 from vethuq_addon_api.testing import FakeExecutor
 
@@ -61,7 +61,7 @@ class TestList:
     def test_local_is_always_there_and_hybrid_waits_for_github(self, client):
         assert isinstance(client.tiers, Tiers)
         local, hybrid = client.tiers.list()
-        assert isinstance(local, TierInfo)
+        assert isinstance(local, Tier)
         assert (local.id, local.wallet, local.available, local.selected, local.remote) == (
             "local",
             "local",
@@ -100,7 +100,8 @@ class TestList:
 
     def test_get(self, github_addon, client):
         assert client.tiers.get(" GitHub ").id == "github"
-        assert client.tiers.get("nope") is None
+        with pytest.raises(errors.TierNotFoundError, match="no processing tier 'nope'"):
+            client.tiers.get("nope")
 
     def test_dict_and_json(self, client):
         tier = client.tiers.get("local")
@@ -111,27 +112,27 @@ class TestChoosing:
     def test_local_is_the_default(self, client):
         assert client.tiers.current().id == "local"
 
-    def test_use_and_reset(self, github_addon, client):
-        assert client.tiers.use("github").selected
+    def test_set_and_reset(self, github_addon, client):
+        assert client.tiers.set("github").selected
         assert client.tiers.current().id == "github"
         assert [t.id for t in client.tiers.list() if t.selected] == ["github"]
         assert client.tiers.reset().id == "local"
-        assert client.tiers.use(ProcessingTier.HYBRID).id == "hybrid"
+        assert client.tiers.set(ProcessingTier.HYBRID).id == "hybrid"
 
     def test_the_choice_is_remembered(self, github_addon, client):
-        client.tiers.use("cloud")
+        client.tiers.set("cloud")
         with vethuq.VethuQ(db_path=client.db_path) as other:
             assert other.tiers.current().id == "cloud"
 
     def test_an_unknown_tier_is_refused(self, client):
         with pytest.raises(errors.TierUnavailableError, match="no processing tier"):
-            client.tiers.use("github")  # no add-on
-        with pytest.raises(errors.TierUnavailableError):
-            client.tiers.use("nope")
+            client.tiers.set("github")  # no add-on
+        with pytest.raises(errors.TierNotFoundError):
+            client.tiers.set("nope")  # also caught as TierUnavailableError
 
     def test_an_unavailable_tier_can_be_chosen_but_not_run(self, github_addon, client, root):
         github_addon.github_available, github_addon.github_reason = False, "not set up"
-        client.tiers.use("github")
+        client.tiers.set("github")
         write(root, "a.pdf", fp.native_page())
         client.sources.create(root)
         with pytest.raises(errors.TierUnavailableError, match="not set up"):
@@ -140,7 +141,7 @@ class TestChoosing:
     def test_a_removed_addon_leaves_the_default_unavailable_not_broken(
         self, github_addon, client, root
     ):
-        client.tiers.use("cloud")
+        client.tiers.set("cloud")
         write(root, "a.pdf", fp.native_page())
         client.sources.create(root)
         with vethuq.VethuQ(db_path=client.db_path) as other:
@@ -216,7 +217,7 @@ class TestRunning:
         assert source.id
 
     def test_the_default_tier_applies_to_runs(self, github_addon, client, root):
-        client.tiers.use("cloud")
+        client.tiers.set("cloud")
         write(root, "a.pdf", fp.scanned_page())
         client.sources.create(root)
         assert client.index.run().tier == "cloud"

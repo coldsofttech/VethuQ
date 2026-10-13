@@ -27,7 +27,7 @@ from vethuq._version import _Version
 from vethuq.client import VethuQ
 from vethuq.languages import Language
 from vethuq.paths import Paths
-from vethuq.version import VersionDetails
+from vethuq.version import Version
 
 APP_NAME = _Brand.NAME
 APP_TAGLINE = _Brand.TAGLINE
@@ -61,6 +61,6 @@ __all__ = [
     "updates",
     "Language",
     "Paths",
-    "VersionDetails",
+    "Version",
     "VethuQ",
 ]

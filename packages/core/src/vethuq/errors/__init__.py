@@ -7,12 +7,11 @@ class for one failure.
 
 from __future__ import annotations
 
+from vethuq.errors.file_types import FileTypeUnavailableError
 from vethuq.errors.generic import (
     CorruptDatabaseError,
     DataFolderNotWritableError,
     InvalidConfigError,
-    LanguageUnavailableError,
-    LastLanguageError,
     OcrModelMissingError,
     SchemaVersionError,
     StaleLockError,
@@ -35,9 +34,9 @@ from vethuq.errors.index import (
     SearchOptionError,
     SearchQueryError,
     SearchUnavailableError,
-    TierError,
-    TierUnavailableError,
 )
+from vethuq.errors.language import LanguageUnavailableError, LastLanguageError
+from vethuq.errors.language import LanguageUnavailableError, LastLanguageError
 from vethuq.errors.logs import InvalidLogRequestError, LogError, LogNotFoundError
 from vethuq.errors.settings import InvalidSettingValueError, SettingsError
 from vethuq.errors.sources import (
@@ -49,10 +48,12 @@ from vethuq.errors.sources import (
     SourcePathError,
 )
 
+from vethuq.errors.tier import TierError, TierNotFoundError, TierUnavailableError
 __all__ = [
     "CorruptDatabaseError",
     "CreditsError",
     "TierError",
+    "TierNotFoundError",
     "TierUnavailableError",
     "CreditsExhaustedError",
     "InvalidGrantError",
@@ -65,6 +66,7 @@ __all__ = [
     "IndexNotRunningError",
     "IndexRunNotFoundError",
     "IndexingError",
+    "FileTypeUnavailableError",
     "InvalidConfigError",
     "InvalidLogRequestError",
     "InvalidSettingValueError",

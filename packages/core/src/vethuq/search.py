@@ -529,7 +529,7 @@ class Search:
 
     def _file_type_of(self, path: str) -> str | None:
         """The id of the file type that reads `path` (None when no add-on does)."""
-        spec = self._file_types.for_path(path) if self._file_types is not None else None
+        spec = self._file_types.for_path(path, include_disabled=True) if self._file_types is not None else None
         return spec.id if spec is not None else None
 
     def export(

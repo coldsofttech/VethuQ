@@ -393,7 +393,7 @@ class Sources:
                     pages, confidence, languages, low = facts[row.document_id]
                     if pages and confidence is not None:
                         band = _Bands.of(confidence, bands)
-            spec = self._file_types.for_path(path)
+            spec = self._file_types.for_path(path, include_disabled=True)
             return FileIndex(
                 status=status,
                 on_disk=on_disk,

@@ -42,7 +42,7 @@ class TestPublicApi:
             "updates",
             "Language",
             "Paths",
-            "VersionDetails",
+            "Version",
             "VethuQ",
         ]
         assert not any("alette" in name or "rand" in name for name in vethuq.__all__)

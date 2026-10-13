@@ -26,39 +26,39 @@ vethuq-api = { workspace = true }
 vethuq-desktop = { workspace = true }
 # English is built in the premium repository; resolve it from a sibling checkout until it is
 # published (clone VethuQ and VethuQ-premium next to each other).
-vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/english" }
-vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf" }
-vethuq-addon-txt = { path = "../VethuQ-premium/packages/add-ons/file-types/txt" }
-vethuq-addon-csv = { path = "../VethuQ-premium/packages/add-ons/file-types/csv" }
-vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown" }
-vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png" }
-vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg" }
-vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff" }
-vethuq-bundle-search = { path = "../VethuQ-premium/packages/bundles/search" }
-vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image" }
-vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate" }
-vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep" }
-vethuq-bundle-deep-scan = { path = "../VethuQ-premium/packages/bundles/deep-scan" }
-vethuq-addon-html = { path = "../VethuQ-premium/packages/add-ons/file-types/html" }
-vethuq-addon-xml = { path = "../VethuQ-premium/packages/add-ons/file-types/xml" }
-vethuq-addon-css = { path = "../VethuQ-premium/packages/add-ons/file-types/css" }
-vethuq-addon-js = { path = "../VethuQ-premium/packages/add-ons/file-types/js" }
-vethuq-addon-json = { path = "../VethuQ-premium/packages/add-ons/file-types/json" }
-vethuq-addon-yaml = { path = "../VethuQ-premium/packages/add-ons/file-types/yaml" }
-vethuq-addon-docx = { path = "../VethuQ-premium/packages/add-ons/file-types/docx" }
-vethuq-addon-doc = { path = "../VethuQ-premium/packages/add-ons/file-types/doc" }
-vethuq-addon-xlsx = { path = "../VethuQ-premium/packages/add-ons/file-types/xlsx" }
-vethuq-addon-xls = { path = "../VethuQ-premium/packages/add-ons/file-types/xls" }
-vethuq-addon-pptx = { path = "../VethuQ-premium/packages/add-ons/file-types/pptx" }
-vethuq-addon-ppt = { path = "../VethuQ-premium/packages/add-ons/file-types/ppt" }
-vethuq-addon-rtf = { path = "../VethuQ-premium/packages/add-ons/file-types/rtf" }
-vethuq-addon-eml = { path = "../VethuQ-premium/packages/add-ons/file-types/eml" }
-vethuq-bundle-office = { path = "../VethuQ-premium/packages/bundles/office" }
-vethuq-bundle-developer = { path = "../VethuQ-premium/packages/bundles/developer" }
-vethuq-bundle-web = { path = "../VethuQ-premium/packages/bundles/web" }
-vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle" }
+vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/english", editable = true }
+vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf", editable = true }
+vethuq-addon-txt = { path = "../VethuQ-premium/packages/add-ons/file-types/txt", editable = true }
+vethuq-addon-csv = { path = "../VethuQ-premium/packages/add-ons/file-types/csv", editable = true }
+vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown", editable = true }
+vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png", editable = true }
+vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg", editable = true }
+vethuq-addon-tiff = { path = "../VethuQ-premium/packages/add-ons/file-types/tiff", editable = true }
+vethuq-bundle-search = { path = "../VethuQ-premium/packages/bundles/search", editable = true }
+vethuq-bundle-image = { path = "../VethuQ-premium/packages/bundles/image", editable = true }
+vethuq-addon-ocr-moderate = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/moderate", editable = true }
+vethuq-addon-ocr-deep = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/deep", editable = true }
+vethuq-bundle-deep-scan = { path = "../VethuQ-premium/packages/bundles/deep-scan", editable = true }
+vethuq-addon-html = { path = "../VethuQ-premium/packages/add-ons/file-types/html", editable = true }
+vethuq-addon-xml = { path = "../VethuQ-premium/packages/add-ons/file-types/xml", editable = true }
+vethuq-addon-css = { path = "../VethuQ-premium/packages/add-ons/file-types/css", editable = true }
+vethuq-addon-js = { path = "../VethuQ-premium/packages/add-ons/file-types/js", editable = true }
+vethuq-addon-json = { path = "../VethuQ-premium/packages/add-ons/file-types/json", editable = true }
+vethuq-addon-yaml = { path = "../VethuQ-premium/packages/add-ons/file-types/yaml", editable = true }
+vethuq-addon-docx = { path = "../VethuQ-premium/packages/add-ons/file-types/docx", editable = true }
+vethuq-addon-doc = { path = "../VethuQ-premium/packages/add-ons/file-types/doc", editable = true }
+vethuq-addon-xlsx = { path = "../VethuQ-premium/packages/add-ons/file-types/xlsx", editable = true }
+vethuq-addon-xls = { path = "../VethuQ-premium/packages/add-ons/file-types/xls", editable = true }
+vethuq-addon-pptx = { path = "../VethuQ-premium/packages/add-ons/file-types/pptx", editable = true }
+vethuq-addon-ppt = { path = "../VethuQ-premium/packages/add-ons/file-types/ppt", editable = true }
+vethuq-addon-rtf = { path = "../VethuQ-premium/packages/add-ons/file-types/rtf", editable = true }
+vethuq-addon-eml = { path = "../VethuQ-premium/packages/add-ons/file-types/eml", editable = true }
+vethuq-bundle-office = { path = "../VethuQ-premium/packages/bundles/office", editable = true }
+vethuq-bundle-developer = { path = "../VethuQ-premium/packages/bundles/developer", editable = true }
+vethuq-bundle-web = { path = "../VethuQ-premium/packages/bundles/web", editable = true }
+vethuq-addon-paddle = { path = "../VethuQ-premium/packages/add-ons/ocr/engines/paddle", editable = true }
 vethuq-addon-ocr-quick = { path = "../VethuQ-premium/packages/add-ons/ocr/modes/quick", editable = true }
-vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github" }
+vethuq-addon-github = { path = "../VethuQ-premium/packages/add-ons/tiers/github", editable = true }
 vethuq-addon-like = { path = "../VethuQ-premium/packages/add-ons/search/engines/like", editable = true }
 vethuq-addon-exact = { path = "../VethuQ-premium/packages/add-ons/search/engines/exact", editable = true }
 vethuq-addon-lexical = { path = "../VethuQ-premium/packages/add-ons/search/engines/lexical", editable = true }
@@ -87,6 +87,7 @@ dev = [
     "vethuq-api",
     "vethuq-desktop",
     "pytest>=8",
+    "pytest-xdist>=3.5",
     "ruff>=0.6",
     "pre-commit>=3.8",
     "jsonschema>=4.20",

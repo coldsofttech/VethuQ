@@ -188,7 +188,7 @@ class VethuQCore:
                     "available": item.available,
                     "reason": item.reason,
                 }
-                for item in client.file_types.list()
+                for item in client.file_types.list_all()
             ],
             "search_engines": [
                 {

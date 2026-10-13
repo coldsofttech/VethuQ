@@ -3,16 +3,7 @@
 from __future__ import annotations
 
 from vethuq import errors
-from vethuq._errors.generic import _VethuQError
 
-
-class _LogError(_VethuQError, errors.LogError):
-    exit_code = 40
-
-
-class _LogNotFoundError(_LogError, errors.LogNotFoundError):
-    exit_code = 41
-
-
-class _InvalidLogRequestError(_LogError, errors.InvalidLogRequestError):
-    exit_code = 42
+_LogError = errors.LogError
+_LogNotFoundError = errors.LogNotFoundError
+_InvalidLogRequestError = errors.InvalidLogRequestError

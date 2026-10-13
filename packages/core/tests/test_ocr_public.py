@@ -31,7 +31,7 @@ def client(tmp_path):
 class TestFileTypes:
     def test_pdf_is_listed(self, client):
         assert isinstance(client.file_types, FileTypes)
-        listed = {t.id: t for t in client.file_types.list()}
+        listed = {t.id: t for t in client.file_types.list_all()}
         assert listed["pdf"] == FileType("pdf", "PDF", (".pdf",), True, "")
         # The free text file types are installed with VethuQ too.
         assert {"csv", "markdown", "txt"} <= set(listed)
@@ -39,12 +39,51 @@ class TestFileTypes:
 
     def test_get(self, client):
         assert client.file_types.get(" PDF ").id == "pdf"
-        assert client.file_types.get("docx") is None
+        with pytest.raises(errors.FileTypeUnavailableError, match="Unknown file type 'docx'"):
+            client.file_types.get("docx")
 
     def test_an_unavailable_type_says_why(self, client):
         fp.STATE.pdf_available = False
         pdf = client.file_types.get("pdf")
         assert (pdf.available, pdf.reason) == (False, "the PDF reader is off")
+
+    def test_defaults_are_the_ones_installed_with_vethuq(self, client):
+        assert [t.id for t in client.file_types.defaults()] == ["csv", "markdown", "pdf", "txt"]
+
+    def test_disable_and_enable(self, client):
+        disabled = client.file_types.disable(" PDF ")
+
+        assert (disabled.id, disabled.enabled, disabled.usable) == ("pdf", False, False)
+        assert "pdf" in {t.id for t in client.file_types.list_all()}
+        assert "pdf" not in {t.id for t in client.file_types.list_enabled()}
+        assert client.file_types.get("pdf").enabled is False
+        assert client.file_types.disable("pdf").enabled is False  # harmless twice
+
+        enabled = client.file_types.enable("pdf")
+        assert (enabled.enabled, enabled.usable) == (True, True)
+        assert "pdf" in {t.id for t in client.file_types.list_enabled()}
+
+    def test_a_disabled_type_is_no_longer_read(self, client):
+        catalog = client._file_type_catalog()
+        assert catalog.for_path("report.pdf") is not None
+
+        client.file_types.disable("pdf")
+        assert catalog.for_path("report.pdf") is None
+        assert catalog.for_path("notes.txt") is not None
+
+        client.file_types.enable("pdf")
+        assert catalog.for_path("report.pdf") is not None
+
+    def test_unknown_types_are_refused(self, client):
+        for action in (client.file_types.enable, client.file_types.disable):
+            with pytest.raises(errors.FileTypeUnavailableError, match="Unknown file type 'docx'"):
+                action("docx")
+
+    def test_an_unavailable_type_cannot_be_enabled(self, client):
+        fp.STATE.pdf_available = False
+        with pytest.raises(errors.FileTypeUnavailableError, match="the PDF reader is off"):
+            client.file_types.enable("pdf")
+        assert "pdf" not in {t.id for t in client.file_types.list_enabled()}
 
     def test_dict_and_json(self, client):
         pdf = client.file_types.get("pdf")
@@ -53,6 +92,7 @@ class TestFileTypes:
             "label": "PDF",
             "extensions": [".pdf"],
             "available": True,
+            "enabled": True,
             "reason": "",
         }
         assert json.loads(pdf.to_json()) == pdf.to_dict()

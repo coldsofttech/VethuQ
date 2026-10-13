@@ -462,7 +462,7 @@ class TierSettings:
     """Settings for processing tiers.
 
     Not created directly: use `VethuQ().settings.tiers`. The default tier itself is chosen with
-    `VethuQ().tiers.use(...)`; these are the rest.
+    `VethuQ().tiers.set(...)`; these are the rest.
     """
 
     def __init__(self, database: _Database) -> None:

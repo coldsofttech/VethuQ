@@ -523,7 +523,7 @@ types_app = typer.Typer(help="The file types VethuQ can read.", no_args_is_help=
 @exportable("File types", "file_types")
 def types_list() -> None:
     """File types, with whether each is available."""
-    table(client().file_types.list(), ["id", "label", "extensions", "available", "reason"])
+    table(client().file_types.list_all(), ["id", "label", "extensions", "available", "enabled", "reason"])
 
 
 languages_app = typer.Typer(help="Languages for reading documents.", no_args_is_help=True)
@@ -566,7 +566,7 @@ def tiers_list() -> None:
 @tiers_app.command("use")
 def tiers_use(tier: str) -> None:
     """Make a tier the default."""
-    say(f"Using {client().tiers.use(tier).id}", style=Theme.OK)
+    say(f"Using {client().tiers.set(tier).id}", style=Theme.OK)
 
 
 @tiers_app.command("reset")

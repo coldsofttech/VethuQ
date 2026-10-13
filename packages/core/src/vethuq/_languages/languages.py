@@ -148,6 +148,11 @@ class _Languages:
         return _Languages._require(session, specs, view.id)
 
     @staticmethod
+    def get(session: Session, specs: list[LanguageSpec], code: str) -> _LanguageView:
+        """One language by id. Raises LanguageUnavailableError if VethuQ doesn't know it."""
+        return _Languages._require(session, specs, code)
+
+    @staticmethod
     def _require(session: Session, specs: list[LanguageSpec], code: str) -> _LanguageView:
         view = _Languages.find(session, specs, code)
         if view is None:

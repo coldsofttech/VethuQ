@@ -18,8 +18,9 @@ from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
 from vethuq._search import _Engines, _Search, _SearchIndex
-from vethuq._settings import _OcrSettings, _SearchSettings
+from vethuq._settings import _FileTypeSettings, _OcrSettings, _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
+from vethuq._version import _Version
 from vethuq.addons import Addons
 from vethuq.credits import Credits
 from vethuq.db import Db
@@ -38,7 +39,7 @@ from vethuq.sources import Sources
 from vethuq.stats import Stats
 from vethuq.tiers import Tiers
 from vethuq.updates import Updates
-from vethuq.version import VersionDetails
+from vethuq.version import Version
 
 __all__ = ["VethuQ"]
 
@@ -101,7 +102,11 @@ class VethuQ:
         return _LanguageCatalog(self._manager().language_specs)
 
     def _file_type_catalog(self) -> _FileTypeCatalog:
-        return _FileTypeCatalog(self._manager().file_type_specs)
+        return _FileTypeCatalog(self._manager().file_type_specs, self._disabled_file_types)
+
+    def _disabled_file_types(self) -> set[str]:
+        with self._db().session() as session:
+            return set(_FileTypeSettings.get_disabled(session))
 
     def _runtime(self) -> _Ocr:
         manager = self._manager()
@@ -124,12 +129,12 @@ class VethuQ:
         with self._lock:
             if self._credit_service is None:
                 self._credit_service = _Credits(
-                    db, lambda: self.policy.current().policy.raw, self.version.vethuq
+                    db, lambda: self.policy.current().policy.raw, _Version.app_version()
                 )
             return self._credit_service
 
     def _metrics_engine(self) -> _Metrics:
-        credits, db, version = self._credit_engine(), self._db(), self.version.vethuq
+        credits, db, version = self._credit_engine(), self._db(), _Version.app_version()
         with self._lock:
             if self._metrics_service is None:
                 self._metrics_service = _Metrics(db, credits, version)
@@ -232,7 +237,7 @@ class VethuQ:
     def file_types(self) -> FileTypes:
         """The kinds of file VethuQ can read."""
         if self._file_types is None:
-            self._file_types = FileTypes(self._file_type_catalog())
+            self._file_types = FileTypes(self._db(), self._file_type_catalog())
         return self._file_types
 
     @property
@@ -371,9 +376,9 @@ class VethuQ:
         return self._addons
 
     @property
-    def version(self) -> VersionDetails:
+    def version(self) -> Version:
         """What this install is running. It doesn't open the database."""
-        return VersionDetails._collect()
+        return Version._collect(self._manager())
 
     def close(self) -> None:
         """Release the database connections. The client reconnects if used again."""

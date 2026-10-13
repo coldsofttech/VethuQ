@@ -16,7 +16,15 @@ class VethuQError(Exception):
 
     message: str
     hint: str | None
-    exit_code: int
+    exit_code: int = 1
+
+    def __init__(self, message: str, hint: str | None = None) -> None:
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+
+    def __str__(self) -> str:
+        return f"{self.message} {self.hint}" if self.hint else self.message
 
 
 class StartupError(VethuQError):
@@ -26,30 +34,34 @@ class StartupError(VethuQError):
 class InvalidConfigError(StartupError):
     """The saved settings file or the `VETHUQ_HOME` setting can't be used."""
 
+    exit_code = 10
+
 
 class DataFolderNotWritableError(StartupError):
     """VethuQ can't create or write to its data folder."""
+
+    exit_code = 11
 
 
 class CorruptDatabaseError(VethuQError):
     """The database file is damaged or isn't a VethuQ database."""
 
+    exit_code = 12
+
 
 class OcrModelMissingError(VethuQError):
     """The OCR engine or its model files aren't available."""
+
+    exit_code = 13
 
 
 class SchemaVersionError(StartupError):
     """The database's schema is newer than this build of VethuQ supports."""
 
+    exit_code = 14
+
 
 class StaleLockError(StartupError):
     """A lock file exists but its process is no longer running."""
 
-
-class LastLanguageError(VethuQError):
-    """The language can't be disabled because it is the last one in use."""
-
-
-class LanguageUnavailableError(VethuQError):
-    """An OCR language was asked for that isn't installed, enabled or known."""
+    exit_code = 15

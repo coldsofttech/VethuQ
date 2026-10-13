@@ -261,7 +261,7 @@ class SourcesService:
             return False
         readable = {
             extension
-            for spec in client.file_types.list()
+            for spec in client.file_types.list_all()
             if spec.available
             for extension in spec.extensions
         }
