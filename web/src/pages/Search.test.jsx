@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App.jsx';
@@ -885,6 +885,124 @@ describe('Search', () => {
     it('says when the words are not in the file as it is now', async () => {
       const panel = await show(FILE, found({ matched: 'zebra' }));
       expect(await within(panel).findByText(/not in the file as it is now/)).toBeInTheDocument();
+    });
+  });
+
+  describe('the web page preview', () => {
+    const PAGE =
+      '<html><head><title>wheat news</title></head><body>\n<h1>Harvest</h1>\n<p>The price of <b>wheat</b> rose.</p>\n</body></html>';
+    const FILE = { text: PAGE, encoding: 'utf-8', file_name: 'page.html', longest_line: 100 };
+    const found = (over = {}) => ({
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'page.html',
+          file_path: '/docs/page.html',
+          file_type: 'html',
+          document_id: 8,
+          total_pages: 1,
+          page_number: 1,
+          before: 'Harvest The price of ',
+          matched: 'wheat',
+          after: ' rose.',
+          ...over,
+        }),
+      ],
+    });
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+    });
+
+    const show = async (file = FILE, result = found()) => {
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/html': file });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Web page preview' });
+    };
+
+    // jsdom does not load a frame's `srcdoc` itself: put the page in, as a browser would.
+    const loadFrame = (panel) => {
+      const frame = panel.querySelector('iframe');
+      const doc = frame.contentDocument;
+      doc.open();
+      doc.write(frame.getAttribute('srcdoc'));
+      doc.close();
+      fireEvent.load(frame);
+      return frame;
+    };
+
+    it('shows the page rendered in a frame that runs nothing, with the words marked', async () => {
+      const panel = await show();
+      const frame = await waitFor(() => {
+        const found = panel.querySelector('iframe');
+        expect(found).not.toBeNull();
+        return found;
+      });
+      expect(frame.getAttribute('sandbox')).toBe('allow-same-origin');
+      expect(frame.getAttribute('srcdoc')).toContain('<h1>Harvest</h1>');
+      loadFrame(panel);
+      await waitFor(() =>
+        expect(frame.contentDocument.querySelector('mark')?.textContent).toBe('wheat'),
+      );
+      expect(within(panel).getByRole('tab', { name: 'Rendered' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('shows the source, coloured, on the line of the match, and remembers the choice', async () => {
+      const panel = await show();
+      await userEvent.click(await within(panel).findByRole('tab', { name: 'Source' }));
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('wheat'));
+      expect(within(panel).getByText(/Match 1 of 1 · line 3/)).toBeInTheDocument();
+      const tag = [...panel.querySelectorAll('[data-line="2"] span span')].find(
+        (n) => n.textContent === 'h1',
+      );
+      expect(tag.style.color).not.toBe('');
+      expect(localStorage.getItem('vethuq.html-view')).toBe('source');
+    });
+
+    it('lays the page out one tag to a line in the formatted view', async () => {
+      const panel = await show();
+      await userEvent.click(await within(panel).findByRole('tab', { name: 'Formatted' }));
+      expect(await within(panel).findByText(/Match 1 of 1 · line \d+/)).toBeInTheDocument();
+      await waitFor(() => expect(panel.querySelector('[data-line="3"]')).not.toBeNull());
+      expect(panel.querySelector('[data-line="1"]').textContent).toContain('<html>');
+      expect(panel.querySelector('mark')?.textContent).toBe('wheat');
+    });
+
+    it('says when the match is in text the page does not show, and offers the source', async () => {
+      const panel = await show(FILE, found({ before: '', matched: 'news', after: '' }));
+      await waitFor(() => expect(panel.querySelector('iframe')).not.toBeNull());
+      loadFrame(panel);
+      expect(
+        await within(panel).findByText(/not visible on the rendered page/),
+      ).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Show source' }));
+      // The source opens on the title, where the words are.
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('news'));
+      expect(within(panel).getByText(/line 1\b/)).toBeInTheDocument();
+    });
+
+    it('shows the source of a page too large to render', async () => {
+      const big = { ...FILE, text: `<p>${'x'.repeat(5 * 1024 * 1024)} wheat</p>` };
+      const panel = await show(big);
+      expect(await within(panel).findByText(/too large to render/)).toBeInTheDocument();
+      expect(within(panel).getByRole('tab', { name: 'Rendered' })).toBeDisabled();
+      expect(panel.querySelector('iframe')).toBeNull();
+    });
+
+    it('says when the words are not in the page as it is now', async () => {
+      localStorage.setItem('vethuq.html-view', 'source');
+      const panel = await show(FILE, found({ matched: 'zebra' }));
+      expect(await within(panel).findByText(/not in the page as it is now/)).toBeInTheDocument();
     });
   });
 });

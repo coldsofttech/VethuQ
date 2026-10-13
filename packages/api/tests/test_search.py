@@ -471,3 +471,62 @@ class TestCssFile:
         ):
             assert self.get(http, path).status_code == 422, path
         assert http.get("/api/files/css", base_url=ORIGIN).status_code == 422
+
+
+class TestHtmlFile:
+    """The web page route (the html add-on is licensed code, so the type checks are replaced where
+    it is missing, as for stylesheets)."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        (library / "a" / "page.html").write_text(
+            "<html><body><p>Hello <b>world</b></p></body></html>", encoding="utf-8"
+        )
+        (library / "outside.html").write_text("<p>x</p>", encoding="utf-8")
+        probe = VethuQ(library / "probe.db")
+        try:
+            html = probe.file_types.get("html")
+            installed = html is not None and html.available
+        finally:
+            probe.close()
+        if not installed:
+            monkeypatch.setattr(
+                SearchService,
+                "is_type",
+                lambda self, path, kind: kind == "html" and path.lower().endswith(".html"),
+            )
+            real = SourcesService.may_open
+            inside = os.path.realpath(library / "a")
+
+            def may_open(self, path):
+                real_path = os.path.realpath(path)
+                return real(self, path) or (
+                    os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+                )
+
+            monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, path):
+        return http.get("/api/files/html", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def test_the_page_as_it_is_on_disk(self, http):
+        reply = self.get(http, http.library / "a" / "page.html").get_json()
+        assert reply["text"] == "<html><body><p>Hello <b>world</b></p></body></html>"
+        assert reply["file_name"] == "page.html" and reply["longest_line"] == len(reply["text"])
+
+    def test_only_a_web_page_of_a_source(self, http):
+        for path in (
+            http.library / "outside.html",
+            http.library / "a" / "notes.txt",
+            http.library / "a" / "missing.html",
+        ):
+            assert self.get(http, path).status_code == 422, path
+        assert http.get("/api/files/html", base_url=ORIGIN).status_code == 422

@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/html-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only view of a web page as a browser shows it, with scripts and the network off, that can land on and mark a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "@vethuq/markdown-viewer": "*",
+    "react": ">=19"
+  }
+}

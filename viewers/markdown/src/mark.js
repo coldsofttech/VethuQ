@@ -15,11 +15,19 @@ export function clearMarks(root) {
  *
  * @param {HTMLElement} root
  * @param {{before?: string, matched: string, after?: string}} match
+ * @param {{skip?: string, style?: string}} [options] `skip`: a selector for elements whose text is
+ *   not looked in (scripts, styles...); `style`: inline CSS for the marks (for a document that has
+ *   none of the page's own, such as the inside of a frame).
  * @returns {HTMLElement | null} The first mark, or null when the words are not in what is shown
  *   (they can be in the Markdown's link addresses, say).
  */
-export function markIn(root, match) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+export function markIn(root, match, options = {}) {
+  const doc = root.ownerDocument;
+  const { skip, style } = options;
+  const walker = doc.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */, {
+    acceptNode: (node) =>
+      skip && node.parentElement?.closest(skip) ? 2 /* FILTER_REJECT */ : 1 /* FILTER_ACCEPT */,
+  });
   const nodes = [];
   let hay = '';
   const owner = []; // for each squashed character: [node index, offset in that node]
@@ -72,11 +80,12 @@ export function markIn(root, match) {
   }
   let firstMark = null;
   for (const [node, from, to] of spans.reverse()) {
-    const range = document.createRange();
+    const range = doc.createRange();
     range.setStart(node, from);
     range.setEnd(node, to);
-    const mark = document.createElement('mark');
+    const mark = doc.createElement('mark');
     mark.dataset.mdvHit = '';
+    if (style) mark.style.cssText = style;
     range.surroundContents(mark);
     firstMark = mark;
   }

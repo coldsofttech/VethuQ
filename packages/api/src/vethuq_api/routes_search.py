@@ -55,6 +55,19 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("Only a stylesheet of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().source_file(path))
 
+    @api.get("/files/html")
+    def html_file() -> Response:
+        """A web page of a source as it is on disk, for the preview. (The index keeps only what a
+        reader sees, so it can be neither shown nor read as markup.)"""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_type(path, "html")
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a web page of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().source_file(path))
+
     @api.get("/files/csv")
     def csv_window() -> Response:
         """A window of rows of a CSV file of a source, read from disk, for the table preview."""

@@ -25,6 +25,12 @@ export const vscodeDark = {
     function: '#dcdcaa',
     important: '#569cd6',
     punct: '#d4d4d4',
+    tagpunct: '#808080',
+    tag: '#569cd6',
+    attribute: '#9cdcfe',
+    attrvalue: '#ce9178',
+    entity: '#569cd6',
+    doctype: '#808080',
   },
 };
 
@@ -50,5 +56,11 @@ export const vscodeLight = {
     function: '#795e26',
     important: '#0000ff',
     punct: '#000000',
+    tagpunct: '#800000',
+    tag: '#800000',
+    attribute: '#e50000',
+    attrvalue: '#0000ff',
+    entity: '#ee0000',
+    doctype: '#808080',
   },
 };

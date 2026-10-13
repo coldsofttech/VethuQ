@@ -1032,6 +1032,126 @@ def css_preview_screens(browser: Browser, out: Path) -> None:
     print("css preview checks passed")
 
 
+SAMPLE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Farm news</title>
+<style>
+  body { font-family: Georgia, serif; margin: 2rem; color: #333; }
+  h1 { color: #2e7d32; border-bottom: 2px solid #2e7d32; }
+  .note { background: #fff8e1; padding: 1rem; border-left: 4px solid #f9a825; }
+</style>
+<script>document.body.insertAdjacentHTML('beforeend', '<p id="ran">SCRIPT RAN</p>');</script>
+</head>
+<body>
+<h1>Harvest report</h1>
+<p>Prices of <b>wheat</b> and barley rose in autumn &amp; the quokka population grew.</p>
+<div class="note">Read the <a href="http://example.invalid/more">full story</a>.</div>
+<img src="http://example.invalid/field.png" alt="a field in autumn">
+<!-- a hidden comment about the quokka -->
+</body>
+</html>
+"""
+
+
+def html_preview_screens(browser: Browser, out: Path) -> None:
+    """The web page preview, with the search result and the file answered by the test (the html
+    add-on is licensed code). Checks that nothing in the page runs or reaches the network."""
+    requested: list[str] = []
+    failed: list[tuple[str, str | None]] = []
+    finished: list[str] = []
+    for theme, name in (("light", "html-rendered"), ("dark", "html-source-dark")):
+        home = tempfile.mkdtemp(prefix="vethuq-ui-")
+        process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+        try:
+            context = browser.new_context(viewport=VIEWPORT, color_scheme=theme)
+            context.add_init_script(f"localStorage.setItem('vethuq.theme', '{theme}')")
+            page = context.new_page()
+            page.on("request", lambda r: requested.append(r.url))
+            page.on("requestfailed", lambda r: failed.append((r.url, r.failure)))
+            page.on("requestfinished", lambda r: finished.append(r.url))
+            page.goto(url)
+            expect(page.get_by_test_id("app-shell")).to_be_visible()
+            match = {
+                "file_id": 1,
+                "document_id": 1,
+                "file_name": "news.html",
+                "file_path": "/x/news.html",
+                "file_type": "html",
+                "page_number": 1,
+                "total_pages": 1,
+                "before": "Harvest report Prices of wheat and barley rose in autumn & the ",
+                "matched": "quokka",
+                "after": " population grew.",
+                "truncated_before": False,
+                "truncated_after": False,
+                "duplicate_of_path": None,
+                "source": "native",
+                "score": None,
+                "start": 60,
+                "end": 66,
+                "engine": "like",
+                "matched_by": ["like"],
+                "modifiers": [],
+            }
+            page.route(
+                "**/api/search/run",
+                lambda route, _request, match=match: route.fulfill(
+                    json={
+                        "query": "quokka",
+                        "engine": "like",
+                        "total": 1,
+                        "levels": {},
+                        "index_rebuilt": False,
+                        "pending": {},
+                        "options": {},
+                        "matches": [match],
+                    }
+                ),
+            )
+            page.route(
+                "**/api/files/html**",
+                lambda route: route.fulfill(
+                    json={"text": SAMPLE_HTML, "encoding": "utf-8", "file_name": "news.html"}
+                ),
+            )
+            page.get_by_role("tab", name="Search").first.click()
+            box = page.get_by_role("searchbox", name="Search text")
+            box.fill("quokka")
+            box.press("Enter")
+            table = page.get_by_role("table", name="Search results")
+            expect(table).to_be_visible(timeout=30000)
+            table.get_by_text("1 of 1").first.click(button="right")
+            page.get_by_role("menuitem", name="Preview").click()
+            panel = page.get_by_role("region", name="Web page preview")
+            if theme == "light":
+                frame = page.frame_locator("iframe[title='Rendered page']")
+                expect(frame.locator("mark")).to_have_text("quokka", timeout=30000)
+                expect(frame.get_by_role("heading", name="Harvest report")).to_be_visible()
+                assert frame.locator("#ran").count() == 0, "a script of the page ran"
+                page.wait_for_timeout(500)
+                shot(page, out, name)
+                frame.get_by_role("link").click()
+                page.wait_for_timeout(500)
+                outside = [u for u in requested if "example.invalid" in u]
+                print("outside requests:", outside, [f for f in failed if "invalid" in f[0]])
+                assert not any("example.invalid" in u for u in finished), finished
+                assert all(
+                    any(u == f[0] and "csp" in (f[1] or "") for f in failed) for u in outside
+                ), failed
+            else:
+                panel.get_by_role("tab", name="Source").click()
+                expect(panel.locator("mark")).to_have_text("quokka", timeout=30000)
+                page.wait_for_timeout(500)
+                shot(page, out, name)
+            context.close()
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+    print("html preview checks passed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -1041,11 +1161,15 @@ def main() -> int:
     parser.add_argument("--only-credits", action="store_true")
     parser.add_argument("--only-preview", action="store_true")
     parser.add_argument("--only-css", action="store_true")
+    parser.add_argument("--only-html", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
+            if args.only_html:
+                html_preview_screens(browser, args.out)
+                return 0
             if args.only_css:
                 css_preview_screens(browser, args.out)
                 return 0

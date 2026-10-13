@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../csv && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js .",
+    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../csv && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../html && node ../../web/node_modules/eslint/bin/eslint.js .",
     "format": "prettier --write . ../viewers",
     "format:check": "prettier --check . ../viewers",
     "test": "vitest run"
@@ -20,6 +20,7 @@
     "@fluentui/react-components": "^9.74.9",
     "@fluentui/react-icons": "^2.0.344",
     "@vethuq/csv-viewer": "file:../viewers/csv",
+    "@vethuq/html-viewer": "file:../viewers/html",
     "@vethuq/markdown-viewer": "file:../viewers/markdown",
     "@vethuq/text-viewer": "file:../viewers/text",
     "markdown-it": "^15.0.2",

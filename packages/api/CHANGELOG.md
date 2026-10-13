@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (web page preview)
+- `GET /api/files/html?path=` returns a web page of a source as it is on disk, for the preview (the index keeps only what a reader sees).
+
 ### Added (CSS preview)
 - `GET /api/files/css?path=` returns a stylesheet of a source as it is on disk (the index re-flows it to a rule a line) with its longest line, for the code preview. The Markdown route now shares the reading code and the 100 MB limit.
 

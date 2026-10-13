@@ -389,6 +389,12 @@ export const api = {
      */
     css: (params, signal) => request(`/api/files/css${query(params)}`, { signal }),
     /**
+     * A web page of a source as it is on disk, for the preview.
+     * @param {{path: string}} params
+     * @returns {Promise<{text: string, encoding: string, file_name: string}>}
+     */
+    html: (params, signal) => request(`/api/files/html${query(params)}`, { signal }),
+    /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
      * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,
      *   filter?: string, column?: number, header?: number, at_row?: number, at_offset?: number}} params

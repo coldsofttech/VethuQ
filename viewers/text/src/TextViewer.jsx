@@ -191,6 +191,23 @@ export function TextViewer({
     measure();
   }, [target, view.height, lineHeight, loadLines, measure]);
 
+  // Once the target's line is drawn, bring its marked words into view sideways too.
+  const sideways = useRef(null);
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!target || !element) return;
+    const key = `${target.line}:${target.column ?? ''}:${target.length ?? ''}`;
+    if (sideways.current === key) return;
+    const mark = element.querySelector('mark');
+    if (!mark) return;
+    sideways.current = key;
+    const box = element.getBoundingClientRect();
+    const at = mark.getBoundingClientRect();
+    if (at.right > box.right - 24 || at.left < box.left + 80) {
+      element.scrollLeft += at.left - box.left - box.width / 3;
+    }
+  }, [target, chunks, view]);
+
   const rows = useMemo(() => {
     const out = [];
     for (let index = first; index <= last; index++) {

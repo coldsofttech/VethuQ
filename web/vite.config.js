@@ -29,6 +29,7 @@ export default defineConfig({
       'react',
       'react-dom',
       'markdown-it',
+      '@vethuq/markdown-viewer',
       '@testing-library/react',
       '@testing-library/dom',
       '@testing-library/user-event',
