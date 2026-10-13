@@ -38,9 +38,15 @@ import { placeOf } from '../search/form.js';
 // pdf.js is large, so the previews load when a file is first previewed.
 const PdfPreview = lazy(() => import('../search/pdf/PdfPreview.jsx'));
 const TextPreview = lazy(() => import('../search/text/TextPreview.jsx'));
+const MarkdownPreview = lazy(() => import('../search/markdown/MarkdownPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 
-const PREVIEWS = { pdf: PdfPreview, csv: TablePreview, txt: TextPreview, markdown: TextPreview };
+const PREVIEWS = {
+  pdf: PdfPreview,
+  csv: TablePreview,
+  txt: TextPreview,
+  markdown: MarkdownPreview,
+};
 
 const useStyles = makeStyles({
   page: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalM },

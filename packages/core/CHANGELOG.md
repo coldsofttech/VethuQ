@@ -7,10 +7,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 ## [Unreleased]
 
 ### Added (text of a page)
-- `search.page_text(document_id, page_number=1)` returns the text stored for a page (`PageText`), as searches saw it: for a text or Markdown file, the file's text, which a match's `line` and `column` count in.
+- `search.page_text(document_id, page_number=1)` returns the text stored for a page (`PageText`), as searches saw it: for a text file, the file's text, which a match's `line` and `column` count in (a Markdown file's is its words without the markup).
 
 ### Added (where a match sits)
-- A search match carries `line` and `column` for text, Markdown and CSV files (for CSV the Nth non-empty row, and a column in its indexed text), so an application can open the file at the match. PDF matches already have `page_number`.
+- A search match carries `line` and `column` for text and CSV files (for CSV the Nth non-empty row, and a column in its indexed text), so an application can open the file at the match. PDF matches already have `page_number`.
 
 ### Added (searching within file types and sources)
 - `search.run(file_types=..., sources=...)` keeps matches of files read as those types (ids of `client.file_types`)

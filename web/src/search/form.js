@@ -76,6 +76,9 @@ export function forgetSearches() {
  */
 export const placeOf = (match) => {
   if (match.file_type === 'pdf' && match.page_number) return { page: match.page_number };
+  // A CSV's line is its Nth row with something in it and a Markdown file's has no line (the index
+  // keeps its words without the markup): neither is a line to open an editor at.
+  if (match.file_type === 'markdown') return {};
   if (match.file_type === 'csv') return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
     return match.column != null ? { line: match.line, column: match.column } : { line: match.line };

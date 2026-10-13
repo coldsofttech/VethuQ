@@ -687,4 +687,118 @@ describe('Search', () => {
       expect(screen.queryByRole('region', { name: 'Table preview' })).not.toBeInTheDocument();
     });
   });
+
+  describe('the Markdown preview', () => {
+    const SOURCE =
+      '# Harvest\n\nThe price of **wheat** rose in autumn.\n\nSee [more](http://example.com/oats).\n';
+    const FILE = { text: SOURCE, encoding: 'utf-8', file_name: 'report.md' };
+    const found = (over = {}) => ({
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'report.md',
+          file_path: '/docs/report.md',
+          file_type: 'markdown',
+          document_id: 6,
+          total_pages: 1,
+          page_number: 1,
+          before: 'Harvest The price of ',
+          matched: 'wheat',
+          after: ' rose in autumn.',
+          ...over,
+        }),
+      ],
+    });
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+    });
+
+    const open = async () => {
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Markdown preview' });
+    };
+
+    const show = async (result, file = FILE) => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': result,
+        'GET /api/files/markdown': file,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      return { fetchMock, panel: await open() };
+    };
+
+    it('shows the file rendered, at the match, with the words marked', async () => {
+      const { fetchMock, panel } = await show(found());
+      expect(await within(panel).findByRole('heading', { name: 'Harvest' })).toBeInTheDocument();
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('wheat'));
+      expect(within(panel).getByText(/Match 1 of 1 · line 3/)).toBeInTheDocument();
+      expect(within(panel).getByRole('tab', { name: 'Rendered' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      const asked = fetchMock.mock.calls
+        .map(([url]) => url)
+        .find((u) => u.includes('/files/markdown'));
+      expect(asked).toBe('/api/files/markdown?path=%2Fdocs%2Freport.md');
+      // A link is text, not something to click.
+      expect(panel.querySelector('a')).toBeNull();
+    });
+
+    it('switches to the source, on the line of the match, and remembers the choice', async () => {
+      const { panel } = await show(found());
+      await within(panel).findByRole('heading', { name: 'Harvest' });
+      await userEvent.click(within(panel).getByRole('tab', { name: 'Source' }));
+      expect(await within(panel).findByText('# Harvest')).toBeInTheDocument();
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toMatch(/wheat/));
+      expect(localStorage.getItem('vethuq.markdown-view')).toBe('source');
+    });
+
+    it('says when the match is in markup that does not show, and offers the source', async () => {
+      const { panel } = await show(
+        found({ before: 'See more http://example.com/', matched: 'oats', after: '' }),
+      );
+      expect(
+        await within(panel).findByText(/not visible in the rendered view/),
+      ).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Show source' }));
+      expect(await within(panel).findByText('# Harvest')).toBeInTheDocument();
+    });
+
+    it('says when the words are not in the file as it is now', async () => {
+      const { panel } = await show(found({ matched: 'zebra' }));
+      expect(await within(panel).findByText(/not in the file as it is now/)).toBeInTheDocument();
+    });
+
+    it('does not offer Open at a line for a Markdown file', async () => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'GET /api/platform': { kind: 'desktop', window_controls: true, open_file: true },
+        'POST /api/search/run': found({ line: 7, column: 3 }),
+        'POST /api/os/open': { opened: true, jumped: true, hint: null },
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Open' }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls
+            .filter(([p]) => p === '/api/os/open')
+            .map(([, init]) => JSON.parse(init.body)),
+        ).toEqual([{ path: '/docs/report.md' }]),
+      );
+    });
+  });
 });

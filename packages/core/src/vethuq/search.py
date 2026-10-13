@@ -77,7 +77,7 @@ class SearchMatch:
     matched_by: tuple[str, ...]  # every engine that found it, strictest first
     modifiers: tuple[str, ...]  # normalizations it needed to match as typed, e.g. `accents`
     file_type: str | None = None  # what the file is read as (`pdf`, `docx`, ...)
-    # Where the match is in a plain-text file (text, Markdown, CSV), counting from 1; None for files
+    # Where the match is in a plain-text file (text, CSV), counting from 1; None for files
     # whose pages are not the file's own lines (a PDF's page is `page_number`). For CSV the line is
     # the Nth non-empty row and the column counts in that row's indexed text (its non-empty cells
     # joined by " | "), not in the file's own row, which can have empty cells and quoting.
@@ -390,7 +390,7 @@ class Search:
     # File types whose single page is the file's own lines, so a match has a line (and, except for
     # CSV whose fields are spread out, a column). HTML, XML and the like are read as extracted text,
     # whose lines are not the file's.
-    LINE_TYPES = frozenset({"txt", "markdown", "csv"})
+    LINE_TYPES = frozenset({"txt", "csv"})
 
     def _located(self, window: list[_Match]) -> list[SearchMatch]:
         """The public matches of a page of results, each with its file type, and the line and
@@ -444,8 +444,8 @@ class Search:
 
     def page_text(self, document_id: int, page_number: int = 1) -> PageText | None:
         """The text stored for a page of a document, as searches saw it (line breaks included), or
-        None when there is no such page. For a text or Markdown file the one page is the file's
-        text, so a match's `line` and `column` count in it."""
+        None when there is no such page. For a text file the one page is the file's text, so a
+        match's `line` and `column` count in it (Markdown's is the words without the markup)."""
         with self._database.session() as session:
             row = session.execute(
                 text(

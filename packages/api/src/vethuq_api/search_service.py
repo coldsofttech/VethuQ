@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from vethuq_api.csv_rows import CsvCache, clip
+from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 50
@@ -22,6 +22,7 @@ TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
 TEXT_KEEP_SECONDS = 60.0
 TEXT_KEEP_FILES = 3
+MARKDOWN_MAX_BYTES = 100 * 1024 * 1024
 _CSV_NUMBERS = frozenset({"start", "count", "sort", "column", "at_row", "at_offset"})
 
 
@@ -94,6 +95,28 @@ class SearchService:
             for old in sorted(self._texts, key=lambda k: self._texts[k][0])[:-TEXT_KEEP_FILES]:
                 del self._texts[old]
         return page, lines
+
+    def is_markdown(self, path: str) -> bool:
+        spec = self._client().file_types.get("markdown")
+        return spec is not None and path.lower().endswith(tuple(spec.extensions))
+
+    def markdown_file(self, path: str) -> dict[str, object]:
+        """A Markdown file's text as it is on disk, to be rendered. (The index keeps the words
+        without the markup, so it cannot be rendered.)"""
+        size = os.path.getsize(path)
+        if size > MARKDOWN_MAX_BYTES:
+            raise ValueError(
+                f"This file is {size // (1024 * 1024)} MB, too large to preview "
+                f"(the limit is {MARKDOWN_MAX_BYTES // (1024 * 1024)} MB). Open it instead."
+            )
+        with open(path, "rb") as handle:
+            text, encoding = decode(handle.read())
+        return {
+            "text": text,
+            "encoding": encoding,
+            "file_name": os.path.basename(path),
+            "file_path": path,
+        }
 
     # ----- a CSV file as a table --------------------------------------------------------------
 

@@ -23,11 +23,12 @@ const pdfjsData = () => ({
 export default defineConfig({
   plugins: [react(), pdfjsData()],
   resolve: {
-    // The text viewer lives outside web/ (viewers/text), which has no node_modules of its own: have
-    // React resolved from here, and once.
+    // The viewers live outside web/ (viewers/*), which has no node_modules of its own: have what they
+    // import resolved from here, and once.
     dedupe: [
       'react',
       'react-dom',
+      'markdown-it',
       '@testing-library/react',
       '@testing-library/dom',
       '@testing-library/user-event',

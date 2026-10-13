@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/markdown-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only viewer for rendered Markdown of any size: only the blocks near the screen are drawn; can land on, and mark, a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "markdown-it": ">=14",
+    "react": ">=19"
+  }
+}

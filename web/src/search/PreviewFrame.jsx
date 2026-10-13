@@ -16,13 +16,14 @@ const useStyles = makeStyles({
   head: {
     display: 'flex',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: tokens.spacingHorizontalXS,
     padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     backgroundColor: tokens.colorNeutralBackground1,
   },
   name: {
-    flexGrow: 1,
+    flex: '1 1 140px',
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',

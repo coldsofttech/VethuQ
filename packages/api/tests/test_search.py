@@ -375,3 +375,37 @@ class TestCsvTable:
         assert self.get(http, "missing.csv").status_code == 422
         for bad in ({"dir": "up"}, {"start": "x"}, {"count": 0}, {"header": "2"}):
             assert self.get(http, **bad).status_code == 422, bad
+
+
+class TestMarkdownFile:
+    @pytest.fixture
+    def http(self, web_dist, library):
+        (library / "a" / "big.md").write_text("# Title\n\nSome **bold** text.\n", encoding="utf-8")
+        (library / "outside.md").write_text("# Out\n", encoding="utf-8")
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, path):
+        return http.get("/api/files/markdown", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def test_the_file_as_it_is_on_disk(self, http):
+        reply = self.get(http, http.library / "a" / "big.md").get_json()
+        assert reply["text"] == "# Title\n\nSome **bold** text.\n"
+        assert reply["file_name"] == "big.md" and reply["encoding"] == "utf-8"
+
+    def test_only_a_markdown_file_of_a_source(self, http, monkeypatch):
+        for path in (
+            http.library / "outside.md",
+            http.library / "a" / "notes.txt",
+            http.library / "a" / "missing.md",
+        ):
+            assert self.get(http, path).status_code == 422, path
+        assert http.get("/api/files/markdown", base_url=ORIGIN).status_code == 422
+        monkeypatch.setattr("vethuq_api.search_service.MARKDOWN_MAX_BYTES", 5)
+        assert self.get(http, http.library / "a" / "big.md").status_code == 422

@@ -803,6 +803,17 @@ def preview_screens(browser: Browser, out: Path) -> None:
         name = "Quillon Zephyr" if n == 2345 else f"Person {n:04}"
         people.append(f"{n},{name},{('Paris', 'Oslo', 'Lima', 'Pune')[n % 4]},{(n * 37) % 1000}.50")
     (documents / "people.csv").write_text("\n".join(people), encoding="utf-8")
+    # A long handbook (about 3 MB of Markdown) with one rare word deep inside it.
+    parts = ["# Farm handbook", ""]
+    for n in range(1, 20001):
+        if n % 500 == 1:
+            parts += [f"## Chapter {n // 500 + 1}", ""]
+        word = "**quokka**" if n == 15000 else "barley"
+        parts += [
+            f"Paragraph {n}: notes on the {word} and the *weather* in [the valley](http://x.test/{n}).",
+            "",
+        ]
+    (documents / "handbook.md").write_text("\n".join(parts), encoding="utf-8")
     home = tempfile.mkdtemp(prefix="vethuq-ui-")
     os.environ["VETHUQ_HOME"] = home
     with VethuQ() as client:
@@ -867,6 +878,22 @@ def preview_screens(browser: Browser, out: Path) -> None:
         page.wait_for_timeout(1200)
         expect(grid.get_by_text(re.compile(r"of 5,000 rows"))).to_be_visible()
         shot(page, out, "preview-table-sorted-filtered")
+        # The Markdown preview: a rare word deep in a long, rendered document.
+        box.fill("quokka")
+        box.press("Enter")
+        expect(table.get_by_text("handbook.md").first).to_be_visible(timeout=120000)
+        table.get_by_text("1 of 1").first.click(button="right")
+        page.get_by_role("menuitem", name="Preview").click()
+        doc = page.get_by_role("region", name="Markdown preview")
+        expect(doc.locator("mark")).to_have_text("quokka", timeout=30000)
+        page.wait_for_timeout(800)
+        shot(page, out, "preview-markdown")
+        assert doc.locator("[data-block]").count() < 2000, (
+            "only the blocks near the screen are drawn"
+        )
+        doc.get_by_role("tab", name="Source").click()
+        expect(doc.locator("mark")).to_contain_text("quokka", timeout=30000)
+        shot(page, out, "preview-markdown-source")
         print("preview checks passed")
     finally:
         process.terminate()
