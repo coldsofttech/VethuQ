@@ -39,7 +39,7 @@ import { placeOf } from '../search/form.js';
 const PdfPreview = lazy(() => import('../search/pdf/PdfPreview.jsx'));
 const TextPreview = lazy(() => import('../search/text/TextPreview.jsx'));
 const MarkdownPreview = lazy(() => import('../search/markdown/MarkdownPreview.jsx'));
-const CssPreview = lazy(() => import('../search/css/CssPreview.jsx'));
+const CodePreview = lazy(() => import('../search/code/CodePreview.jsx'));
 const HtmlPreview = lazy(() => import('../search/html/HtmlPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 
@@ -48,7 +48,11 @@ const PREVIEWS = {
   csv: TablePreview,
   txt: TextPreview,
   markdown: MarkdownPreview,
-  css: CssPreview,
+  css: CodePreview,
+  json: CodePreview,
+  yaml: CodePreview,
+  js: CodePreview,
+  xml: CodePreview,
   html: HtmlPreview,
 };
 

@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (JSON, YAML, JavaScript and XML previews)
+- `GET /api/files/json`, `/yaml`, `/js` and `/xml` (`?path=`) return a file of a source as it is on disk, like the CSS and web page routes now do through one shared handler, for the code preview.
+
 ### Added (web page preview)
 - `GET /api/files/html?path=` returns a web page of a source as it is on disk, for the preview (the index keeps only what a reader sees).
 

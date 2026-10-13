@@ -1005,4 +1005,128 @@ describe('Search', () => {
       expect(await within(panel).findByText(/not in the page as it is now/)).toBeInTheDocument();
     });
   });
+
+  describe('the JSON, YAML, JavaScript and XML previews', () => {
+    const CASES = {
+      json: {
+        text: '{\n  "a": { "port": 80 },\n  "b": { "ports": [8080] },\n  "c": { "port": 8080 }\n}',
+        // Indexed as `c.port: 8080`: the value under "port", the second 8080 under it.
+        match: { before: 'a.port: 80 b.ports[0]: 8080 c.port: ', matched: '8080', after: '' },
+        line: 4,
+        mark: '8080',
+        label: 'JSON',
+      },
+      yaml: {
+        text: 'server:\n  host: a\n  ports:\n    - 8080\n  debug: yes\n',
+        match: { before: 'server.host: a server.debug: ', matched: 'yes', after: '' },
+        line: 5,
+        mark: 'yes',
+        label: 'YAML',
+      },
+      js: {
+        text: 'const price = 3;\n/* wheat */\nexport function wheat() { return price; }\n',
+        match: { before: '/* wheat */ export function ', matched: 'wheat', after: '() { return' },
+        line: 3,
+        mark: 'wheat',
+        label: 'JavaScript',
+      },
+      xml: {
+        text: '<?xml version="1.0"?>\n<catalog>\n  <book id="7">Dune</book>\n</catalog>\n',
+        match: { before: 'catalog/book@id: 7 catalog/book: ', matched: 'Dune', after: '' },
+        line: 3,
+        mark: 'Dune',
+        label: 'XML',
+      },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(400);
+    });
+
+    const show = async (kind, file, words) => {
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: `sample.${kind}`,
+            file_path: `/docs/sample.${kind}`,
+            file_type: kind,
+            document_id: 9,
+            total_pages: 1,
+            page_number: 1,
+            ...words,
+          }),
+        ],
+      };
+      mockApi({
+        ...ROUTES,
+        'POST /api/search/run': result,
+        [`GET /api/files/${kind}`]: file,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      return screen.findByRole('region', { name: 'Code preview' });
+    };
+
+    for (const [type, c] of Object.entries(CASES)) {
+      it(`shows a ${c.label} file coloured, on the line of the match, marked`, async () => {
+        const panel = await show(
+          type,
+          { text: c.text, encoding: 'utf-8', file_name: `sample.${type}`, longest_line: 60 },
+          c.match,
+        );
+        await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe(c.mark));
+        expect(
+          within(panel).getByText(new RegExp(`Match 1 of 1 · line ${c.line}\\b`)),
+        ).toBeInTheDocument();
+        expect(panel.querySelector('mark').closest('[data-line]').dataset.line).toBe(
+          String(c.line),
+        );
+        // The text is in more than one colour.
+        const colours = new Set(
+          [...panel.querySelectorAll('[data-line] span span')]
+            .map((n) => n.style.color)
+            .filter(Boolean),
+        );
+        expect(colours.size).toBeGreaterThan(1);
+      });
+    }
+
+    it('opens a minified JSON file formatted, and the switch shows the source', async () => {
+      const minified = '{"a":{"port":80},"b":{"ports":[8080]},"c":{"port":8080}}';
+      const panel = await show(
+        'json',
+        { text: minified, encoding: 'utf-8', file_name: 'sample.json', longest_line: 5000 },
+        CASES.json.match,
+      );
+      expect(within(panel).getByRole('tab', { name: 'Formatted' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      // Formatted, one value to a line: the third "port" is on line 11.
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('8080'));
+      expect(panel.querySelector('mark').closest('[data-line]').textContent).toContain(
+        '"port": 8080',
+      );
+      await userEvent.click(within(panel).getByRole('tab', { name: 'Source' }));
+      await waitFor(() => expect(within(panel).getByText(/line 1\b/)).toBeInTheDocument());
+    });
+
+    it('has no Formatted view for YAML, which is readable as it is', async () => {
+      const { text, match: words } = CASES.yaml;
+      const panel = await show(
+        'yaml',
+        { text, encoding: 'utf-8', file_name: 'sample.yaml', longest_line: 9000 },
+        words,
+      );
+      await waitFor(() => expect(panel.querySelector('mark')).not.toBeNull());
+      expect(within(panel).queryByRole('tab', { name: 'Formatted' })).toBeNull();
+    });
+  });
 });

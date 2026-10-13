@@ -31,6 +31,13 @@ export const vscodeDark = {
     attrvalue: '#ce9178',
     entity: '#569cd6',
     doctype: '#808080',
+    key: '#9cdcfe',
+    keyword: '#c586c0',
+    storage: '#569cd6',
+    constant: '#569cd6',
+    identifier: '#9cdcfe',
+    member: '#9cdcfe',
+    regexp: '#d16969',
   },
 };
 
@@ -62,5 +69,12 @@ export const vscodeLight = {
     attrvalue: '#0000ff',
     entity: '#ee0000',
     doctype: '#808080',
+    key: '#0451a5',
+    keyword: '#af00db',
+    storage: '#0000ff',
+    constant: '#0000ff',
+    identifier: '#001080',
+    member: '#001080',
+    regexp: '#811f3f',
   },
 };

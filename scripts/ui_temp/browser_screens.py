@@ -1152,6 +1152,134 @@ def html_preview_screens(browser: Browser, out: Path) -> None:
     print("html preview checks passed")
 
 
+CODE_SAMPLES = {
+    "json": (
+        "dark",
+        '{"name":"farm-api","version":"1.4.2","private":true,"scripts":{"start":"node server.js",'
+        '"test":"vitest run"},"ports":[8080,8081],"limits":{"rate":0.5,"burst":20,"note":null},'
+        '"owner":{"port":8080,"name":"Ada \\"Quokka\\" Lovelace"}}',
+        {
+            "before": 'owner.port: 8080 owner.name: Ada "',
+            "matched": "Quokka",
+            "after": '" Lovelace',
+        },
+    ),
+    "yaml": (
+        "light",
+        "# Farm service\nversion: 3\nservices:\n  web:\n    image: farm/web:1.4\n    ports:\n"
+        '      - "8080:80"\n    environment: &env\n      DEBUG: yes\n      RATE: 0.5\n'
+        "  worker:\n    environment: *env\n    command: |\n      run --queue quokka\n"
+        "      --retries 3\n",
+        {
+            "before": "services.worker.command: run --queue ",
+            "matched": "quokka",
+            "after": " --retries 3",
+        },
+    ),
+    "js": (
+        "dark",
+        "#!/usr/bin/env node\nimport { readFile } from 'node:fs/promises';\n\n"
+        "/** Count the quokka in a log. */\n"
+        "export async function count(path, word = /quokka/gi) {\n"
+        "  const text = await readFile(path, 'utf8');\n  const hits = text.match(word) ?? [];\n"
+        "  console.log(`found ${hits.length} of 100 (${(hits.length / 100) * 100}%)`);\n"
+        "  return hits.length > 0 ? hits : null; // done\n}\n",
+        {"before": "/** Count the ", "matched": "quokka", "after": " in a log. */ export async"},
+    ),
+    "xml": (
+        "light",
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!-- Farm catalogue -->\n<farm:catalog '
+        'xmlns:farm="urn:farm" updated="2026-10-13">\n  <animal id="q1" kind="marsupial">\n'
+        "    <name>Quokka</name>\n    <note><![CDATA[ friendly <very> ]]></note>\n  </animal>\n"
+        '  <animal id="b2"><name>Barley &amp; oats</name></animal>\n</farm:catalog>\n',
+        {
+            "before": "farm:catalog/animal@id: q1 farm:catalog/animal@kind: marsupial "
+            "farm:catalog/animal/name: ",
+            "matched": "Quokka",
+            "after": "",
+        },
+    ),
+}
+
+
+def code_preview_screens(browser: Browser, out: Path) -> None:
+    """The JSON, YAML, JavaScript and XML previews; the search result and the file are answered by
+    the test (the add-ons are licensed code)."""
+    for kind, (theme, text, words) in CODE_SAMPLES.items():
+        home = tempfile.mkdtemp(prefix="vethuq-ui-")
+        process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+        try:
+            context = browser.new_context(viewport=VIEWPORT, color_scheme=theme)
+            context.add_init_script(f"localStorage.setItem('vethuq.theme', '{theme}')")
+            page = context.new_page()
+            page.goto(url)
+            expect(page.get_by_test_id("app-shell")).to_be_visible()
+            match = {
+                "file_id": 1,
+                "document_id": 1,
+                "file_name": f"sample.{kind}",
+                "file_path": f"/x/sample.{kind}",
+                "file_type": kind,
+                "page_number": 1,
+                "total_pages": 1,
+                "truncated_before": False,
+                "truncated_after": False,
+                "duplicate_of_path": None,
+                "source": "native",
+                "score": None,
+                "start": 10,
+                "end": 16,
+                "engine": "like",
+                "matched_by": ["like"],
+                "modifiers": [],
+                **words,
+            }
+            page.route(
+                "**/api/search/run",
+                lambda route, _request, match=match: route.fulfill(
+                    json={
+                        "query": "quokka",
+                        "engine": "like",
+                        "total": 1,
+                        "levels": {},
+                        "index_rebuilt": False,
+                        "pending": {},
+                        "options": {},
+                        "matches": [match],
+                    }
+                ),
+            )
+            longest = 5000 if kind == "json" else 90
+            page.route(
+                f"**/api/files/{kind}**",
+                lambda route, _request, text=text, kind=kind, longest=longest: route.fulfill(
+                    json={
+                        "text": text,
+                        "encoding": "utf-8",
+                        "file_name": f"sample.{kind}",
+                        "longest_line": longest,
+                    }
+                ),
+            )
+            page.get_by_role("tab", name="Search").first.click()
+            box = page.get_by_role("searchbox", name="Search text")
+            box.fill("quokka")
+            box.press("Enter")
+            table = page.get_by_role("table", name="Search results")
+            expect(table).to_be_visible(timeout=30000)
+            table.get_by_text("1 of 1").first.click(button="right")
+            page.get_by_role("menuitem", name="Preview").click()
+            code = page.get_by_role("region", name="Code preview")
+            expect(code.locator("mark")).to_have_text(words["matched"], timeout=30000)
+            page.wait_for_timeout(600)
+            shot(page, out, f"code-{kind}")
+            context.close()
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+    print("code preview checks passed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -1162,11 +1290,15 @@ def main() -> int:
     parser.add_argument("--only-preview", action="store_true")
     parser.add_argument("--only-css", action="store_true")
     parser.add_argument("--only-html", action="store_true")
+    parser.add_argument("--only-code", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
+            if args.only_code:
+                code_preview_screens(browser, args.out)
+                return 0
             if args.only_html:
                 html_preview_screens(browser, args.out)
                 return 0

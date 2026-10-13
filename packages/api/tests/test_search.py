@@ -413,27 +413,42 @@ class TestMarkdownFile:
         assert self.get(http, http.library / "a" / "big.md").status_code == 422
 
 
-class TestCssFile:
-    """The stylesheet route. The css add-on is licensed code that this checkout may not have, so
-    the type checks are replaced where it is missing; what is tested is the route and the file."""
+SOURCES = {
+    "css": ("a{color:red}\n/* note */\n", ".css", "a stylesheet"),
+    "html": ("<html><body><p>Hello <b>world</b></p></body></html>", ".html", "a web page"),
+    "json": ('{"server": {"ports": [8080, 8081]}}', ".json", "a JSON file"),
+    "yaml": ("server:\n  ports:\n    - 8080\n", ".yaml", "a YAML file"),
+    "js": ("const a = 1;\n\nexport default a;\n", ".mjs", "a script"),
+    "xml": (
+        '<?xml version="1.0"?><catalog><book id="7">Dune</book></catalog>',
+        ".xml",
+        "an XML file",
+    ),
+}
+
+
+@pytest.mark.parametrize("kind", sorted(SOURCES))
+class TestSourceFiles:
+    """The routes for files the preview shows as they are on disk, a route for each type. The
+    add-ons of these types are licensed code that this checkout may not have, so the type checks
+    are replaced where one is missing; what is tested is the route and the file."""
 
     @pytest.fixture
-    def http(self, web_dist, library, monkeypatch):
-        (library / "a" / "site.css").write_text(
-            "a{color:red}\n/* note */\n" + "b{top:0}" * 10, encoding="utf-8"
-        )
-        (library / "outside.css").write_text("a{}", encoding="utf-8")
+    def http(self, web_dist, library, monkeypatch, kind):
+        text, extension, _ = SOURCES[kind]
+        (library / "a" / f"sample{extension}").write_text(text, encoding="utf-8")
+        (library / f"outside{extension}").write_text(text, encoding="utf-8")
         probe = VethuQ(library / "probe.db")
         try:
-            css = probe.file_types.get("css")
-            installed = css is not None and css.available
+            spec = probe.file_types.get(kind)
+            installed = spec is not None and spec.available
         finally:
             probe.close()
         if not installed:
             monkeypatch.setattr(
                 SearchService,
                 "is_type",
-                lambda self, path, kind: kind == "css" and path.lower().endswith(".css"),
+                lambda self, path, wanted: wanted == kind and path.lower().endswith(extension),
             )
             real = SourcesService.may_open
             inside = os.path.realpath(library / "a")
@@ -454,79 +469,23 @@ class TestCssFile:
         test.library = library
         return test
 
-    def get(self, http, path):
-        return http.get("/api/files/css", query_string={"path": str(path)}, base_url=ORIGIN)
+    def get(self, http, kind, path):
+        return http.get(f"/api/files/{kind}", query_string={"path": str(path)}, base_url=ORIGIN)
 
-    def test_the_stylesheet_as_it_is_on_disk_with_its_longest_line(self, http):
-        reply = self.get(http, http.library / "a" / "site.css").get_json()
-        assert reply["text"].startswith("a{color:red}\n/* note */\n")
-        assert reply["longest_line"] == 80 and reply["file_name"] == "site.css"
+    def test_the_file_as_it_is_on_disk_with_its_longest_line(self, http, kind):
+        text, extension, _ = SOURCES[kind]
+        reply = self.get(http, kind, http.library / "a" / f"sample{extension}").get_json()
+        assert reply["text"] == text
+        assert reply["file_name"] == f"sample{extension}"
+        assert reply["longest_line"] == max(len(line) for line in text.split("\n"))
 
-    def test_only_a_stylesheet_of_a_source(self, http):
+    def test_only_a_file_of_that_type_in_a_source(self, http, kind):
+        _, extension, what = SOURCES[kind]
         for path in (
-            http.library / "outside.css",
+            http.library / f"outside{extension}",
             http.library / "a" / "notes.txt",
-            http.library / "a" / "report.md",
-            http.library / "a" / "missing.css",
+            http.library / "a" / f"missing{extension}",
         ):
-            assert self.get(http, path).status_code == 422, path
-        assert http.get("/api/files/css", base_url=ORIGIN).status_code == 422
-
-
-class TestHtmlFile:
-    """The web page route (the html add-on is licensed code, so the type checks are replaced where
-    it is missing, as for stylesheets)."""
-
-    @pytest.fixture
-    def http(self, web_dist, library, monkeypatch):
-        (library / "a" / "page.html").write_text(
-            "<html><body><p>Hello <b>world</b></p></body></html>", encoding="utf-8"
-        )
-        (library / "outside.html").write_text("<p>x</p>", encoding="utf-8")
-        probe = VethuQ(library / "probe.db")
-        try:
-            html = probe.file_types.get("html")
-            installed = html is not None and html.available
-        finally:
-            probe.close()
-        if not installed:
-            monkeypatch.setattr(
-                SearchService,
-                "is_type",
-                lambda self, path, kind: kind == "html" and path.lower().endswith(".html"),
-            )
-            real = SourcesService.may_open
-            inside = os.path.realpath(library / "a")
-
-            def may_open(self, path):
-                real_path = os.path.realpath(path)
-                return real(self, path) or (
-                    os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
-                )
-
-            monkeypatch.setattr(SourcesService, "may_open", may_open)
-        core = VethuQCore(library / "vethuq.db")
-        core._vethuq().sources.create(library / "a")
-        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
-        allow_host(app, "127.0.0.1:5000")
-        test = app.test_client()
-        test.get("/?t=t", base_url=ORIGIN)
-        test.library = library
-        return test
-
-    def get(self, http, path):
-        return http.get("/api/files/html", query_string={"path": str(path)}, base_url=ORIGIN)
-
-    def test_the_page_as_it_is_on_disk(self, http):
-        reply = self.get(http, http.library / "a" / "page.html").get_json()
-        assert reply["text"] == "<html><body><p>Hello <b>world</b></p></body></html>"
-        assert reply["file_name"] == "page.html" and reply["longest_line"] == len(reply["text"])
-
-    def test_only_a_web_page_of_a_source(self, http):
-        for path in (
-            http.library / "outside.html",
-            http.library / "a" / "notes.txt",
-            http.library / "a" / "missing.html",
-        ):
-            assert self.get(http, path).status_code == 422, path
-        assert http.get("/api/files/html", base_url=ORIGIN).status_code == 422
+            assert self.get(http, kind, path).status_code == 422, path
+        bare = http.get(f"/api/files/{kind}", base_url=ORIGIN)
+        assert bare.status_code == 422 and what in bare.get_json()["error"]

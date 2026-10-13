@@ -383,11 +383,12 @@ export const api = {
      */
     markdown: (params, signal) => request(`/api/files/markdown${query(params)}`, { signal }),
     /**
-     * A stylesheet of a source as it is on disk, for the code preview.
+     * A file of a source as it is on disk, for the code preview (its type: css, json, yaml, js, xml).
+     * @param {string} type
      * @param {{path: string}} params
      * @returns {Promise<{text: string, encoding: string, file_name: string, longest_line: number}>}
      */
-    css: (params, signal) => request(`/api/files/css${query(params)}`, { signal }),
+    source: (type, params, signal) => request(`/api/files/${type}${query(params)}`, { signal }),
     /**
      * A web page of a source as it is on disk, for the preview.
      * @param {{path: string}} params

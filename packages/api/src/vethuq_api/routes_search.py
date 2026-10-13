@@ -42,31 +42,31 @@ def register(api: Blueprint, core: Core) -> None:
             )
         return jsonify(core.search().source_file(path))
 
-    @api.get("/files/css")
-    def css_file() -> Response:
-        """A stylesheet of a source as it is on disk, for the code preview. (The index re-flows it
-        to a rule a line, so its lines are not the file's.)"""
-        path = request.args.get("path")
-        if (
-            not isinstance(path, str)
-            or not core.search().is_type(path, "css")
-            or not core.sources().may_open(path)
-        ):
-            raise ValueError("Only a stylesheet of a source that VethuQ reads can be shown here.")
-        return jsonify(core.search().source_file(path))
+    # The preview of a file the index keeps in another shape (a stylesheet re-flowed, a web page
+    # without its tags, JSON and YAML and XML flattened to `path: value` lines, a script without its
+    # blank lines): the file as it is on disk, one route for each type.
+    def source_route(file_type: str, what: str) -> None:
+        def view() -> Response:
+            path = request.args.get("path")
+            if (
+                not isinstance(path, str)
+                or not core.search().is_type(path, file_type)
+                or not core.sources().may_open(path)
+            ):
+                raise ValueError(f"Only {what} of a source that VethuQ reads can be shown here.")
+            return jsonify(core.search().source_file(path))
 
-    @api.get("/files/html")
-    def html_file() -> Response:
-        """A web page of a source as it is on disk, for the preview. (The index keeps only what a
-        reader sees, so it can be neither shown nor read as markup.)"""
-        path = request.args.get("path")
-        if (
-            not isinstance(path, str)
-            or not core.search().is_type(path, "html")
-            or not core.sources().may_open(path)
-        ):
-            raise ValueError("Only a web page of a source that VethuQ reads can be shown here.")
-        return jsonify(core.search().source_file(path))
+        api.add_url_rule(f"/files/{file_type}", endpoint=f"{file_type}_file", view_func=view)
+
+    for kind, what in (
+        ("css", "a stylesheet"),
+        ("html", "a web page"),
+        ("json", "a JSON file"),
+        ("yaml", "a YAML file"),
+        ("js", "a script"),
+        ("xml", "an XML file"),
+    ):
+        source_route(kind, what)
 
     @api.get("/files/csv")
     def csv_window() -> Response:

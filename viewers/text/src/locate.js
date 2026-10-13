@@ -20,10 +20,14 @@ const commonPrefix = (a, b) => {
 };
 
 const CONTEXT = 40;
+// How far before the words the hint (a key) may start: its own length and this much (`": ["`).
+const HINT_SLACK = 12;
 
 /**
  * @param {string} text
- * @param {{before?: string, matched: string, after?: string}} match
+ * @param {{before?: string, matched: string, after?: string, hint?: string}} match `hint`: a word
+ *   (a key) that should be shortly before the words, for a file that was indexed as `key: value`
+ *   lines; an occurrence with it before it wins over one without.
  * @returns {{offset: number, end: number, line: number, column: number} | null} Where the words
  *   are: character offsets, and the line and column (both from 1).
  */
@@ -44,9 +48,16 @@ export function locateWords(text, match) {
   let best = -1;
   let bestScore = -1;
   for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + 1)) {
-    const score =
+    let score =
       commonSuffix(before, hay.slice(Math.max(0, at - CONTEXT), at)) +
       commonPrefix(after, hay.slice(at + needle.length, at + needle.length + CONTEXT));
+    if (
+      match.hint &&
+      text
+        .slice(Math.max(0, kept[at] - match.hint.length - HINT_SLACK), kept[at])
+        .includes(match.hint)
+    )
+      score += 1000;
     if (score > bestScore) {
       best = at;
       bestScore = score;
