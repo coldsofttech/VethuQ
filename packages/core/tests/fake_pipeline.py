@@ -175,6 +175,8 @@ class FakeEngine:
         if not angle and isinstance(image, tuple) and len(image) > 4:
             text, confidence = image[4].get(self._language, (text, confidence))
         lines = tuple((line, confidence) for line in text.splitlines())
+        # Where each line sits: one band under the other, as fractions of the image.
+        boxes = tuple((0.1, 0.1 + 0.1 * i, 0.9, 0.18 + 0.1 * i) for i in range(len(lines)))
         return OcrResult(
             text=text,
             confidence=confidence if text else 0.0,
@@ -183,6 +185,7 @@ class FakeEngine:
             image_width=100,
             image_height=200,
             lines=lines,
+            boxes=boxes,
         )
 
 

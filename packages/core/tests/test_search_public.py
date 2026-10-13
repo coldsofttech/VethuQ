@@ -647,3 +647,50 @@ class TestPageText:
         (match,) = texts.search.run("wheat", engine="like")
         assert texts.search.page_text(match.document_id, 99) is None
         assert texts.search.page_text(987654) is None
+
+
+class TestPlacedMatches:
+    """A page read by OCR keeps where each line was read: a match says where on the picture."""
+
+    @pytest.fixture
+    def scanned(self, client, tmp_path):
+        folder = tmp_path / "scans"
+        folder.mkdir()
+        write(
+            folder,
+            "scan.pdf",
+            fp.scanned_page("first line here\nsecond has wheat in it\nthird line"),
+        )
+        write(folder, "plain.pdf", native("Plain wheat on a page with a text layer."))
+        client.sources.create(folder)
+        assert client.index.run().status.value == "completed"
+        return client
+
+    def test_a_match_on_a_scanned_page_has_its_box(self, scanned):
+        (match,) = [
+            m for m in scanned.search.run("wheat", engine="like") if m.file_name == "scan.pdf"
+        ]
+        assert match.boxes is not None and len(match.boxes) == 1
+        x0, y0, x1, y1 = match.boxes[0]
+        # The second line of the page: the fake engine puts the lines one under another.
+        assert (round(y0, 2), round(y1, 2)) == (0.2, 0.28)
+        # Narrowed to the words' share of "second has wheat in it": characters 11 to 16 of 22.
+        assert 0.1 < x0 < x1 < 0.9
+        assert x0 == pytest.approx(0.1 + 0.8 * 11 / 22, abs=0.01)
+        assert x1 == pytest.approx(0.1 + 0.8 * 16 / 22, abs=0.01)
+        assert match.to_dict()["boxes"] == [list(match.boxes[0])] or match.to_dict()["boxes"]
+
+    def test_a_page_with_a_text_layer_has_none(self, scanned):
+        (match,) = [
+            m for m in scanned.search.run("wheat", engine="like") if m.file_name == "plain.pdf"
+        ]
+        assert match.boxes is None
+
+    def test_reading_the_file_again_replaces_the_boxes(self, scanned, tmp_path):
+        folder = tmp_path / "scans"
+        write(folder, "scan.pdf", fp.scanned_page("only one wheat line now"))
+        assert scanned.index.run().status.value == "completed"
+        (match,) = [
+            m for m in scanned.search.run("wheat", engine="like") if m.file_name == "scan.pdf"
+        ]
+        assert match.boxes is not None and round(match.boxes[0][1], 2) == 0.1

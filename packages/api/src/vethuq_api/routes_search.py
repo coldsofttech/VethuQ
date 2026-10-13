@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 
 from vethuq_api.core import Core
 from vethuq_api.routes_credits import _attachment
@@ -67,6 +68,39 @@ def register(api: Blueprint, core: Core) -> None:
         ("xml", "an XML file"),
     ):
         source_route(kind, what)
+
+    # Pictures: JPEG and PNG as they are (a browser draws them), a TIFF one frame at a time as PNG.
+    def picture_route(file_type: str, what: str) -> None:
+        def view() -> Response:
+            path = request.args.get("path")
+            if (
+                not isinstance(path, str)
+                or not core.search().is_type(path, file_type)
+                or not core.sources().may_open(path)
+            ):
+                raise ValueError(f"Only {what} of a source that VethuQ reads can be shown here.")
+            if file_type == "tiff":
+                response = Response(
+                    core.search().tiff_frame(path, request.args), mimetype="image/png"
+                )
+            else:
+                response = send_file(
+                    os.path.realpath(path),
+                    mimetype="image/jpeg" if file_type == "jpg" else "image/png",
+                    conditional=True,
+                    max_age=0,
+                )
+            response.headers["Content-Disposition"] = "inline"
+            return response
+
+        api.add_url_rule(f"/files/{file_type}", endpoint=f"{file_type}_file", view_func=view)
+
+    for kind, what in (
+        ("jpg", "a JPEG picture"),
+        ("png", "a PNG picture"),
+        ("tiff", "a TIFF picture"),
+    ):
+        picture_route(kind, what)
 
     @api.get("/files/csv")
     def csv_window() -> Response:

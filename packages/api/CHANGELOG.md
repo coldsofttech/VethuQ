@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (picture preview)
+- `GET /api/files/png`, `/jpg` and `/tiff` (`?path=`) serve a picture of a source: JPEG and PNG as they are, a TIFF frame (`page`, from 1) as a PNG, turned upright and brought to 8-bit colour. A frame over 40 megapixels is refused. `GET /api/files/text` also serves the text OCR read from these pictures.
+
 ### Added (JSON, YAML, JavaScript and XML previews)
 - `GET /api/files/json`, `/yaml`, `/js` and `/xml` (`?path=`) return a file of a source as it is on disk, like the CSS and web page routes now do through one shared handler, for the code preview.
 

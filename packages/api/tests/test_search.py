@@ -489,3 +489,157 @@ class TestSourceFiles:
             assert self.get(http, kind, path).status_code == 422, path
         bare = http.get(f"/api/files/{kind}", base_url=ORIGIN)
         assert bare.status_code == 422 and what in bare.get_json()["error"]
+
+
+PICTURES = {"png": ".png", "jpg": ".jpg", "tiff": ".tiff"}
+
+
+@pytest.mark.parametrize("kind", sorted(PICTURES))
+class TestPictures:
+    """The picture routes: a JPEG and a PNG as they are, a TIFF one frame at a time as a PNG. The
+    add-ons of these types may be missing here, so the type checks are replaced as for the other
+    files; what is tested is the route and the file."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch, kind):
+        from PIL import Image
+
+        extension = PICTURES[kind]
+        red = Image.new("RGB", (40, 20), (255, 0, 0))
+        blue = Image.new("RGB", (30, 50), (0, 0, 255))
+        target = library / "a" / f"sample{extension}"
+        if kind == "tiff":
+            red.save(target, save_all=True, append_images=[blue])
+        else:
+            red.save(target)
+        red.save(library / f"outside{extension}")
+        probe = VethuQ(library / "probe.db")
+        try:
+            spec = probe.file_types.get(kind)
+            installed = spec is not None and spec.available
+        finally:
+            probe.close()
+        if not installed:
+            monkeypatch.setattr(
+                SearchService,
+                "is_type",
+                lambda self, path, wanted: wanted == kind and path.lower().endswith(extension),
+            )
+            real = SourcesService.may_open
+            inside = os.path.realpath(library / "a")
+
+            def may_open(self, path):
+                real_path = os.path.realpath(path)
+                return real(self, path) or (
+                    os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+                )
+
+            monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, kind, path, **query):
+        return http.get(
+            f"/api/files/{kind}", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def size(self, reply):
+        import io
+
+        from PIL import Image
+
+        picture = Image.open(io.BytesIO(reply.data))
+        return picture.format, picture.size
+
+    def test_the_picture_is_served_inline(self, http, kind):
+        extension = PICTURES[kind]
+        reply = self.get(http, kind, http.library / "a" / f"sample{extension}")
+        assert reply.status_code == 200 and reply.headers["Content-Disposition"] == "inline"
+        assert reply.mimetype == ("image/jpeg" if kind == "jpg" else "image/png")
+        assert reply.headers["Cache-Control"] == "no-store"
+        assert self.size(reply) == ("JPEG" if kind == "jpg" else "PNG", (40, 20))
+
+    def test_only_a_picture_of_that_type_in_a_source(self, http, kind):
+        extension = PICTURES[kind]
+        for path in (
+            http.library / f"outside{extension}",
+            http.library / "a" / "notes.txt",
+            http.library / "a" / f"missing{extension}",
+        ):
+            assert self.get(http, kind, path).status_code == 422, path
+        assert http.get(f"/api/files/{kind}", base_url=ORIGIN).status_code == 422
+
+
+class TestTiffFrames:
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        from PIL import Image
+
+        extension = ".tiff"
+        frames = [
+            Image.new("RGB", (40, 20), (255, 0, 0)),
+            Image.new("L", (30, 50), 128),
+            Image.new("CMYK", (10, 10), (0, 255, 255, 0)),
+        ]
+        frames[0].save(library / "a" / "scan.tiff", save_all=True, append_images=frames[1:])
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "tiff" and path.lower().endswith(extension),
+        )
+        monkeypatch.setattr(SourcesService, "may_open", lambda self, path: os.path.isfile(path))
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def frame(self, http, **query):
+        return http.get(
+            "/api/files/tiff",
+            query_string={"path": str(http.library / "a" / "scan.tiff"), **query},
+            base_url=ORIGIN,
+        )
+
+    def png(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data))
+
+    def test_each_frame_is_a_png_of_its_own_size(self, http):
+        first = self.png(self.frame(http))
+        assert (first.format, first.size) == ("PNG", (40, 20))
+        second = self.png(self.frame(http, page=2))
+        assert second.size == (30, 50)
+        third = self.png(self.frame(http, page=3))  # CMYK is brought to ordinary colour
+        assert third.mode in ("RGB", "RGBA") and third.size == (10, 10)
+
+    def test_a_frame_that_is_not_there_or_not_a_number(self, http):
+        for page in (0, 4, "x", -1):
+            assert self.frame(http, page=page).status_code == 422, page
+
+    def test_a_frame_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.frame(http, page=2)  # 30 x 50 = 1500 pixels
+        assert reply.status_code == 422 and "too large to preview" in reply.get_json()["error"]
+        assert self.frame(http, page=3).status_code == 200  # 100 pixels
+
+    def test_a_16_bit_frame_is_scaled_to_eight_bits(self, http):
+        import numpy as np
+        from PIL import Image
+
+        grey = Image.fromarray(np.array([[0, 1000], [2000, 4000]], dtype=np.uint16))
+        grey.save(http.library / "a" / "scan.tiff")
+        picture = self.png(self.frame(http))
+        assert picture.mode == "L" and picture.getextrema() == (0, 255)

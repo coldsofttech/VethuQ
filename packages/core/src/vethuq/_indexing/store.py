@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _DocumentLanguage, _PdfPage, _PdfPagePhase, _PdfPageQuick
+from vethuq._db import _DocumentLanguage, _PdfLineBox, _PdfPage, _PdfPagePhase, _PdfPageQuick
 from vethuq._db.values import _PageSource, _PageState, _PassSource, _PassStatus
 from vethuq._filetypes import _PageDetails
 from vethuq._ocr import _PageResult
@@ -142,6 +142,22 @@ class _PageStore:
         return json.dumps(result.lines) if result.lines else None
 
     @staticmethod
+    def save_boxes(
+        session: Session,
+        page_id: int,
+        boxes: tuple[tuple[str, float, float, float, float], ...],
+        replace: bool = False,
+    ) -> None:
+        """Remember where OCR read lines of a page (`(text, x0, y0, x1, y1)`); with `replace`, in
+        place of what was kept before."""
+        if replace:
+            session.execute(delete(_PdfLineBox).where(_PdfLineBox.page_id == page_id))
+        session.add_all(
+            _PdfLineBox(page_id=page_id, text=text, x0=x0, y0=y0, x1=x1, y1=y1)
+            for text, x0, y0, x1, y1 in boxes
+        )
+
+    @staticmethod
     def trim(session: Session, document_id: int, last_page: int) -> None:
         """Drop the pages after `last_page`: the file has fewer pages than the last time."""
         for page in session.scalars(
@@ -207,6 +223,7 @@ class _PageStore:
             )
             session.add(page)
             session.flush()
+            _PageStore.save_boxes(session, page.id, result.boxes)
             _PageDetails.save(session, file_type, page.id, result.details)
         elif replace:
             session.execute(delete(_PdfPageQuick).where(_PdfPageQuick.page_id == page.id))
@@ -219,6 +236,7 @@ class _PageStore:
             page.read_lines = _PageStore._lines(result) if keep_lines else None
             page.status = _PageState.WAITING if result.pending else _PageState.DONE
             session.flush()
+            _PageStore.save_boxes(session, page.id, result.boxes, replace=True)
             _PageDetails.save(session, file_type, page.id, result.details)
         elif not result.pending and result.quick is not None:
             if page.status is _PageState.DONE:  # an earlier language's text: add to it

@@ -1129,4 +1129,156 @@ describe('Search', () => {
       expect(within(panel).queryByRole('tab', { name: 'Formatted' })).toBeNull();
     });
   });
+
+  describe('the picture preview', () => {
+    const TEXT = {
+      total: 3,
+      start: 0,
+      lines: ['first line here', 'second has wheat in it', 'third line'],
+      file_name: 'scan.png',
+      file_type: 'png',
+    };
+    const found = (over = {}) => ({
+      ...RESULT,
+      matches: [
+        match({
+          file_name: 'scan.png',
+          file_path: '/docs/scan.png',
+          file_type: 'png',
+          document_id: 11,
+          total_pages: 1,
+          page_number: 1,
+          before: 'first line here second has ',
+          matched: 'wheat',
+          after: ' in it third line',
+          start: 27,
+          end: 32,
+          boxes: [[0.55, 0.2, 0.73, 0.28]],
+          ...over,
+        }),
+      ],
+    });
+
+    beforeEach(() => {
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(400);
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    });
+
+    const show = async (result = found(), routes = {}) => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': result,
+        'GET /api/files/text': TEXT,
+        ...routes,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText(/\d of \d/))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'Picture preview' });
+      return { fetchMock, panel };
+    };
+
+    // jsdom loads no pictures: say it has loaded one that is 800 x 600.
+    const loaded = (panel) => {
+      const image = panel.querySelector('img');
+      Object.defineProperty(image, 'naturalWidth', { value: 800, configurable: true });
+      Object.defineProperty(image, 'naturalHeight', { value: 600, configurable: true });
+      fireEvent.load(image);
+      return image;
+    };
+
+    it('shows the picture with the match boxed and the text read from it with the match marked', async () => {
+      const { panel } = await show();
+      const image = loaded(panel);
+      expect(image.getAttribute('src')).toBe('/api/files/png?path=%2Fdocs%2Fscan.png');
+      expect(within(panel).getByText(/Match 1 of 1 · picture/)).toBeInTheDocument();
+      const box = panel.querySelector('[data-box]');
+      expect(box.style.left).toBe('55%');
+      expect(box.style.top).toBe('20%');
+      const text = within(panel).getByRole('region', { name: 'Text read from the picture' });
+      await waitFor(() => expect(text.querySelector('mark')?.textContent).toBe('wheat'));
+      expect(text.querySelector('mark').parentElement.textContent).toBe('second has wheat in it');
+    });
+
+    it('says where on the picture is not known when the engine did not say', async () => {
+      const { panel } = await show(found({ boxes: null }));
+      loaded(panel);
+      expect(panel.querySelector('[data-box]')).toBeNull();
+      expect(await within(panel).findByText(/not known/)).toBeInTheDocument();
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('wheat'));
+    });
+
+    it('zooms and turns the picture', async () => {
+      const { panel } = await show();
+      const image = loaded(panel);
+      expect(image.style.width).toBe('400px'); // fitted: 800 x 600 into 400 x 300
+      await userEvent.click(within(panel).getByRole('button', { name: '100%' }));
+      expect(image.style.width).toBe('800px');
+      await userEvent.click(within(panel).getByRole('button', { name: 'Zoom out' }));
+      expect(image.style.width).toBe('640px');
+      await userEvent.click(within(panel).getByRole('button', { name: 'Fit to the panel' }));
+      expect(image.style.width).toBe('400px');
+      await userEvent.click(within(panel).getByRole('button', { name: 'Turn right' }));
+      expect(image.style.transform).toBe('rotate(90deg)');
+      await userEvent.click(within(panel).getByRole('button', { name: 'Turn left' }));
+      await userEvent.click(within(panel).getByRole('button', { name: 'Turn left' }));
+      expect(image.style.transform).toBe('rotate(270deg)');
+    });
+
+    it('opens a TIFF at the frame of the match and goes from frame to frame', async () => {
+      const tiff = found({
+        file_name: 'scan.tiff',
+        file_path: '/docs/scan.tiff',
+        file_type: 'tiff',
+        total_pages: 3,
+        page_number: 2,
+      });
+      const { fetchMock, panel } = await show(tiff);
+      let image = loaded(panel);
+      expect(image.getAttribute('src')).toBe('/api/files/tiff?path=%2Fdocs%2Fscan.tiff&page=2');
+      expect(within(panel).getByText(/frame 2 of 3/)).toBeInTheDocument();
+      expect(panel.querySelector('[data-box]')).not.toBeNull();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Next frame' }));
+      await waitFor(() =>
+        expect(panel.querySelector('img').getAttribute('src')).toContain('page=3'),
+      );
+      expect(within(panel).getByRole('button', { name: 'Next frame' })).toBeDisabled();
+      image = loaded(panel);
+      // The box belongs to frame 2, and the text of frame 3 is asked for.
+      expect(panel.querySelector('[data-box]')).toBeNull();
+      const asked = fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((u) => u.startsWith('/api/files/text'));
+      expect(asked.some((u) => u.includes('page=3'))).toBe(true);
+      await userEvent.click(within(panel).getByRole('button', { name: 'Previous frame' }));
+      await userEvent.click(within(panel).getByRole('button', { name: 'Previous frame' }));
+      await waitFor(() =>
+        expect(panel.querySelector('img').getAttribute('src')).toContain('page=1'),
+      );
+      expect(image).toBeDefined();
+    });
+
+    it('says why a picture could not be shown', async () => {
+      const { panel } = await show(found(), {
+        'GET /api/files/png': Response.json(
+          { error: 'This frame is 90 megapixels, too large to preview.' },
+          { status: 422 },
+        ),
+      });
+      fireEvent.error(panel.querySelector('img'));
+      expect(await within(panel).findByText(/too large to preview/)).toBeInTheDocument();
+    });
+
+    it('says when no text was read, and does not open a picture at a line', async () => {
+      const { panel } = await show(found(), {
+        'GET /api/files/text': { total: 0, start: 0, lines: [], file_name: 'scan.png' },
+      });
+      expect(await within(panel).findByText(/No text was read/)).toBeInTheDocument();
+    });
+  });
 });

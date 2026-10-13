@@ -55,6 +55,9 @@ class _PageResult:
     # What OCR read, line by line with its score (a scanned page only): the language detection
     # keeps the believable ones when the language it read the page in is doubted.
     lines: tuple[tuple[str, float], ...] = ()
+    # Where OCR read each line of a scanned page: `(text, x0, y0, x1, y1)`, as fractions of the
+    # image (see `OcrResult.boxes`). Empty when the engine does not say.
+    boxes: tuple[tuple[str, float, float, float, float], ...] = ()
 
 
 class _PageOcr:
@@ -211,8 +214,23 @@ class _PageOcr:
         )
         return _PageResult(
             number, ocr_text or native, confidence, _PageSource.OCR, width, height, quick,
-            charged, factor, lines=read_lines,
+            charged, factor, lines=read_lines, boxes=_PageOcr.line_boxes(results),
         )  # fmt: skip
+
+    @staticmethod
+    def line_boxes(
+        results: list[OcrResult], skip: Callable[[str, float], bool] | None = None
+    ) -> tuple[tuple[str, float, float, float, float], ...]:
+        """Where each line the results read sits on its image, for the engines that say (a result
+        whose boxes do not match its lines is ignored). `skip(line, score)` leaves lines out."""
+        out = []
+        for result in results:
+            if not result.boxes or len(result.boxes) != len(result.lines):
+                continue
+            for (line, score), (x0, y0, x1, y1) in zip(result.lines, result.boxes, strict=True):
+                if line.strip() and not (skip and skip(line, float(score))):
+                    out.append((line.strip(), float(x0), float(y0), float(x1), float(y1)))
+        return tuple(out)
 
     @staticmethod
     def read_page(

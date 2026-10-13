@@ -145,7 +145,7 @@ function ResultMenu({ match, actions, platform, onlyFile }) {
         title={
           canPreview(match)
             ? undefined
-            : 'Preview is for PDF, text, Markdown, CSV, CSS, HTML, JSON, YAML, JS and XML files for now'
+            : 'Preview is for PDF, text, Markdown, CSV, CSS, HTML, JSON, YAML, JS, XML and picture files for now'
         }
         onClick={() => actions.preview(match)}
       >

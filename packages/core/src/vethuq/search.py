@@ -83,6 +83,11 @@ class SearchMatch:
     # joined by " | "), not in the file's own row, which can have empty cells and quoting.
     line: int | None = None
     column: int | None = None
+    # Where on the picture the match was read, for a page read by OCR whose engine said where
+    # (see `OcrResult.boxes`): one `(x0, y0, x1, y1)` for each line the match covers, as fractions
+    # (0 to 1) of the image from its top-left corner. The part of a line the words take is worked
+    # out from their share of its characters, so it is near, not exact. None when not known.
+    boxes: tuple[tuple[float, float, float, float], ...] | None = None
 
     @classmethod
     def _from(cls, match: _Match) -> SearchMatch:
@@ -393,34 +398,90 @@ class Search:
     LINE_TYPES = frozenset({"txt", "csv"})
 
     def _located(self, window: list[_Match]) -> list[SearchMatch]:
-        """The public matches of a page of results, each with its file type, and the line and
-        column where it sits in a text-like file."""
+        """The public matches of a page of results, each with its file type, the line and column
+        where it sits in a plain-text file (text, CSV), and where on its picture it was read."""
         texts: dict[tuple[int, int], str] = {}
+        placed: dict[tuple[int, int], list[tuple[str, float, float, float, float]]] = {}
         out = []
         with self._database.session() as session:
+
+            def page_of(match: _Match) -> str:
+                key = (match.document_id, match.page_number)
+                if key not in texts:
+                    texts[key] = (
+                        session.execute(
+                            text(
+                                "SELECT text FROM pdf_pages WHERE document_id = :d "
+                                "AND page_number = :p"
+                            ),
+                            {"d": match.document_id, "p": match.page_number},
+                        ).scalar()
+                        or ""
+                    )
+                return texts[key]
+
+            def lines_of(match: _Match) -> list[tuple[str, float, float, float, float]]:
+                key = (match.document_id, match.page_number)
+                if key not in placed:
+                    rows = session.execute(
+                        text(
+                            "SELECT b.text, b.x0, b.y0, b.x1, b.y1 FROM pdf_line_boxes b "
+                            "JOIN pdf_pages p ON p.id = b.page_id WHERE p.document_id = :d "
+                            "AND p.page_number = :p ORDER BY b.id"
+                        ),
+                        {"d": match.document_id, "p": match.page_number},
+                    ).all()
+                    placed[key] = [tuple(row) for row in rows]
+                return placed[key]
+
             for match in window:
                 file_type = self._file_type_of(match.file_path)
                 line = column = None
                 if file_type in self.LINE_TYPES:
-                    key = (match.document_id, match.page_number)
-                    if key not in texts:
-                        texts[key] = (
-                            session.execute(
-                                text(
-                                    "SELECT text FROM pdf_pages WHERE document_id = :d "
-                                    "AND page_number = :p"
-                                ),
-                                {"d": match.document_id, "p": match.page_number},
-                            ).scalar()
-                            or ""
-                        )
-                    before = texts[key][: match.start]
+                    before = page_of(match)[: match.start]
                     line = before.count("\n") + 1
                     column = match.start - (before.rfind("\n") + 1) + 1
+                boxes = self._boxes(page_of, lines_of, match)
                 out.append(
-                    replace(SearchMatch._from(match), file_type=file_type, line=line, column=column)
+                    replace(
+                        SearchMatch._from(match),
+                        file_type=file_type,
+                        line=line,
+                        column=column,
+                        boxes=boxes,
+                    )
                 )
         return out
+
+    MAX_BOXES = 8
+
+    @staticmethod
+    def _boxes(page_of, lines_of, match: _Match):
+        """Where on its picture a match was read: the box of each line it covers, narrowed to the
+        share of the line its characters take. None when the page's lines were not placed."""
+        read = lines_of(match)
+        if not read:
+            return None
+        by_text: dict[str, tuple[float, float, float, float]] = {}
+        for words, x0, y0, x1, y1 in read:
+            by_text.setdefault(" ".join(words.split()), (x0, y0, x1, y1))
+        found = []
+        position = 0
+        for line in page_of(match).split("\n"):
+            end_of_line = position + len(line)
+            if position < match.end and match.start <= end_of_line and line.strip():
+                box = by_text.get(" ".join(line.split()))
+                if box is not None and len(line) > 0:
+                    x0, y0, x1, y1 = box
+                    first = (max(match.start, position) - position) / len(line)
+                    last = (min(match.end, end_of_line) - position) / len(line)
+                    found.append(
+                        (x0 + first * (x1 - x0), y0, x0 + max(last, first) * (x1 - x0), y1)
+                    )
+            position = end_of_line + 1
+            if position > match.end:
+                break
+        return tuple(found[: Search.MAX_BOXES]) or None
 
     def _scope(
         self, file_types: str | Sequence[str] | None, sources: int | Sequence[int] | None

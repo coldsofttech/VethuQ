@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/image-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only picture viewer: zoom, pan, rotate, and boxes drawn on the picture that turn with it",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

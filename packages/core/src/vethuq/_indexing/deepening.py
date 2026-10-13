@@ -40,6 +40,7 @@ from vethuq._db import (
 from vethuq._db.values import _JobPageState, _PageSource, _PageState
 from vethuq._errors import _OcrModelMissingError
 from vethuq._filetypes import _FileTypeCatalog
+from vethuq._indexing.store import _PageStore
 from vethuq._ocr import _LanguageDetector, _PageOcr
 from vethuq._settings import _ConfidenceSettings
 from vethuq._stats import _PageFact, _Usage
@@ -121,17 +122,27 @@ class _Merge:
         for the language. `keep` says whether a line is believable in the language (see
         `_Deepener.keeper`). Returns the number of lines added."""
         found: list[tuple[str, float]] = []
+        boxes: list[tuple[float, float, float, float] | None] = []
         for angle, result in reads:
             lines = result.lines or tuple(
                 (line, result.confidence) for line in result.text.splitlines()
             )
-            for line, score in lines:
+            # Where a line was read is only kept for an upright read: at another angle the
+            # engine's boxes are on the turned image.
+            placed = result.boxes if len(result.boxes) == len(result.lines) else ()
+            for index, (line, score) in enumerate(lines):
                 if angle % 360 and score < _Merge.MIN_ROTATED_SCORE:
                     continue
                 if keep is not None and not keep(line, float(score)):
                     continue
                 found.append((line, float(score)))
+                boxes.append(placed[index] if placed and not angle % 360 else None)
         text, added = _Merge.lines(page.text, [line for line, _ in found])
+        _PageStore.save_boxes(
+            session,
+            page.id,
+            tuple((found[i][0].strip(), *boxes[i]) for i in added if boxes[i] is not None),
+        )
         if added:
             before = len([line for line in page.text.split("\n") if line.strip()])
             gained = sum(found[i][1] for i in added)

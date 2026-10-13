@@ -241,6 +241,28 @@ class _PdfPageQuick(_Base):
     completed_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class _PdfLineBox(_Base):
+    """Where OCR read a line of a page: its text and its box on the image, as fractions (0 to 1)
+    of the image's width and height from its top-left corner. Kept for pages read from pictures,
+    so a search match can say where on the picture it is."""
+
+    __tablename__ = "pdf_line_boxes"
+    __table_args__ = (
+        Index("ix_pdf_line_boxes_page", "page_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    x0: Mapped[float] = mapped_column(Float, nullable=False)
+    y0: Mapped[float] = mapped_column(Float, nullable=False)
+    x1: Mapped[float] = mapped_column(Float, nullable=False)
+    y1: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 class _TxtPage(_Base):
     """What a plain-text file's type keeps about its page, beside the text in `pdf_pages`."""
 

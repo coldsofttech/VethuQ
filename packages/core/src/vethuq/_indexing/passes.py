@@ -296,12 +296,22 @@ class _Passes:
         """Add the lines `language` read believably to the page, and record that it was read in
         the language. Returns the number of lines added."""
         found: list[tuple[str, float]] = []
+        boxes: list[tuple[float, float, float, float] | None] = []
         for result in results:
             lines = result.lines or tuple(
                 (line, result.confidence) for line in result.text.splitlines()
             )
-            found += _LanguageDetector.believable(lines, language)
+            placed = result.boxes if len(result.boxes) == len(result.lines) else ()
+            for index, (line, score) in enumerate(lines):
+                if _LanguageDetector.believable([(line, score)], language):
+                    found.append((line, score))
+                    boxes.append(placed[index] if placed else None)
         text, added = _Merge.lines(page.text, [line for line, _ in found])
+        _PageStore.save_boxes(
+            session,
+            page.id,
+            tuple((found[i][0].strip(), *boxes[i]) for i in added if boxes[i] is not None),
+        )
         if added:
             before = len([line for line in page.text.split("\n") if line.strip()])
             gained = sum(found[i][1] for i in added)

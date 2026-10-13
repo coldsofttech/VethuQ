@@ -17,7 +17,12 @@ class OcrResult:
 
     `engine` and `language` describe what produced it. `image_width` / `image_height` are the
     recognized image's size in pixels, or None. `lines` are the recognized lines with their own
-    confidence, for callers that filter line by line.
+    confidence, for callers that filter line by line. `boxes`, when the engine knows where it read
+    each line, has one `(x0, y0, x1, y1)` for each of `lines`, as fractions (0 to 1) of the image's
+    width and height, from its top-left corner, in the image as it was passed (before `angle` is
+    applied: an engine that turns the image maps the boxes back). An engine that cannot say, or
+    cannot say reliably (a page it turned itself), leaves it empty: `boxes` is either empty or as
+    long as `lines`.
     """
 
     text: str
@@ -27,6 +32,7 @@ class OcrResult:
     image_width: int | None = None
     image_height: int | None = None
     lines: tuple[tuple[str, float], ...] = ()
+    boxes: tuple[tuple[float, float, float, float], ...] = ()
 
 
 class OcrEngine(Protocol):

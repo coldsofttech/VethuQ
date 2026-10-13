@@ -1280,6 +1280,137 @@ def code_preview_screens(browser: Browser, out: Path) -> None:
     print("code preview checks passed")
 
 
+def sample_picture(frame: int = 1) -> bytes:
+    """A picture of a scanned page: three lines of text, the second with the word to find."""
+    import io
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    page = Image.new("RGB", (900, 600), (250, 247, 240) if frame == 1 else (235, 242, 250))
+    draw = ImageDraw.Draw(page)
+    try:
+        font = ImageFont.load_default(size=34)
+    except TypeError:
+        font = ImageFont.load_default()
+    draw.text((60, 60), f"Harvest report (page {frame})", fill=(30, 30, 30), font=font)
+    draw.text((60, 140), "The price of wheat rose in autumn", fill=(30, 30, 30), font=font)
+    draw.text((60, 220), "Barley and oats stayed flat", fill=(30, 30, 30), font=font)
+    draw.line((60, 300, 840, 300), fill=(120, 120, 120), width=2)
+    out = io.BytesIO()
+    page.save(out, format="PNG")
+    return out.getvalue()
+
+
+def wheat_box() -> list[float]:
+    """Where `wheat` is in `sample_picture`, as fractions of it (found by measuring the text)."""
+    from PIL import ImageFont
+
+    try:
+        font = ImageFont.load_default(size=34)
+    except TypeError:
+        font = ImageFont.load_default()
+    before = font.getlength("The price of ")
+    width = font.getlength("wheat")
+    return [(60 + before) / 900, 138 / 600, (60 + before + width) / 900, 184 / 600]
+
+
+def picture_preview_screens(browser: Browser, out: Path) -> None:
+    """The picture preview. The search result, the text window and the pictures are answered by the
+    test (the picture add-ons are licensed code); the box is where `wheat` is drawn above."""
+    for theme, name, kind in (
+        ("light", "picture-png", "png"),
+        ("dark", "picture-tiff-dark", "tiff"),
+    ):
+        home = tempfile.mkdtemp(prefix="vethuq-ui-")
+        process, url = start_host({**os.environ, "VETHUQ_HOME": home})
+        try:
+            context = browser.new_context(viewport=VIEWPORT, color_scheme=theme)
+            context.add_init_script(f"localStorage.setItem('vethuq.theme', '{theme}')")
+            page = context.new_page()
+            page.goto(url)
+            expect(page.get_by_test_id("app-shell")).to_be_visible()
+            lines = [
+                "Harvest report (page 2)",
+                "The price of wheat rose in autumn",
+                "Barley and oats stayed flat",
+            ]
+            start = len(lines[0]) + 1 + lines[1].index("wheat")
+            match = {
+                "file_id": 1,
+                "document_id": 1,
+                "file_name": f"scan.{kind}",
+                "file_path": f"/x/scan.{kind}",
+                "file_type": kind,
+                "page_number": 2 if kind == "tiff" else 1,
+                "total_pages": 3 if kind == "tiff" else 1,
+                "before": "Harvest report (page 2) The price of ",
+                "matched": "wheat",
+                "after": " rose in autumn",
+                "truncated_before": False,
+                "truncated_after": False,
+                "duplicate_of_path": None,
+                "source": "ocr",
+                "score": None,
+                "start": start,
+                "end": start + 5,
+                "engine": "like",
+                "matched_by": ["like"],
+                "modifiers": [],
+                "boxes": [wheat_box()],
+            }
+            page.route(
+                "**/api/search/run",
+                lambda route, _request, match=match: route.fulfill(
+                    json={
+                        "query": "wheat",
+                        "engine": "like",
+                        "total": 1,
+                        "levels": {},
+                        "index_rebuilt": False,
+                        "pending": {},
+                        "options": {},
+                        "matches": [match],
+                    }
+                ),
+            )
+            page.route(
+                "**/api/files/text**",
+                lambda route, _request, lines=lines: route.fulfill(
+                    json={"total": len(lines), "start": 0, "lines": lines, "file_name": "scan"}
+                ),
+            )
+            page.route(
+                f"**/api/files/{kind}**",
+                lambda route, request, kind=kind: route.fulfill(
+                    body=sample_picture(2 if "page=2" in request.url or kind == "png" else 1),
+                    content_type="image/png",
+                ),
+            )
+            page.get_by_role("tab", name="Search").first.click()
+            box = page.get_by_role("searchbox", name="Search text")
+            box.fill("wheat")
+            box.press("Enter")
+            table = page.get_by_role("table", name="Search results")
+            expect(table).to_be_visible(timeout=30000)
+            table.get_by_text(re.compile(r"\d of \d")).first.click(button="right")
+            page.get_by_role("menuitem", name="Preview").click()
+            panel = page.get_by_role("region", name="Picture preview")
+            expect(panel.locator("[data-box]")).to_be_visible(timeout=30000)
+            expect(panel.locator("mark")).to_have_text("wheat")
+            page.wait_for_timeout(600)
+            shot(page, out, name)
+            if kind == "png":
+                panel.get_by_role("button", name="Turn right").click()
+                panel.get_by_role("button", name="100%").click()
+                page.wait_for_timeout(600)
+                shot(page, out, "picture-turned-zoomed")
+            context.close()
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+    print("picture preview checks passed")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("shots"))
@@ -1291,11 +1422,15 @@ def main() -> int:
     parser.add_argument("--only-css", action="store_true")
     parser.add_argument("--only-html", action="store_true")
     parser.add_argument("--only-code", action="store_true")
+    parser.add_argument("--only-pictures", action="store_true")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel=args.channel, executable_path=args.executable)
         try:
+            if args.only_pictures:
+                picture_preview_screens(browser, args.out)
+                return 0
             if args.only_code:
                 code_preview_screens(browser, args.out)
                 return 0

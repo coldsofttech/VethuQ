@@ -10,13 +10,14 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from vethuq_api import images
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
 DEFAULT_LIMIT = 50
 # The text viewer: which files it shows, how many lines it hands out at once, how much of a line it
 # keeps (a minified file can be one line of megabytes), and how long a file's lines stay split.
-TEXT_TYPES = frozenset({"txt", "markdown"})
+TEXT_TYPES = frozenset({"txt", "markdown", "png", "jpg", "tiff"})
 TEXT_MAX_LINES = 500
 TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
@@ -100,6 +101,11 @@ class SearchService:
         """Whether `path` is a file of the type `file_type` (`css`, `markdown`...)."""
         spec = self._client().file_types.get(file_type)
         return spec is not None and path.lower().endswith(tuple(spec.extensions))
+
+    def tiff_frame(self, path: str, query: Mapping[str, Any]) -> bytes:
+        """Frame `page` (from 1, default 1) of a TIFF as PNG bytes."""
+        frame = _number(_whole(query.get("page", 1), "page"), "page", 1, 1)
+        return images.tiff_frame_as_png(path, frame)
 
     def is_markdown(self, path: str) -> bool:
         return self.is_type(path, "markdown")
