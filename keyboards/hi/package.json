@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/keyboard-hi",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An on-screen Hindi keyboard (InScript layout): the shared keyboard with the Hindi layout",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "@vethuq/keyboard-shared": "*",
+    "react": ">=19"
+  }
+}

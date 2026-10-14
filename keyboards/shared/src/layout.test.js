@@ -24,6 +24,11 @@ describe('bottomRow and symbolsLayer', () => {
     expect(row.map((k) => k.type)).toEqual(['layer', 'text', 'text', 'space', 'enter', 'close']);
   });
 
+  it('takes the marks between the layer key and space', () => {
+    const row = bottomRow({ type: 'layer', to: 'x', label: 'x' }, ',।.');
+    expect(row.filter((k) => k.type === 'text').map((k) => k.value)).toEqual([',', '।', '.']);
+  });
+
   it('puts the language’s digits in the first row and names all its punctuation', () => {
     const layer = symbolsLayer('abcdefghij', { type: 'layer', to: 'x', label: 'x' });
     expect(layer[0].map((k) => k.value).join('')).toBe('abcdefghij');

@@ -16,11 +16,14 @@ export function keys(normal, shifted = '') {
 export const backspaceKey = { type: 'backspace', width: 1.5 };
 export const shiftKey = { type: 'shift', width: 1.5 };
 
-/** The last row of every layer: a key to the other layer, comma, full stop, space, enter, hide. */
-export function bottomRow(layerKey) {
+/**
+ * The last row of every layer: a key to the other layer, `marks` (a comma and a full stop; a
+ * language can add its own, such as the danda), space, enter, hide.
+ */
+export function bottomRow(layerKey, marks = ',.') {
   return [
     { ...layerKey, width: 1.5 },
-    ...keys(',.'),
+    ...keys(marks),
     { type: 'space', width: 5 },
     { type: 'enter', width: 1.5 },
     { type: 'close', width: 1.5 },

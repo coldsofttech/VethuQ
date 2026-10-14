@@ -202,6 +202,18 @@ describe('Search', () => {
     expect(localStorage.getItem('vethuq.keyboard-language')).toBe('te');
   });
 
+  it('offers a Hindi on-screen keyboard too', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    const box = await screen.findByRole('searchbox', { name: 'Search text' });
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Keyboard language' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'हिन्दी (Hindi)' }));
+    const keys = await screen.findByRole('group', { name: 'Hindi on-screen keyboard' });
+    await userEvent.click(within(keys).getByRole('button', { name: 'ग' }));
+    expect(box).toHaveValue('ग');
+  });
+
   it('opens the on-screen keyboard in the language picked last time', async () => {
     localStorage.setItem('vethuq.keyboard-language', 'te');
     mockApi(ROUTES);
