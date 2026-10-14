@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (TSV files)
+- The `.tsv` file type, as the free add-on `vethuq-addon-tsv` (not installed with VethuQ: `pip install vethuq[tsv]`). Read like CSV: a line per non-empty row, cells joined by " | ", never OCR'd. It keeps `encoding`, `row_count` and `column_count` in the `tsv_pages` table, and a search match in a TSV file carries `line` (the Nth non-empty row) and `column`, as for CSV.
+
 ### Added (where on a picture a match is)
 - A page read by OCR keeps where each line was read (`pdf_line_boxes`, from the engine's `OcrResult.boxes`), and a search match carries `boxes`: the box of each line it covers on the picture, narrowed to the words' share of the line (near, not exact). Kept for the first read of a scanned page and for the lines a language pass or a deeper phase adds at the upright angle; a page read again has its boxes replaced. None for a page with a text layer, and for an engine that does not say where.
 

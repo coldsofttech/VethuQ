@@ -30,6 +30,7 @@ vethuq-addon-english = { path = "../VethuQ-premium/packages/add-ons/languages/en
 vethuq-addon-pdf = { path = "../VethuQ-premium/packages/add-ons/file-types/pdf", editable = true }
 vethuq-addon-txt = { path = "../VethuQ-premium/packages/add-ons/file-types/txt", editable = true }
 vethuq-addon-csv = { path = "../VethuQ-premium/packages/add-ons/file-types/csv", editable = true }
+vethuq-addon-tsv = { path = "../VethuQ-premium/packages/add-ons/file-types/tsv", editable = true }
 vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown", editable = true }
 vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png", editable = true }
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg", editable = true }

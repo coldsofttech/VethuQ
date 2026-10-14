@@ -3283,6 +3283,9 @@ search = [
 semantic = [
     { name = "vethuq-addon-semantic" },
 ]
+tsv = [
+    { name = "vethuq-addon-tsv" },
+]
 web = [
     { name = "vethuq-bundle-web" },
 ]
@@ -3311,6 +3314,7 @@ requires-dist = [
     { name = "vethuq-addon-pdf", editable = "../VethuQ-premium/packages/add-ons/file-types/pdf" },
     { name = "vethuq-addon-proximity", marker = "extra == 'proximity'", editable = "../VethuQ-premium/packages/add-ons/search/engines/proximity" },
     { name = "vethuq-addon-semantic", marker = "extra == 'semantic'", editable = "../VethuQ-premium/packages/add-ons/search/engines/semantic" },
+    { name = "vethuq-addon-tsv", marker = "extra == 'tsv'", editable = "../VethuQ-premium/packages/add-ons/file-types/tsv" },
     { name = "vethuq-addon-txt", editable = "../VethuQ-premium/packages/add-ons/file-types/txt" },
     { name = "vethuq-addon-unicode", editable = "../VethuQ-premium/packages/add-ons/search/normalisers/unicode" },
     { name = "vethuq-bundle-deep-scan", marker = "extra == 'deep-scan'", editable = "../VethuQ-premium/packages/bundles/deep-scan" },
@@ -3320,7 +3324,7 @@ requires-dist = [
     { name = "vethuq-bundle-search", marker = "extra == 'search'", editable = "../VethuQ-premium/packages/bundles/search" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", editable = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "search", "semantic", "web"]
+provides-extras = ["deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "search", "semantic", "tsv", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -3824,6 +3828,21 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-tsv"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/tsv" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 

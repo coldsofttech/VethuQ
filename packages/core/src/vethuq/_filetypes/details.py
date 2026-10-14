@@ -21,6 +21,7 @@ from vethuq._db.models import (
     _PptPage,
     _PptxPage,
     _RtfPage,
+    _TsvPage,
     _TxtPage,
     _XlsPage,
     _XlsxPage,
@@ -37,6 +38,7 @@ class _PageDetails:
     TABLES: dict[str, type[_Base]] = {
         "txt": _TxtPage,
         "csv": _CsvPage,
+        "tsv": _TsvPage,
         "markdown": _MarkdownPage,
         "html": _HtmlPage,
         "xml": _XmlPage,

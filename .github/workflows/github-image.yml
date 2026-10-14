@@ -43,7 +43,7 @@ env:
   # that sends jobs to this image).
   PREMIUM_ADDONS: >-
     languages/english languages/telugu languages/hindi languages/urdu languages/french languages/spanish
-    file-types/pdf file-types/txt file-types/csv file-types/markdown
+    file-types/pdf file-types/txt file-types/csv file-types/tsv file-types/markdown
     file-types/png file-types/jpg file-types/tiff
     file-types/html file-types/xml file-types/css file-types/js file-types/json file-types/yaml
     file-types/docx file-types/doc file-types/xlsx file-types/xls file-types/pptx file-types/ppt

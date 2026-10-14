@@ -19,7 +19,7 @@ from pathlib import Path
 BROWSERS = ("msedge.exe", "chrome.exe", "brave.exe", "firefox.exe", "opera.exe", "vivaldi.exe")
 ADOBE = ("acrord32.exe", "acrord64.exe", "acrobat.exe")
 CODE_EDITORS = ("code.exe", "code - insiders.exe", "codium.exe", "cursor.exe")
-LINE_EXTENSIONS = (".txt", ".md", ".markdown", ".csv")
+LINE_EXTENSIONS = (".txt", ".md", ".markdown", ".csv", ".tsv")
 
 
 @dataclass(frozen=True)

@@ -78,12 +78,12 @@ export const placeOf = (match) => {
   if (match.file_type === 'pdf' && match.page_number) return { page: match.page_number };
   // A file the index keeps in another shape (Markdown without its markup, a stylesheet re-flowed,
   // JSON, YAML and XML as `path: value` lines, a script without blank lines) has no line that is
-  // the file's own, and a CSV's line is its Nth row with something in it: none is a line to open an
+  // the file's own, and a CSV's or TSV's line is its Nth row with something in it: none is a line to open an
   // editor at.
   if (['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml'].includes(match.file_type)) return {};
   // A picture's text was read by OCR: there is no line to open it at (a TIFF's frame is its page).
   if (['png', 'jpg'].includes(match.file_type)) return {};
-  if (match.file_type === 'csv') return match.line != null ? { line: match.line } : {};
+  if (['csv', 'tsv'].includes(match.file_type)) return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
     return match.column != null ? { line: match.line, column: match.column } : { line: match.line };
   }

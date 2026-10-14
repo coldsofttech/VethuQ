@@ -288,6 +288,19 @@ class _CsvPage(_Base):
     column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # widest row
 
 
+class _TsvPage(_Base):
+    """What the TSV type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "tsv_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty rows
+    column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # widest row
+
+
 class _MarkdownPage(_Base):
     """What the Markdown type keeps about its page, beside the text in `pdf_pages`."""
 

@@ -21,7 +21,7 @@ RUN apt-get update \
 COPY wheels /wheels
 # --pre: wheels built between tags carry development versions.
 RUN pip install --pre --find-links /wheels "vethuq-worker[run]" vethuq-entitlements \
-        vethuq-addon-english vethuq-addon-pdf vethuq-addon-txt vethuq-addon-csv \
+        vethuq-addon-english vethuq-addon-pdf vethuq-addon-txt vethuq-addon-csv vethuq-addon-tsv \
         vethuq-addon-markdown vethuq-addon-png vethuq-addon-jpg vethuq-addon-tiff \
         vethuq-addon-html vethuq-addon-xml vethuq-addon-css vethuq-addon-js vethuq-addon-json vethuq-addon-yaml \
         vethuq-addon-docx vethuq-addon-doc vethuq-addon-xlsx vethuq-addon-xls vethuq-addon-pptx \

@@ -735,7 +735,7 @@ Each also has a `get_...` and `reset_...`. The stability check waits once per ru
 
 ## File types
 
-`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. Image files (PNG, JPG, TIFF) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
+`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. TSV files (`vethuq-addon-tsv`, tab-separated values) are read the same way, from a free add-on that is not installed with VethuQ: `pip install vethuq[tsv]`. Image files (PNG, JPG, TIFF) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
 
 ```python
 client.file_types.list_all()      # every file type, with `available` and `enabled`
