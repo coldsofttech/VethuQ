@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (GIF files)
+- The `.gif` file type, as the free add-on `vethuq-addon-gif` in the image bundle (`pip install vethuq[images]`; not installed with VethuQ). Read with Pillow like the other image types. An animated GIF is not a page per frame: its pages are its distinct pictures (each counted once, at most 30, from the first 1,000 frames), each as a viewer shows it, so a looping animation is not priced per frame and a caption that appears in a later frame is read. The worker image reads GIF files too.
+
 ### Added (BMP files)
 - The `.bmp` and `.dib` file types, as the free add-on `vethuq-addon-bmp` in the image bundle (`pip install vethuq[images]`; not installed with VethuQ). Read with Pillow like PNG, JPG and TIFF: a page for OCR, priced by its pixels. A BMP is also one of the pictures a Markdown or HTML file can link to. The worker image reads BMP files too.
 

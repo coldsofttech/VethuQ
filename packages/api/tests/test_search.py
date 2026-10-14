@@ -984,3 +984,174 @@ class TestBmpPicture:
             "This picture is" in reply.get_json()["error"]
             and "too large" in reply.get_json()["error"]
         )
+
+
+class TestGifPictures:
+    """A GIF shown one page (distinct picture) at a time as a PNG. The GIF add-on may not be
+    installed in this checkout, so the type check is replaced; the route and the pictures are
+    what is tested."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        from PIL import Image, ImageDraw
+
+        folder = library / "a"
+
+        def gif(name, frames, **kw):
+            frames[0].save(
+                folder / name, "GIF", save_all=len(frames) > 1, append_images=frames[1:], **kw
+            )
+
+        red, green, blue = (
+            Image.new("RGB", (40, 20), colour) for colour in ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+        )
+        gif("three.gif", [red, green, blue], duration=100, loop=0)
+        gif("loop.gif", [red, green] * 3, duration=100, loop=0)
+        gif("still.gif", [red])
+        ink = Image.new("P", (30, 30), 0)  # index 0 transparent, index 1 black ink
+        ink.putpalette([255, 255, 255, 0, 0, 0] + [0, 0, 0] * 254)
+        ImageDraw.Draw(ink).rectangle([10, 10, 20, 20], fill=1)
+        gif("transparent.gif", [ink], transparency=0)
+        (folder / "notes.gif").write_bytes(b"this is not a picture")
+        red.save(library / "outside.gif", "GIF")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "gif" and path.lower().endswith(".gif"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="three.gif", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/gif", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def picture(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data)).convert("RGB")
+
+    def test_each_page_is_a_png_of_that_picture(self, http):
+        first = self.get(http)
+        assert first.status_code == 200 and first.mimetype == "image/png"
+        assert first.headers["Content-Disposition"] == "inline"
+        assert self.picture(first).size == (40, 20)
+        assert self.picture(first).getpixel((0, 0)) == (255, 0, 0)
+        assert self.picture(self.get(http, page=2)).getpixel((0, 0)) == (0, 255, 0)
+        assert self.picture(self.get(http, page=3)).getpixel((0, 0)) == (0, 0, 255)
+
+    def test_a_loop_is_two_pages_not_six(self, http):
+        assert self.get(http, "loop.gif", page=2).status_code == 200
+        reply = self.get(http, "loop.gif", page=3)
+        assert reply.status_code == 422 and "has 2 frames" in reply.get_json()["error"]
+
+    def test_a_still_gif_is_one_page(self, http):
+        assert self.get(http, "still.gif").status_code == 200
+        reply = self.get(http, "still.gif", page=2)
+        assert reply.status_code == 422 and "has 1 frame." in reply.get_json()["error"]
+
+    def test_a_page_that_is_not_there_or_not_a_number(self, http):
+        for page in (0, 4, "x", -1):
+            assert self.get(http, page=page).status_code == 422, page
+
+    def test_transparency_is_laid_on_white_so_ink_shows_on_any_theme(self, http):
+        picture = self.picture(self.get(http, "transparent.gif"))
+        assert picture.getpixel((0, 0)) == (255, 255, 255)
+        assert picture.getpixel((15, 15)) == (0, 0, 0)
+
+    def test_only_a_gif_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.gif")}
+        assert http.get("/api/files/gif", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.gif").status_code == 422
+
+    def test_a_file_that_is_not_a_gif_says_why(self, http):
+        reply = self.get(http, "notes.gif")
+        assert reply.status_code == 422 and "not a GIF" in reply.get_json()["error"]
+
+    def test_a_picture_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.get(http)  # 40 x 20 = 800 pixels
+        assert reply.status_code == 422 and "too large to preview" in reply.get_json()["error"]
+
+
+class TestGifPagesAreTheOnesTheAddOnReads:
+    """The preview shows the picture that was read: its pages are the add-on's, one for one. This
+    needs the GIF add-on (installed with the image bundle), so it is skipped without it."""
+
+    def animations(self, tmp_path):
+        from PIL import Image, ImageDraw
+
+        def solid(colour):
+            return Image.new("RGB", (60, 30), colour)
+
+        base = solid((200, 200, 200))
+        captioned = base.copy()
+        ImageDraw.Draw(captioned).rectangle([40, 20, 50, 28], fill=(0, 0, 0))
+        cases = {
+            "still": [solid((9, 9, 9))],
+            "loop": [solid((255, 0, 0)), solid((0, 255, 0))] * 4,
+            "returns": [
+                solid((255, 0, 0)),
+                solid((0, 255, 0)),
+                solid((255, 0, 0)),
+                solid((0, 0, 255)),
+            ],
+            "partial": [base, captioned, base, captioned],
+            "many": [solid((n * 7, 0, 0)) for n in range(1, 41)],  # more than the page limit
+        }
+        paths = {}
+        for name, frames in cases.items():
+            path = tmp_path / f"{name}.gif"
+            frames[0].save(
+                path,
+                "GIF",
+                save_all=len(frames) > 1,
+                append_images=frames[1:],
+                optimize=name == "partial",
+            )
+            paths[name] = path
+        return paths
+
+    def test_the_same_number_of_pages_and_the_same_pictures(self, tmp_path):
+        import io
+
+        from PIL import Image
+
+        reader = pytest.importorskip("vethuq_addon_gif.reader")
+        from vethuq_api import images
+
+        for name, path in self.animations(tmp_path).items():
+            read = []
+            for page in reader.GifReader().read(path):
+                read.append(page.render(None)[:, :, ::-1].copy())  # BGR to RGB
+            assert images.gif_pages(str(path)) == len(read), name
+            for number, expected in enumerate(read, start=1):
+                shown = Image.open(io.BytesIO(images.gif_page_as_png(str(path), number)))
+                assert shown.convert("RGB").tobytes() == expected.tobytes(), (name, number)
+
+    def test_the_limits_match(self):
+        reader = pytest.importorskip("vethuq_addon_gif.reader")
+        from vethuq_api import images
+
+        assert images.GIF_MAX_PAGES == reader.GifReader.MAX_PAGES
+        assert images.GIF_MAX_SCAN_FRAMES == reader.GifReader.MAX_SCAN_FRAMES

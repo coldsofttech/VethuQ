@@ -87,7 +87,7 @@ export const placeOf = (match) => {
   )
     return {};
   // A picture's text was read by OCR: there is no line to open it at (a TIFF's frame is its page).
-  if (['png', 'jpg', 'bmp'].includes(match.file_type)) return {};
+  if (['png', 'jpg', 'bmp', 'gif'].includes(match.file_type)) return {};
   if (['csv', 'tsv'].includes(match.file_type))
     return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
@@ -124,4 +124,5 @@ export const canPreview = (match) =>
     'jpg',
     'tiff',
     'bmp',
+    'gif',
   ].includes(match.file_type);

@@ -19,6 +19,9 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (GIF preview)
+- `GET /api/files/gif?path=&page=` serves page `page` (from 1) of a GIF of a source as a PNG: the picture a viewer shows at that point of the animation, with transparency laid on white as OCR sees it. The pages are the GIF add-on's (the distinct pictures of the animation), so "frame 2 of 3" is the picture that was read. A frame over 40 megapixels is refused.
+
 ### Added (BMP preview)
 - `GET /api/files/bmp?path=` serves a BMP (or DIB) of a source as a PNG in ordinary 8-bit colour, so a run-length encoded, OS/2 or headerless one is drawn by every browser; a 32-bit one whose alpha bytes are all zero is shown opaque, not blank. A picture over 40 megapixels is refused. A BMP or TIFF that is damaged, cut off or not a picture now gives a readable 422 (it was an unhandled error).
 

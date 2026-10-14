@@ -1498,6 +1498,38 @@ describe('Search', () => {
       await waitFor(() => expect(text.querySelector('mark')?.textContent).toBe('wheat'));
     });
 
+    it('opens an animated GIF at the page of the match and goes from picture to picture', async () => {
+      const gif = found({
+        file_name: 'loop.gif',
+        file_path: '/docs/loop.gif',
+        file_type: 'gif',
+        total_pages: 2,
+        page_number: 2,
+      });
+      const { panel } = await show(gif);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/gif?path=%2Fdocs%2Floop.gif&page=2',
+      );
+      expect(within(panel).getByText(/frame 2 of 2/)).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Next frame' })).toBeDisabled();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Previous frame' }));
+      await waitFor(() =>
+        expect(panel.querySelector('img').getAttribute('src')).toContain('page=1'),
+      );
+    });
+
+    it('shows a still GIF as one picture, without frame buttons', async () => {
+      const still = found({ file_name: 's.gif', file_path: '/docs/s.gif', file_type: 'gif' });
+      const { panel } = await show(still);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/gif?path=%2Fdocs%2Fs.gif&page=1',
+      );
+      expect(within(panel).getByText(/Match 1 of 1 · picture/)).toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+    });
+
     it('opens a TIFF at the frame of the match and goes from frame to frame', async () => {
       const tiff = found({
         file_name: 'scan.tiff',

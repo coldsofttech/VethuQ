@@ -3554,6 +3554,24 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-gif"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/gif" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-github"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/tiers/github" }
@@ -4153,6 +4171,7 @@ version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/bundles/image" }
 dependencies = [
     { name = "vethuq-addon-bmp" },
+    { name = "vethuq-addon-gif" },
     { name = "vethuq-addon-jpg" },
     { name = "vethuq-addon-png" },
     { name = "vethuq-addon-tiff" },
@@ -4161,6 +4180,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "vethuq-addon-bmp", editable = "../VethuQ-premium/packages/add-ons/file-types/bmp" },
+    { name = "vethuq-addon-gif", editable = "../VethuQ-premium/packages/add-ons/file-types/gif" },
     { name = "vethuq-addon-jpg", editable = "../VethuQ-premium/packages/add-ons/file-types/jpg" },
     { name = "vethuq-addon-png", editable = "../VethuQ-premium/packages/add-ons/file-types/png" },
     { name = "vethuq-addon-tiff", editable = "../VethuQ-premium/packages/add-ons/file-types/tiff" },

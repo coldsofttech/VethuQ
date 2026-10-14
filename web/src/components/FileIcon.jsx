@@ -30,6 +30,7 @@ const BY_TYPE = {
   jpg: Image20Regular,
   tiff: Image20Regular,
   bmp: Image20Regular,
+  gif: Image20Regular,
   eml: Mail20Regular,
   json: Code20Regular,
   ndjson: Code20Regular,

@@ -1,6 +1,9 @@
-"""Pictures for the preview: a TIFF frame or a BMP as a PNG a browser can show (browsers draw JPEG
-and PNG themselves, so those are served as they are; a BMP can be run-length encoded, OS/2 or a
-headerless DIB, which browsers do not all draw, so it is converted too)."""
+"""Pictures for the preview: a TIFF frame, a GIF page or a BMP as a PNG a browser can show.
+
+Browsers draw JPEG and PNG themselves, so those are served as they are. A BMP can be run-length
+encoded, OS/2 or a headerless DIB, which browsers do not all draw, so it is converted too; a GIF is
+shown one page at a time, the pages being the distinct pictures of its animation as the GIF add-on
+reads them."""
 
 from __future__ import annotations
 
@@ -9,6 +12,10 @@ from typing import Any
 
 # A frame bigger than this is not converted (40 megapixels: a 7000 x 6000 scan).
 MAX_PIXELS = 40_000_000
+# The pages of an animated GIF, as the GIF add-on reads them: its distinct pictures, at most this
+# many, found in its first frames. A preview must show the picture that was read, so these match.
+GIF_MAX_PAGES = 30
+GIF_MAX_SCAN_FRAMES = 1000
 
 
 def tiff_frames(path: str) -> int:
@@ -30,6 +37,37 @@ def bmp_as_png(path: str) -> bytes:
     return _as_png(path, 1, "BMP", "picture")
 
 
+def gif_pages(path: str) -> int:
+    """How many pages (distinct pictures) the GIF has."""
+    Image = _pillow("GIF")
+    with Image.open(path) as picture:
+        return len(_distinct_gif_frames(picture))
+
+
+def gif_page_as_png(path: str, page: int) -> bytes:
+    """Page `page` (from 1) of a GIF as PNG bytes: the picture a viewer shows at that point of the
+    animation, with transparency flattened onto white as it is for OCR."""
+    return _as_png(path, page, "GIF", "frame")
+
+
+def _distinct_gif_frames(picture: Any) -> list[int]:
+    """The index of the first frame of each distinct picture, in order (see the GIF add-on)."""
+    import hashlib  # noqa: PLC0415
+
+    kept: list[int] = []
+    seen: set[bytes] = set()
+    for index in range(min(getattr(picture, "n_frames", 1), GIF_MAX_SCAN_FRAMES)):
+        picture.seek(index)
+        key = hashlib.blake2b(picture.convert("RGBA").tobytes(), digest_size=16).digest()
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(index)
+        if len(kept) >= GIF_MAX_PAGES:
+            break
+    return kept
+
+
 def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
     Image = _pillow(kind)
     from PIL import ImageOps, UnidentifiedImageError  # noqa: PLC0415 - only for these pictures
@@ -43,11 +81,15 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
     except damaged as error:
         raise unreadable from error
     with picture:
-        frames = int(getattr(picture, "n_frames", 1))
+        try:
+            order = _distinct_gif_frames(picture) if kind == "GIF" else None
+        except damaged as error:
+            raise unreadable from error
+        frames = len(order) if order is not None else int(getattr(picture, "n_frames", 1))
         if not 1 <= frame <= frames:
             raise ValueError(f"The {kind} has {frames} {'frame' if frames == 1 else 'frames'}.")
         try:
-            picture.seek(frame - 1)
+            picture.seek(order[frame - 1] if order is not None else frame - 1)
             pixels = picture.width * picture.height
             if pixels > MAX_PIXELS:
                 raise ValueError(
@@ -60,6 +102,8 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
             if kind == "BMP" and upright.mode == "RGBA":
                 if upright.getchannel("A").getextrema() == (0, 0):
                     upright = upright.convert("RGB")
+            if kind == "GIF":
+                upright = _on_white(upright)
             if upright.mode not in ("RGB", "RGBA", "L", "LA"):
                 upright = upright.convert("RGBA" if "transparency" in upright.info else "RGB")
             out = io.BytesIO()
@@ -67,6 +111,17 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
         except damaged as error:  # a file cut off partway, found out when it is decoded
             raise unreadable from error
         return out.getvalue()
+
+
+def _on_white(picture: Any) -> Any:
+    """A picture with any transparency laid on white, as it is when OCR reads it."""
+    Image = _pillow("GIF")
+    if picture.mode in ("RGBA", "LA", "PA") or "transparency" in picture.info:
+        rgba = picture.convert("RGBA")
+        flat = Image.new("RGB", rgba.size, (255, 255, 255))
+        flat.paste(rgba, mask=rgba.getchannel("A"))
+        return flat
+    return picture.convert("RGB")
 
 
 def _eight_bit(picture: Any) -> Any:
