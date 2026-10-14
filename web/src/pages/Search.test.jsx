@@ -186,6 +186,30 @@ describe('Search', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it('switches the on-screen keyboard to Telugu, types Telugu, and remembers the choice', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    const box = await screen.findByRole('searchbox', { name: 'Search text' });
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    expect(screen.getByRole('group', { name: 'English on-screen keyboard' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('combobox', { name: 'Keyboard language' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'తెలుగు (Telugu)' }));
+    const keys = await screen.findByRole('group', { name: 'Telugu on-screen keyboard' });
+    const press = (name) => userEvent.click(within(keys).getByRole('button', { name }));
+    await press('క');
+    await press('aa sign');
+    expect(box).toHaveValue('కా');
+    expect(localStorage.getItem('vethuq.keyboard-language')).toBe('te');
+  });
+
+  it('opens the on-screen keyboard in the language picked last time', async () => {
+    localStorage.setItem('vethuq.keyboard-language', 'te');
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    await userEvent.click(await screen.findByRole('button', { name: 'On-screen keyboard' }));
+    expect(screen.getByRole('group', { name: 'Telugu on-screen keyboard' })).toBeInTheDocument();
+  });
+
   it('puts a key at the caret and over a selection, and hides on the hide key', async () => {
     mockApi(ROUTES);
     renderWithProviders(<App />, { route: '/search' });

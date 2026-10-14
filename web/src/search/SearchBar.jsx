@@ -19,9 +19,9 @@ import {
   TextCaseTitle20Regular,
 } from '@fluentui/react-icons';
 import { Menu, MenuItem, MenuList, MenuPopover, MenuTrigger } from '@fluentui/react-components';
-import { EnglishKeyboard } from '@vethuq/keyboard-en';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { KEYBOARDS, saveKeyboard, savedKeyboard } from './keyboards.js';
 import { SearchOptions } from './SearchOptions.jsx';
 import { useScreenKeyboard } from './useScreenKeyboard.js';
 
@@ -77,6 +77,8 @@ export function SearchBar({
   const set = (patch) => setForm((current) => ({ ...current, ...patch }));
 
   const [keyboard, setKeyboard] = useState(false);
+  const [keyboardId, setKeyboardId] = useState(savedKeyboard);
+  const { Component: Keyboard } = KEYBOARDS.find((k) => k.id === keyboardId);
   const box = useRef(null);
   const canSearch = !busy && form.query.trim() !== '';
   const press = useScreenKeyboard(
@@ -171,7 +173,22 @@ export function SearchBar({
           />
         </Tooltip>
       </form>
-      {keyboard && <EnglishKeyboard onKey={press} onClose={() => setKeyboard(false)} />}
+      {keyboard && (
+        <>
+          <div className={styles.row}>
+            <FilterSelect
+              label="Keyboard language"
+              value={keyboardId}
+              options={KEYBOARDS.map((k) => ({ value: k.id, label: k.label }))}
+              onChange={(id) => {
+                setKeyboardId(id);
+                saveKeyboard(id);
+              }}
+            />
+          </div>
+          <Keyboard key={keyboardId} onKey={press} onClose={() => setKeyboard(false)} />
+        </>
+      )}
       <div className={styles.row}>
         <FilterSelect
           label="Engine"

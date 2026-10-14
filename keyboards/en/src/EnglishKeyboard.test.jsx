@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { EnglishKeyboard, applyShift } from './EnglishKeyboard.jsx';
+import { EnglishKeyboard } from './EnglishKeyboard.jsx';
 
 const setup = (props) => {
   const onKey = vi.fn();
@@ -11,15 +11,6 @@ const setup = (props) => {
 };
 
 const press = (name) => userEvent.click(screen.getByRole('button', { name }));
-
-describe('applyShift', () => {
-  it('capitalises a letter and leaves the rest', () => {
-    expect(applyShift('q', true)).toBe('Q');
-    expect(applyShift('q', false)).toBe('q');
-    expect(applyShift('1', true)).toBe('1');
-    expect(applyShift(',', true)).toBe(',');
-  });
-});
 
 describe('EnglishKeyboard', () => {
   it('is a labelled group of keys', () => {

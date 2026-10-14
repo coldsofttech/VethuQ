@@ -2,7 +2,7 @@
   "name": "@vethuq/keyboard-en",
   "private": true,
   "version": "0.1.0",
-  "description": "An on-screen English (QWERTY) keyboard: letters with shift and caps, numbers and symbols; it reports keys and edits nothing itself",
+  "description": "An on-screen English (QWERTY) keyboard: the shared keyboard with the English layout",
   "license": "MIT",
   "type": "module",
   "main": "src/index.js",
@@ -10,6 +10,7 @@
     ".": "./src/index.js"
   },
   "peerDependencies": {
+    "@vethuq/keyboard-shared": "*",
     "react": ">=19"
   }
 }

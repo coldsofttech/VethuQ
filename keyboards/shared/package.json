@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/keyboard-shared",
+  "private": true,
+  "version": "0.1.0",
+  "description": "What the on-screen keyboards have in common: the keyboard itself (layers, shift and caps, key buttons) that a language fills with its layout, and helpers to write a layout",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

@@ -34,6 +34,13 @@ describe('the English layout', () => {
     expect(LAYERS.symbols.flat().find((k) => k.type === 'layer').to).toBe('letters');
   });
 
+  it('shifts every letter to its capital and nothing else', () => {
+    for (const key of LAYERS.letters.flat().filter((k) => k.type === 'text')) {
+      if (/[a-z]/.test(key.value)) expect(key.shift).toBe(key.value.toUpperCase());
+      else expect(key.shift).toBeUndefined();
+    }
+  });
+
   it('does not repeat a character on a layer, apart from the keys both layers share', () => {
     for (const layer of ['letters', 'symbols']) {
       const all = texts(layer);
