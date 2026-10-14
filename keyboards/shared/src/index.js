@@ -3,6 +3,7 @@ export {
   PUNCTUATION_NAMES,
   backspaceKey,
   bottomRow,
+  cased,
   keys,
   shiftKey,
   symbolsLayer,

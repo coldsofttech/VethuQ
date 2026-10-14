@@ -13,16 +13,19 @@ export function keys(normal, shifted = '') {
   );
 }
 
+/** Keys for letters of a script with case: each types the letter, and its capital with shift. */
+export const cased = (letters) => keys(letters, letters.toUpperCase());
+
 export const backspaceKey = { type: 'backspace', width: 1.5 };
 export const shiftKey = { type: 'shift', width: 1.5 };
 
 /**
- * The last row of every layer: a key to the other layer, `marks` (a comma and a full stop; a
- * language can add its own, such as the danda), space, enter, hide.
+ * The last row of every layer: a key to another layer (or several), `marks` (a comma and a full
+ * stop; a language can add its own, such as the danda), space, enter, hide.
  */
 export function bottomRow(layerKey, marks = ',.') {
   return [
-    { ...layerKey, width: 1.5 },
+    ...[layerKey].flat().map((key) => ({ ...key, width: 1.5 })),
     ...keys(marks),
     { type: 'space', width: 5 },
     { type: 'enter', width: 1.5 },

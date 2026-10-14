@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/keyboard-fr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An on-screen French (AZERTY) keyboard: the shared keyboard with the French layout",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "@vethuq/keyboard-shared": "*",
+    "react": ">=19"
+  }
+}

@@ -228,6 +228,23 @@ describe('Search', () => {
     expect(box).toHaveValue('قت');
   });
 
+  it('offers French and Spanish on-screen keyboards', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    const box = await screen.findByRole('searchbox', { name: 'Search text' });
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    for (const [option, group, key] of [
+      ['Français (French)', 'French on-screen keyboard', 'é'],
+      ['Español (Spanish)', 'Spanish on-screen keyboard', 'ñ'],
+    ]) {
+      await userEvent.click(screen.getByRole('combobox', { name: 'Keyboard language' }));
+      await userEvent.click(await screen.findByRole('option', { name: option }));
+      const keys = await screen.findByRole('group', { name: group });
+      await userEvent.click(within(keys).getByRole('button', { name: key }));
+    }
+    expect(box).toHaveValue('éñ');
+  });
+
   it('opens the on-screen keyboard in the language picked last time', async () => {
     localStorage.setItem('vethuq.keyboard-language', 'te');
     mockApi(ROUTES);

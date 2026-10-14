@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PUNCTUATION_NAMES, bottomRow, keys, symbolsLayer } from './layout.js';
+import { PUNCTUATION_NAMES, bottomRow, cased, keys, symbolsLayer } from './layout.js';
 
 describe('keys', () => {
   it('makes a key per character, with its shifted character when there is one', () => {
@@ -18,7 +18,25 @@ describe('keys', () => {
   });
 });
 
+describe('cased', () => {
+  it('shifts each letter to its capital, including letters with a mark and ligatures', () => {
+    expect(cased('aé')).toEqual([
+      { type: 'text', value: 'a', shift: 'A' },
+      { type: 'text', value: 'é', shift: 'É' },
+    ]);
+    expect(cased('œÿ').map((k) => k.shift)).toEqual(['Œ', 'Ÿ']);
+  });
+});
+
 describe('bottomRow and symbolsLayer', () => {
+  it('takes several layer keys, which come first', () => {
+    const row = bottomRow([
+      { type: 'layer', to: 'a', label: 'a' },
+      { type: 'layer', to: 'b', label: 'b' },
+    ]);
+    expect(row.map((k) => k.type).slice(0, 3)).toEqual(['layer', 'layer', 'text']);
+  });
+
   it('ends every layer with the layer key, comma, full stop, space, enter and hide', () => {
     const row = bottomRow({ type: 'layer', to: 'x', label: 'x' });
     expect(row.map((k) => k.type)).toEqual(['layer', 'text', 'text', 'space', 'enter', 'close']);
