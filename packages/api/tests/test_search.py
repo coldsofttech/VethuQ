@@ -858,3 +858,129 @@ class TestMhtmlPage:
             "/api/files/mhtml", query_string={"path": "x.mhtml"}, base_url=ORIGIN
         )
         assert bare.status_code in (401, 403)
+
+
+class TestBmpPicture:
+    """A BMP made into a PNG a browser can show. The BMP add-on may not be installed in this
+    checkout, so the type check is replaced; what is tested is the route and the pictures."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        import struct
+
+        from PIL import Image
+
+        folder = library / "a"
+        Image.new("RGB", (40, 20), (200, 20, 10)).save(folder / "plain.bmp")
+
+        def info(width, height, bpp, compression=0, size=40, clrused=0, image=0):
+            return struct.pack(
+                "<IiiHHIIiiII",
+                size,
+                width,
+                height,
+                1,
+                bpp,
+                compression,
+                image,
+                2835,
+                2835,
+                clrused,
+                0,
+            )
+
+        def bmp(body, offset):
+            return b"BM" + struct.pack("<IHHI", 14 + len(body), 0, 0, offset) + body
+
+        # Run-length encoded: four red pixels on the bottom row, four black on the top.
+        palette = bytes([0, 0, 0, 0, 0, 0, 255, 0])
+        rle = bytes([4, 1, 0, 0, 4, 0, 0, 1])
+        body = info(4, 2, 8, compression=1, clrused=2, image=len(rle)) + palette + rle
+        (folder / "rle.bmp").write_bytes(bmp(body, 14 + 40 + 8))
+        # A BITMAPV4 header that says there is alpha, with every alpha byte 0.
+        mask = struct.pack("<IIII", 0xFF0000, 0xFF00, 0xFF, 0xFF000000)
+        header = struct.pack("<IiiHHIIiiII", 108, 2, 1, 1, 32, 3, 0, 2835, 2835, 0, 0) + mask
+        header += b"\0" * (108 - len(header))
+        (folder / "unused-alpha.bmp").write_bytes(bmp(header + bytes([0, 0, 255, 0]) * 2, 14 + 108))
+        # What the clipboard holds: a DIB with no file header.
+        (folder / "clip.dib").write_bytes(info(2, 1, 24) + bytes([0, 0, 255] * 2) + b"\0\0")
+        (folder / "notes.bmp").write_bytes(b"this is not a bitmap")
+        Image.new("RGB", (30, 50)).save(library / "outside.bmp")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "bmp" and path.lower().endswith((".bmp", ".dib")),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name):
+        path = http.library / "a" / name
+        return http.get("/api/files/bmp", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def picture(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data)).convert("RGB")
+
+    def test_a_bmp_is_served_as_a_png_of_its_own_size(self, http):
+        reply = self.get(http, "plain.bmp")
+        assert reply.status_code == 200 and reply.mimetype == "image/png"
+        assert reply.headers["Content-Disposition"] == "inline"
+        picture = self.picture(reply)
+        assert picture.size == (40, 20) and picture.getpixel((0, 0)) == (200, 20, 10)
+
+    def test_a_run_length_encoded_bitmap_is_drawn(self, http):
+        picture = self.picture(self.get(http, "rle.bmp"))
+        assert picture.getpixel((0, 1)) == (255, 0, 0) and picture.getpixel((0, 0)) == (0, 0, 0)
+
+    def test_an_unused_alpha_byte_does_not_make_a_blank_picture(self, http):
+        picture = self.picture(self.get(http, "unused-alpha.bmp"))
+        assert picture.getpixel((0, 0)) == (255, 0, 0)
+
+    def test_a_headerless_dib_is_drawn(self, http):
+        assert self.picture(self.get(http, "clip.dib")).getpixel((0, 0)) == (255, 0, 0)
+
+    def test_only_a_bmp_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.bmp")}
+        assert http.get("/api/files/bmp", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.bmp").status_code == 422
+        assert self.get(http, "plain.bmp").status_code == 200
+
+    def test_a_file_that_is_not_a_bitmap_is_refused_with_a_reason(self, http):
+        reply = self.get(http, "notes.bmp")
+        assert reply.status_code == 422 and "not a BMP" in reply.get_json()["error"]
+
+    def test_a_bitmap_that_is_cut_off_is_refused_with_a_reason(self, http):
+        path = http.library / "a" / "cut.bmp"
+        data = (http.library / "a" / "plain.bmp").read_bytes()
+        path.write_bytes(data[: len(data) // 2])
+        reply = self.get(http, "cut.bmp")
+        assert reply.status_code == 422 and "damaged" in reply.get_json()["error"]
+
+    def test_a_picture_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.get(http, "plain.bmp")  # 40 x 20 = 800 pixels
+        assert reply.status_code == 422
+        assert (
+            "This picture is" in reply.get_json()["error"]
+            and "too large" in reply.get_json()["error"]
+        )

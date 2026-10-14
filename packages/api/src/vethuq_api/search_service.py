@@ -112,6 +112,10 @@ class SearchService:
         frame = _number(_whole(query.get("page", 1), "page"), "page", 1, 1)
         return images.tiff_frame_as_png(path, frame)
 
+    def bmp_image(self, path: str) -> bytes:
+        """A BMP of a source as PNG bytes."""
+        return images.bmp_as_png(path)
+
     def is_markdown(self, path: str) -> bool:
         return self.is_type(path, "markdown")
 

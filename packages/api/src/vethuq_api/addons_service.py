@@ -25,7 +25,7 @@ LOG_LINES = 200
 
 # What each pack adds, in words (VethuQ names the packs, not what they do).
 PACK_NOTES = {
-    "images": "Read image files (PNG, JPG, TIFF) and the pictures Markdown files link to.",
+    "images": "Read image files (PNG, JPG, TIFF, BMP) and the pictures Markdown files link to.",
     "deep-scan": "The deeper OCR phases, moderate and deep.",
     "search": "Every search engine and normalizer.",
     "lexical": "The lexical search engine.",

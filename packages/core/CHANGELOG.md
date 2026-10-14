@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (BMP files)
+- The `.bmp` and `.dib` file types, as the free add-on `vethuq-addon-bmp` in the image bundle (`pip install vethuq[images]`; not installed with VethuQ). Read with Pillow like PNG, JPG and TIFF: a page for OCR, priced by its pixels. A BMP is also one of the pictures a Markdown or HTML file can link to. The worker image reads BMP files too.
+
 ### Added (MHTML files)
 - The `.mhtml` and `.mht` (web archive) file types, as the licensed add-on `vethuq-addon-mhtml` (not installed with VethuQ: `pip install vethuq-addon-mhtml`, then `Mhtml(client).set_licence(token)`). A page is read like an HTML file, with its address and the text of frames saved inside it, and the pictures in the archive are read with OCR from the moderate phase. It keeps `encoding`, `title`, `url`, `lang`, `link_count`, `image_count` and `frame_count` in the `mhtml_pages` table. The web interface shows the archive as the page it was, or as its source (see the API changelog).
 

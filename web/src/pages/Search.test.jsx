@@ -1486,6 +1486,18 @@ describe('Search', () => {
       expect(image.style.transform).toBe('rotate(270deg)');
     });
 
+    it('shows a BMP as one picture, from the BMP route, without a frame', async () => {
+      const bmp = found({ file_name: 'scan.bmp', file_path: '/docs/scan.bmp', file_type: 'bmp' });
+      const { panel } = await show(bmp);
+      const image = loaded(panel);
+      expect(image.getAttribute('src')).toBe('/api/files/bmp?path=%2Fdocs%2Fscan.bmp');
+      expect(within(panel).getByText(/Match 1 of 1 · picture/)).toBeInTheDocument();
+      expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+      expect(panel.querySelector('[data-box]')).not.toBeNull();
+      const text = within(panel).getByRole('region', { name: 'Text read from the picture' });
+      await waitFor(() => expect(text.querySelector('mark')?.textContent).toBe('wheat'));
+    });
+
     it('opens a TIFF at the frame of the match and goes from frame to frame', async () => {
       const tiff = found({
         file_name: 'scan.tiff',

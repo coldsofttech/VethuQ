@@ -70,7 +70,8 @@ def register(api: Blueprint, core: Core) -> None:
     ):
         source_route(kind, what)
 
-    # Pictures: JPEG and PNG as they are (a browser draws them), a TIFF one frame at a time as PNG.
+    # Pictures: JPEG and PNG as they are (a browser draws them), a TIFF one frame at a time as PNG,
+    # and a BMP as PNG (a run-length encoded, OS/2 or headerless one is not drawn by every browser).
     def picture_route(file_type: str, what: str) -> None:
         def view() -> Response:
             path = request.args.get("path")
@@ -84,6 +85,8 @@ def register(api: Blueprint, core: Core) -> None:
                 response = Response(
                     core.search().tiff_frame(path, request.args), mimetype="image/png"
                 )
+            elif file_type == "bmp":
+                response = Response(core.search().bmp_image(path), mimetype="image/png")
             else:
                 response = send_file(
                     os.path.realpath(path),
@@ -100,6 +103,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("jpg", "a JPEG picture"),
         ("png", "a PNG picture"),
         ("tiff", "a TIFF picture"),
+        ("bmp", "a BMP picture"),
     ):
         picture_route(kind, what)
 

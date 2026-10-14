@@ -19,6 +19,9 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (BMP preview)
+- `GET /api/files/bmp?path=` serves a BMP (or DIB) of a source as a PNG in ordinary 8-bit colour, so a run-length encoded, OS/2 or headerless one is drawn by every browser; a 32-bit one whose alpha bytes are all zero is shown opaque, not blank. A picture over 40 megapixels is refused. A BMP or TIFF that is damaged, cut off or not a picture now gives a readable 422 (it was an unhandled error).
+
 ### Added (web archive preview)
 - `GET /api/files/mhtml?path=` turns an MHTML web archive of a source into one page for the preview: `rendered` is the page with every reference the archive can answer put in (pictures and fonts as `data:` addresses, stylesheets as `<style>` blocks, `@import`s followed, saved frames as `srcdoc`), so the sandboxed frame shows it without fetching anything or running a script; `text` is the page's HTML as written, with the pages saved inside it after, for the source views. Up to 24 MB of pictures and styles are put in (`incomplete` says if there were more), and frames nest three deep. The page preview shows it like an HTML file, and marks the words in a saved frame too.
 
