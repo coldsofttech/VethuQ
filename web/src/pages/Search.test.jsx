@@ -1066,7 +1066,7 @@ describe('Search', () => {
     });
   });
 
-  describe('the JSON, YAML, JavaScript and XML previews', () => {
+  describe('the JSON, NDJSON, YAML, JavaScript and XML previews', () => {
     const CASES = {
       json: {
         text: '{\n  "a": { "port": 80 },\n  "b": { "ports": [8080] },\n  "c": { "port": 8080 }\n}',
@@ -1075,6 +1075,18 @@ describe('Search', () => {
         line: 4,
         mark: '8080',
         label: 'JSON',
+      },
+      ndjson: {
+        text: '{"user": {"id": 7}, "msg": "ok"}\n{"user": {"id": 8}, "msg": "wheat served"}\n',
+        // Indexed as `msg: wheat served` in the second record (a paragraph of its own).
+        match: {
+          before: 'user.id: 7 msg: ok user.id: 8 msg: ',
+          matched: 'wheat',
+          after: ' served',
+        },
+        line: 2,
+        mark: 'wheat',
+        label: 'NDJSON',
       },
       yaml: {
         text: 'server:\n  host: a\n  ports:\n    - 8080\n  debug: yes\n',

@@ -693,6 +693,8 @@ HTML (`.html`, `.htm`, `.xhtml`), XML (`.xml`, `.xsd`, `.xsl`, `.xslt`, `.rss`, 
 
 YAML (`.yaml`, `.yml`) comes from the licensed `vethuq-addon-yaml`, which `pip install vethuq[developer]` installs with JSON in the developer pack bundle (`vethuq-bundle-developer`; JSON is also in the web pack). Every document of a YAML stream is read with the safe loader and flattened into `path: value` lines (`server.ports[0]: 8080`); `on`, `off`, `yes` and `no` stay words, and an alias bomb is refused. Its table is `yaml_pages` (encoding, document, value and depth counts). Licensing works as for the web file types: one developer pack licence unlocks both.
 
+NDJSON / JSON Lines (`.ndjson`, `.jsonl`) comes from the licensed `vethuq-addon-ndjson` (`pip install vethuq-addon-ndjson`; not in a pack bundle yet), set up with `Ndjson(client).set_licence(token)`. Each line is flattened to `path: value` lines like a JSON file, with a blank line between records; a line that is not valid JSON is skipped and counted, and the file is read a line at a time, so a large log is fine.
+
 Parquet (`.parquet`, `.pq`) comes from the licensed `vethuq-addon-parquet` (`pip install vethuq-addon-parquet`; it is not in a pack bundle yet), set up with `Parquet(client).set_licence(token)` like the other licensed file types. A table is indexed as text: a line of column names, then a line per row with something in it; it is read a batch of rows at a time and never OCR'd. The web interface shows the file as a table, in the CSV table preview, opened on the matching row and cell.
 
 ### Office file types (licensed)

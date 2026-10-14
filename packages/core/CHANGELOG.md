@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (NDJSON files)
+- The `.ndjson` and `.jsonl` (JSON Lines) file types, as the licensed add-on `vethuq-addon-ndjson` (not installed with VethuQ: `pip install vethuq-addon-ndjson`, then `Ndjson(client).set_licence(token)`). Each line is flattened to `path: value` lines like a JSON file, records are separated by a blank line, a line that is not valid JSON is left out and counted, and the file is read a line at a time. It keeps `encoding`, `record_count`, `invalid_line_count`, `value_count`, `max_depth` and `truncated` in the `ndjson_pages` table. The web interface previews the file as it is on disk, coloured like JSON.
+
 ### Added (Parquet files)
 - The `.parquet` and `.pq` file types, as the licensed add-on `vethuq-addon-parquet` (not installed with VethuQ: `pip install vethuq-addon-parquet`, then `Parquet(client).set_licence(token)`). The table is indexed as text (the column names, then a line per row), never OCR'd. It keeps `row_count`, `column_count`, `row_group_count` and `indexed_row_count` in the `parquet_pages` table. A search match in a Parquet file carries `line` (the first line is the column names, then the Nth row with something in it) and `column`, as for CSV, and the web UI shows the file as a table.
 

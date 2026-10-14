@@ -19,6 +19,9 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (NDJSON preview)
+- `GET /api/files/ndjson?path=` returns an NDJSON (JSON Lines) file of a source as it is on disk (up to 100 MB), for the code preview, like the JSON, YAML and XML routes.
+
 ### Added (Parquet table preview)
 - `GET /api/files/parquet?path=` returns a window of rows of a Parquet table of a source, in the same reply as the CSV and TSV routes (sorting, filtering, where a match is). The column names are the header (row 1, as in the index) and the rows are those the Parquet add-on indexed, up to the text it indexes (`truncated` says if the table was cut there). It needs PyArrow, which the Parquet add-on brings.
 

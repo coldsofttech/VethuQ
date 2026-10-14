@@ -42,6 +42,17 @@ export const LANGUAGES = {
       return key ? `"${key}"` : null;
     },
   },
+  // One JSON value to a line, so the JSON colouring (which takes a line on its own) fits; there
+  // is no layout, because a minified line is a record and the file is readable as it is.
+  ndjson: {
+    label: 'NDJSON',
+    Highlighter: JsonHighlighter,
+    format: null,
+    hint: (before) => {
+      const key = keyBefore(before);
+      return key ? `"${key}"` : null;
+    },
+  },
   yaml: { label: 'YAML', Highlighter: YamlHighlighter, format: null, hint: keyBefore },
   xml: { label: 'XML', Highlighter: XmlHighlighter, format: formatXml, hint: keyBefore },
 };

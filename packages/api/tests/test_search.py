@@ -474,6 +474,7 @@ SOURCES = {
     "html": ("<html><body><p>Hello <b>world</b></p></body></html>", ".html", "a web page"),
     "json": ('{"server": {"ports": [8080, 8081]}}', ".json", "a JSON file"),
     "yaml": ("server:\n  ports:\n    - 8080\n", ".yaml", "a YAML file"),
+    "ndjson": ('{"a": 1}\n{"a": 2}\n', ".ndjson", "an NDJSON file"),
     "js": ("const a = 1;\n\nexport default a;\n", ".mjs", "a script"),
     "xml": (
         '<?xml version="1.0"?><catalog><book id="7">Dune</book></catalog>',

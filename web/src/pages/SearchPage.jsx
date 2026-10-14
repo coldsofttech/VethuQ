@@ -53,6 +53,7 @@ const PREVIEWS = {
   markdown: MarkdownPreview,
   css: CodePreview,
   json: CodePreview,
+  ndjson: CodePreview,
   yaml: CodePreview,
   js: CodePreview,
   xml: CodePreview,

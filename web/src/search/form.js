@@ -80,7 +80,11 @@ export const placeOf = (match) => {
   // JSON, YAML and XML as `path: value` lines, a Parquet table as its column names and rows, a script without blank lines) has no line that is
   // the file's own, and a CSV's or TSV's line is its Nth row with something in it: none is a line to open an
   // editor at.
-  if (['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml', 'parquet'].includes(match.file_type))
+  if (
+    ['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml', 'parquet', 'ndjson'].includes(
+      match.file_type,
+    )
+  )
     return {};
   // A picture's text was read by OCR: there is no line to open it at (a TIFF's frame is its page).
   if (['png', 'jpg'].includes(match.file_type)) return {};
@@ -99,7 +103,7 @@ export const describePlace = (place) => {
   return null;
 };
 
-/** The file types the preview can show: PDF, text, Markdown, CSV, TSV, Parquet, CSS, HTML, JSON, YAML, JS, XML and pictures. */
+/** The file types the preview can show: PDF, text, Markdown, CSV, TSV, Parquet, CSS, HTML, JSON, NDJSON, YAML, JS, XML and pictures. */
 export const canPreview = (match) =>
   [
     'pdf',
@@ -111,6 +115,7 @@ export const canPreview = (match) =>
     'css',
     'html',
     'json',
+    'ndjson',
     'yaml',
     'js',
     'xml',

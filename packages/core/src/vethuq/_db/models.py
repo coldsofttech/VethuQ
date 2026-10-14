@@ -301,6 +301,22 @@ class _TsvPage(_Base):
     column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # widest row
 
 
+class _NdjsonPage(_Base):
+    """What the NDJSON type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ndjson_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    record_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # records indexed
+    invalid_line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # left out
+    value_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # leaves flattened
+    max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # cut at the limit
+
+
 class _ParquetPage(_Base):
     """What the Parquet type keeps about its page, beside the text in `pdf_pages`."""
 
