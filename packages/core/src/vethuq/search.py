@@ -77,11 +77,11 @@ class SearchMatch:
     matched_by: tuple[str, ...]  # every engine that found it, strictest first
     modifiers: tuple[str, ...]  # normalizations it needed to match as typed, e.g. `accents`
     file_type: str | None = None  # what the file is read as (`pdf`, `docx`, ...)
-    # Where the match is in a plain-text file (text, CSV, TSV), counting from 1; None for files
-    # whose pages are not the file's own lines (a PDF's page is `page_number`). For CSV and TSV the
-    # line is the Nth non-empty row and the column counts in that row's indexed text (its
-    # non-empty cells joined by " | "), not in the file's own row, which can have empty cells and
-    # quoting.
+    # Where the match is in a plain-text file (text, CSV, TSV) or a Parquet table, counting from 1;
+    # None for files whose pages are not the file's own lines (a PDF's page is `page_number`). For
+    # CSV, TSV and Parquet the line is the Nth non-empty row (a Parquet table's first line is its
+    # column names) and the column counts in that row's indexed text (its non-empty cells joined
+    # by " | "), not in the file's own row, which can have empty cells and quoting.
     line: int | None = None
     column: int | None = None
     # Where on the picture the match was read, for a page read by OCR whose engine said where
@@ -394,9 +394,9 @@ class Search:
         )
 
     # File types whose single page is the file's own lines, so a match has a line (and, except for
-    # CSV and TSV whose fields are spread out, a column). HTML, XML and the like are read as
-    # extracted text, whose lines are not the file's.
-    LINE_TYPES = frozenset({"txt", "csv", "tsv"})
+    # CSV, TSV and Parquet whose fields are spread out, a column). HTML, XML and the like are read
+    # as extracted text, whose lines are not the file's.
+    LINE_TYPES = frozenset({"txt", "csv", "tsv", "parquet"})
 
     def _located(self, window: list[_Match]) -> list[SearchMatch]:
         """The public matches of a page of results, each with its file type, the line and column

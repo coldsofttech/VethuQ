@@ -48,6 +48,7 @@ const PREVIEWS = {
   pdf: PdfPreview,
   csv: TablePreview,
   tsv: TablePreview,
+  parquet: TablePreview,
   txt: TextPreview,
   markdown: MarkdownPreview,
   css: CodePreview,

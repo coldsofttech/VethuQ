@@ -658,6 +658,40 @@ describe('Search', () => {
       expect(urls.some((u) => u.startsWith('/api/files/csv'))).toBe(false);
     });
 
+    it('reads a Parquet table from the Parquet route, with its column names as the header', async () => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': {
+          ...CSV,
+          matches: [
+            {
+              ...CSV.matches[0],
+              file_name: 'people.parquet',
+              file_path: '/docs/people.parquet',
+              file_type: 'parquet',
+            },
+          ],
+        },
+        'GET /api/files/parquet': {
+          ...TABLE,
+          delimiter: '',
+          encoding: 'parquet',
+          truncated: true,
+          file_name: 'people.parquet',
+        },
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('grace{Enter}');
+      const panel = await open();
+      expect(await within(panel).findByRole('columnheader', { name: /name/ })).toBeInTheDocument();
+      expect(await within(panel).findByText('Ada')).toBeInTheDocument();
+      expect(panel.querySelector('mark').textContent).toBe('Grace');
+      expect(await within(panel).findByText(/rows VethuQ indexed/)).toBeInTheDocument();
+      const urls = fetchMock.mock.calls.map(([url]) => url);
+      expect(urls.some((u) => u.startsWith('/api/files/parquet?'))).toBe(true);
+      expect(urls.some((u) => u.startsWith('/api/files/csv'))).toBe(false);
+    });
+
     it('sorts by a column from its header: ascending, then descending, then off', async () => {
       const { fetchMock, panel } = await show();
       const head = await within(panel).findByRole('button', { name: /name/ });

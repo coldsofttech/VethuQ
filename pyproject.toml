@@ -83,6 +83,8 @@ dev = [
     "vethuq-addon-leetspeak",
     "vethuq-addon-semantic",
     "vethuq-addon-tsv",
+    # The table preview of a Parquet file (it comes with the Parquet add-on in an install).
+    "pyarrow>=15",
     "numpy>=1.26",
     "vethuq-addon-api",
     "vethuq-worker",

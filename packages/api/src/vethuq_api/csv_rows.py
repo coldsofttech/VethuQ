@@ -97,6 +97,7 @@ class CsvFile:
     encoding: str
     columns: int
     header_detected: bool
+    truncated: bool = False  # a Parquet table cut at the indexing limit
     views: dict[tuple, list[int]] = field(default_factory=dict)
 
     @classmethod
@@ -212,16 +213,23 @@ class CsvCache:
         self._files: dict[tuple[str, int, int, str | None], CsvFile] = {}
         self._lock = threading.Lock()
 
-    def get(self, path: str, delimiter: str | None = None) -> CsvFile:
+    def get(self, path: str, delimiter: str | None = None, parquet: bool = False) -> CsvFile:
+        """The parsed file: a Parquet table if `parquet`, else CSV text read with `delimiter` (or
+        with the delimiter sniffed when it is None)."""
         real = os.path.realpath(path)
         stat = os.stat(real)
-        key = (real, stat.st_mtime_ns, stat.st_size, delimiter)
+        key = (real, stat.st_mtime_ns, stat.st_size, "parquet" if parquet else delimiter)
         with self._lock:
             found = self._files.pop(key, None)
             if found is not None:
                 self._files[key] = found  # most recently used last
                 return found
-        parsed = CsvFile.read(real, delimiter)
+        if parquet:
+            from vethuq_api import parquet_rows  # noqa: PLC0415 - it builds a `CsvFile`
+
+            parsed = parquet_rows.read(real)
+        else:
+            parsed = CsvFile.read(real, delimiter)
         with self._lock:
             self._files[key] = parsed
             while len(self._files) > KEEP_FILES:

@@ -141,6 +141,14 @@ class SearchService:
     def is_tsv(self, path: str) -> bool:
         return self.is_type(path, "tsv")
 
+    def is_parquet(self, path: str) -> bool:
+        return self.is_type(path, "parquet")
+
+    def parquet_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
+        """The same window of a Parquet table: its column names are the header, and a row is a
+        line of the text the add-on indexed."""
+        return self._table_window(path, query, None, parquet=True)
+
     def csv_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
         """`count` rows of a CSV file from row `start` of the view (filtered, then sorted), with
         the header, the sizes and, when asked, where the matching row and cell are in the view."""
@@ -151,7 +159,7 @@ class SearchService:
         return self._table_window(path, query, "\t")
 
     def _table_window(
-        self, path: str, query: Mapping[str, Any], delimiter: str | None
+        self, path: str, query: Mapping[str, Any], delimiter: str | None, parquet: bool = False
     ) -> dict[str, object]:
         arg = {k: _whole(v, k) for k, v in query.items() if k in _CSV_NUMBERS}
         start = _number(arg.get("start"), "start", 0)
@@ -166,7 +174,7 @@ class SearchService:
         needle = query.get("filter", "")
         if not isinstance(needle, str):
             raise ValueError("filter is text.")
-        file = self._csv.get(path, delimiter)
+        file = self._csv.get(path, delimiter, parquet)
         flag = query.get("header")
         if flag not in (None, "", "0", "1"):
             raise ValueError("header is 1 or 0.")
@@ -201,6 +209,7 @@ class SearchService:
             "widths": file.widths(ids),
             "delimiter": file.delimiter,
             "encoding": file.encoding,
+            "truncated": file.truncated,
             "file_name": os.path.basename(path),
             "target": target,
         }

@@ -126,6 +126,18 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("Only a TSV file of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().tsv_window(path, request.args))
 
+    @api.get("/files/parquet")
+    def parquet_window() -> Response:
+        """A window of rows of a Parquet table of a source, for the same table preview."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_parquet(path)
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a Parquet file of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().parquet_window(path, request.args))
+
     # A search is read-only; it is a POST only because a query can be long and has many parts.
     @api.post("/search/run")
     def search_run() -> Response:

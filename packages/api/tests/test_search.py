@@ -703,3 +703,86 @@ class TestTiffFrames:
         grey.save(http.library / "a" / "scan.tiff")
         picture = self.png(self.frame(http))
         assert picture.mode == "L" and picture.getextrema() == (0, 255)
+
+
+class TestParquetTable:
+    """The table preview of a Parquet file. The add-on is licensed code that this checkout may not
+    have, so the type checks are replaced; what is tested is the route and the file."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        pq = pytest.importorskip("pyarrow.parquet")
+        import pyarrow as pa
+
+        rows = range(1, 301)
+        data = {"name": [f"name {n}" for n in rows], "qty": [n * 3 for n in rows]}
+        pq.write_table(pa.table(data), library / "a" / "table.parquet", row_group_size=100)
+        pq.write_table(pa.table({"id": [1, 2, 3]}), library / "outside.parquet")
+        (library / "a" / "plain.tsv").write_text("a\tb\n1\t2\n", encoding="utf-8")
+        (library / "a" / "bad.parquet").write_bytes(b"not a table")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "parquet" and path.lower().endswith(".parquet"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(library / "a")
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="table.parquet", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/parquet", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def test_a_window_of_rows_with_the_column_names_as_the_header(self, http):
+        reply = self.get(http, start=10, count=3).get_json()
+        assert reply["total"] == 300 and reply["header"] == ["name", "qty"]
+        assert reply["header_detected"] is True and reply["truncated"] is False
+        assert reply["encoding"] == "parquet" and reply["columns"] == 2
+        assert reply["rows"] == [["name 11", "33"], ["name 12", "36"], ["name 13", "39"]]
+        assert reply["numbers"] == [
+            12,
+            13,
+            14,
+        ]  # the column names are row 1, as a match's line says
+
+    def test_sorting_and_filtering(self, http):
+        down = self.get(http, sort=1, dir="desc", count=1).get_json()
+        assert down["rows"] == [["name 300", "900"]]
+        found = self.get(http, **{"filter": "name 29", "column": 0}).get_json()
+        assert found["total"] == 11 and found["all"] == 300
+
+    def test_where_a_match_is(self, http):
+        # Line 3 of the indexed text is row 3: "name 2 | 6"; offset 8 is inside "name 2".
+        reply = self.get(http, at_row=3, at_offset=8).get_json()
+        assert reply["target"] == {"row_number": 3, "index": 1, "column": 0}
+
+    def test_only_a_parquet_file_of_a_source(self, http):
+        assert self.get(http).status_code == 200
+        outside = {"path": str(http.library / "outside.parquet")}
+        assert (
+            http.get("/api/files/parquet", query_string=outside, base_url=ORIGIN).status_code == 422
+        )
+        assert self.get(http, "plain.tsv").status_code == 422
+        assert self.get(http, "missing.parquet").status_code == 422
+
+    def test_a_damaged_file_says_why(self, http):
+        reply = self.get(http, "bad.parquet")
+        assert reply.status_code == 422
+        assert "not a readable Parquet file" in reply.get_json()["error"]

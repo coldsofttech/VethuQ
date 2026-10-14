@@ -35,8 +35,15 @@ const useStyles = makeStyles({
 
 const FILTER_DELAY = 250;
 
+/** The route that reads each file type as rows (CSV when the type is not listed). */
+const WINDOWS = {
+  csv: api.files.csvWindow,
+  tsv: api.files.tsvWindow,
+  parquet: api.files.parquetWindow,
+};
+
 /**
- * A CSV or TSV file of the results as a table beside them, read from disk: sort by a column, filter the
+ * A CSV, TSV or Parquet file of the results as a table beside them, read from disk: sort by a column, filter the
  * rows (in every column or one), resize columns, and say whether the first row is a header (it is
  * guessed). Opens on the matching row with the matching cell marked.
  *
@@ -50,7 +57,7 @@ export default function TablePreview({ matches, index, onIndex, onClose }) {
   const styles = useStyles();
   const match = matches[index];
   const path = match.file_path;
-  const rowsOf = match.file_type === 'tsv' ? api.files.tsvWindow : api.files.csvWindow;
+  const rowsOf = WINDOWS[match.file_type] ?? api.files.csvWindow;
   const [sort, setSort] = useState(null);
   const [typed, setTyped] = useState('');
   const [filter, setFilter] = useState('');
@@ -171,6 +178,14 @@ export default function TablePreview({ matches, index, onIndex, onClose }) {
         {probe.error && (
           <MessageBar intent="error">
             <MessageBarBody>The table could not be shown: {probe.error.message}</MessageBarBody>
+          </MessageBar>
+        )}
+        {info?.truncated && (
+          <MessageBar intent="info">
+            <MessageBarBody>
+              This table is very large: the first {info.all.toLocaleString()} rows are shown, which
+              are the rows VethuQ indexed.
+            </MessageBarBody>
           </MessageBar>
         )}
         {!ready && !probe.error && (
