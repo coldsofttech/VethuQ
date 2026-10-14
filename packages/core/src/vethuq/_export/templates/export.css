@@ -244,6 +244,7 @@
   /* Text in a language with its own script: use a font that has it (the monospace and system
      stacks above have none), with the Noto face last for machines that lack a native one. */
   [lang="te"] { font-family: "Nirmala UI", Gautami, Vani, "Noto Sans Telugu", sans-serif; }
+  [lang="hi"] { font-family: "Nirmala UI", Mangal, "Noto Sans Devanagari", sans-serif; }
 
   @media (max-width: 720px) {
     body { padding: 1rem 0.75rem 2rem; }
