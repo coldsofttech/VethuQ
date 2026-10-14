@@ -118,6 +118,8 @@ export function SearchBar({
           className={styles.box}
           size="large"
           type="search"
+          // Typed Urdu reads right to left: follow the text.
+          dir="auto"
           // The on-screen keyboard is in use: keep the device's own keyboard from opening too.
           inputMode={keyboard ? 'none' : undefined}
           placeholder="Search your documents"

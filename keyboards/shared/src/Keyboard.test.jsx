@@ -37,6 +37,11 @@ describe('Keyboard', () => {
     expect(screen.queryByRole('button', { name: '1' })).not.toBeInTheDocument();
   });
 
+  it('lays the keys out left to right, whatever way the language reads', () => {
+    setup({ lang: 'ur' });
+    expect(screen.getByRole('group', { name: 'Test keyboard' })).toHaveAttribute('dir', 'ltr');
+  });
+
   it('reports text, a space as a space, backspace and enter', async () => {
     const { typed } = setup();
     await press('a');

@@ -214,6 +214,20 @@ describe('Search', () => {
     expect(box).toHaveValue('ग');
   });
 
+  it('offers an Urdu on-screen keyboard, and the box follows the way the text reads', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    const box = await screen.findByRole('searchbox', { name: 'Search text' });
+    expect(box).toHaveAttribute('dir', 'auto');
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Keyboard language' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'اردو (Urdu)' }));
+    const keys = await screen.findByRole('group', { name: 'Urdu on-screen keyboard' });
+    await userEvent.click(within(keys).getByRole('button', { name: 'ق' }));
+    await userEvent.click(within(keys).getByRole('button', { name: 'ت' }));
+    expect(box).toHaveValue('قت');
+  });
+
   it('opens the on-screen keyboard in the language picked last time', async () => {
     localStorage.setItem('vethuq.keyboard-language', 'te');
     mockApi(ROUTES);

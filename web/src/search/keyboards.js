@@ -1,12 +1,14 @@
 import { EnglishKeyboard } from '@vethuq/keyboard-en';
 import { HindiKeyboard } from '@vethuq/keyboard-hi';
 import { TeluguKeyboard } from '@vethuq/keyboard-te';
+import { UrduKeyboard } from '@vethuq/keyboard-ur';
 
 /** The on-screen keyboards the search box offers, the first being the one used until another is picked. */
 export const KEYBOARDS = [
   { id: 'en', label: 'English', Component: EnglishKeyboard },
   { id: 'hi', label: 'हिन्दी (Hindi)', Component: HindiKeyboard },
   { id: 'te', label: 'తెలుగు (Telugu)', Component: TeluguKeyboard },
+  { id: 'ur', label: 'اردو (Urdu)', Component: UrduKeyboard },
 ];
 
 const KEY = 'vethuq.keyboard-language';

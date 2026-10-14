@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/keyboard-ur",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An on-screen Urdu keyboard: the shared keyboard with the Urdu layout",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "@vethuq/keyboard-shared": "*",
+    "react": ">=19"
+  }
+}

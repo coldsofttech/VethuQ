@@ -109,7 +109,8 @@ export function Keyboard({ layers, onKey, onClose, names = {}, label, lang, font
   };
 
   return (
-    <div role="group" aria-label={label} style={css.root} lang={lang}>
+    // The keys sit where the physical keys are, left to right, whatever way the language reads.
+    <div role="group" aria-label={label} style={css.root} lang={lang} dir="ltr">
       {layers[layer].map((row, r) => (
         <div key={r} style={css.row}>
           {row.map((key, k) => {
