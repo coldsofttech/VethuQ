@@ -41,7 +41,7 @@ mdit-py-plugins==0.6.1
 mdurl==0.1.2
 modelscope-hub==0.4.6
 modelscope==1.40.2
-more-itertools==11.1.0
+more-itertools==11.2.1
 networkx==3.7
 numpy==2.5.4
 olefile==0.47
@@ -58,6 +58,7 @@ prettytable==3.18.0
 protobuf==7.36.2
 psutil==7.2.2
 py-cpuinfo==9.0.0
+pyarrow==26.0.0
 pyclipper==1.4.0
 pycparser==3.11 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
 pycryptodome==3.24.0
