@@ -1,4 +1,4 @@
-"""A CSV file read from disk as rows, for the table preview: the same rows VethuQ indexed.
+"""A CSV or TSV file read from disk as rows, for the table preview: the same rows VethuQ indexed.
 
 The index keeps one line per non-empty row (its non-empty cells, spaces collapsed, joined by
 " | "), so the rows here are numbered the same way: `row_number` N is the Nth row with something in
@@ -100,7 +100,9 @@ class CsvFile:
     views: dict[tuple, list[int]] = field(default_factory=dict)
 
     @classmethod
-    def read(cls, path: str) -> CsvFile:
+    def read(cls, path: str, delimiter: str | None = None) -> CsvFile:
+        """The file's rows. The delimiter is sniffed, unless `delimiter` says what it is (a TSV
+        file's is always a tab)."""
         size = os.path.getsize(path)
         if size > MAX_BYTES:
             raise ValueError(
@@ -110,16 +112,17 @@ class CsvFile:
         with open(path, "rb") as handle:
             text, encoding = decode(handle.read())
         csv.field_size_limit(max(csv.field_size_limit(), FIELD_LIMIT))
-        dialect = _dialect(text)
+        dialect = _dialect(text) if delimiter is None else csv.excel
+        delimiter = dialect.delimiter if delimiter is None else delimiter
         rows: list[list[str]] = []
         try:
-            for row in csv.reader(io.StringIO(text, newline=""), dialect):
+            for row in csv.reader(io.StringIO(text, newline=""), dialect, delimiter=delimiter):
                 if any(_collapse(cell) for cell in row):
                     rows.append(row)
         except csv.Error as error:
             raise ValueError(str(error)) from error
         columns = max((len(row) for row in rows), default=0)
-        return cls(rows, dialect.delimiter, encoding, columns, cls._header_looks_like(rows))
+        return cls(rows, delimiter, encoding, columns, cls._header_looks_like(rows))
 
     @staticmethod
     def _header_looks_like(rows: list[list[str]]) -> bool:
@@ -206,19 +209,19 @@ class CsvCache:
     """The last few parsed files, so scrolling does not read the file again."""
 
     def __init__(self) -> None:
-        self._files: dict[tuple[str, int, int], CsvFile] = {}
+        self._files: dict[tuple[str, int, int, str | None], CsvFile] = {}
         self._lock = threading.Lock()
 
-    def get(self, path: str) -> CsvFile:
+    def get(self, path: str, delimiter: str | None = None) -> CsvFile:
         real = os.path.realpath(path)
         stat = os.stat(real)
-        key = (real, stat.st_mtime_ns, stat.st_size)
+        key = (real, stat.st_mtime_ns, stat.st_size, delimiter)
         with self._lock:
             found = self._files.pop(key, None)
             if found is not None:
                 self._files[key] = found  # most recently used last
                 return found
-        parsed = CsvFile.read(real)
+        parsed = CsvFile.read(real, delimiter)
         with self._lock:
             self._files[key] = parsed
             while len(self._files) > KEEP_FILES:

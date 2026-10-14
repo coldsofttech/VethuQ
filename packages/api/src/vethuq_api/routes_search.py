@@ -114,6 +114,18 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("Only a CSV file of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().csv_window(path, request.args))
 
+    @api.get("/files/tsv")
+    def tsv_window() -> Response:
+        """A window of rows of a TSV file of a source: the same table preview as for CSV."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_tsv(path)
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a TSV file of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().tsv_window(path, request.args))
+
     # A search is read-only; it is a POST only because a query can be long and has many parts.
     @api.post("/search/run")
     def search_run() -> Response:

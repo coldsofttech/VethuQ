@@ -380,6 +380,61 @@ class TestCsvTable:
             assert self.get(http, **bad).status_code == 422, bad
 
 
+class TestTsvTable:
+    @pytest.fixture
+    def http(self, web_dist, library):
+        rows = "\n".join(f"name {n}\t{n * 3}" for n in range(1, 301))
+        (library / "a" / "table.tsv").write_text(f"name\tqty\n{rows}\n", encoding="utf-8")
+        # Commas and semicolons are text in a TSV file, not delimiters.
+        (library / "a" / "odd.tsv").write_text("id\tnote\n1\twheat, here; ok\n\n2\tx\n", "utf-8")
+        (library / "a" / "plain.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+        (library / "outside.tsv").write_text("a\tb\n1\t2\n", encoding="utf-8")
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="table.tsv", route="tsv", **query):
+        path = http.library / "a" / name
+        return http.get(
+            f"/api/files/{route}", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def test_a_window_of_rows_with_the_header_and_sizes(self, http):
+        reply = self.get(http, start=10, count=3).get_json()
+        assert reply["total"] == 300 and reply["header"] == ["name", "qty"]
+        assert reply["delimiter"] == "\t" and reply["header_detected"] is True
+        assert reply["rows"] == [["name 11", "33"], ["name 12", "36"], ["name 13", "39"]]
+        assert reply["numbers"] == [12, 13, 14]  # the header is row 1
+
+    def test_only_a_tab_separates_cells(self, http):
+        reply = self.get(http, "odd.tsv").get_json()
+        assert reply["columns"] == 2 and reply["rows"][0] == ["1", "wheat, here; ok"]
+
+    def test_where_a_match_is(self, http):
+        # Row 3 of odd.tsv is "2<tab>x" (the empty row is not counted): indexed as "2 | x".
+        reply = self.get(http, "odd.tsv", at_row=3, at_offset=5).get_json()
+        assert reply["target"] == {"row_number": 3, "index": 1, "column": 1}
+
+    def test_sorting_and_filtering(self, http):
+        down = self.get(http, sort=1, dir="desc", count=1).get_json()
+        assert down["rows"] == [["name 300", "900"]]
+        assert self.get(http, **{"filter": "name 29", "column": 0}).get_json()["total"] == 11
+
+    def test_only_a_tsv_of_a_source(self, http):
+        assert self.get(http).status_code == 200
+        outside = {"path": str(http.library / "outside.tsv")}
+        assert http.get("/api/files/tsv", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "plain.csv").status_code == 422
+        assert self.get(http, "missing.tsv").status_code == 422
+        # The CSV route does not take a TSV file, nor the TSV route a CSV one.
+        assert self.get(http, route="csv").status_code == 422
+
+
 class TestMarkdownFile:
     @pytest.fixture
     def http(self, web_dist, library):

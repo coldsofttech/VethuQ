@@ -632,6 +632,32 @@ describe('Search', () => {
       expect(within(panel).getByRole('switch', { name: 'First row is header' })).toBeChecked();
     });
 
+    it('reads a TSV file from the TSV route, and shows it in the same table', async () => {
+      const fetchMock = mockApi({
+        ...ROUTES,
+        'POST /api/search/run': {
+          ...CSV,
+          matches: [
+            {
+              ...CSV.matches[0],
+              file_name: 'people.tsv',
+              file_path: '/docs/people.tsv',
+              file_type: 'tsv',
+            },
+          ],
+        },
+        'GET /api/files/tsv': { ...TABLE, delimiter: '\t', file_name: 'people.tsv' },
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('grace{Enter}');
+      const panel = await open();
+      expect(await within(panel).findByText('Ada')).toBeInTheDocument();
+      expect(panel.querySelector('mark').textContent).toBe('Grace');
+      const urls = fetchMock.mock.calls.map(([url]) => url);
+      expect(urls.some((u) => u.startsWith('/api/files/tsv?'))).toBe(true);
+      expect(urls.some((u) => u.startsWith('/api/files/csv'))).toBe(false);
+    });
+
     it('sorts by a column from its header: ascending, then descending, then off', async () => {
       const { fetchMock, panel } = await show();
       const head = await within(panel).findByRole('button', { name: /name/ });

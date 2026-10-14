@@ -83,7 +83,8 @@ export const placeOf = (match) => {
   if (['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml'].includes(match.file_type)) return {};
   // A picture's text was read by OCR: there is no line to open it at (a TIFF's frame is its page).
   if (['png', 'jpg'].includes(match.file_type)) return {};
-  if (['csv', 'tsv'].includes(match.file_type)) return match.line != null ? { line: match.line } : {};
+  if (['csv', 'tsv'].includes(match.file_type))
+    return match.line != null ? { line: match.line } : {};
   if (match.line != null) {
     return match.column != null ? { line: match.line, column: match.column } : { line: match.line };
   }
@@ -97,13 +98,14 @@ export const describePlace = (place) => {
   return null;
 };
 
-/** The file types the preview can show: PDF, text, Markdown, CSV, CSS, HTML, JSON, YAML, JS, XML and pictures. */
+/** The file types the preview can show: PDF, text, Markdown, CSV, TSV, CSS, HTML, JSON, YAML, JS, XML and pictures. */
 export const canPreview = (match) =>
   [
     'pdf',
     'txt',
     'markdown',
     'csv',
+    'tsv',
     'css',
     'html',
     'json',

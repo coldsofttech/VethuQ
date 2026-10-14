@@ -19,6 +19,9 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (TSV table preview)
+- `GET /api/files/tsv?path=` returns a window of rows of a TSV file of a source, the same reply as `/api/files/csv` (sorting, filtering, header, where a match is) with a tab as the only delimiter. Only a TSV file of a source can be shown (the `tsv` file type must be installed); the CSV route does not take TSV files.
+
 ### Added (CSV table preview)
 - `GET /api/files/csv?path=` returns a window of rows of a CSV file of a source, read from disk (the same rows VethuQ indexed: empty rows left out, the delimiter and encoding detected), with the header (guessed), column widths and, for `at_row`/`at_offset`, the position of the matching row and cell. `sort`, `dir`, `filter`, `column` and `header` shape the view on the server. Files over 64 MB are refused.
 

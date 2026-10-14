@@ -28,6 +28,18 @@ class TestReading:
         file = CsvFile.read(write(tmp_path, text))
         assert file.delimiter == delimiter and file.rows[1] == ["1", "2"]
 
+    def test_a_given_delimiter_is_used_and_nothing_is_sniffed(self, tmp_path):
+        path = write(tmp_path, "a,b\tc\n1,2\t3\n", "t.tsv")
+        file = CsvFile.read(path, "\t")
+        assert file.delimiter == "\t" and file.rows == [["a,b", "c"], ["1,2", "3"]]
+        assert CsvFile.read(path).delimiter == ","  # sniffed, as for any CSV
+
+    def test_the_cache_keeps_a_file_read_one_way_apart_from_the_other(self, tmp_path):
+        path = write(tmp_path, "a,b\tc\n", "t.tsv")
+        cache = CsvCache()
+        assert cache.get(path, "\t") is cache.get(path, "\t")
+        assert cache.get(path, "\t") is not cache.get(path)
+
     def test_the_encoding_is_read(self, tmp_path):
         file = CsvFile.read(write(tmp_path, "name\ncafé\n", encoding="utf-16"))
         assert file.encoding == "utf-16" and file.rows[1] == ["café"]

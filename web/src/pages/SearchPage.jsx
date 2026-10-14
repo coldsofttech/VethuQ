@@ -47,6 +47,7 @@ const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 const PREVIEWS = {
   pdf: PdfPreview,
   csv: TablePreview,
+  tsv: TablePreview,
   txt: TextPreview,
   markdown: MarkdownPreview,
   css: CodePreview,

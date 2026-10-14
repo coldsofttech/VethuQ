@@ -138,9 +138,21 @@ class SearchService:
     def is_csv(self, path: str) -> bool:
         return self.is_type(path, "csv")
 
+    def is_tsv(self, path: str) -> bool:
+        return self.is_type(path, "tsv")
+
     def csv_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
         """`count` rows of a CSV file from row `start` of the view (filtered, then sorted), with
         the header, the sizes and, when asked, where the matching row and cell are in the view."""
+        return self._table_window(path, query, None)
+
+    def tsv_window(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
+        """The same window of a TSV file, whose cells are always separated by a tab."""
+        return self._table_window(path, query, "\t")
+
+    def _table_window(
+        self, path: str, query: Mapping[str, Any], delimiter: str | None
+    ) -> dict[str, object]:
         arg = {k: _whole(v, k) for k, v in query.items() if k in _CSV_NUMBERS}
         start = _number(arg.get("start"), "start", 0)
         count = min(_number(arg.get("count"), "count", TEXT_DEFAULT_LINES, 1), TEXT_MAX_LINES)
@@ -154,7 +166,7 @@ class SearchService:
         needle = query.get("filter", "")
         if not isinstance(needle, str):
             raise ValueError("filter is text.")
-        file = self._csv.get(path)
+        file = self._csv.get(path, delimiter)
         flag = query.get("header")
         if flag not in (None, "", "0", "1"):
             raise ValueError("header is 1 or 0.")

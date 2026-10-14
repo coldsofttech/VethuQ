@@ -82,6 +82,7 @@ dev = [
     "vethuq-addon-noise-fuzzy",
     "vethuq-addon-leetspeak",
     "vethuq-addon-semantic",
+    "vethuq-addon-tsv",
     "numpy>=1.26",
     "vethuq-addon-api",
     "vethuq-worker",

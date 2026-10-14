@@ -402,6 +402,13 @@ export const api = {
      * @returns {Promise<object>}
      */
     csvWindow: (params, signal) => request(`/api/files/csv${query(params)}`, { signal }),
+    /**
+     * The same window of rows of a TSV file (cells separated by a tab).
+     * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,
+     *   filter?: string, column?: number, header?: number, at_row?: number, at_offset?: number}} params
+     * @returns {Promise<object>}
+     */
+    tsvWindow: (params, signal) => request(`/api/files/tsv${query(params)}`, { signal }),
   },
   settings: {
     /** @param {string} section @returns {Promise<{ section: string, settings: Setting[] }>} */

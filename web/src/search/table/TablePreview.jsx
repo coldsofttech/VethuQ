@@ -36,7 +36,7 @@ const useStyles = makeStyles({
 const FILTER_DELAY = 250;
 
 /**
- * A CSV file of the results as a table beside them, read from disk: sort by a column, filter the
+ * A CSV or TSV file of the results as a table beside them, read from disk: sort by a column, filter the
  * rows (in every column or one), resize columns, and say whether the first row is a header (it is
  * guessed). Opens on the matching row with the matching cell marked.
  *
@@ -50,6 +50,7 @@ export default function TablePreview({ matches, index, onIndex, onClose }) {
   const styles = useStyles();
   const match = matches[index];
   const path = match.file_path;
+  const rowsOf = match.file_type === 'tsv' ? api.files.tsvWindow : api.files.csvWindow;
   const [sort, setSort] = useState(null);
   const [typed, setTyped] = useState('');
   const [filter, setFilter] = useState('');
@@ -79,24 +80,22 @@ export default function TablePreview({ matches, index, onIndex, onClose }) {
   // One small request tells how many rows the view has, the header, and where the match is.
   useEffect(() => {
     const controller = new AbortController();
-    api.files
-      .csvWindow(
-        { ...params, start: 0, count: 1, at_row: match.line, at_offset: match.column },
-        controller.signal,
-      )
-      .then(
-        (info) => {
-          setProbe({ key, info, error: null });
-          setWidths((w) => (w.path === path ? w : { path, value: info.widths }));
-        },
-        (error) => error?.name !== 'AbortError' && setProbe({ key, info: null, error }),
-      );
+    rowsOf(
+      { ...params, start: 0, count: 1, at_row: match.line, at_offset: match.column },
+      controller.signal,
+    ).then(
+      (info) => {
+        setProbe({ key, info, error: null });
+        setWidths((w) => (w.path === path ? w : { path, value: info.widths }));
+      },
+      (error) => error?.name !== 'AbortError' && setProbe({ key, info: null, error }),
+    );
     return () => controller.abort();
-  }, [params, key, match.line, match.column, path]);
+  }, [rowsOf, params, key, match.line, match.column, path]);
 
   const loadRows = useCallback(
-    (start, count) => api.files.csvWindow({ ...params, start, count }),
-    [params],
+    (start, count) => rowsOf({ ...params, start, count }),
+    [rowsOf, params],
   );
 
   const info = probe.info;
