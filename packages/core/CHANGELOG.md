@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (the data pack)
+- `pip install vethuq[data]` installs `vethuq-bundle-data`: the CSV, TSV, Parquet, JSON and NDJSON file types in one install. Parquet, JSON and NDJSON are licensed (one data pack licence carries an entitlement for each); CSV and TSV are free. `client.version.bundles` lists it as `data`, and the add-ons screen of the interface describes it.
+
 ### Added (NDJSON files)
 - The `.ndjson` and `.jsonl` (JSON Lines) file types, as the licensed add-on `vethuq-addon-ndjson` (not installed with VethuQ: `pip install vethuq-addon-ndjson`, then `Ndjson(client).set_licence(token)`). Each line is flattened to `path: value` lines like a JSON file, records are separated by a blank line, a line that is not valid JSON is left out and counted, and the file is read a line at a time. It keeps `encoding`, `record_count`, `invalid_line_count`, `value_count`, `max_depth` and `truncated` in the `ndjson_pages` table. The web interface previews the file as it is on disk, coloured like JSON.
 

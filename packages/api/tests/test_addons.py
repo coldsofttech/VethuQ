@@ -92,7 +92,8 @@ class TestInstalled:
 class TestPacks:
     def test_the_packs_vethuq_names_are_listed_with_what_is_installed(self, vethuq):
         packs = {p["id"]: p for p in AddonsService(lambda: vethuq).packs()}
-        assert {"images", "deep-scan", "search", "web"} <= set(packs)
+        assert {"images", "deep-scan", "search", "web", "data"} <= set(packs)
+        assert packs["data"]["note"]
         assert packs["images"]["packages"][0]["name"] == "vethuq-bundle-image"
         assert packs["images"]["note"]
         assert isinstance(packs["fuzzy"]["installed"], bool)

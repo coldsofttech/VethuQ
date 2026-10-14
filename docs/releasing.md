@@ -241,7 +241,7 @@ installers of licensed add-ons are public too; **Setup asks for no licence**: ac
 ### Bundles
 
 `vethuq-bundle-<name>-vX.Y.Z` (`-rcN` for a release candidate) builds the installer of one bundle
-(`image`, `deep-scan`, `office`, `web`, `developer`, `search`), with `.github/workflows/release-bundle.yml`.
+(`image`, `deep-scan`, `office`, `web`, `developer`, `data`, `search`), with `.github/workflows/release-bundle.yml`.
 It is one download that installs all of the bundle's add-ons and the bundle's own package:
 
 | Platform | File |
@@ -259,7 +259,7 @@ It is one download that installs all of the bundle's add-ons and the bundle's ow
   it) goes in `add-ons/bundle-<name>/`, with a `bundle.json` recording the bundle's version, each member's
   version and which members VethuQ already had.
 - Installing a bundle and one of its add-ons (in either order), or two bundles that share one (`json` is
-  in both `web` and `developer`), is safe: the shared entries are counted as above, so each stays until
+  in `web`, `developer` and `data`), is safe: the shared entries are counted as above, so each stays until
   the last installer that needs it is removed.
 - It follows the add-on installer's rules: VethuQ must be installed first, the same "all users or just
   me" choice as VethuQ, no licence is asked for, and the bundle's version in VethuQ-premium must equal

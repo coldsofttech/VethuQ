@@ -36,6 +36,7 @@ PACK_NOTES = {
     "github": "Run OCR in your own GitHub account.",
     "web": "HTML, XML, CSS, JavaScript and JSON files (licensed).",
     "developer": "YAML and JSON files (licensed).",
+    "data": "CSV, TSV, Parquet, JSON and NDJSON files (Parquet, JSON and NDJSON licensed).",
     "office": "Word, Excel, PowerPoint, RTF and email files (licensed).",
 }
 
