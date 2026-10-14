@@ -245,6 +245,12 @@
      stacks above have none), with the Noto face last for machines that lack a native one. */
   [lang="te"] { font-family: "Nirmala UI", Gautami, Vani, "Noto Sans Telugu", sans-serif; }
   [lang="hi"] { font-family: "Nirmala UI", Mangal, "Noto Sans Devanagari", sans-serif; }
+  /* Urdu is written right to left, in a Nastaliq face where the machine has one. */
+  [lang="ur"] {
+    font-family: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", "Urdu Typesetting", "Noto Naskh Arabic", "Segoe UI", sans-serif;
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
 
   @media (max-width: 720px) {
     body { padding: 1rem 0.75rem 2rem; }

@@ -176,7 +176,7 @@ unchanged.) Like the shell and the service it installs **into the command line's
     vethuqw bake-models --models DIR                     # fetches the OCR models (needs the network)
 
 The worker reads a job with the add-ons in `add-ons/`: the installers carry the free defaults, so a runner
-that needs more (office files, Telugu, Hindi, deeper OCR) adds those add-on folders there. The OCR models are not
+that needs more (office files, Telugu, Hindi, Urdu, deeper OCR) adds those add-on folders there. The OCR models are not
 in the installers; `bake-models` downloads them, and `VETHUQ_MODELS` points the worker at them. There is
 nothing to configure at install time and no service to clean up; uninstalling the command line removes
 `vethuqw.exe` too.
