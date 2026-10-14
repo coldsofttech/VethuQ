@@ -19,6 +19,12 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (WebP preview)
+- `GET /api/files/webp?path=&page=` serves page `page` (from 1) of a WebP of a source as a PNG, the pages being the add-on's (a still is one page, an animation one for each distinct picture), with transparency laid on white and the EXIF orientation applied as for OCR.
+
+### Fixed (damaged pictures)
+- A cut-off or damaged BMP, GIF, WebP or TIFF now always gives a readable 422 from the picture routes. Pillow's plugins raise an assortment of errors for such files (an `IndexError`, a `TypeError`, a `struct.error`...); some of them were unhandled server errors, among them one raised while counting a TIFF's frames. A picture Pillow only warns about (over its pixel limit but under twice it) is refused too.
+
 ### Added (GIF preview)
 - `GET /api/files/gif?path=&page=` serves page `page` (from 1) of a GIF of a source as a PNG: the picture a viewer shows at that point of the animation, with transparency laid on white as OCR sees it. The pages are the GIF add-on's (the distinct pictures of the animation), so "frame 2 of 3" is the picture that was read. A frame over 40 megapixels is refused.
 

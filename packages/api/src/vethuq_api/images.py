@@ -1,21 +1,24 @@
-"""Pictures for the preview: a TIFF frame, a GIF page or a BMP as a PNG a browser can show.
+"""Pictures for the preview: a TIFF frame, a GIF or WebP page or a BMP as a PNG a browser can show.
 
 Browsers draw JPEG and PNG themselves, so those are served as they are. A BMP can be run-length
-encoded, OS/2 or a headerless DIB, which browsers do not all draw, so it is converted too; a GIF is
-shown one page at a time, the pages being the distinct pictures of its animation as the GIF add-on
-reads them."""
+encoded, OS/2 or a headerless DIB, which browsers do not all draw, so it is converted too. A GIF or
+a WebP is shown one page at a time, the pages being the distinct pictures of its animation as the
+GIF and WebP add-ons read them."""
 
 from __future__ import annotations
 
 import io
+import warnings
 from typing import Any
 
 # A frame bigger than this is not converted (40 megapixels: a 7000 x 6000 scan).
 MAX_PIXELS = 40_000_000
-# The pages of an animated GIF, as the GIF add-on reads them: its distinct pictures, at most this
-# many, found in its first frames. A preview must show the picture that was read, so these match.
-GIF_MAX_PAGES = 30
-GIF_MAX_SCAN_FRAMES = 1000
+# The pages of an animated GIF or WebP, as their add-ons read them: its distinct pictures, at most
+# this many, found in its first frames. A preview must show the picture that was read, so these
+# match.
+ANIMATION_MAX_PAGES = 30
+ANIMATION_MAX_SCAN_FRAMES = 1000
+ANIMATED = ("GIF", "WEBP")
 
 
 def tiff_frames(path: str) -> int:
@@ -37,11 +40,20 @@ def bmp_as_png(path: str) -> bytes:
     return _as_png(path, 1, "BMP", "picture")
 
 
+class _Refused(ValueError):
+    """A picture VethuQ will not make (it is too large): its message is for the person."""
+
+
+def animated_pages(path: str, kind: str = "GIF") -> int:
+    """How many pages (distinct pictures) the GIF or WebP (`kind`) has."""
+    Image = _pillow(kind)
+    with Image.open(path) as picture:
+        return len(_distinct_frames(picture))
+
+
 def gif_pages(path: str) -> int:
     """How many pages (distinct pictures) the GIF has."""
-    Image = _pillow("GIF")
-    with Image.open(path) as picture:
-        return len(_distinct_gif_frames(picture))
+    return animated_pages(path, "GIF")
 
 
 def gif_page_as_png(path: str, page: int) -> bytes:
@@ -50,49 +62,59 @@ def gif_page_as_png(path: str, page: int) -> bytes:
     return _as_png(path, page, "GIF", "frame")
 
 
-def _distinct_gif_frames(picture: Any) -> list[int]:
+def webp_page_as_png(path: str, page: int) -> bytes:
+    """Page `page` (from 1) of a WebP as PNG bytes: the picture a viewer shows at that point of an
+    animation (a still has one page), with transparency flattened onto white as it is for OCR."""
+    return _as_png(path, page, "WEBP", "frame")
+
+
+def _distinct_frames(picture: Any) -> list[int]:
     """The index of the first frame of each distinct picture, in order (see the GIF add-on)."""
     import hashlib  # noqa: PLC0415
 
     kept: list[int] = []
     seen: set[bytes] = set()
-    for index in range(min(getattr(picture, "n_frames", 1), GIF_MAX_SCAN_FRAMES)):
+    for index in range(min(getattr(picture, "n_frames", 1), ANIMATION_MAX_SCAN_FRAMES)):
         picture.seek(index)
         key = hashlib.blake2b(picture.convert("RGBA").tobytes(), digest_size=16).digest()
         if key in seen:
             continue
         seen.add(key)
         kept.append(index)
-        if len(kept) >= GIF_MAX_PAGES:
+        if len(kept) >= ANIMATION_MAX_PAGES:
             break
     return kept
 
 
 def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
     Image = _pillow(kind)
-    from PIL import ImageOps, UnidentifiedImageError  # noqa: PLC0415 - only for these pictures
+    from PIL import ImageOps  # noqa: PLC0415 - only for these pictures
 
     unreadable = ValueError(f"This {noun} cannot be read: it is damaged, or it is not a {kind}.")
-    # What Pillow raises for a file that is not what it says, is cut off, or claims a size no one
-    # should allocate; each becomes a message a person can read.
-    damaged = (UnidentifiedImageError, OSError, SyntaxError, EOFError, Image.DecompressionBombError)
+    # Pillow's plugins raise all sorts of errors (an IndexError, a TypeError, a struct.error...) for
+    # a file that is not what it says, is cut off, or claims a size no one should allocate; every
+    # one becomes a message a person can read, never a server error. Only our own refusals
+    # (`_Refused`) say something else.
     try:
-        picture = Image.open(path)
-    except damaged as error:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            picture = Image.open(path)
+    except Exception as error:  # noqa: BLE001
         raise unreadable from error
     with picture:
         try:
-            order = _distinct_gif_frames(picture) if kind == "GIF" else None
-        except damaged as error:
+            order = _distinct_frames(picture) if kind in ANIMATED else None
+            # Reading the frame count reads every frame's header, so a cut-off file fails here.
+            frames = len(order) if order is not None else int(getattr(picture, "n_frames", 1))
+        except Exception as error:  # noqa: BLE001
             raise unreadable from error
-        frames = len(order) if order is not None else int(getattr(picture, "n_frames", 1))
         if not 1 <= frame <= frames:
             raise ValueError(f"The {kind} has {frames} {'frame' if frames == 1 else 'frames'}.")
         try:
             picture.seek(order[frame - 1] if order is not None else frame - 1)
             pixels = picture.width * picture.height
             if pixels > MAX_PIXELS:
-                raise ValueError(
+                raise _Refused(
                     f"This {noun} is {pixels / 1_000_000:.0f} megapixels, too large to preview "
                     f"(the limit is {MAX_PIXELS // 1_000_000}). Open it instead."
                 )
@@ -102,13 +124,15 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
             if kind == "BMP" and upright.mode == "RGBA":
                 if upright.getchannel("A").getextrema() == (0, 0):
                     upright = upright.convert("RGB")
-            if kind == "GIF":
+            if kind in ANIMATED:
                 upright = _on_white(upright)
             if upright.mode not in ("RGB", "RGBA", "L", "LA"):
                 upright = upright.convert("RGBA" if "transparency" in upright.info else "RGB")
             out = io.BytesIO()
             upright.save(out, format="PNG")
-        except damaged as error:  # a file cut off partway, found out when it is decoded
+        except _Refused:
+            raise
+        except Exception as error:  # noqa: BLE001 - a file cut off partway, found out when decoded
             raise unreadable from error
         return out.getvalue()
 

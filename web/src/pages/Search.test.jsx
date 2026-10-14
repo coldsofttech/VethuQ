@@ -1519,6 +1519,36 @@ describe('Search', () => {
       );
     });
 
+    it('opens an animated WebP at the page of the match and goes from picture to picture', async () => {
+      const webp = found({
+        file_name: 'loop.webp',
+        file_path: '/docs/loop.webp',
+        file_type: 'webp',
+        total_pages: 3,
+        page_number: 2,
+      });
+      const { panel } = await show(webp);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/webp?path=%2Fdocs%2Floop.webp&page=2',
+      );
+      expect(within(panel).getByText(/frame 2 of 3/)).toBeInTheDocument();
+      await userEvent.click(within(panel).getByRole('button', { name: 'Next frame' }));
+      await waitFor(() =>
+        expect(panel.querySelector('img').getAttribute('src')).toContain('page=3'),
+      );
+    });
+
+    it('shows a still WebP as one picture, without frame buttons', async () => {
+      const still = found({ file_name: 's.webp', file_path: '/docs/s.webp', file_type: 'webp' });
+      const { panel } = await show(still);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/webp?path=%2Fdocs%2Fs.webp&page=1',
+      );
+      expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+    });
+
     it('shows a still GIF as one picture, without frame buttons', async () => {
       const still = found({ file_name: 's.gif', file_path: '/docs/s.gif', file_type: 'gif' });
       const { panel } = await show(still);

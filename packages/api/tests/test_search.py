@@ -1153,5 +1153,237 @@ class TestGifPagesAreTheOnesTheAddOnReads:
         reader = pytest.importorskip("vethuq_addon_gif.reader")
         from vethuq_api import images
 
-        assert images.GIF_MAX_PAGES == reader.GifReader.MAX_PAGES
-        assert images.GIF_MAX_SCAN_FRAMES == reader.GifReader.MAX_SCAN_FRAMES
+        assert images.ANIMATION_MAX_PAGES == reader.GifReader.MAX_PAGES
+        assert images.ANIMATION_MAX_SCAN_FRAMES == reader.GifReader.MAX_SCAN_FRAMES
+
+
+class TestWebpPictures:
+    """A WebP shown one page at a time as a PNG (a still is one page, an animation has one for each
+    distinct picture). The WebP add-on may not be installed in this checkout, so the type check is
+    replaced; the route and the pictures are what is tested."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        from PIL import Image, ImageDraw
+
+        folder = library / "a"
+
+        def webp(name, frames, **kw):
+            frames[0].save(
+                folder / name,
+                "WEBP",
+                save_all=len(frames) > 1,
+                append_images=frames[1:],
+                lossless=True,
+                **kw,
+            )
+
+        red, green, blue = (
+            Image.new("RGB", (40, 20), colour) for colour in ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+        )
+        webp("three.webp", [red, green, blue], duration=100, loop=0)
+        webp("loop.webp", [red, green] * 3, duration=100, loop=0)
+        webp("still.webp", [red])
+        ink = Image.new("RGBA", (30, 30), (0, 0, 0, 0))
+        ImageDraw.Draw(ink).rectangle([10, 10, 20, 20], fill=(0, 0, 0, 255))
+        webp("transparent.webp", [ink])
+        exif = Image.Exif()
+        exif[0x0112] = 6  # shown turned a quarter: 40 x 20 is displayed as 20 x 40
+        webp("turned.webp", [red], exif=exif.tobytes())
+        (folder / "notes.webp").write_bytes(b"this is not a picture")
+        data = (folder / "three.webp").read_bytes()
+        (folder / "cut.webp").write_bytes(data[: len(data) // 2])
+        red.save(library / "outside.webp", "WEBP")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "webp" and path.lower().endswith(".webp"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="three.webp", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/webp", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def picture(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data)).convert("RGB")
+
+    def test_each_page_is_a_png_of_that_picture(self, http):
+        first = self.get(http)
+        assert first.status_code == 200 and first.mimetype == "image/png"
+        assert first.headers["Content-Disposition"] == "inline"
+        assert self.picture(first).size == (40, 20)
+        assert self.picture(first).getpixel((0, 0)) == (255, 0, 0)
+        assert self.picture(self.get(http, page=2)).getpixel((0, 0)) == (0, 255, 0)
+        assert self.picture(self.get(http, page=3)).getpixel((0, 0)) == (0, 0, 255)
+
+    def test_a_loop_is_two_pages_not_six(self, http):
+        assert self.get(http, "loop.webp", page=2).status_code == 200
+        reply = self.get(http, "loop.webp", page=3)
+        assert reply.status_code == 422 and "has 2 frames" in reply.get_json()["error"]
+
+    def test_a_still_is_one_page(self, http):
+        assert self.get(http, "still.webp").status_code == 200
+        assert self.get(http, "still.webp", page=2).status_code == 422
+
+    def test_a_page_that_is_not_there_or_not_a_number(self, http):
+        for page in (0, 4, "x", -1):
+            assert self.get(http, page=page).status_code == 422, page
+
+    def test_transparency_is_laid_on_white_so_ink_shows_on_any_theme(self, http):
+        picture = self.picture(self.get(http, "transparent.webp"))
+        assert picture.getpixel((0, 0)) == (255, 255, 255)
+        assert picture.getpixel((15, 15)) == (0, 0, 0)
+
+    def test_the_orientation_is_applied_so_the_picture_is_the_one_ocr_read(self, http):
+        assert self.picture(self.get(http, "turned.webp")).size == (20, 40)
+
+    def test_only_a_webp_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.webp")}
+        assert http.get("/api/files/webp", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.webp").status_code == 422
+
+    def test_damaged_files_say_so_and_never_give_a_server_error(self, http):
+        for name in ("notes.webp", "cut.webp"):
+            reply = self.get(http, name)
+            assert reply.status_code == 422, name
+            assert "cannot be read" in reply.get_json()["error"], name
+
+    def test_a_picture_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.get(http)  # 40 x 20 = 800 pixels
+        assert reply.status_code == 422 and "too large to preview" in reply.get_json()["error"]
+
+    def test_a_picture_pillow_only_warns_about_is_refused_too(self, http, monkeypatch):
+        from PIL import Image
+
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 500)  # 800 pixels: a warning, not an error
+        reply = self.get(http, "still.webp")
+        assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
+
+
+class TestImageConverterNeverGivesAnUnhandledError:
+    """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
+    into a readable message (it was an unhandled server error for some of them)."""
+
+    @pytest.mark.parametrize("kind", ["GIF", "WEBP", "BMP", "TIFF"])
+    def test_every_cut_is_either_a_picture_or_a_readable_error(self, tmp_path, kind):
+        import io
+        import warnings
+
+        from PIL import Image, ImageDraw
+
+        from vethuq_api import images
+
+        def frame(n):
+            image = Image.new("RGB", (24, 24), (n * 80, 10, 10))
+            ImageDraw.Draw(image).rectangle([2 + n * 4, 2, 12 + n * 4, 12], fill=(255, 255, 255))
+            return image
+
+        out = io.BytesIO()
+        frames = [frame(n) for n in range(3)]
+        multi = kind in ("GIF", "WEBP", "TIFF")
+        extra = {"lossless": True} if kind == "WEBP" else {}
+        frames[0].save(
+            out, kind, save_all=multi, append_images=frames[1:] if multi else [], **extra
+        )
+        data = out.getvalue()
+        convert = {
+            "GIF": images.gif_page_as_png,
+            "WEBP": images.webp_page_as_png,
+            "BMP": lambda path, page: images.bmp_as_png(path),
+            "TIFF": images.tiff_frame_as_png,
+        }[kind]
+        path = tmp_path / f"cut.{kind.lower()}"
+        outcomes = set()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # Pillow warns about a truncated TIFF
+            for cut in range(0, len(data) - 1, 1 if len(data) < 2000 else 5):
+                path.write_bytes(data[:cut])
+                try:
+                    convert(str(path), 1)
+                    outcomes.add("picture")
+                except ValueError as error:  # the only kind the route turns into a 422
+                    assert "cannot be read" in str(error) or "has " in str(error)
+                    outcomes.add("readable")
+        assert "readable" in outcomes
+
+
+class TestWebpPagesAreTheOnesTheAddOnReads:
+    """The preview shows the picture that was read: its pages are the add-on's, one for one. This
+    needs the WebP add-on (installed with the image bundle), so it is skipped without it."""
+
+    def test_the_same_number_of_pages_and_the_same_pictures(self, tmp_path):
+        import io
+
+        from PIL import Image, ImageDraw
+
+        reader = pytest.importorskip("vethuq_addon_webp.reader")
+        from vethuq_api import images
+
+        def solid(colour):
+            return Image.new("RGB", (60, 30), colour)
+
+        base = solid((200, 200, 200))
+        captioned = base.copy()
+        ImageDraw.Draw(captioned).rectangle([40, 20, 50, 28], fill=(0, 0, 0))
+        cases = {
+            "still": [solid((9, 9, 9))],
+            "loop": [solid((255, 0, 0)), solid((0, 255, 0))] * 4,
+            "returns": [
+                solid((255, 0, 0)),
+                solid((0, 255, 0)),
+                solid((255, 0, 0)),
+                solid((0, 0, 255)),
+            ],
+            "partial": [base, captioned, base, captioned],
+            "many": [solid((n * 7, 0, 0)) for n in range(1, 41)],  # more than the page limit
+        }
+        for name, frames in cases.items():
+            path = tmp_path / f"{name}.webp"
+            frames[0].save(
+                path,
+                "WEBP",
+                save_all=len(frames) > 1,
+                append_images=frames[1:],
+                lossless=True,
+                duration=50,
+            )
+            read = [
+                page.render(None)[:, :, ::-1].copy()  # BGR to RGB
+                for page in reader.WebpReader().read(path)
+            ]
+            assert images.animated_pages(str(path), "WEBP") == len(read), name
+            for number, expected in enumerate(read, start=1):
+                shown = Image.open(io.BytesIO(images.webp_page_as_png(str(path), number)))
+                assert shown.convert("RGB").tobytes() == expected.tobytes(), (name, number)
+
+    def test_the_limits_match(self):
+        reader = pytest.importorskip("vethuq_addon_webp.reader")
+        from vethuq_api import images
+
+        assert images.ANIMATION_MAX_PAGES == reader.WebpReader.MAX_PAGES
+        assert images.ANIMATION_MAX_SCAN_FRAMES == reader.WebpReader.MAX_SCAN_FRAMES

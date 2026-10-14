@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (WebP files)
+- The `.webp` file type, as the free add-on `vethuq-addon-webp` in the image bundle (`pip install vethuq[images]`; not installed with VethuQ). Read with Pillow like the other image types (lossy, lossless, transparency, EXIF orientation); an animated WebP is read as a GIF is, one page for each distinct picture. A WebP can be up to 16383 x 16383 pixels and Pillow only warns about the larger ones below its hard limit, so such an image is refused, not decoded into hundreds of megabytes. The worker image reads WebP files too.
+
 ### Added (GIF files)
 - The `.gif` file type, as the free add-on `vethuq-addon-gif` in the image bundle (`pip install vethuq[images]`; not installed with VethuQ). Read with Pillow like the other image types. An animated GIF is not a page per frame: its pages are its distinct pictures (each counted once, at most 30, from the first 1,000 frames), each as a viewer shows it, so a looping animation is not priced per frame and a caption that appears in a later frame is read. The worker image reads GIF files too.
 
