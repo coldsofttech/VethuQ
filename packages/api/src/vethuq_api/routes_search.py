@@ -115,6 +115,18 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("Only a CSV file of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().csv_window(path, request.args))
 
+    @api.get("/files/mhtml")
+    def mhtml_page() -> Response:
+        """A web archive of a source, made into one page for the rendered preview."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_mhtml(path)
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only an MHTML file of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().mhtml_page(path))
+
     @api.get("/files/tsv")
     def tsv_window() -> Response:
         """A window of rows of a TSV file of a source: the same table preview as for CSV."""

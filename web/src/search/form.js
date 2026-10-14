@@ -103,7 +103,7 @@ export const describePlace = (place) => {
   return null;
 };
 
-/** The file types the preview can show: PDF, text, Markdown, CSV, TSV, Parquet, CSS, HTML, JSON, NDJSON, YAML, JS, XML and pictures. */
+/** The file types the preview can show: PDF, text, Markdown, CSV, TSV, Parquet, CSS, HTML, MHTML, JSON, NDJSON, YAML, JS, XML and pictures. */
 export const canPreview = (match) =>
   [
     'pdf',
@@ -114,6 +114,7 @@ export const canPreview = (match) =>
     'parquet',
     'css',
     'html',
+    'mhtml',
     'json',
     'ndjson',
     'yaml',

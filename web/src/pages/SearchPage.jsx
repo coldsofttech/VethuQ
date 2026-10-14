@@ -61,6 +61,7 @@ const PREVIEWS = {
   jpg: ImagePreview,
   tiff: ImagePreview,
   html: HtmlPreview,
+  mhtml: HtmlPreview,
 };
 
 const useStyles = makeStyles({

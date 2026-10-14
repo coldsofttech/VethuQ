@@ -42,24 +42,42 @@ export function HtmlViewer({ html, target, onMarked, label = 'Web page' }) {
       if (event.target.closest?.('a, area')) event.preventDefault();
     });
     doc.addEventListener('submit', (event) => event.preventDefault());
-    setLoaded(source);
+    // Every load counts, not only the first: a frame can report a load of its empty first document
+    // before the page, and the words are marked once the page itself is in.
+    setLoaded((previous) => ({ source, load: (previous?.load ?? 0) + 1 }));
   };
 
   // Mark the words and scroll them (not the window around the frame) into view.
   useEffect(() => {
     const doc = frame.current?.contentDocument;
     const win = frame.current?.contentWindow;
-    if (loaded !== source || !doc?.body || !win) return;
-    clearMarks(doc.body);
+    if (loaded?.source !== source || !doc?.body || !win) return;
+    // The page itself, then the pages inside it (a web archive carries its saved frames in the
+    // page as `srcdoc`, which is the page's own origin, so their words can be marked too).
+    const documents = [
+      doc,
+      ...[...doc.querySelectorAll('iframe')].map((f) => f.contentDocument),
+    ].filter((d) => d?.body);
+    documents.forEach((d) => clearMarks(d.body));
     if (!target) {
       onMarked?.(null);
       return;
     }
-    const mark = markIn(doc.body, target, { skip: HIDDEN, style: MARK_STYLE });
+    let mark = null;
+    for (const d of documents) {
+      mark = markIn(d.body, target, { skip: HIDDEN, style: MARK_STYLE });
+      if (mark) break;
+    }
     onMarked?.(mark !== null);
     if (mark) {
-      const top = mark.getBoundingClientRect().top + win.scrollY - win.innerHeight / 3;
-      win.scrollTo(0, Math.max(0, top));
+      // Scroll the frame the words are in, then the page to that frame.
+      const owner = mark.ownerDocument.defaultView ?? win;
+      const top = mark.getBoundingClientRect().top + owner.scrollY - owner.innerHeight / 3;
+      owner.scrollTo(0, Math.max(0, top));
+      if (owner !== win && owner.frameElement) {
+        const inner = owner.frameElement.getBoundingClientRect().top + win.scrollY;
+        win.scrollTo(0, Math.max(0, inner - win.innerHeight / 3));
+      }
     }
   }, [loaded, source, target, onMarked]);
 

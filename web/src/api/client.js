@@ -396,6 +396,15 @@ export const api = {
      */
     html: (params, signal) => request(`/api/files/html${query(params)}`, { signal }),
     /**
+     * A web archive (MHTML) of a source made into one page: `text` is its HTML as written (with
+     * the pages saved inside it after), `rendered` the same page with its pictures, styles and
+     * frames put in, so a sandboxed frame can show it.
+     * @param {{path: string}} params
+     * @returns {Promise<{text: string, rendered: string, encoding: string, address: string,
+     *   subject: string, frame_count: number, incomplete: boolean, file_name: string}>}
+     */
+    mhtml: (params, signal) => request(`/api/files/mhtml${query(params)}`, { signal }),
+    /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
      * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,
      *   filter?: string, column?: number, header?: number, at_row?: number, at_offset?: number}} params

@@ -19,6 +19,9 @@ All notable changes to `vethuq-api`.
 ### Added (Markdown preview)
 - `GET /api/files/markdown?path=` returns a Markdown file of a source as it is on disk (the index keeps only its words, without the markup), up to 100 MB, for the rendered preview.
 
+### Added (web archive preview)
+- `GET /api/files/mhtml?path=` turns an MHTML web archive of a source into one page for the preview: `rendered` is the page with every reference the archive can answer put in (pictures and fonts as `data:` addresses, stylesheets as `<style>` blocks, `@import`s followed, saved frames as `srcdoc`), so the sandboxed frame shows it without fetching anything or running a script; `text` is the page's HTML as written, with the pages saved inside it after, for the source views. Up to 24 MB of pictures and styles are put in (`incomplete` says if there were more), and frames nest three deep. The page preview shows it like an HTML file, and marks the words in a saved frame too.
+
 ### Added (NDJSON preview)
 - `GET /api/files/ndjson?path=` returns an NDJSON (JSON Lines) file of a source as it is on disk (up to 100 MB), for the code preview, like the JSON, YAML and XML routes.
 

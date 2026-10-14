@@ -31,6 +31,9 @@ const useStyles = makeStyles({
 
 // A page bigger than this is not rendered (it is one document in a frame, not windowed): its source is shown.
 const RENDER_LIMIT = 5 * 1024 * 1024;
+// A web archive's page carries its pictures in it (the server puts in up to 24 MB of them), so its
+// limit is larger.
+const ARCHIVE_RENDER_LIMIT = 48 * 1024 * 1024;
 // A line longer than this is not drawn in full (nor coloured).
 const LONG_LINE = 20000;
 
@@ -63,21 +66,32 @@ export default function HtmlPreview({ matches, index, onIndex, onClose }) {
   const { isDark } = useTheme();
   const match = matches[index];
   const path = match.file_path;
-  const [file, setFile] = useState({ path: null, text: null, error: null });
+  const archive = match.file_type === 'mhtml';
+  const [file, setFile] = useState({ path: null, text: null, rendered: null, error: null });
   const [choice, setChoice] = useState(readMode);
   const [marked, setMarked] = useState({ key: null, found: null });
 
   useEffect(() => {
     const controller = new AbortController();
-    api.files.html({ path }, controller.signal).then(
-      (reply) => setFile({ path, text: reply.text, error: null }),
-      (error) => error?.name !== 'AbortError' && setFile({ path, text: null, error }),
+    (archive ? api.files.mhtml : api.files.html)({ path }, controller.signal).then(
+      (reply) =>
+        setFile({
+          path,
+          text: reply.text,
+          rendered: reply.rendered ?? null,
+          incomplete: Boolean(reply.incomplete),
+          error: null,
+        }),
+      (error) =>
+        error?.name !== 'AbortError' && setFile({ path, text: null, rendered: null, error }),
     );
     return () => controller.abort();
-  }, [path]);
+  }, [path, archive]);
 
   const text = file.path === path ? file.text : null;
-  const tooBig = text !== null && text.length > RENDER_LIMIT;
+  const rendered = file.path === path ? file.rendered : null;
+  const tooBig =
+    text !== null && (rendered ?? text).length > (archive ? ARCHIVE_RENDER_LIMIT : RENDER_LIMIT);
   const mode = choice === 'rendered' && tooBig ? 'source' : choice;
   const choose = (next) => {
     setChoice(next);
@@ -132,7 +146,9 @@ export default function HtmlPreview({ matches, index, onIndex, onClose }) {
       match={match}
       index={index}
       count={matches.length}
-      place={mode !== 'rendered' && where ? `line ${where.line}` : 'web page'}
+      place={
+        mode !== 'rendered' && where ? `line ${where.line}` : archive ? 'web archive' : 'web page'
+      }
       onIndex={onIndex}
       onClose={onClose}
       tools={
@@ -167,6 +183,14 @@ export default function HtmlPreview({ matches, index, onIndex, onClose }) {
             </MessageBarBody>
           </MessageBar>
         )}
+        {file.path === path && file.incomplete && mode === 'rendered' && (
+          <MessageBar intent="info">
+            <MessageBarBody>
+              This archive is large: some of its pictures and styles are left out of the page shown
+              here.
+            </MessageBarBody>
+          </MessageBar>
+        )}
         {unfound && (
           <MessageBar intent="warning">
             <MessageBarBody>
@@ -196,7 +220,7 @@ export default function HtmlPreview({ matches, index, onIndex, onClose }) {
             {mode === 'rendered' ? (
               <HtmlViewer
                 key={path}
-                html={text}
+                html={rendered ?? text}
                 target={words}
                 onMarked={onMarked}
                 label="Rendered page"

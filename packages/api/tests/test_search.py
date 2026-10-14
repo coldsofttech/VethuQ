@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from api_support import ORIGIN
@@ -787,3 +788,73 @@ class TestParquetTable:
         reply = self.get(http, "bad.parquet")
         assert reply.status_code == 422
         assert "not a readable Parquet file" in reply.get_json()["error"]
+
+
+class TestMhtmlPage:
+    """A web archive made into one page for the preview. The add-on is licensed code that this
+    checkout may not have, so the type checks are replaced; what is tested is the route and the
+    file (a real Chromium capture)."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        fixture = Path(__file__).parent / "fixtures" / "chrome.mhtml"
+        (library / "a" / "page.mhtml").write_bytes(fixture.read_bytes())
+        (library / "a" / "plain.html").write_text("<p>x</p>", encoding="utf-8")
+        (library / "a" / "broken.mhtml").write_bytes(b"not an archive")
+        (library / "outside.mhtml").write_bytes(fixture.read_bytes())
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "mhtml" and path.lower().endswith(".mhtml"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(library / "a")
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(library / "a")
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="page.mhtml"):
+        path = http.library / "a" / name
+        return http.get("/api/files/mhtml", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def test_it_gives_the_source_and_the_self_contained_page(self, http):
+        reply = self.get(http).get_json()
+        assert reply["file_name"] == "page.mhtml" and reply["encoding"] == "utf-8"
+        assert reply["address"] == "http://127.0.0.1:8765/index.html" and reply["frame_count"] == 1
+        assert 'src="http://127.0.0.1:8765/scan.png"' in reply["text"]  # as written
+        assert 'src="data:image/png;base64,' in reply["rendered"]  # made self-contained
+        assert reply["incomplete"] is False and reply["longest_line"] > 0
+
+    def test_only_an_mhtml_file_of_a_source(self, http):
+        assert self.get(http).status_code == 200
+        outside = {"path": str(http.library / "outside.mhtml")}
+        assert (
+            http.get("/api/files/mhtml", query_string=outside, base_url=ORIGIN).status_code == 422
+        )
+        assert self.get(http, "plain.html").status_code == 422
+        assert self.get(http, "missing.mhtml").status_code == 422
+
+    def test_a_file_that_is_not_an_archive_says_why(self, http):
+        reply = self.get(http, "broken.mhtml")
+        assert reply.status_code == 422 and "not a web archive" in reply.get_json()["error"]
+
+    def test_it_needs_the_session(self, web_dist, library):
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=VethuQCore(library / "x.db"))
+        allow_host(app, "127.0.0.1:5000")
+        bare = app.test_client().get(
+            "/api/files/mhtml", query_string={"path": "x.mhtml"}, base_url=ORIGIN
+        )
+        assert bare.status_code in (401, 403)

@@ -1017,6 +1017,81 @@ describe('Search', () => {
       );
     });
 
+    describe('a web archive (MHTML)', () => {
+      const SOURCE =
+        '<html><body>\n<h1>Harvest</h1>\n<p>The price of <b>wheat</b> rose.</p>\n<img src="http://example.com/a.png">\n</body></html>';
+      const RENDERED =
+        '<html><body><h1>Harvest</h1><p>The price of <b>wheat</b> rose.</p><img src="data:image/png;base64,AAAA"></body></html>';
+      const ARCHIVE = {
+        text: SOURCE,
+        rendered: RENDERED,
+        encoding: 'utf-8',
+        address: 'http://example.com/news',
+        subject: 'Harvest',
+        frame_count: 0,
+        incomplete: false,
+        file_name: 'page.mhtml',
+        longest_line: 90,
+      };
+      const archived = () =>
+        found({ file_name: 'page.mhtml', file_path: '/docs/page.mhtml', file_type: 'mhtml' });
+
+      const showArchive = async (reply = ARCHIVE) => {
+        const fetchMock = mockApi({
+          ...ROUTES,
+          'POST /api/search/run': archived(),
+          'GET /api/files/mhtml': reply,
+        });
+        renderWithProviders(<App />, { route: '/search' });
+        await type('wheat{Enter}');
+        const table = await screen.findByRole('table', { name: 'Search results' });
+        await userEvent.pointer({
+          keys: '[MouseRight]',
+          target: (await within(table).findAllByText('1 of 1'))[0],
+        });
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+        return {
+          fetchMock,
+          panel: await screen.findByRole('region', { name: 'Web page preview' }),
+        };
+      };
+
+      it('renders the self-contained page the server made, from the archive route', async () => {
+        const { fetchMock, panel } = await showArchive();
+        const frame = await waitFor(() => {
+          const found = panel.querySelector('iframe');
+          expect(found).not.toBeNull();
+          return found;
+        });
+        expect(frame.getAttribute('sandbox')).toBe('allow-same-origin');
+        expect(frame.getAttribute('srcdoc')).toBe(RENDERED); // the picture is in it
+        loadFrame(panel);
+        await waitFor(() =>
+          expect(frame.contentDocument.querySelector('mark')?.textContent).toBe('wheat'),
+        );
+        expect(within(panel).getByText(/Match 1 of 1 · web archive/)).toBeInTheDocument();
+        const urls = fetchMock.mock.calls.map(([url]) => url);
+        expect(urls.some((u) => u.startsWith('/api/files/mhtml?'))).toBe(true);
+        expect(urls.some((u) => u.startsWith('/api/files/html'))).toBe(false);
+      });
+
+      it('shows the page as written, not the rewritten one, in the source view', async () => {
+        const { panel } = await showArchive();
+        await userEvent.click(await within(panel).findByRole('tab', { name: 'Source' }));
+        await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('wheat'));
+        expect(within(panel).getByText(/Match 1 of 1 · line 3/)).toBeInTheDocument();
+        expect(panel.textContent).not.toContain('data:image/png');
+        expect(panel.textContent).toContain('http://example.com/a.png');
+      });
+
+      it('says when the archive was too large to put every picture in', async () => {
+        const { panel } = await showArchive({ ...ARCHIVE, incomplete: true });
+        expect(
+          await within(panel).findByText(/some of its pictures and styles/),
+        ).toBeInTheDocument();
+      });
+    });
+
     it('shows the source, coloured, on the line of the match, and remembers the choice', async () => {
       const panel = await show();
       await userEvent.click(await within(panel).findByRole('tab', { name: 'Source' }));

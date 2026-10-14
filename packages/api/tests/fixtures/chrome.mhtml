@@ -1,0 +1,85 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: http://127.0.0.1:8765/index.html
+Subject: Harvest report
+Date: Wed, 14 Oct 2026 20:38:07 +0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo----"
+
+
+------MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo----
+Content-Type: text/html
+Content-ID: <frame-1FC4BC0456368AD23BB3D9E7BCF00D95@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: http://127.0.0.1:8765/index.html
+
+<!DOCTYPE html><html lang=3D"en"><head><meta http-equiv=3D"Content-Type" co=
+ntent=3D"text/html; charset=3DUTF-8"><link rel=3D"stylesheet" type=3D"text/=
+css" href=3D"cid:css-65c0e31b-9853-49a4-82ad-10b7963b49fb@mhtml.blink" /><t=
+itle>Harvest report</title>
+<meta name=3D"description" content=3D"Grain news"></head>
+<body><h1>Wheat prices</h1><p>Up <b>sharply</b> today. Caf=C3=A9 Z=C3=BCric=
+h.</p>
+<img src=3D"http://127.0.0.1:8765/scan.png" alt=3D"a scanned invoice"><a hr=
+ef=3D"http://127.0.0.1:8765/x">link</a>
+<iframe src=3D"cid:frame-CAE68A43A790DD8F6017CAB766EC756A@mhtml.blink"></if=
+rame></body></html>
+------MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo----
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: http://127.0.0.1:8765/scan.png
+
+iVBORw0KGgoAAAANSUhEUgAAAaQAAAB4CAIAAAAypRGCAAAHYElEQVR4nO3bXUhU6xrA8aVWOhnp
+RfRhemcJFulFWKgzTplfhX0QmR9hRgUi6EWRYWBQQVmCEURBSNAQUWCKXagXQZIVCYEECoYZZk0p
+ZtrYxVg6z75YnNltZ8ajcs7u7PP8f1er5Xrf9b5L5s+MWpCIGADw/y74dy8AAP4OxA6ACsQOgArE
+DoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQO
+gArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6A
+CsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACsQOgArEDoAKxA6ACnONXWRk5MJu0NPTc/PmzQUMbGlp
+sVgshmHk5+fb7Xa73Z6cnLxixQrzq+Pj4yUlJREREd7rfc/MbmE7qqmpme9s5pcW/BwA/EcEichc
+rouMjBwfH/8vL+ZPExMTWVlZ3d3dLpfLe7K+vn5wcPD8+fOGYVit1ry8vOrqau+qfM/MbmE7CjRq
+ltn+5kcHwD+Zm4iICO/BmTNnbDbbpk2bGhsbRSQhIeHjx48i4na7161b53Q6c3JyrFZrTk7O58+f
+vWNHRkb27duXlpaWkZExPDz89evXoqKi9PR0q9Xa2dk543ZlZWUPHjzw3lREPB5PYmLi8PCw+c9f
+Zw50RkTWr18/MDAgIpmZmRUVFSLy5MmT/Pz8XzeyceNGcyO+S+ru7k5JSdmwYUNdXZ2InD17NiQk
+JCMjw5x8aGgoNzc3NTX18OHD5n39burXR+f7uL58+eJ3SElJybVr1xITE/v6+kTk27dvsbGxHo9n
+jt8vADPMO3YWi8V85ff398fExIjIhQsXbty4ISKtra3l5eWFhYUOh0NEHA5HUVGRd2xxcfG9e/dE
+5Pbt26WlpUePHn358qWIvH//PiEh4dd7dXR07N27V/5arubm5uPHjwdaVaAzFRUVDodjenp6x44d
+NptNRM6dO3fnzh0RCQsLMzfy5s0bcyO+SyotLX369Ono6OiaNWt85z906NDdu3dFpKmpKTQ01O8M
+4hO7GY/L75CwsLC2tjYRuXz5cm1trYjcv3+/srJSACzUvGMXGho6NjZmHi9fvlxEent7s7KyRKSs
+rKyjoyMqKsrtdouI2+2Oioryjl27du3k5KSITE1NjY+PR0dHp/1LbGzs1NSUOafb7d6yZYvT6ZS/
+lsVms/X29gZaVaAzLS0tx44de/369alTpzIzM10uV3p6+tDQkN+N+C7J5XLdunWrsrIyPDzcd/7o
+6Ghzpz9//ly6dKnfGcQndjMel98h4eHh09PTIjI4OGi1WkWkoKCgq6trtu8QgFktmu/H3iVLlnh/
+GB8UFGQYRlxc3OjoqMvl6urqun79ugT4IaD56jUMIyQkJCIiYmpqqq2tLSwszOPxPHv2LCQkxLzs
+4cOHExMThYWFhmF8//69uLjY4XB0dnZGRkbGxcXNd7V2u72qqurFixepqakWi6W9vX1ycnLVqlV+
+N+K7pAMHDuzfv7+8vNzv7xZ+/PhhHpifLv3O4DtqxuPyO2TRokXBwcGGYcTExAQHBzudzoGBgcTE
+xPluH4DXvP/0xHwRzrBnz56ampqkpKSgoKBt27Y1NDQYhtHQ0GC3273XJCUlNTc3G4ZRX19fVVWV
+kpLS1NRkGEZra+ulS5e8lxUWFvb09LS3t7e3ty9btszhcBiGceXKlZMnT857c4ZhsVhWr17d2NiY
+kpKSmppaV1eXlpYWaCO+S3r16lVeXp7b7Z6cnDSv8Xg8Ho/HPE5OTjZ31NTUZMYu0KZmeVz/dsjB
+gwdPnDiRk5OzgO0D+NMc3wHO+Cw247i3t3fJkiXPnz8XEafTmZ2dbbVas7OzP3365L3s7du3aWlp
+NpstNzd3bGxscHAwOzvbZrNt3769v79/lpv29fVt3bp19lXNcubq1avx8fEi4nK5QkJCOjo6Am3E
+d0nV1dXx8fEFBQUrV640P7Hu3Llz165d5qh3795ZrVar1Xr69OlAM4jI5s2bL168GOhx+R3y69pG
+RkYWL15s/poCwILN9U9P8Lt8+PDhyJEjjx8//t0LAf7Z+B8U/9MePXq0e/fu2tra370Q4B+Pd3YA
+VOCdHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0A
+FYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAV
+iB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWI
+HQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgd
+ABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAViB0AFYgdABWIHQAV/gDti8AD+Q/bbAAAAABJ
+RU5ErkJggg==
+
+------MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo----
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-65c0e31b-9853-49a4-82ad-10b7963b49fb@mhtml.blink
+
+@charset "utf-8";
+
+.hero { background: url("bg.png"); }
+------MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo----
+Content-Type: text/html
+Content-ID: <frame-CAE68A43A790DD8F6017CAB766EC756A@mhtml.blink>
+Content-Transfer-Encoding: quoted-printable
+Content-Location: http://127.0.0.1:8765/frame.html
+
+<!DOCTYPE html><html><head><meta http-equiv=3D"Content-Type" content=3D"tex=
+t/html; charset=3DUTF-8"></head><body><p>Frame says barley</p></body></html>
+------MultipartBoundary--IZXi1jY07LTTYLYOsQtMqvuayyJMWN7zApHppZiqqo------

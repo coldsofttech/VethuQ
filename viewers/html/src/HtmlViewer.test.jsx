@@ -100,4 +100,41 @@ describe('HtmlViewer', () => {
     bodyOf().querySelector('a').dispatchEvent(click);
     expect(click.defaultPrevented).toBe(true);
   });
+
+  it('marks words in a page saved inside the page (a web archive frame), and says it found them', async () => {
+    const inner = '<html><body><p>Frame says barley today</p></body></html>';
+    const outer = `<html><body><p>Main page</p><iframe srcdoc="${inner}"></iframe></body></html>`;
+    const onMarked = vi.fn();
+    render(
+      <HtmlViewer
+        html={outer}
+        target={{ before: 'Frame says ', matched: 'barley', after: ' today' }}
+        onMarked={onMarked}
+      />,
+    );
+    // As a browser would: the page, then the page in its frame, then the load event.
+    const frame = frameOf();
+    const doc = frame.contentDocument;
+    doc.open();
+    doc.write(frame.getAttribute('srcdoc'));
+    doc.close();
+    const nested = doc.querySelector('iframe');
+    nested.contentDocument.open();
+    nested.contentDocument.write(nested.getAttribute('srcdoc'));
+    nested.contentDocument.close();
+    fireEvent.load(frame);
+    await waitFor(() => expect(nested.contentDocument.querySelector('mark')).not.toBeNull());
+    expect(nested.contentDocument.querySelector('mark').textContent).toBe('barley');
+    expect(doc.querySelector('mark')).toBeNull(); // not in the main page
+    expect(onMarked).toHaveBeenLastCalledWith(true);
+  });
+
+  it('still says the words are not in the page when no frame has them either', async () => {
+    const outer =
+      '<html><body><p>Main</p><iframe srcdoc="&lt;p&gt;Other&lt;/p&gt;"></iframe></body></html>';
+    const onMarked = vi.fn();
+    render(<HtmlViewer html={outer} target={{ matched: 'barley' }} onMarked={onMarked} />);
+    loadFrame();
+    await waitFor(() => expect(onMarked).toHaveBeenLastCalledWith(false));
+  });
 });

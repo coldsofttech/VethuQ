@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vethuq.errors import FileTypeUnavailableError
-from vethuq_api import images
+from vethuq_api import images, mhtml_view
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
@@ -76,6 +76,7 @@ class SearchService:
         self._texts: dict[tuple[int, int], tuple[float, Any, list[str]]] = {}
         self._texts_lock = threading.Lock()
         self._csv = CsvCache()
+        self._mhtml = mhtml_view.Cache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
@@ -131,6 +132,20 @@ class SearchService:
             "file_name": os.path.basename(path),
             "file_path": path,
             "longest_line": max((len(line) for line in text.split("\n")), default=0),
+        }
+
+    # ----- a web archive as a page ------------------------------------------------------------
+
+    def is_mhtml(self, path: str) -> bool:
+        return self.is_type(path, "mhtml")
+
+    def mhtml_page(self, path: str) -> dict[str, object]:
+        """A web archive for the page preview: its HTML as written, the same page made
+        self-contained so a sandboxed frame can show it, and facts about the archive."""
+        return {
+            **mhtml_view.view(self._mhtml.get(path)),
+            "file_name": os.path.basename(path),
+            "file_path": path,
         }
 
     # ----- a CSV file as a table --------------------------------------------------------------
