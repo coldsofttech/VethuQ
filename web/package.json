@@ -11,9 +11,9 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../csv && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../html && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../image && node ../../web/node_modules/eslint/bin/eslint.js .",
-    "format": "prettier --write . ../viewers",
-    "format:check": "prettier --check . ../viewers",
+    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../csv && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../html && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../image && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../../keyboards/en && node ../../web/node_modules/eslint/bin/eslint.js .",
+    "format": "prettier --write . ../viewers ../keyboards",
+    "format:check": "prettier --check . ../viewers ../keyboards",
     "test": "vitest run"
   },
   "dependencies": {
@@ -22,6 +22,7 @@
     "@vethuq/csv-viewer": "file:../viewers/csv",
     "@vethuq/html-viewer": "file:../viewers/html",
     "@vethuq/image-viewer": "file:../viewers/image",
+    "@vethuq/keyboard-en": "file:../keyboards/en",
     "@vethuq/markdown-viewer": "file:../viewers/markdown",
     "@vethuq/text-viewer": "file:../viewers/text",
     "markdown-it": "^15.0.2",

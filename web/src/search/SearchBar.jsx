@@ -19,9 +19,11 @@ import {
   TextCaseTitle20Regular,
 } from '@fluentui/react-icons';
 import { Menu, MenuItem, MenuList, MenuPopover, MenuTrigger } from '@fluentui/react-components';
-import { useMemo } from 'react';
+import { EnglishKeyboard } from '@vethuq/keyboard-en';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { SearchOptions } from './SearchOptions.jsx';
+import { useScreenKeyboard } from './useScreenKeyboard.js';
 
 const useStyles = makeStyles({
   root: { display: 'flex', flexDirection: 'column', gap: tokens.spacingVerticalS },
@@ -74,6 +76,19 @@ export function SearchBar({
   const styles = useStyles();
   const set = (patch) => setForm((current) => ({ ...current, ...patch }));
 
+  const [keyboard, setKeyboard] = useState(false);
+  const box = useRef(null);
+  const canSearch = !busy && form.query.trim() !== '';
+  const press = useScreenKeyboard(
+    box,
+    form.query,
+    (query) => set({ query }),
+    () => canSearch && onSearch(),
+  );
+  useEffect(() => {
+    if (keyboard) box.current?.focus();
+  }, [keyboard]);
+
   const engines = [
     { value: '', label: 'Default engine' },
     { value: 'all', label: 'All engines' },
@@ -97,9 +112,12 @@ export function SearchBar({
         }}
       >
         <Input
+          ref={box}
           className={styles.box}
           size="large"
           type="search"
+          // The on-screen keyboard is in use: keep the device's own keyboard from opening too.
+          inputMode={keyboard ? 'none' : undefined}
           placeholder="Search your documents"
           aria-label="Search text"
           value={form.query}
@@ -141,13 +159,19 @@ export function SearchBar({
             appearance="primary"
             icon={<Search20Regular />}
             type="submit"
-            disabled={busy || !form.query.trim()}
+            disabled={!canSearch}
           />
         </Tooltip>
-        <Tooltip content="On-screen keyboard (coming later)" relationship="label">
-          <Button icon={<Keyboard20Regular />} disabled />
+        <Tooltip content="On-screen keyboard" relationship="label">
+          <ToggleButton
+            aria-label="On-screen keyboard"
+            icon={<Keyboard20Regular />}
+            checked={keyboard}
+            onClick={() => setKeyboard(!keyboard)}
+          />
         </Tooltip>
       </form>
+      {keyboard && <EnglishKeyboard onKey={press} onClose={() => setKeyboard(false)} />}
       <div className={styles.row}>
         <FilterSelect
           label="Engine"

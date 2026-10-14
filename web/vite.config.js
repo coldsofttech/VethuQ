@@ -23,7 +23,7 @@ const pdfjsData = () => ({
 export default defineConfig({
   plugins: [react(), pdfjsData()],
   resolve: {
-    // The viewers live outside web/ (viewers/*), which has no node_modules of its own: have what they
+    // The viewers and keyboards live outside web/ (viewers/*, keyboards/*), which has no node_modules of its own: have what they
     // import resolved from here, and once.
     dedupe: [
       'react',
@@ -42,7 +42,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
   },
   test: {
-    include: ['src/**/*.test.{js,jsx}', '../viewers/**/*.test.{js,jsx}'],
+    include: [
+      'src/**/*.test.{js,jsx}',
+      '../viewers/**/*.test.{js,jsx}',
+      '../keyboards/**/*.test.{js,jsx}',
+    ],
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     restoreMocks: true,

@@ -148,17 +148,59 @@ const type = async (text) =>
   userEvent.type(await screen.findByRole('searchbox', { name: 'Search text' }), text);
 
 describe('Search', () => {
-  it('is a menu item with the box, the filters, and a keyboard button that is off', async () => {
+  it('is a menu item with the box, the filters, and an on-screen keyboard button that is off', async () => {
     mockApi(ROUTES);
     renderWithProviders(<App />, { route: '/search' });
     expect(await screen.findByRole('searchbox', { name: 'Search text' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'File types' })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Engine' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled(); // nothing typed
-    expect(
-      screen.getByRole('button', { name: 'On-screen keyboard (coming later)' }),
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'On-screen keyboard' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.queryByRole('group', { name: 'English on-screen keyboard' })).toBeNull();
     expect(screen.getAllByRole('tab', { name: 'Search' })[0]).toBeInTheDocument();
+  });
+
+  it('types into the box with the on-screen keyboard, which hides the device keyboard, and searches on Enter', async () => {
+    const fetchMock = mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    const box = await screen.findByRole('searchbox', { name: 'Search text' });
+    expect(box).not.toHaveAttribute('inputmode');
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    expect(box).toHaveAttribute('inputmode', 'none');
+    const keys = screen.getByRole('group', { name: 'English on-screen keyboard' });
+    const press = (name) => userEvent.click(within(keys).getByRole('button', { name }));
+    await press('Shift');
+    await press('W');
+    await press('h');
+    await press('e');
+    await press('x');
+    await press('Backspace');
+    await press('a');
+    await press('t');
+    expect(box).toHaveValue('Wheat');
+    await press('Enter');
+    expect(await screen.findByRole('table', { name: 'Search results' })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('puts a key at the caret and over a selection, and hides on the hide key', async () => {
+    mockApi(ROUTES);
+    renderWithProviders(<App />, { route: '/search' });
+    await type('wheat');
+    await userEvent.click(screen.getByRole('button', { name: 'On-screen keyboard' }));
+    const box = screen.getByRole('searchbox', { name: 'Search text' });
+    const keys = screen.getByRole('group', { name: 'English on-screen keyboard' });
+    const press = (name) => userEvent.click(within(keys).getByRole('button', { name }));
+    box.setSelectionRange(1, 3); // "he"
+    await press('o');
+    expect(box).toHaveValue('woat');
+    expect(box.selectionStart).toBe(2);
+    await press('Hide keyboard');
+    expect(screen.queryByRole('group', { name: 'English on-screen keyboard' })).toBeNull();
+    expect(box).not.toHaveAttribute('inputmode');
   });
 
   it('searches on Enter and shows the file, page, text with the match marked, and how it was found', async () => {
