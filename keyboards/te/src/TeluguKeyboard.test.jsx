@@ -39,13 +39,16 @@ describe('TeluguKeyboard', () => {
     expect(screen.getByRole('button', { name: 'virama' })).toHaveTextContent('◌్');
   });
 
-  it('has Telugu digits on the symbols layer and the same hide, enter and backspace keys', async () => {
+  it('types Telugu digits, ASCII digits with shift, and has the symbols layer with backspace', async () => {
     const { typed } = setup();
-    await press('Numbers and symbols');
     await press('౫');
+    await press('Shift');
+    await press('5');
+    await press('Numbers and symbols');
+    await press('7');
     await press('Backspace');
     await press('Letters');
-    expect(typed()).toEqual(['౫', 'backspace']);
+    expect(typed()).toEqual(['౫', '5', '7', 'backspace']);
     expect(screen.getByRole('button', { name: 'Hide keyboard' })).toBeInTheDocument();
   });
 });

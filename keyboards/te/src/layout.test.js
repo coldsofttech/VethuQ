@@ -19,18 +19,20 @@ describe('the Telugu layout', () => {
     }
   });
 
-  it('has the ASCII digits on the letters layer and the Telugu digits on the symbols layer', () => {
+  it('has the Telugu digits on the row of digits, the ASCII digits with shift, and on the symbols layer', () => {
+    const row = LAYERS.letters[0].filter((key) => /[౦-౯]/.test(key.value));
+    expect(row.map((key) => key.value).join('')).toBe('౧౨౩౪౫౬౭౮౯౦');
+    expect(row.map((key) => key.shift).join('')).toBe('1234567890');
     expect(
-      typable('letters')
+      typable('symbols')
         .filter((c) => /\d/.test(c))
         .join(''),
     ).toBe('1234567890');
-    expect(typable('symbols').join('')).toContain('౦౧౨౩౪౫౬౭౮౯');
   });
 
   it('shifts a key to a different Telugu character, and only letters have a shift', () => {
     for (const key of keysOf('letters')) {
-      if (key.shift) {
+      if (key.shift && !/\d/.test(key.shift)) {
         expect(key.shift).not.toBe(key.value);
         expect(/\p{Script=Telugu}/u.test(key.value) && /\p{Script=Telugu}/u.test(key.shift)).toBe(
           true,

@@ -14,6 +14,6 @@ reports the keys pressed and whoever uses it types into its own field.
 - The layout is InScript, the standard one: vowel signs and vowels on the left, consonants on the
   right, a vowel sign on a key and its vowel on the same key with shift (`ా` and, shifted, `ఆ`).
   Rarer letters and signs (`ఋ ౠ ఴ ఽ`) are on shift too. Every vowel, consonant and sign is on one key.
-- The row of digits is ASCII, what documents mostly hold; the Telugu digits `౦–౯` are on the numbers
-  and symbols layer.
+- The row of digits is Telugu (`౧–౦`) as on InScript, and ASCII (`1–0`) with shift, since documents
+  hold both. The numbers and symbols layer has the ASCII digits.
 - The layout is data (`LAYERS` in `src/layout.js`).
