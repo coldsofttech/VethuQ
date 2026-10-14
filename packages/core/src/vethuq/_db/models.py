@@ -301,6 +301,20 @@ class _TsvPage(_Base):
     column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # widest row
 
 
+class _ParquetPage(_Base):
+    """What the Parquet type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "parquet_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # rows in the file
+    column_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # top-level columns
+    row_group_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    indexed_row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # with text
+
+
 class _MarkdownPage(_Base):
     """What the Markdown type keeps about its page, beside the text in `pdf_pages`."""
 

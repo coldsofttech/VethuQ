@@ -21,6 +21,7 @@ const BY_TYPE = {
   docx: Document20Regular,
   csv: Table20Regular,
   tsv: Table20Regular,
+  parquet: Table20Regular,
   xls: Table20Regular,
   xlsx: Table20Regular,
   ppt: SlideText20Regular,
