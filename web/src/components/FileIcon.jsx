@@ -35,6 +35,7 @@ const BY_TYPE = {
   yaml: Code20Regular,
   xml: Code20Regular,
   html: Code20Regular,
+  mhtml: Code20Regular,
   css: Code20Regular,
   js: Code20Regular,
 };

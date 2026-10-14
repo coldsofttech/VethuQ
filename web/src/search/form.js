@@ -81,7 +81,7 @@ export const placeOf = (match) => {
   // the file's own, and a CSV's or TSV's line is its Nth row with something in it: none is a line to open an
   // editor at.
   if (
-    ['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml', 'parquet', 'ndjson'].includes(
+    ['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml', 'parquet', 'ndjson', 'mhtml'].includes(
       match.file_type,
     )
   )

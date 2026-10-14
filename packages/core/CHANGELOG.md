@@ -13,6 +13,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `client.version` lists the file types, search engines, OCR engines, OCR languages and add-ons that are installed.
 - Errors are the public ones in `vethuq.errors`; the language, file type and tier errors have their own modules.
 
+### Added (MHTML files)
+- The `.mhtml` and `.mht` (web archive) file types, as the licensed add-on `vethuq-addon-mhtml` (not installed with VethuQ: `pip install vethuq-addon-mhtml`, then `Mhtml(client).set_licence(token)`). A page is read like an HTML file, with its address and the text of frames saved inside it, and the pictures in the archive are read with OCR from the moderate phase. It keeps `encoding`, `title`, `url`, `lang`, `link_count`, `image_count` and `frame_count` in the `mhtml_pages` table. The web interface has no preview for these files yet.
+
 ### Added (the data pack)
 - `pip install vethuq[data]` installs `vethuq-bundle-data`: the CSV, TSV, Parquet, JSON and NDJSON file types in one install. Parquet, JSON and NDJSON are licensed (one data pack licence carries an entitlement for each); CSV and TSV are free. `client.version.bundles` lists it as `data`, and the add-ons screen of the interface describes it.
 

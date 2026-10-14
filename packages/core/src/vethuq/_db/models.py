@@ -358,6 +358,23 @@ class _HtmlPage(_Base):
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # local pictures used
 
 
+class _MhtmlPage(_Base):
+    """What the MHTML type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "mhtml_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)  # where the page was saved from
+    lang: Mapped[str | None] = mapped_column(Text, nullable=True)  # `<html lang>`
+    link_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pictures to read
+    frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pages saved inside
+
+
 class _XmlPage(_Base):
     """What the XML type keeps about its page, beside the text in `pdf_pages`."""
 

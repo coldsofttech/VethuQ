@@ -15,6 +15,7 @@ from vethuq._db import (
     _HtmlPage,
     _JsonPage,
     _JsPage,
+    _MhtmlPage,
     _NdjsonPage,
     _ParquetPage,
     _PdfPage,
@@ -54,6 +55,19 @@ CASES = [
         "yaml",
         _YamlPage,
         {"encoding": "utf-8", "document_count": 2, "value_count": 9, "max_depth": 3},
+    ),
+    (
+        "mhtml",
+        _MhtmlPage,
+        {
+            "encoding": "utf-8",
+            "title": "Harvest",
+            "url": "https://example.com/news",
+            "lang": "en",
+            "link_count": 4,
+            "image_count": 2,
+            "frame_count": 1,
+        },
     ),
     (
         "ndjson",
