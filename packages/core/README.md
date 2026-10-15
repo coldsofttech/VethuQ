@@ -452,7 +452,9 @@ for language in client.languages.list_all():
 # te Telugu True
 
 client.languages.list_enabled()  # only the languages that are used
-client.languages.get("te")  # one Language; raises LanguageUnavailableError if VethuQ doesn't know it
+client.languages.get(
+    "te"
+)  # one Language; raises LanguageUnavailableError if VethuQ doesn't know it
 client.languages.default()  # the system default language: English
 client.languages.disable("te")  # stop using Telugu (and the credits it costs)
 client.languages.enable("te")  # use it again
@@ -743,15 +745,15 @@ Each also has a `get_...` and `reset_...`. The stability check waits once per ru
 
 ## File types
 
-`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. TSV files (`vethuq-addon-tsv`, tab-separated values) are read the same way, from a free add-on that is not installed with VethuQ: `pip install vethuq[tsv]`. Image files (PNG, JPG, TIFF, BMP, GIF, WebP, JPEG 2000) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). HEIC photos (`.heic`, `.heif`, `.hif`) come from `vethuq-addon-heic`, installed on its own (its pillow-heif dependency ships GPLv2 libx265, so it is not in the bundle). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
+`client.file_types` lists the kinds of file VethuQ can read. They come from add-ons; PDF (`vethuq-addon-pdf`), text (`-txt`), CSV (`-csv`) and Markdown (`-markdown`) are installed with VethuQ. Text, CSV and Markdown files are read straight from disk, never OCR'd and never charged for. TSV files (`vethuq-addon-tsv`, tab-separated values) are read the same way, from a free add-on that is not installed with VethuQ: `pip install vethuq[tsv]`. Image files (PNG, JPG, TIFF, BMP, GIF, WebP, JPEG 2000, SVG; an SVG's text is read straight from the drawing, never OCR'd) come from free add-ons that are not installed with VethuQ: `pip install vethuq[images]` installs them (`vethuq-bundle-image`). HEIC photos (`.heic`, `.heif`, `.hif`) come from `vethuq-addon-heic`, installed on its own (its pillow-heif dependency ships GPLv2 libx265, so it is not in the bundle). An image is read with OCR and priced by its pixels, and with the add-ons installed the pictures a Markdown file links to are read too.
 
 ```python
-client.file_types.list_all()      # every file type, with `available` and `enabled`
+client.file_types.list_all()  # every file type, with `available` and `enabled`
 client.file_types.list_enabled()  # the ones that are read: available and enabled
-client.file_types.defaults()      # the ones installed with VethuQ: csv, markdown, pdf, txt
-client.file_types.get("pdf")      # a FileType; raises FileTypeUnavailableError if none is installed
+client.file_types.defaults()  # the ones installed with VethuQ: csv, markdown, pdf, txt
+client.file_types.get("pdf")  # a FileType; raises FileTypeUnavailableError if none is installed
 client.file_types.disable("pdf")  # files of this type are skipped from now on; indexed ones stay
-client.file_types.enable("pdf")   # back on (it must be available)
+client.file_types.enable("pdf")  # back on (it must be available)
 ```
 
 ## OCR

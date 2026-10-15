@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (SVG)
+- The preview shows an SVG drawing (`/api/files/svg?path=`) as it is, served under a sandboxing policy (`Content-Security-Policy: sandbox; default-src 'none'...`) so its scripts cannot run if the address is opened on its own; a compressed `.svgz` is sent with `Content-Encoding: gzip`. A response that sets its own Content-Security-Policy now keeps it.
+
 ### Added (JPEG 2000)
 - The picture preview shows a JPEG 2000 (`/api/files/jp2?path=`) as a PNG, with transparency laid on white as OCR sees it.
 

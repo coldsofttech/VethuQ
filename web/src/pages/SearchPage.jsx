@@ -65,6 +65,7 @@ const PREVIEWS = {
   webp: ImagePreview,
   heic: ImagePreview,
   jp2: ImagePreview,
+  svg: ImagePreview,
   html: HtmlPreview,
   mhtml: HtmlPreview,
 };

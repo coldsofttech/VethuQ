@@ -81,9 +81,19 @@ export const placeOf = (match) => {
   // the file's own, and a CSV's or TSV's line is its Nth row with something in it: none is a line to open an
   // editor at.
   if (
-    ['markdown', 'css', 'html', 'json', 'yaml', 'js', 'xml', 'parquet', 'ndjson', 'mhtml'].includes(
-      match.file_type,
-    )
+    [
+      'markdown',
+      'css',
+      'html',
+      'json',
+      'yaml',
+      'js',
+      'xml',
+      'parquet',
+      'ndjson',
+      'mhtml',
+      'svg',
+    ].includes(match.file_type)
   )
     return {};
   // A picture's text was read by OCR: there is no line to open it at (a TIFF's frame is its page).
@@ -128,4 +138,5 @@ export const canPreview = (match) =>
     'webp',
     'heic',
     'jp2',
+    'svg',
   ].includes(match.file_type);

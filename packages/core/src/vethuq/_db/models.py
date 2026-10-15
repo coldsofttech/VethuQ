@@ -375,6 +375,23 @@ class _MhtmlPage(_Base):
     frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pages saved inside
 
 
+class _SvgPage(_Base):
+    """What the SVG type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "svg_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    width: Mapped[str | None] = mapped_column(Text, nullable=True)  # as written ("200", "10cm")
+    height: Mapped[str | None] = mapped_column(Text, nullable=True)
+    view_box: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # lines of text
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+    well_formed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
 class _XmlPage(_Base):
     """What the XML type keeps about its page, beside the text in `pdf_pages`."""
 

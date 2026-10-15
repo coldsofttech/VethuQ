@@ -1612,6 +1612,79 @@ class TestJp2Pictures:
         assert "readable" in outcomes
 
 
+class TestSvgDrawings:
+    """An SVG drawing is sent as it is, so a browser draws it, under a policy that keeps its scripts
+    from running. The SVG add-on may not be installed in this checkout, so the type check is
+    replaced; the route and the headers are what is tested."""
+
+    DRAWING = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">'
+        b'<script>alert(1)</script><text x="1" y="9">Hello</text></svg>'
+    )
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        import gzip
+
+        folder = library / "a"
+        (folder / "d.svg").write_bytes(self.DRAWING)
+        (folder / "d.svgz").write_bytes(gzip.compress(self.DRAWING))
+        (library / "outside.svg").write_bytes(self.DRAWING)
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "svg" and path.lower().endswith((".svg", ".svgz")),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="d.svg"):
+        path = http.library / "a" / name
+        return http.get("/api/files/svg", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def test_the_drawing_is_sent_as_an_svg_image(self, http):
+        reply = self.get(http)
+        assert reply.status_code == 200 and reply.mimetype == "image/svg+xml"
+        assert reply.headers["Content-Disposition"] == "inline"
+        assert reply.data == self.DRAWING
+
+    def test_it_is_sandboxed_so_its_scripts_cannot_run(self, http):
+        policy = self.get(http).headers["Content-Security-Policy"]
+        assert policy.startswith("sandbox")
+        assert "default-src 'none'" in policy and "script-src" not in policy
+        assert self.get(http).headers["X-Content-Type-Options"] == "nosniff"
+
+    def test_other_responses_keep_the_app_policy(self, http):
+        reply = http.get("/api/files/png", base_url=ORIGIN)
+        assert "script-src 'self'" in reply.headers["Content-Security-Policy"]
+
+    def test_a_compressed_drawing_is_marked_so_the_browser_unpacks_it(self, http):
+        reply = self.get(http, "d.svgz")
+        assert reply.status_code == 200 and reply.headers["Content-Encoding"] == "gzip"
+        assert self.get(http).headers.get("Content-Encoding") is None
+
+    def test_only_an_svg_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.svg")}
+        assert http.get("/api/files/svg", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.svg").status_code == 422
+
+
 class TestImageConverterNeverGivesAnUnhandledError:
     """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
     into a readable message (it was an unhandled server error for some of them)."""

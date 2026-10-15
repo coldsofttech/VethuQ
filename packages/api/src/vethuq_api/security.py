@@ -82,7 +82,8 @@ def install(app: Flask, gate: SessionGate) -> None:
 
     @app.after_request
     def _add_headers(response: Response) -> Response:
-        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+        # A response that sets its own policy (an SVG drawing, which is served stricter) keeps it.
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"

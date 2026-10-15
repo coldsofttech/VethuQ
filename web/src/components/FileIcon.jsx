@@ -34,6 +34,7 @@ const BY_TYPE = {
   webp: Image20Regular,
   heic: Image20Regular,
   jp2: Image20Regular,
+  svg: Image20Regular,
   eml: Mail20Regular,
   json: Code20Regular,
   ndjson: Code20Regular,

@@ -49,7 +49,7 @@ const ZOOM_STEP = 1.25;
 const TEXT_LINES = 500;
 
 /**
- * A picture of the results (JPEG, PNG, BMP, or a TIFF frame or GIF, WebP or HEIC page) beside them, with the text OCR read from it
+ * A picture of the results (JPEG, PNG, BMP, SVG, or a TIFF frame or GIF, WebP or HEIC page) beside them, with the text OCR read from it
  * below. The match is marked in that text and, when the engine said where it read the line, boxed
  * on the picture. Zoom, pan, turn it, and for a TIFF or an animated GIF or WebP go from frame to frame.
  *

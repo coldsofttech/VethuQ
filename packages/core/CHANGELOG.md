@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (SVG)
+- `.svg` and `.svgz` files are read by the free `vethuq-addon-svg` add-on, in the image bundle and the worker image: the text in the drawing is read straight from the file (never OCR'd, never charged for). Its page facts (`encoding`, `width`, `height`, `view_box`, `text_count`, `image_count`, `well_formed`) are kept in the new `svg_pages` table.
+
 ### Added (JPEG 2000)
 - `.jp2`, `.j2k`, `.j2c`, `.jpf` and `.jpx` files are read by the free `vethuq-addon-jp2` add-on, in the image bundle (`pip install vethuq[images]`) and the worker image.
 

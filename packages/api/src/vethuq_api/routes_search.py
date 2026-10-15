@@ -10,6 +10,19 @@ from flask import Blueprint, Response, jsonify, request, send_file
 from vethuq_api.core import Core
 from vethuq_api.routes_credits import _attachment
 
+# What an SVG drawing is served under: sandboxed (no scripts, no forms, a unique origin) and unable
+# to load anything but its own inline styles and data pictures.
+SVG_POLICY = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+
+
+def _is_gzip(path: str) -> bool:
+    """Whether a file is gzip-compressed (an .svgz)."""
+    try:
+        with open(path, "rb") as file:
+            return file.read(2) == b"\x1f\x8b"
+    except OSError:
+        return False
+
 
 def _body() -> dict[str, Any]:
     body = request.get_json(silent=True)
@@ -72,7 +85,8 @@ def register(api: Blueprint, core: Core) -> None:
 
     # Pictures: JPEG and PNG as they are (a browser draws them), a TIFF one frame at a time as PNG,
     # a GIF, WebP or HEIC one page at a time as PNG, and a BMP as PNG (a run-length encoded, OS/2
-    # or headerless one is not drawn by every browser).
+    # or headerless one is not drawn by every browser), and an SVG as it is (with a policy that
+    # keeps its scripts from running).
     def picture_route(file_type: str, what: str) -> None:
         def view() -> Response:
             path = request.args.get("path")
@@ -102,6 +116,18 @@ def register(api: Blueprint, core: Core) -> None:
                 response = Response(core.search().jp2_image(path), mimetype="image/png")
             elif file_type == "bmp":
                 response = Response(core.search().bmp_image(path), mimetype="image/png")
+            elif file_type == "svg":
+                response = send_file(
+                    os.path.realpath(path),
+                    mimetype="image/svg+xml",
+                    conditional=True,
+                    max_age=0,
+                )
+                # A drawing can carry scripts. Drawn by an <img> they never run, and if the address
+                # is opened on its own this policy stops them (and any load) as well.
+                response.headers["Content-Security-Policy"] = SVG_POLICY
+                if _is_gzip(path):  # an .svgz: the browser unpacks it
+                    response.headers["Content-Encoding"] = "gzip"
             else:
                 response = send_file(
                     os.path.realpath(path),
@@ -123,6 +149,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("webp", "a WebP picture"),
         ("heic", "a HEIC picture"),
         ("jp2", "a JPEG 2000 picture"),
+        ("svg", "an SVG drawing"),
     ):
         picture_route(kind, what)
 

@@ -1568,6 +1568,16 @@ describe('Search', () => {
       expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
     });
 
+    it('shows an SVG drawing as one picture, without frame buttons', async () => {
+      const svg = found({ file_name: 's.svg', file_path: '/docs/s.svg', file_type: 'svg' });
+      const { panel } = await show(svg);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/svg?path=%2Fdocs%2Fs.svg',
+      );
+      expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+    });
+
     it('shows a still WebP as one picture, without frame buttons', async () => {
       const still = found({ file_name: 's.webp', file_path: '/docs/s.webp', file_type: 'webp' });
       const { panel } = await show(still);

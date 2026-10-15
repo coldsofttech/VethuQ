@@ -34,6 +34,7 @@ vethuq-addon-tsv = { path = "../VethuQ-premium/packages/add-ons/file-types/tsv",
 vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown", editable = true }
 vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png", editable = true }
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg", editable = true }
+vethuq-addon-svg = { path = "../VethuQ-premium/packages/add-ons/file-types/svg", editable = true }
 vethuq-addon-jp2 = { path = "../VethuQ-premium/packages/add-ons/file-types/jp2", editable = true }
 vethuq-addon-heic = { path = "../VethuQ-premium/packages/add-ons/file-types/heic", editable = true }
 vethuq-addon-webp = { path = "../VethuQ-premium/packages/add-ons/file-types/webp", editable = true }
