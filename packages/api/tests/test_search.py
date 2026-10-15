@@ -1489,6 +1489,129 @@ class TestHeicPagesAreTheOnesTheAddOnReads:
         assert images.HEIC_MAX_PAGES == reader.HeicReader.MAX_PAGES
 
 
+class TestJp2Pictures:
+    """A JPEG 2000 shown as a PNG (no browser but Safari draws it). The JPEG 2000 add-on may not be
+    installed in this checkout, so the type check is replaced; the route and the picture are what is
+    tested."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        from PIL import Image, ImageDraw
+
+        folder = library / "a"
+        red = Image.new("RGB", (40, 20), (255, 0, 0))
+        red.save(folder / "red.jp2", "JPEG2000")
+        ink = Image.new("RGBA", (30, 30), (0, 0, 0, 0))
+        ImageDraw.Draw(ink).rectangle([10, 10, 20, 20], fill=(0, 0, 0, 255))
+        ink.save(folder / "transparent.jp2", "JPEG2000")
+        Image.new("CMYK", (8, 8), (0, 0, 0, 0)).save(folder / "cmyk.jp2", "JPEG2000")
+        red.save(folder / "raw.j2k", "JPEG2000", no_jp2=True)
+        red.save(folder / "really.jp2", "PNG")  # another format under a .jp2 name
+        (folder / "notes.jp2").write_bytes(b"this is not a picture")
+        data = (folder / "red.jp2").read_bytes()
+        (folder / "cut.jp2").write_bytes(data[: len(data) // 2])
+        red.save(library / "outside.png", "PNG")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "jp2" and path.lower().endswith((".jp2", ".j2k")),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="red.jp2"):
+        path = http.library / "a" / name
+        return http.get("/api/files/jp2", query_string={"path": str(path)}, base_url=ORIGIN)
+
+    def picture(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data)).convert("RGB")
+
+    def test_it_is_a_png_of_the_picture(self, http):
+        reply = self.get(http)
+        assert reply.status_code == 200 and reply.mimetype == "image/png"
+        assert reply.headers["Content-Disposition"] == "inline"
+        assert self.picture(reply).size == (40, 20)
+        assert self.picture(reply).getpixel((0, 0)) == (255, 0, 0)
+
+    def test_a_raw_codestream_is_shown_too(self, http):
+        assert self.picture(self.get(http, "raw.j2k")).getpixel((0, 0)) == (255, 0, 0)
+
+    def test_transparency_is_laid_on_white_so_ink_shows_on_any_theme(self, http):
+        picture = self.picture(self.get(http, "transparent.jp2"))
+        assert picture.getpixel((0, 0)) == (255, 255, 255)
+        assert picture.getpixel((15, 15)) == (0, 0, 0)
+
+    def test_a_cmyk_picture_is_shown(self, http):
+        assert self.get(http, "cmyk.jp2").status_code == 200
+
+    def test_only_a_jp2_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.png")}
+        assert http.get("/api/files/jp2", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.jp2").status_code == 422
+
+    def test_damaged_files_say_so_and_never_give_a_server_error(self, http):
+        for name in ("notes.jp2", "cut.jp2", "really.jp2"):
+            reply = self.get(http, name)
+            assert reply.status_code == 422, name
+            assert "cannot be read" in reply.get_json()["error"], name
+            assert "JPEG 2000" in reply.get_json()["error"], name
+
+    def test_a_picture_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.get(http)  # 40 x 20 = 800 pixels
+        assert reply.status_code == 422 and "too large to preview" in reply.get_json()["error"]
+
+    def test_a_picture_pillow_only_warns_about_is_refused_too(self, http, monkeypatch):
+        from PIL import Image
+
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 500)  # 800 pixels: a warning, not an error
+        reply = self.get(http)
+        assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
+
+    def test_every_cut_and_flip_is_a_picture_or_a_readable_error(self, tmp_path):
+        from PIL import Image
+
+        from vethuq_api import images
+
+        source = tmp_path / "a.jp2"
+        Image.effect_noise((100, 80), 80).convert("RGB").save(source, "JPEG2000")
+        data = source.read_bytes()
+        path = tmp_path / "damaged.jp2"
+        outcomes = set()
+        for at in range(0, len(data) - 1, max(1, len(data) // 200)):
+            flipped = bytearray(data)
+            flipped[at] ^= 0xFF
+            for damaged in (data[:at], bytes(flipped)):
+                path.write_bytes(damaged)
+                try:
+                    images.jp2_as_png(str(path))
+                    outcomes.add("picture")
+                except ValueError as error:  # the only kind the route turns into a 422
+                    assert "cannot be read" in str(error)
+                    outcomes.add("readable")
+        assert "readable" in outcomes
+
+
 class TestImageConverterNeverGivesAnUnhandledError:
     """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
     into a readable message (it was an unhandled server error for some of them)."""

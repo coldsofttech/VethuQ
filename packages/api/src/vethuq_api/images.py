@@ -1,4 +1,4 @@
-"""Pictures for the preview: a TIFF frame, a GIF, WebP or HEIC page or a BMP as a PNG.
+"""Pictures for the preview: a TIFF frame, a GIF, WebP or HEIC page, a BMP or a JPEG 2000 as a PNG.
 
 Browsers draw JPEG and PNG themselves, so those are served as they are. A BMP can be run-length
 encoded, OS/2 or a headerless DIB, which browsers do not all draw, so it is converted too. A GIF or
@@ -71,6 +71,12 @@ def webp_page_as_png(path: str, page: int) -> bytes:
     return _as_png(path, page, "WEBP", "frame")
 
 
+def jp2_as_png(path: str) -> bytes:
+    """A JPEG 2000 as PNG bytes (no browser but Safari draws it), with transparency flattened onto
+    white as it is for OCR."""
+    return _as_png(path, 1, "JPEG2000", "picture")
+
+
 def heic_page_as_png(path: str, page: int) -> bytes:
     """Page `page` (from 1) of a HEIC as PNG bytes: its pictures with the primary one first, as
     the HEIC add-on reads them, with transparency flattened onto white as it is for OCR."""
@@ -125,7 +131,8 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
     Image = _pillow(kind)
     from PIL import ImageOps  # noqa: PLC0415 - only for these pictures
 
-    unreadable = ValueError(f"This {noun} cannot be read: it is damaged, or it is not a {kind}.")
+    label = "JPEG 2000" if kind == "JPEG2000" else kind
+    unreadable = ValueError(f"This {noun} cannot be read: it is damaged, or it is not a {label}.")
     # Pillow's plugins raise all sorts of errors (an IndexError, a TypeError, a struct.error...) for
     # a file that is not what it says, is cut off, or claims a size no one should allocate; every
     # one becomes a message a person can read, never a server error. Only our own refusals
@@ -136,6 +143,9 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
         raise
     except Exception as error:  # noqa: BLE001
         raise unreadable from error
+    if kind == "JPEG2000" and picture.format != "JPEG2000":
+        picture.close()
+        raise unreadable
     with picture:
         try:
             order = None
@@ -148,7 +158,7 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
         except Exception as error:  # noqa: BLE001
             raise unreadable from error
         if not 1 <= frame <= frames:
-            raise ValueError(f"The {kind} has {frames} {'frame' if frames == 1 else 'frames'}.")
+            raise ValueError(f"The {label} has {frames} {'frame' if frames == 1 else 'frames'}.")
         try:
             picture.seek(order[frame - 1] if order is not None else frame - 1)
             pixels = picture.width * picture.height
@@ -163,7 +173,7 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
             if kind == "BMP" and upright.mode == "RGBA":
                 if upright.getchannel("A").getextrema() == (0, 0):
                     upright = upright.convert("RGB")
-            if kind in ANIMATED or kind == "HEIC":
+            if kind in ANIMATED or kind in ("HEIC", "JPEG2000"):
                 upright = _on_white(upright)
             if upright.mode not in ("RGB", "RGBA", "L", "LA"):
                 upright = upright.convert("RGBA" if "transparency" in upright.info else "RGB")

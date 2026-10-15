@@ -127,6 +127,10 @@ class SearchService:
         page = _number(_whole(query.get("page", 1), "page"), "page", 1, 1)
         return images.heic_page_as_png(path, page)
 
+    def jp2_image(self, path: str) -> bytes:
+        """A JPEG 2000 of a source as PNG bytes."""
+        return images.jp2_as_png(path)
+
     def bmp_image(self, path: str) -> bytes:
         """A BMP of a source as PNG bytes."""
         return images.bmp_as_png(path)

@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (JPEG 2000)
+- `.jp2`, `.j2k`, `.j2c`, `.jpf` and `.jpx` files are read by the free `vethuq-addon-jp2` add-on, in the image bundle (`pip install vethuq[images]`) and the worker image.
+
 ### Added (HEIC)
 - `.heic`, `.heif` and `.hif` files are read by the free `vethuq-addon-heic` add-on (not in `vethuq[images]`: pillow-heif's wheels include GPLv2 libx265; `pip install vethuq-addon-heic`).
 

@@ -98,6 +98,8 @@ def register(api: Blueprint, core: Core) -> None:
                 response = Response(
                     core.search().heic_page(path, request.args), mimetype="image/png"
                 )
+            elif file_type == "jp2":
+                response = Response(core.search().jp2_image(path), mimetype="image/png")
             elif file_type == "bmp":
                 response = Response(core.search().bmp_image(path), mimetype="image/png")
             else:
@@ -120,6 +122,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("gif", "a GIF picture"),
         ("webp", "a WebP picture"),
         ("heic", "a HEIC picture"),
+        ("jp2", "a JPEG 2000 picture"),
     ):
         picture_route(kind, what)
 

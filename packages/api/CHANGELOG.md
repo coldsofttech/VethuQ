@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (JPEG 2000)
+- The picture preview shows a JPEG 2000 (`/api/files/jp2?path=`) as a PNG, with transparency laid on white as OCR sees it.
+
 ### Added (HEIC)
 - The picture preview shows a HEIC (`/api/files/heic?path=&page=`) as a PNG, one picture at a time, the primary first, as the HEIC add-on reads them (checked picture for picture). Needs `pillow-heif` (the HEIC add-on brings it); without it the preview says so. A picture over Pillow's pixel limit is refused, as pillow-heif makes no such check.
 

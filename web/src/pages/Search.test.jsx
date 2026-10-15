@@ -1558,6 +1558,16 @@ describe('Search', () => {
       );
     });
 
+    it('shows a JPEG 2000 as one picture, without frame buttons', async () => {
+      const jp2 = found({ file_name: 's.jp2', file_path: '/docs/s.jp2', file_type: 'jp2' });
+      const { panel } = await show(jp2);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/jp2?path=%2Fdocs%2Fs.jp2',
+      );
+      expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+    });
+
     it('shows a still WebP as one picture, without frame buttons', async () => {
       const still = found({ file_name: 's.webp', file_path: '/docs/s.webp', file_type: 'webp' });
       const { panel } = await show(still);
