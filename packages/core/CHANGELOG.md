@@ -13,7 +13,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - `.jp2`, `.j2k`, `.j2c`, `.jpf` and `.jpx` files are read by the free `vethuq-addon-jp2` add-on, in the image bundle (`pip install vethuq[images]`) and the worker image.
 
 ### Added (HEIC)
-- `.heic`, `.heif` and `.hif` files are read by the free `vethuq-addon-heic` add-on (not in `vethuq[images]`: pillow-heif's wheels include GPLv2 libx265; `pip install vethuq-addon-heic`).
+- `.heic`, `.heif` and `.hif` files are read by the free `vethuq-addon-heic` add-on in the image bundle (`pip install vethuq[images]`; pillow-heif's wheels include GPLv2 libx265, so it is not in the worker image).
 
 ### Changed (languages, file types and tiers)
 - Asking for a language, file type or tier VethuQ doesn't know now raises an error, instead of returning nothing.
