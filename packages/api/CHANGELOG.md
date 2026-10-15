@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (source code and notebooks)
+- `/api/files/<type>` returns a file's source for the code preview for `py`, `java`, `ts`, `tsx`, `jsx`, `cs`, `go`, `rs`, `php`, `rb`, `sh`, `ps1` and `ipynb`, like the other text file types.
+
 ### Added (INI, SQL, reStructuredText, log)
 - `/api/files/ini`, `/sql`, `/rst` and `/log` return a file's source for the code preview, like the other text file types.
 

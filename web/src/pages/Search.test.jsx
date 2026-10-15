@@ -1250,7 +1250,7 @@ describe('Search', () => {
     });
   });
 
-  describe('the JSON, NDJSON, YAML, TOML, INI, SQL, RST, log, JavaScript and XML previews', () => {
+  describe('the JSON, NDJSON, YAML, TOML, INI, SQL, RST, log, source code, notebook, JavaScript and XML previews', () => {
     const CASES = {
       json: {
         text: '{\n  "a": { "port": 80 },\n  "b": { "ports": [8080] },\n  "c": { "port": 8080 }\n}',
@@ -1327,6 +1327,27 @@ describe('Search', () => {
         line: 2,
         mark: 'wheat',
         label: 'Log',
+      },
+      py: {
+        text: '# prices\ndef wheat(n):\n    return n + 1  # sum\n',
+        match: { before: 'def ', matched: 'wheat', after: '(n):' },
+        line: 2,
+        mark: 'wheat',
+        label: 'Python',
+      },
+      go: {
+        text: 'package main\n\nfunc wheat() int { return 1 } // x\n',
+        match: { before: 'func ', matched: 'wheat', after: '() int' },
+        line: 3,
+        mark: 'wheat',
+        label: 'Go',
+      },
+      ipynb: {
+        text: '{\n  "cells": [\n    { "cell_type": "markdown", "source": ["wheat prices"] }\n  ]\n}\n',
+        match: { before: '', matched: 'wheat', after: ' prices' },
+        line: 3,
+        mark: 'wheat',
+        label: 'Notebook',
       },
     };
 

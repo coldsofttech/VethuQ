@@ -10,5 +10,17 @@ export { IniHighlighter } from './ini.js';
 export { SqlHighlighter } from './sql.js';
 export { RstHighlighter } from './rst.js';
 export { LogHighlighter } from './log.js';
+export {
+  CSharpHighlighter,
+  GoHighlighter,
+  JavaHighlighter,
+  PhpHighlighter,
+  PowerShellHighlighter,
+  PythonHighlighter,
+  RubyHighlighter,
+  RustHighlighter,
+  ShellHighlighter,
+  codeHighlighter,
+} from './code.js';
 export { JsHighlighter, formatJs } from './js.js';
 export { XmlHighlighter, formatXml } from './xml.js';

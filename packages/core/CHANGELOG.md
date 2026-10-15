@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (source code and notebooks)
+- `.py`, `.java`, `.ts`, `.tsx`, `.jsx`, `.cs`, `.go`, `.rs`, `.php`, `.rb`, `.sh` and `.ps1` files are read by licensed add-ons of their own (`vethuq-addon-py`, `-java`, ... , `-ps1`), and `.ipynb` notebooks by `vethuq-addon-ipynb` (their cells and text output), all in the developer pack and the worker image. JavaScript (`vethuq-addon-js`) moves from the web pack to the developer pack. Each type keeps its page facts in its own table (`py_pages`, ... , `ipynb_pages`). The preview shows each coloured as its own language (TypeScript, TSX and JSX as JavaScript). Web or developer pack licences issued before this need reissuing for the entitlements they gain or lose.
+
 ### Added (INI, SQL, reStructuredText, log)
 - `.ini`, `.sql`, `.rst` and `.log` files are read by the licensed `vethuq-addon-ini`, `-sql`, `-rst` and `-log` add-ons (the developer pack, and the worker image). INI is flattened to `section.key: value` lines, SQL and logs are indexed as written (a log is cut at 64 MB at a line end and says so), reStructuredText is indexed as prose without its markup. Their page facts are kept in the new `ini_pages`, `sql_pages`, `rst_pages` and `log_pages` tables. SQL and log matches carry their line (the index keeps those files' lines). The preview shows each coloured as its own language, the match marked. A developer pack licence issued before this lacks the new entitlements. `.env` is not done.
 

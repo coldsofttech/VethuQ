@@ -478,6 +478,178 @@ class _YamlPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _PyPage(_Base):
+    """What the Python type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "py_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _JavaPage(_Base):
+    """What the Java type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "java_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _TsPage(_Base):
+    """What the TypeScript type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ts_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _TsxPage(_Base):
+    """What the TSX type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "tsx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _JsxPage(_Base):
+    """What the JSX type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "jsx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _CsPage(_Base):
+    """What the C# type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "cs_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _GoPage(_Base):
+    """What the Go type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "go_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _RsPage(_Base):
+    """What the Rust type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "rs_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _PhpPage(_Base):
+    """What the PHP type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "php_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _RbPage(_Base):
+    """What the Ruby type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "rb_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _ShPage(_Base):
+    """What the shell type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "sh_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _Ps1Page(_Base):
+    """What the PowerShell type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ps1_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    comment_lines: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class _IpynbPage(_Base):
+    """What the notebook type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ipynb_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nbformat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)  # the kernel's
+    cell_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    code_cells: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    markdown_cells: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class _IniPage(_Base):
     """What the INI type keeps about its page, beside the text in `pdf_pages`."""
 

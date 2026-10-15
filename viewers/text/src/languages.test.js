@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { JsHighlighter, formatJs } from './js.js';
 import { JsonHighlighter, formatJson } from './json.js';
 import { XmlHighlighter, formatXml } from './xml.js';
+import {
+  CSharpHighlighter,
+  GoHighlighter,
+  JavaHighlighter,
+  PhpHighlighter,
+  PowerShellHighlighter,
+  PythonHighlighter,
+  RubyHighlighter,
+  RustHighlighter,
+  ShellHighlighter,
+} from './code.js';
 import { IniHighlighter } from './ini.js';
 import { LogHighlighter } from './log.js';
 import { RstHighlighter } from './rst.js';
@@ -315,6 +326,184 @@ describe('Log', () => {
     for (const line of [...doc, '', '[', '"', "'a", '=', 'a=', '\u00e9']) {
       expect(text(colour(LogHighlighter, [line])[0])).toBe(line);
     }
+  });
+});
+
+describe('source code', () => {
+  const cases = {
+    Python: [
+      PythonHighlighter,
+      [
+        '# add',
+        'def add(a, b=2):  # sum',
+        '    s = \"\"\"doc',
+        '    more\"\"\"; return a + b if a is None else 0x1F',
+      ],
+      [
+        [0, 'comment', '# add'],
+        [1, 'keyword', 'def'],
+        [1, 'function', 'add'],
+        [1, 'comment', '# sum'],
+        [2, 'string', '\"\"\"doc'],
+        [3, 'string', '    more\"\"\"'],
+        [3, 'keyword', 'return'],
+        [3, 'constant', 'None'],
+        [3, 'number', '0x1F'],
+      ],
+    ],
+    Java: [
+      JavaHighlighter,
+      [
+        '/** doc',
+        ' * more */',
+        '@Override public int add(int a) { return a; } // x',
+        'String s = "a\\"b";',
+      ],
+      [
+        [0, 'comment', '/** doc'],
+        [1, 'comment', ' * more */'],
+        [2, 'keyword', 'public'],
+        [2, 'storage', 'int'],
+        [2, 'comment', '// x'],
+        [3, 'string', '"a\\"b"'],
+      ],
+    ],
+    'C#': [
+      CSharpHighlighter,
+      ['public async Task<int> Add(int a) => a + 1; // x', 'var s = "hi"; bool b = true;'],
+      [
+        [0, 'keyword', 'public'],
+        [0, 'keyword', 'async'],
+        [0, 'function', 'Add'],
+        [1, 'keyword', 'var'],
+        [1, 'storage', 'bool'],
+        [1, 'constant', 'true'],
+      ],
+    ],
+    Go: [
+      GoHighlighter,
+      ['func add(a, b int) int { // sum', '\treturn `raw', 'text` + "s"'],
+      [
+        [0, 'keyword', 'func'],
+        [0, 'function', 'add'],
+        [0, 'storage', 'int'],
+        [1, 'keyword', 'return'],
+        [1, 'string', '`raw'],
+        [2, 'string', 'text`'],
+      ],
+    ],
+    Rust: [
+      RustHighlighter,
+      [
+        "fn longest<'a>(x: &'a str, c: char) -> i32 { let c = 'x'; 42 }",
+        '/* open',
+        'close */ let y = 1;',
+      ],
+      [
+        [0, 'keyword', 'fn'],
+        [0, 'storage', "'a"],
+        [0, 'storage', 'str'],
+        [0, 'string', "'x'"],
+        [0, 'number', '42'],
+        [1, 'comment', '/* open'],
+        [2, 'comment', 'close */'],
+        [2, 'keyword', 'let'],
+      ],
+    ],
+    PHP: [
+      PhpHighlighter,
+      ['<?php', '$x = $this->add($a, "s"); // c', '# hash', '?>'],
+      [
+        [0, 'storage', '<?php'],
+        [1, 'identifier', '$x'],
+        [1, 'identifier', '$a'],
+        [1, 'string', '"s"'],
+        [1, 'comment', '// c'],
+        [2, 'comment', '# hash'],
+        [3, 'storage', '?>'],
+      ],
+    ],
+    Ruby: [
+      RubyHighlighter,
+      ['=begin', 'a comment', '=end', 'def add(a) # x', '  @n = :sym; puts "s" if a.nil?', 'end'],
+      [
+        [0, 'comment', '=begin'],
+        [1, 'comment', 'a comment'],
+        [2, 'comment', '=end'],
+        [3, 'keyword', 'def'],
+        [3, 'comment', '# x'],
+        [4, 'identifier', '@n'],
+        [4, 'constant', ':sym'],
+        [4, 'string', '"s"'],
+        [5, 'keyword', 'end'],
+      ],
+    ],
+    Shell: [
+      ShellHighlighter,
+      [
+        '#!/bin/sh',
+        'for f in $@; do echo "$f" ${HOME}; done # x',
+        'if [ $# -gt 0 ]; then exit 1; fi',
+      ],
+      [
+        [0, 'comment', '#!/bin/sh'],
+        [1, 'keyword', 'for'],
+        [1, 'identifier', '$@'],
+        [1, 'storage', 'echo'],
+        [1, 'identifier', '${HOME}'],
+        [1, 'comment', '# x'],
+        [2, 'identifier', '$#'],
+        [2, 'keyword', 'then'],
+      ],
+    ],
+    PowerShell: [
+      PowerShellHighlighter,
+      [
+        '<# block',
+        'still #> function Get-Thing { param($x) }',
+        'Get-ChildItem -Path $env:HOME # c',
+        '$s = @"',
+        'here "quoted"',
+        '"@',
+      ],
+      [
+        [0, 'comment', '<# block'],
+        [1, 'comment', 'still #>'],
+        [1, 'keyword', 'function'],
+        [1, 'identifier', '$x'],
+        [2, 'function', 'Get-ChildItem'],
+        [2, 'key', '-Path'],
+        [2, 'comment', '# c'],
+        [3, 'string', '@"'],
+        [4, 'string', 'here "quoted"'],
+        [5, 'string', '"@'],
+      ],
+    ],
+  };
+
+  for (const [name, [Highlighter, doc, expected]] of Object.entries(cases)) {
+    it(`colours ${name}`, () => {
+      const rows = colour(Highlighter, doc);
+      for (const [line, kind, piece] of expected) {
+        expect(rows[line], `${name} line ${line}`).toContainEqual([kind, piece]);
+      }
+    });
+
+    it(`keeps every ${name} line whole and copes with odd input`, () => {
+      const odd = ['"', "'a", '/*', '*/', '`', '$', '@', '{[(', '\\', '<#', '"@', '1e', '0x', ':'];
+      for (const line of [...doc, ...odd]) {
+        expect(text(colour(Highlighter, [line])[0])).toBe(line);
+      }
+      const lines = Array.from({ length: 20000 }, (_, i) => (i === 9000 ? doc[0] : 'x = 1'));
+      expect(() => new Highlighter(lines).segments(15000)).not.toThrow();
+    });
+  }
+
+  it('carries a Python triple-quoted string over its lines', () => {
+    const lines = ['a = \"\"\"x', 'def not_code(): pass', 'y\"\"\"', 'def real(): pass'];
+    const rows = colour(PythonHighlighter, lines);
+    expect(rows[1]).toEqual([['string', 'def not_code(): pass']]);
+    expect(rows[3]).toContainEqual(['keyword', 'def']);
   });
 });
 

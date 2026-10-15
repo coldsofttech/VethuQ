@@ -45,7 +45,32 @@ describe('keyBefore', () => {
 describe('LANGUAGES', () => {
   it('names every language the code preview shows', () => {
     expect(Object.keys(LANGUAGES).sort()).toEqual(
-      ['css', 'ini', 'js', 'json', 'log', 'ndjson', 'rst', 'sql', 'toml', 'xml', 'yaml'].sort(),
+      [
+        'css',
+        'cs',
+        'go',
+        'ini',
+        'ipynb',
+        'java',
+        'js',
+        'json',
+        'jsx',
+        'log',
+        'ndjson',
+        'php',
+        'ps1',
+        'py',
+        'rb',
+        'rs',
+        'rst',
+        'sh',
+        'sql',
+        'toml',
+        'ts',
+        'tsx',
+        'xml',
+        'yaml',
+      ].sort(),
     );
     for (const spec of Object.values(LANGUAGES)) {
       expect(spec.label).toBeTruthy();
