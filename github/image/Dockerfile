@@ -25,7 +25,7 @@ RUN pip install --pre --find-links /wheels "vethuq-worker[run]" vethuq-entitleme
         vethuq-addon-markdown vethuq-addon-png vethuq-addon-jpg vethuq-addon-tiff vethuq-addon-bmp vethuq-addon-gif vethuq-addon-webp vethuq-addon-jp2 vethuq-addon-svg vethuq-addon-heic \
         vethuq-addon-html vethuq-addon-mhtml vethuq-addon-xml vethuq-addon-rss vethuq-addon-css vethuq-addon-js vethuq-addon-json vethuq-addon-yaml vethuq-addon-toml vethuq-addon-py vethuq-addon-java vethuq-addon-ts vethuq-addon-tsx vethuq-addon-jsx vethuq-addon-cs vethuq-addon-go vethuq-addon-rs vethuq-addon-php vethuq-addon-rb vethuq-addon-sh vethuq-addon-ps1 vethuq-addon-ipynb vethuq-addon-ini vethuq-addon-sql vethuq-addon-rst vethuq-addon-log vethuq-addon-ndjson vethuq-addon-parquet \
         vethuq-addon-docx vethuq-addon-doc vethuq-addon-xlsx vethuq-addon-xls vethuq-addon-pptx \
-        vethuq-addon-ppt vethuq-addon-rtf vethuq-addon-eml \
+        vethuq-addon-ppt vethuq-addon-rtf vethuq-addon-eml vethuq-addon-msg \
         vethuq-addon-odt vethuq-addon-ott vethuq-addon-ods vethuq-addon-ots vethuq-addon-odp vethuq-addon-otp \
         vethuq-addon-dot vethuq-addon-dotx vethuq-addon-xlsm vethuq-addon-xlsb vethuq-addon-pptm vethuq-addon-pps vethuq-addon-ppsx \
         vethuq-addon-telugu vethuq-addon-hindi vethuq-addon-urdu vethuq-addon-french vethuq-addon-spanish vethuq-addon-paddle \

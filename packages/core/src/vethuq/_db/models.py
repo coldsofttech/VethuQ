@@ -983,6 +983,24 @@ class _EmlPage(_Base):
     message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class _MsgPage(_Base):
+    """What the Outlook message type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "msg_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    subject: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sender: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_cc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipients_bcc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[str | None] = mapped_column(Text, nullable=True)  # ISO 8601
+    message_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class _PdfPagePhase(_Base):
     """A deeper OCR phase (`moderate`, `deep`) read on a page in one language: the angles it read.
     The quick read of a page is `pdf_pages_quick`."""

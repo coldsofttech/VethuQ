@@ -25,6 +25,7 @@ from vethuq._db import (
     _JsxPage,
     _LogPage,
     _MhtmlPage,
+    _MsgPage,
     _NdjsonPage,
     _OdpPage,
     _OdsPage,
@@ -215,6 +216,20 @@ CASES = [
     (
         "eml",
         _EmlPage,
+        {
+            "subject": "S",
+            "sender": "a@b.c",
+            "recipients_to": "d@e.f",
+            "recipients_cc": None,
+            "recipients_bcc": None,
+            "reply_to": None,
+            "sent_at": "2025-09-02T10:30:00+00:00",
+            "message_id": "<m@x>",
+        },
+    ),
+    (
+        "msg",
+        _MsgPage,
         {
             "subject": "S",
             "sender": "a@b.c",

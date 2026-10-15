@@ -28,6 +28,7 @@ from vethuq._db.models import (
     _LogPage,
     _MarkdownPage,
     _MhtmlPage,
+    _MsgPage,
     _NdjsonPage,
     _OdpPage,
     _OdsPage,
@@ -126,6 +127,7 @@ class _PageDetails:
         "ppt": _PptPage,
         "rtf": _RtfPage,
         "eml": _EmlPage,
+        "msg": _MsgPage,
     }
 
     @staticmethod

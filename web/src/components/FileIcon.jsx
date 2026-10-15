@@ -49,6 +49,7 @@ const BY_TYPE = {
   jp2: Image20Regular,
   svg: Image20Regular,
   eml: Mail20Regular,
+  msg: Mail20Regular,
   json: Code20Regular,
   ndjson: Code20Regular,
   yaml: Code20Regular,
