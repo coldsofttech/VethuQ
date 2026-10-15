@@ -404,6 +404,12 @@ export const api = {
      *   subject: string, frame_count: number, incomplete: boolean, file_name: string}>}
      */
     mhtml: (params, signal) => request(`/api/files/mhtml${query(params)}`, { signal }),
+    /**
+     * An `.eml` or `.msg` message read from disk: its header and body lines (each with its offset in
+     * the indexed text), and its attachments.
+     * @param {{path: string, kind: 'eml' | 'msg'}} params
+     */
+    email: (params, signal) => request(`/api/files/email${query(params)}`, { signal }),
     rss: (params, signal) => request(`/api/files/rss${query(params)}`, { signal }),
     /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vethuq.errors import FileTypeUnavailableError
-from vethuq_api import feed_view, images, mhtml_view
+from vethuq_api import email_view, feed_view, images, mhtml_view
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
@@ -78,6 +78,7 @@ class SearchService:
         self._csv = CsvCache()
         self._mhtml = mhtml_view.Cache()
         self._feeds = feed_view.Cache()
+        self._emails = email_view.Cache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
@@ -181,6 +182,17 @@ class SearchService:
         offset = _number(_whole(at, "at"), "at", 0, 0) if at is not None else None
         return {
             **feed_view.window(self._feeds.get(path), offset),
+            "file_name": os.path.basename(path),
+            "file_path": path,
+        }
+
+    # ----- an email message ------------------------------------------------------------------
+
+    def email_message(self, path: str, kind: str) -> dict[str, object]:
+        """A message's headers, attachments and body for the email preview, as lines with their
+        offsets in the indexed text (where the match is)."""
+        return {
+            **self._emails.get(path, kind),
             "file_name": os.path.basename(path),
             "file_path": path,
         }

@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/email-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only reader for an email message (.eml or .msg): its headers, attachments and body; can land on, and mark, a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

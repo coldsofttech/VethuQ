@@ -150,12 +150,12 @@ describe('TOML', () => {
     'point = { x = 1, y = 2 }',
     '[[bin]]',
     'a.b."c d" = 0x1F',
-    'text = \"\"\"',
+    'text = """',
     'line one [not.a.header]',
     'key = "not a key"',
-    '\"\"\" # done',
+    '""" # done',
     "raw = '''",
-    'still raw \"\"\"',
+    'still raw """',
     "''' ",
     'after = 1',
   ];
@@ -180,22 +180,22 @@ describe('TOML', () => {
   });
 
   it('carries a multi-line string over its lines and ends it', () => {
-    expect(rows[12]).toContainEqual(['string', '\"\"\"']);
+    expect(rows[12]).toContainEqual(['string', '"""']);
     expect(rows[13]).toEqual([['string', 'line one [not.a.header]']]);
     expect(rows[14]).toEqual([['string', 'key = "not a key"']]);
-    expect(rows[15]).toContainEqual(['string', '\"\"\"']);
+    expect(rows[15]).toContainEqual(['string', '"""']);
     expect(rows[15]).toContainEqual(['comment', '# done']);
-    expect(rows[17]).toEqual([['string', 'still raw \"\"\"']]);
+    expect(rows[17]).toEqual([['string', 'still raw """']]);
     expect(rows[19]).toContainEqual(['key', 'after']);
   });
 
   it('keeps every line whole and copes with odd input', () => {
     for (const line of doc) expect(text(colour(TomlHighlighter, [line])[0])).toBe(line);
-    for (const line of ['= =', '[', ']]', '"', "'a", '{[', '\"\"\"', 'a = ,,', '[[]]=', '#']) {
+    for (const line of ['= =', '[', ']]', '"', "'a", '{[', '"""', 'a = ,,', '[[]]=', '#']) {
       expect(text(colour(TomlHighlighter, [line])[0])).toBe(line);
     }
     const lines = Array.from({ length: 20000 }, (_, i) =>
-      i === 7000 ? 'k = \"\"\"' : i > 7000 && i < 7010 ? 'body' : 'a = 1',
+      i === 7000 ? 'k = """' : i > 7000 && i < 7010 ? 'body' : 'a = 1',
     );
     expect(new TomlHighlighter(lines).segments(7005)).toEqual([['string', 'body']]);
   });
@@ -336,16 +336,16 @@ describe('source code', () => {
       [
         '# add',
         'def add(a, b=2):  # sum',
-        '    s = \"\"\"doc',
-        '    more\"\"\"; return a + b if a is None else 0x1F',
+        '    s = """doc',
+        '    more"""; return a + b if a is None else 0x1F',
       ],
       [
         [0, 'comment', '# add'],
         [1, 'keyword', 'def'],
         [1, 'function', 'add'],
         [1, 'comment', '# sum'],
-        [2, 'string', '\"\"\"doc'],
-        [3, 'string', '    more\"\"\"'],
+        [2, 'string', '"""doc'],
+        [3, 'string', '    more"""'],
         [3, 'keyword', 'return'],
         [3, 'constant', 'None'],
         [3, 'number', '0x1F'],
@@ -500,7 +500,7 @@ describe('source code', () => {
   }
 
   it('carries a Python triple-quoted string over its lines', () => {
-    const lines = ['a = \"\"\"x', 'def not_code(): pass', 'y\"\"\"', 'def real(): pass'];
+    const lines = ['a = """x', 'def not_code(): pass', 'y"""', 'def real(): pass'];
     const rows = colour(PythonHighlighter, lines);
     expect(rows[1]).toEqual([['string', 'def not_code(): pass']]);
     expect(rows[3]).toContainEqual(['keyword', 'def']);

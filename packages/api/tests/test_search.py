@@ -1767,6 +1767,75 @@ class TestRssFeed:
         assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
 
 
+class TestEmailMessage:
+    """A message as the headers, attachments and body lines of the email preview. The add-ons may
+    not be installed in this checkout, so the type check is replaced; the route and the answer are
+    what is tested."""
+
+    MESSAGE = b"From: Ada <ada@example.com>\r\nSubject: Wheat\r\n\r\nPrices fell\r\n"
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        folder = library / "a"
+        (folder / "d.eml").write_bytes(self.MESSAGE)
+        (folder / "notes.eml").write_bytes(b"\x00\x01 not a message")
+        (library / "outside.eml").write_bytes(self.MESSAGE)
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted in ("eml", "msg") and path.lower().endswith(wanted),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="d.eml", kind="eml", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/email",
+            query_string={"path": str(path), "kind": kind, **query},
+            base_url=ORIGIN,
+        )
+
+    def test_the_message_is_its_lines_with_offsets(self, http):
+        reply = self.get(http)
+        assert reply.status_code == 200
+        message = reply.get_json()
+        assert message["kind"] == "eml"
+        assert [(x["kind"], x["start"]) for x in message["head"]] == [("from", 0), ("subject", 28)]
+        assert message["body"] == [{"text": "Prices fell", "start": 44}]
+        assert message["attachments"] == []
+        assert message["file_name"] == "d.eml"
+
+    def test_only_a_message_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.eml"), "kind": "eml"}
+        assert (
+            http.get("/api/files/email", query_string=outside, base_url=ORIGIN).status_code == 422
+        )
+        assert self.get(http, "missing.eml").status_code == 422
+        assert self.get(http, kind="txt").status_code == 422
+        assert self.get(http, kind="msg").status_code == 422  # d.eml is not a .msg
+
+    def test_what_is_not_a_message_says_so_and_is_never_a_server_error(self, http):
+        reply = self.get(http, "notes.eml")
+        assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
+
+
 class TestImageConverterNeverGivesAnUnhandledError:
     """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
     into a readable message (it was an unhandled server error for some of them)."""

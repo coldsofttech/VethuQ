@@ -131,6 +131,8 @@ dev = [
     # The table preview of a Parquet file (it comes with the Parquet add-on in an install).
     "pyarrow>=15",
     "numpy>=1.26",
+    # The email preview reads an Outlook message (it comes with the MSG add-on in an install).
+    "olefile>=0.46",
     "vethuq-addon-api",
     "vethuq-worker",
     "vethuq-api",

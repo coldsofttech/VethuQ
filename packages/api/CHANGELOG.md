@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (email preview)
+- `/api/files/email?path=&kind=eml|msg` returns a message for the email preview: its header lines and body lines, each with its offset in the indexed text, and its attachments (name, type, size). Outlook `.msg` files are read with `olefile`, as the MSG add-on does.
+
 ### Added (source code and notebooks)
 - `/api/files/<type>` returns a file's source for the code preview for `py`, `java`, `ts`, `tsx`, `jsx`, `cs`, `go`, `rs`, `php`, `rb`, `sh`, `ps1` and `ipynb`, like the other text file types.
 

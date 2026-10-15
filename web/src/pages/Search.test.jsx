@@ -1696,6 +1696,50 @@ describe('Search', () => {
       expect(within(entries[0]).getByText(/Author: Ada/)).toBeInTheDocument();
     });
 
+    it('shows an email as its headers, attachments and body, and marks the match', async () => {
+      const mail = {
+        kind: 'eml',
+        head: [
+          { kind: 'from', text: 'From: Ada <ada@x.org>', start: 0 },
+          { kind: 'subject', text: 'Subject: Wheat', start: 22 },
+        ],
+        body: [{ text: 'Prices fell again', start: 38 }],
+        attachments: [{ name: 'report.pdf', type: 'application/pdf', size: 2048 }],
+        file_name: 'm.eml',
+        file_path: '/docs/m.eml',
+      };
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'm.eml',
+            file_path: '/docs/m.eml',
+            file_type: 'eml',
+            document_id: 5,
+            total_pages: 1,
+            page_number: 1,
+            start: 38,
+            end: 44,
+            matched: 'Prices',
+          }),
+        ],
+      };
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/email': mail });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('prices{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'Email preview' });
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Prices'));
+      expect(within(panel).getByText('Wheat')).toBeInTheDocument();
+      expect(within(panel).getByText('report.pdf (2.0 KB)')).toBeInTheDocument();
+      expect(within(panel).getByText(/body/)).toBeInTheDocument();
+    });
+
     it('shows a still WebP as one picture, without frame buttons', async () => {
       const still = found({ file_name: 's.webp', file_path: '/docs/s.webp', file_type: 'webp' });
       const { panel } = await show(still);

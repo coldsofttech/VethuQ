@@ -207,6 +207,22 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("Only a feed of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().rss_feed(path, request.args))
 
+    @api.get("/files/email")
+    def email_message() -> Response:
+        """An `.eml` or `.msg` message of a source as headers, attachments and body lines."""
+        path = request.args.get("path")
+        kind = request.args.get("kind")
+        if (
+            kind not in ("eml", "msg")
+            or not isinstance(path, str)
+            or not core.search().is_type(path, kind)
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError(
+                "Only an email message of a source that VethuQ reads can be shown here."
+            )
+        return jsonify(core.search().email_message(path, kind))
+
     @api.get("/files/tsv")
     def tsv_window() -> Response:
         """A window of rows of a TSV file of a source: the same table preview as for CSV."""

@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (email preview)
+- Search results in `.eml` and `.msg` messages can be previewed as a mail program would show them (the new `@vethuq/email-viewer`): the headers, the attachments and the body, with the match marked.
+
 ### Added (email bundle)
 - `pip install vethuq[email]` installs the new `vethuq-bundle-email` (the `eml` and `msg` add-ons; one email pack licence unlocks both, and an office pack licence still does too).
 
