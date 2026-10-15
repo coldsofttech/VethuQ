@@ -1,7 +1,11 @@
 import {
   CssHighlighter,
   JsHighlighter,
+  IniHighlighter,
   JsonHighlighter,
+  LogHighlighter,
+  RstHighlighter,
+  SqlHighlighter,
   TomlHighlighter,
   XmlHighlighter,
   YamlHighlighter,
@@ -63,6 +67,10 @@ export const LANGUAGES = {
       return key ? `"${key}"` : null;
     },
   },
+  ini: { label: 'INI', Highlighter: IniHighlighter, format: null, hint: keyBefore },
+  sql: { label: 'SQL', Highlighter: SqlHighlighter, format: null, hint: () => null },
+  rst: { label: 'reStructuredText', Highlighter: RstHighlighter, format: null, hint: () => null },
+  log: { label: 'Log', Highlighter: LogHighlighter, format: null, hint: () => null },
   toml: {
     label: 'TOML',
     Highlighter: TomlHighlighter,

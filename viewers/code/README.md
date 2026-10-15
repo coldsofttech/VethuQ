@@ -1,7 +1,7 @@
 # @vethuq/code-viewer
 
 A read-only view of source code and structured text for VethuQ's code preview: CSS, JavaScript, JSON,
-NDJSON, YAML, TOML and XML. Like the other viewers it lives outside `web/`, knows nothing about
+NDJSON, YAML, TOML, INI, SQL, reStructuredText, log and XML. Like the other viewers it lives outside `web/`, knows nothing about
 VethuQ or its API, and has no dependency but React and `@vethuq/text-viewer` (peers).
 
 ```jsx

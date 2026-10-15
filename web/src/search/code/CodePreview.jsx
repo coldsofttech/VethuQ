@@ -20,7 +20,7 @@ const useStyles = makeStyles({
 });
 
 /**
- * A CSS, JavaScript, JSON, NDJSON, YAML, TOML or XML file of the results beside them, read from disk
+ * A CSS, JavaScript, JSON, NDJSON, YAML, TOML, INI, SQL, reStructuredText, log or XML file of the results beside them, read from disk
  * (the index keeps these in another shape, so its lines are not the file's) and shown by the code
  * viewer: line numbers and the colours of VS Code's Dark+ or Light+ theme (following the app's). A
  * minified file opens laid out, and the Source / Formatted switch (where the language has a layout)

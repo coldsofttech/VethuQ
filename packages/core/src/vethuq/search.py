@@ -396,7 +396,7 @@ class Search:
     # File types whose single page is the file's own lines, so a match has a line (and, except for
     # CSV, TSV and Parquet whose fields are spread out, a column). HTML, XML and the like are read
     # as extracted text, whose lines are not the file's.
-    LINE_TYPES = frozenset({"txt", "csv", "tsv", "parquet"})
+    LINE_TYPES = frozenset({"txt", "csv", "tsv", "parquet", "sql", "log"})
 
     def _located(self, window: list[_Match]) -> list[SearchMatch]:
         """The public matches of a page of results, each with its file type, the line and column

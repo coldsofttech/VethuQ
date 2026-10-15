@@ -3700,6 +3700,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-ini"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/ini" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-jp2"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/jp2" }
@@ -3799,6 +3814,21 @@ dependencies = [
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
 
 [[package]]
+name = "vethuq-addon-log"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/log" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-markdown"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/markdown" }
@@ -3816,6 +3846,24 @@ requires-dist = [
     { name = "markdown-it-py", specifier = ">=3" },
     { name = "mdit-py-plugins", specifier = ">=0.4" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-mhtml"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/mhtml" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 
@@ -4026,6 +4074,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-rst"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/rst" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-rtf"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/rtf" }
@@ -4064,6 +4127,21 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "onnxruntime", specifier = ">=1.18" },
     { name = "tokenizers", specifier = ">=0.20" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-sql"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/sql" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 
@@ -4332,14 +4410,22 @@ name = "vethuq-bundle-developer"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/bundles/developer" }
 dependencies = [
+    { name = "vethuq-addon-ini" },
     { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-log" },
+    { name = "vethuq-addon-rst" },
+    { name = "vethuq-addon-sql" },
     { name = "vethuq-addon-toml" },
     { name = "vethuq-addon-yaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "vethuq-addon-ini", editable = "../VethuQ-premium/packages/add-ons/file-types/ini" },
     { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-log", editable = "../VethuQ-premium/packages/add-ons/file-types/log" },
+    { name = "vethuq-addon-rst", editable = "../VethuQ-premium/packages/add-ons/file-types/rst" },
+    { name = "vethuq-addon-sql", editable = "../VethuQ-premium/packages/add-ons/file-types/sql" },
     { name = "vethuq-addon-toml", editable = "../VethuQ-premium/packages/add-ons/file-types/toml" },
     { name = "vethuq-addon-yaml", editable = "../VethuQ-premium/packages/add-ons/file-types/yaml" },
 ]
@@ -4442,7 +4528,9 @@ dependencies = [
     { name = "vethuq-addon-html" },
     { name = "vethuq-addon-js" },
     { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-mhtml" },
     { name = "vethuq-addon-rss" },
+    { name = "vethuq-addon-svg" },
     { name = "vethuq-addon-xml" },
 ]
 
@@ -4452,7 +4540,9 @@ requires-dist = [
     { name = "vethuq-addon-html", editable = "../VethuQ-premium/packages/add-ons/file-types/html" },
     { name = "vethuq-addon-js", editable = "../VethuQ-premium/packages/add-ons/file-types/js" },
     { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-mhtml", editable = "../VethuQ-premium/packages/add-ons/file-types/mhtml" },
     { name = "vethuq-addon-rss", editable = "../VethuQ-premium/packages/add-ons/file-types/rss" },
+    { name = "vethuq-addon-svg", editable = "../VethuQ-premium/packages/add-ons/file-types/svg" },
     { name = "vethuq-addon-xml", editable = "../VethuQ-premium/packages/add-ons/file-types/xml" },
 ]
 

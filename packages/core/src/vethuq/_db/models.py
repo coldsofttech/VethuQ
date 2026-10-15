@@ -478,6 +478,67 @@ class _YamlPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _IniPage(_Base):
+    """What the INI type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ini_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # sections
+    key_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # keys
+
+
+class _SqlPage(_Base):
+    """What the SQL type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "sql_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    statement_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # statements
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # lines
+
+
+class _RstPage(_Base):
+    """What the RST type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "rst_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)  # the first section's title
+    section_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # sections
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # lines of text
+
+
+class _LogPage(_Base):
+    """What the log type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "log_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # lines
+    error_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # lines at an error level
+    warning_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # lines at a warning level
+    truncated: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )  # only the first part was indexed
+
+
 class _TomlPage(_Base):
     """What the TOML type keeps about its page, beside the text in `pdf_pages`."""
 

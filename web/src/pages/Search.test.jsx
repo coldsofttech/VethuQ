@@ -1250,7 +1250,7 @@ describe('Search', () => {
     });
   });
 
-  describe('the JSON, NDJSON, YAML, TOML, JavaScript and XML previews', () => {
+  describe('the JSON, NDJSON, YAML, TOML, INI, SQL, RST, log, JavaScript and XML previews', () => {
     const CASES = {
       json: {
         text: '{\n  "a": { "port": 80 },\n  "b": { "ports": [8080] },\n  "c": { "port": 8080 }\n}',
@@ -1299,6 +1299,34 @@ describe('Search', () => {
         line: 3,
         mark: 'wheat',
         label: 'TOML',
+      },
+      ini: {
+        text: '; settings\n[server]\nhost = wheat\nport = 80\n',
+        match: { before: 'server.host: ', matched: 'wheat', after: '' },
+        line: 3,
+        mark: 'wheat',
+        label: 'INI',
+      },
+      sql: {
+        text: '-- orders\nSELECT * FROM wheat WHERE id = 7;\n',
+        match: { before: 'FROM ', matched: 'wheat', after: ' WHERE' },
+        line: 2,
+        mark: 'wheat',
+        label: 'SQL',
+      },
+      rst: {
+        text: 'Title\n=====\n:Author: Ada\nWheat prices fell.\n',
+        match: { before: '', matched: 'Wheat', after: ' prices' },
+        line: 4,
+        mark: 'Wheat',
+        label: 'reStructuredText',
+      },
+      log: {
+        text: '2026-10-14 10:00:00 INFO started\n2026-10-14 10:00:01 ERROR wheat failed\n',
+        match: { before: 'ERROR ', matched: 'wheat', after: ' failed' },
+        line: 2,
+        mark: 'wheat',
+        label: 'Log',
       },
     };
 

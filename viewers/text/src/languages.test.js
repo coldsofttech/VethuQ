@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { JsHighlighter, formatJs } from './js.js';
 import { JsonHighlighter, formatJson } from './json.js';
 import { XmlHighlighter, formatXml } from './xml.js';
+import { IniHighlighter } from './ini.js';
+import { LogHighlighter } from './log.js';
+import { RstHighlighter } from './rst.js';
+import { SqlHighlighter } from './sql.js';
 import { TomlHighlighter } from './toml.js';
 import { YamlHighlighter } from './yaml.js';
 import { locateWords } from './locate.js';
@@ -183,6 +187,134 @@ describe('TOML', () => {
       i === 7000 ? 'k = \"\"\"' : i > 7000 && i < 7010 ? 'body' : 'a = 1',
     );
     expect(new TomlHighlighter(lines).segments(7005)).toEqual([['string', 'body']]);
+  });
+});
+
+describe('INI', () => {
+  const doc = [
+    '; settings',
+    '[server]',
+    'host = localhost',
+    'port: 8080',
+    'debug = yes',
+    '  continued',
+    'flag',
+  ];
+  const rows = colour(IniHighlighter, doc);
+
+  it('colours comments, sections, keys and values', () => {
+    expect(rows[0]).toEqual([['comment', '; settings']]);
+    expect(rows[1]).toEqual([['function', '[server]']]);
+    expect(rows[2]).toContainEqual(['key', 'host']);
+    expect(rows[2]).toContainEqual(['string', 'localhost']);
+    expect(rows[3]).toContainEqual(['number', '8080']);
+    expect(rows[4]).toContainEqual(['constant', 'yes']);
+    expect(rows[5]).toContainEqual(['string', 'continued']);
+    expect(rows[6]).toEqual([['key', 'flag']]);
+  });
+
+  it('keeps every line whole and copes with odd input', () => {
+    for (const line of [...doc, '[', '=', '=x', '[a]]b', ':', '   ', '#']) {
+      expect(text(colour(IniHighlighter, [line])[0])).toBe(line);
+    }
+  });
+});
+
+describe('SQL', () => {
+  const doc = [
+    '-- users',
+    "SELECT name, count(*) FROM users WHERE id = 42 AND ok = 'it''s' /* c */;",
+    '/* a block',
+    '   comment */ INSERT INTO t VALUES (1.5, NULL, "Col", true);',
+    'CREATE TABLE x (id INT);',
+  ];
+  const rows = colour(SqlHighlighter, doc);
+
+  it('colours comments, keywords, types, functions, strings, numbers and constants', () => {
+    expect(rows[0]).toEqual([['comment', '-- users']]);
+    expect(rows[1]).toContainEqual(['keyword', 'SELECT']);
+    expect(rows[1]).toContainEqual(['function', 'count']);
+    expect(rows[1]).toContainEqual(['number', '42']);
+    expect(rows[1]).toContainEqual(['string', "'it''s'"]);
+    expect(rows[1]).toContainEqual(['comment', '/* c */']);
+    expect(rows[3]).toContainEqual(['number', '1.5']);
+    expect(rows[3]).toContainEqual(['constant', 'NULL']);
+    expect(rows[3]).toContainEqual(['identifier', '"Col"']);
+    expect(rows[4]).toContainEqual(['storage', 'INT']);
+  });
+
+  it('carries a block comment over its lines and ends it', () => {
+    expect(rows[2]).toEqual([['comment', '/* a block']]);
+    expect(rows[3][0]).toEqual(['comment', '   comment */']);
+    expect(rows[3]).toContainEqual(['keyword', 'INSERT']);
+  });
+
+  it('keeps every line whole and copes with odd input', () => {
+    for (const line of doc) expect(text(colour(SqlHighlighter, [line])[0])).toBe(line);
+    for (const line of ["'", '"a', '/*', '*/', '--', '$$ x $$', '\u00e9t\u00e9', '`', '1e']) {
+      expect(text(colour(SqlHighlighter, [line])[0])).toBe(line);
+    }
+    const lines = Array.from({ length: 20000 }, (_, i) =>
+      i === 7000 ? '/* open' : i === 7010 ? 'close */' : 'select 1;',
+    );
+    expect(new SqlHighlighter(lines).segments(7005)).toEqual([['comment', 'select 1;']]);
+  });
+});
+
+describe('reStructuredText', () => {
+  const doc = [
+    'Title',
+    '=====',
+    ':Author: Ada',
+    '.. note:: Careful with ``code`` and **bold**',
+    '.. a comment',
+    '- item with :ref:`guide <g>` and `link <u>`_',
+  ];
+  const rows = colour(RstHighlighter, doc);
+
+  it('colours underlines, fields, directives, comments and inline markup', () => {
+    expect(rows[1]).toEqual([['atrule', '=====']]);
+    expect(rows[2]).toContainEqual(['key', ':Author:']);
+    expect(rows[3]).toContainEqual(['function', 'note::']);
+    expect(rows[3]).toContainEqual(['string', '``code``']);
+    expect(rows[3]).toContainEqual(['keyword', '**bold**']);
+    expect(rows[4]).toEqual([['comment', '.. a comment']]);
+    expect(rows[5]).toContainEqual(['punct', '-']);
+    expect(rows[5]).toContainEqual(['function', ':ref:`guide <g>`']);
+    expect(rows[5]).toContainEqual(['function', '`link <u>`_']);
+  });
+
+  it('keeps every line whole and copes with odd input', () => {
+    for (const line of [...doc, '``', '**', ':', '..', '`a`__', '   ', '* *']) {
+      expect(text(colour(RstHighlighter, [line])[0])).toBe(line);
+    }
+  });
+});
+
+describe('Log', () => {
+  const doc = [
+    '2026-10-14 10:00:00,123 ERROR [main] failed id=7 "boom" after 3.5s',
+    '10:00:01 WARNING disk',
+    '2026-10-14T10:00:02Z INFO started',
+    'DEBUG x',
+  ];
+  const rows = colour(LogHighlighter, doc);
+
+  it('colours times, levels, brackets, pairs, strings and numbers', () => {
+    expect(rows[0]).toContainEqual(['number', '2026-10-14 10:00:00,123']);
+    expect(rows[0]).toContainEqual(['regexp', 'ERROR']);
+    expect(rows[0]).toContainEqual(['identifier', '[main]']);
+    expect(rows[0]).toContainEqual(['key', 'id']);
+    expect(rows[0]).toContainEqual(['string', '"boom"']);
+    expect(rows[1]).toContainEqual(['selector', 'WARNING']);
+    expect(rows[2]).toContainEqual(['storage', 'INFO']);
+    expect(rows[3]).toContainEqual(['comment', 'DEBUG']);
+  });
+
+  it('keeps every line whole and copes with odd input', () => {
+    for (const line of [...doc, '', '[', '"', "'a", '=', 'a=', '\u00e9']) {
+      expect(text(colour(LogHighlighter, [line])[0])).toBe(line);
+    }
   });
 });
 

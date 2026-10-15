@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (INI, SQL, reStructuredText, log)
+- `/api/files/ini`, `/sql`, `/rst` and `/log` return a file's source for the code preview, like the other text file types.
+
 ### Added (TOML)
 - `/api/files/toml?path=` returns a TOML file's source for the code preview, like the other text file types.
 

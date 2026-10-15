@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (INI, SQL, reStructuredText, log)
+- `.ini`, `.sql`, `.rst` and `.log` files are read by the licensed `vethuq-addon-ini`, `-sql`, `-rst` and `-log` add-ons (the developer pack, and the worker image). INI is flattened to `section.key: value` lines, SQL and logs are indexed as written (a log is cut at 64 MB at a line end and says so), reStructuredText is indexed as prose without its markup. Their page facts are kept in the new `ini_pages`, `sql_pages`, `rst_pages` and `log_pages` tables. SQL and log matches carry their line (the index keeps those files' lines). The preview shows each coloured as its own language, the match marked. A developer pack licence issued before this lacks the new entitlements. `.env` is not done.
+
 ### Added (TOML)
 - `.toml` files are read by the licensed `vethuq-addon-toml` add-on (the developer pack, and the worker image): the file is flattened into `path: value` lines, like YAML. Its page facts (`encoding`, `value_count`, `table_count`, `max_depth`) are kept in the new `toml_pages` table. The preview shows the source coloured as TOML, the match marked on its line. A developer pack licence issued before this lacks the `toml` entitlement.
 
