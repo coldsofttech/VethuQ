@@ -70,6 +70,7 @@ pypdfium2==5.14.0
 python-bidi==0.6.11
 python-dateutil==2.9.0.post0
 pywin32-ctypes==0.2.3 ; sys_platform == 'win32'
+pyxlsb==1.0.10
 pyyaml==6.0.2
 requests==2.34.2
 ruamel-yaml==0.19.1

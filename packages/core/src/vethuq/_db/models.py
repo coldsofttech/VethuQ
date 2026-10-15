@@ -725,6 +725,90 @@ class _TomlPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _DotPage(_Base):
+    """What the dot type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "dot_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _DotxPage(_Base):
+    """What the dotx type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "dotx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _XlsmPage(_Base):
+    """What the xlsm type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "xlsm_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _XlsbPage(_Base):
+    """What the xlsb type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "xlsb_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _PptmPage(_Base):
+    """What the pptm type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "pptm_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _PpsPage(_Base):
+    """What the pps type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "pps_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _PpsxPage(_Base):
+    """What the ppsx type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ppsx_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
 class _DocxPage(_Base):
     """What the Word (.docx) type keeps about its page, beside the text in `pdf_pages`."""
 

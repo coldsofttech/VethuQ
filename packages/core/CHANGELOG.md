@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (office variants)
+- `.dot`, `.dotx`, `.xlsm`, `.xlsb`, `.pptm`, `.pps` and `.ppsx` files are read by licensed add-ons of their own (`vethuq-addon-dot`, `-dotx`, `-xlsm`, `-xlsb`, `-pptm`, `-pps`, `-ppsx`), in the office pack and the worker image. Each reads like the document it is a variant of (macros are never read or run); `.xlsb` is read with the new `pyxlsb` dependency. Each keeps `line_count` and `image_count` in its own table (`dot_pages`, ...). An office pack licence issued before this lacks the new entitlements.
+
 ### Added (source code and notebooks)
 - `.py`, `.java`, `.ts`, `.tsx`, `.jsx`, `.cs`, `.go`, `.rs`, `.php`, `.rb`, `.sh` and `.ps1` files are read by licensed add-ons of their own (`vethuq-addon-py`, `-java`, ... , `-ps1`), and `.ipynb` notebooks by `vethuq-addon-ipynb` (their cells and text output), all in the developer pack and the worker image. JavaScript (`vethuq-addon-js`) moves from the web pack to the developer pack. Each type keeps its page facts in its own table (`py_pages`, ... , `ipynb_pages`). The preview shows each coloured as its own language (TypeScript, TSX and JSX as JavaScript). Web or developer pack licences issued before this need reissuing for the entitlements they gain or lose.
 
