@@ -45,6 +45,25 @@ def register(api: Blueprint, core: Core) -> None:
     def updates_check() -> Response:
         return jsonify(service().updates_check(_flag("force")))
 
+    @api.get("/updates/help")
+    def updates_help() -> Response:
+        return jsonify(service().update_help())
+
+    @api.post("/updates/later")
+    def updates_later() -> Response:
+        days = _body().get("days", 1)
+        if isinstance(days, bool) or not isinstance(days, int | float) or days <= 0:
+            raise ValueError("days is a number above 0.")
+        return jsonify(service().update_later(days))
+
+    @api.post("/updates/skip")
+    def updates_skip() -> Response:
+        return jsonify(service().update_skip())
+
+    @api.post("/updates/install")
+    def updates_install() -> tuple[Response, int]:
+        return jsonify(service().update_install()), 202
+
     @api.get("/policy")
     def policy() -> Response:
         return jsonify(service().policy())

@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 
@@ -18,6 +19,7 @@ class _FetchResponse:
     body: bytes | None
     etag: str | None
     not_modified: bool = False
+    server_time: float | None = None  # the server's `Date` header as a Unix time, when it sent one
 
 
 @dataclass(frozen=True)
@@ -60,7 +62,13 @@ class _PolicyFetcher:
                 yield self._get(url, etag if url == etag_url else None)
             except urllib.error.HTTPError as exc:
                 if exc.code == 304:
-                    yield _FetchResponse(url, None, etag, not_modified=True)
+                    yield _FetchResponse(
+                        url,
+                        None,
+                        etag,
+                        not_modified=True,
+                        server_time=_PolicyFetcher._server_time(exc.headers),
+                    )
                 else:
                     yield _FetchFailure(url, f"HTTP {exc.code}")
             except (OSError, ValueError) as exc:  # URLError, timeouts, resets, bad URLs
@@ -89,4 +97,18 @@ class _PolicyFetcher:
                     raise ValueError("response too large")
                 if time.monotonic() > deadline:
                     raise TimeoutError("response too slow")
-            return _FetchResponse(url, bytes(body), response.headers.get("ETag"))
+            return _FetchResponse(
+                url,
+                bytes(body),
+                response.headers.get("ETag"),
+                server_time=self._server_time(response.headers),
+            )
+
+    @staticmethod
+    def _server_time(headers) -> float | None:
+        """The `Date` header as a Unix time, or None when it is missing or unreadable."""
+        try:
+            value = headers.get("Date") if headers is not None else None
+            return parsedate_to_datetime(value).timestamp() if value else None
+        except (TypeError, ValueError, IndexError):
+            return None

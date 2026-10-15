@@ -1,0 +1,6 @@
+{
+  "alg": "Ed25519",
+  "kid": "contract-unknown",
+  "payload": "eyJpc3N1ZWRfYXQiOiAiMjAyNi0xMC0wMVQxMjowMDowMFoiLCAia2lkIjogImNvbnRyYWN0LXVua25vd24iLCAic2NoZW1hX3ZlcnNpb24iOiAxLCAic2VxdWVuY2UiOiA3LCAidmVyc2lvbnMiOiB7ImRlc2t0b3AiOiB7ImxhdGVzdCI6ICIyLjAuMCIsICJtaW5pbXVtX3N1cHBvcnRlZCI6ICIxLjAuMCJ9LCAicGlwIjogeyJsYXRlc3QiOiAiMi4wLjAiLCAibWluaW11bV9zdXBwb3J0ZWQiOiAiMS4wLjAifX19",
+  "sig": "zSvuF-g4ZMYJXnNrHMiINfXk9uqTjmQt5w8CzlqaGUOdJfGzsuiYTYPOlY-tLnbTWCJrnCRIS8pc5LPtRcECCw"
+}

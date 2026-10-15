@@ -174,7 +174,12 @@ class TestHttp:
         assert "status" in post("/metrics/delete-data").get_json()
         assert post("/db/check", quick=True).status_code == 202
         assert post("/search-index/rebuild").status_code in (202, 409)
-        assert set(get("/maintenance/tasks")) == {"db-check", "search-rebuild"}
+        assert set(get("/maintenance/tasks")) == {"db-check", "search-rebuild", "update-install"}
+        assert "install_type" in get("/updates/help") and "steps" in get("/updates/help")
+        assert post("/updates/later", days=2).status_code == 200
+        assert post("/updates/skip").status_code == 409  # nothing on offer to skip
+        assert post("/updates/later", days=0).status_code == 422
+        assert post("/updates/install").status_code in (409, 422)
         assert post("/updates/check").status_code == 200
         assert post("/policy/refresh", force=False).status_code == 200
         assert post("/tiers/use", tier="local").get_json()["id"] == "local"

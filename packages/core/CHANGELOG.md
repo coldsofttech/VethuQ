@@ -6,6 +6,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (policy and update help)
+- `client.policy.now()` evaluates notice windows against a trusted clock: the local clock corrected by the offset seen in the policy server's `Date` header, and never earlier than when the cached policy was issued, so setting the date back does not revive an expired notice. `client.policy.notices()` returns the notices active by that clock.
+- `client.policy.section(name)` is a read-only view of a top-level policy section (`rate_card`, `limits`, `promotions`, ...), the narrow interface the entitlements package reads its parts through.
+- `client.updates.upgrade_help()` names how VethuQ is installed (`InstallKind`: installer, pipx, venv, externally-managed, pip) and the exact steps that upgrade it, including add-ons. Nothing is run.
+- The desktop installer named by the signed policy can be downloaded and checked (size and sha256, https only) before anything runs it.
+- `UpdateResult.to_dict()` includes `offer_install`; `Notice` has `to_dict()`.
+- Signed contract fixtures for the policy client in `policy/fixtures/v1/` (regenerate with `tools/policy/make_fixtures.py`), shared with the admin tool's tests.
+
 ### Added (fonts)
 - The interface bundles Noto Sans Devanagari (Hindi), Noto Sans Telugu and Noto Nastaliq Urdu (about 500 KB, SIL Open Font License, notice in `licenses/fonts.txt`), so those scripts look right on a machine without a font for them. Each face is limited to its own script and is fetched only when a page has that script; English, Spanish and French keep the system fonts.
 

@@ -13,7 +13,11 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 from vethuq._db import _Database
 from vethuq._logs import _PolicyLog
@@ -80,6 +84,30 @@ class PolicyClient:
         `PolicyStatus.SKIPPED`.
         """
         return self._policy_client().refresh(force=force)
+
+    def now(self) -> datetime:
+        """The time to evaluate notice windows and promotions against.
+
+        The local clock corrected by the offset seen in the server's `Date` header at the last
+        fetch, and never earlier than when the cached policy was issued, so setting the clock back
+        doesn't revive an expired notice. Makes no request.
+        """
+        try:
+            return self._policy_client().now()
+        except Exception:  # noqa: BLE001 - a clock problem must not stop local work
+            return datetime.now(UTC)
+
+    def notices(self) -> tuple[Notice, ...]:
+        """The notices active now (by `now()`), from the cached policy. Makes no request."""
+        return self.current().policy.active_notices(self.now())
+
+    def section(self, name: str) -> Mapping[str, Any]:
+        """A top-level section of the verified policy (`rate_card`, `limits`, `promotions`, ...) as
+        read-only data, or an empty mapping when the policy doesn't have it. This is the narrow
+        interface other packages, such as the entitlements package, use to read their parts of the
+        policy without depending on the policy model. Makes no request."""
+        value = self.current().policy.raw.get(name)
+        return MappingProxyType(value) if isinstance(value, dict) else MappingProxyType({})
 
     def refresh_in_background(self, force: bool = False) -> threading.Thread:
         """Run `refresh` on a daemon thread, so starting up is never delayed."""

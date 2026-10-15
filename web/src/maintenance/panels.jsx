@@ -152,8 +152,9 @@ export function DatabasePanel() {
 
 const UPDATE_WORDS = {
   up_to_date: 'You have the latest version',
-  update_available: 'An update is available',
-  update_required: 'An update is required',
+  available: 'An update is available',
+  below_minimum: 'An update is required',
+  disabled: 'Update checks are off',
   unknown: 'Not checked yet',
 };
 

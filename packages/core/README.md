@@ -1159,7 +1159,15 @@ policy = result.policy
 policy.versions["pip"].latest  # "2.0.0" (a DistributionVersions)
 policy.active_notices()  # notices whose time window includes now
 policy.features["some_feature"].enabled
+
+client.policy.now()  # the time notices and promotions are judged by (see below)
+client.policy.notices()  # the notices active now
+client.policy.section("promotions")  # a read-only view of one section of the signed policy
 ```
+
+**The clock.** A notice's time window is judged by `client.policy.now()`, not by the bare local clock: it is the local clock corrected by how far it was from the policy server's `Date` header at the last fetch, and never earlier than when the cached policy was issued. Setting the computer's date back does not bring back an expired notice. It makes no request.
+
+**Sections for other packages.** `client.policy.section(name)` returns a top-level section of the verified policy (`rate_card`, `limits`, `promotions`, ...) as read-only data, or an empty mapping when the policy has none. The entitlements package reads its limits and promotions through this and nothing else.
 
 The types are in `vethuq.policy`: `Policy`, `DistributionVersions`, `Notice`, `Feature`, `AddonPolicy`, `PolicyResult` and the enums `PolicySource` and `PolicyStatus`.
 
@@ -1229,7 +1237,20 @@ if not access.allowed:
     print(access.message)
 ```
 
-The types are in `vethuq.updates`: `UpdateResult`, `FeatureAccess` and the enums `UpdateStatus` and `UpdateCheckMode`.
+The types are in `vethuq.updates`: `UpdateResult`, `FeatureAccess`, `UpgradeHelp`, `InstallKind` and the enums `UpdateStatus` and `UpdateCheckMode`.
+
+### Upgrade help
+
+VethuQ never upgrades itself inside the running process (file locks, virtual environments, externally-managed Pythons). `client.updates.upgrade_help()` says how it is installed and what to run:
+
+```python
+help_ = client.updates.upgrade_help(addons=["vethuq-addon-pdf"])
+help_.kind      # InstallKind.VENV: INSTALLER, PIPX, VENV, EXTERNALLY_MANAGED or PIP
+help_.commands  # ("python -m pip install --upgrade vethuq vethuq-addon-pdf",)
+help_.steps     # the same, as sentences
+```
+
+The desktop installer build has no command: its update dialog offers **Install now**, which downloads the installer named by the signed policy, checks its size and sha256 against the policy entry, stops the background service, runs the installer silently and starts the service again.
 
 ### The result
 

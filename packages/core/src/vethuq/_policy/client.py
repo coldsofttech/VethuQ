@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq._policy.baseline import _Baseline
@@ -91,6 +92,7 @@ class _PolicyClient:
             if isinstance(attempt, _FetchFailure):
                 failures.append(f"{attempt.url}: {attempt.reason}")
                 continue
+            state = self._synced(state, attempt.server_time, now)
             if attempt.not_modified:
                 state = replace(state, last_check=now, last_failure=0.0)
                 self._save(state)
@@ -152,6 +154,23 @@ class _PolicyClient:
             detail = f"policy not cached: {exc}"
         self._logger.info("accepted policy sequence %d from %s", verified.policy.sequence, url)
         return PolicyResult(verified.policy, PolicySource.FETCHED, PolicyStatus.UPDATED, detail)
+
+    @staticmethod
+    def _synced(state: _PolicyState, server_time: float | None, now: float) -> _PolicyState:
+        """Remember how far the local clock is from the server's, from the `Date` header."""
+        if server_time is None:
+            return state
+        return replace(state, clock_offset=server_time - now, clock_synced_at=now)
+
+    def now(self) -> datetime:
+        """The current time as best it can be told: the local clock corrected by the offset seen at
+        the last fetch, and never earlier than when the cached policy was issued. No network."""
+        state = self._store.read_state()
+        moment = self._clock() + state.clock_offset
+        cached = self._load_cached(state)
+        if cached is not None:
+            moment = max(moment, cached.policy.issued_at.timestamp())
+        return datetime.fromtimestamp(moment, UTC)
 
     def _recently_checked(self, state: _PolicyState, now: float) -> bool:
         if state.last_failure and now - state.last_failure < self.RETRY_INTERVAL_SECONDS:

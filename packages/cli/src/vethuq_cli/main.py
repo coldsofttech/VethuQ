@@ -12,6 +12,7 @@ import vethuq
 from vethuq import errors
 from vethuq_cli import addons, commands, settings
 from vethuq_cli.console import Theme, error_console
+from vethuq_cli.notices import AfterCommand
 from vethuq_cli.state import State
 
 
@@ -113,7 +114,12 @@ class Cli:
         arguments = list(sys.argv[1:] if argv is None else argv)
         try:
             State.db_path = _early_db(arguments)
-            build_app()(args=arguments, prog_name="vethuq")
+            try:
+                build_app()(args=arguments, prog_name="vethuq")
+            except SystemExit as done:
+                if done.code in (None, 0):
+                    AfterCommand.print(State.client(), arguments)
+                raise
         except errors.VethuQError as exc:
             error_console.print(f"Error: {exc.message}", style=Theme.ERROR)
             if getattr(exc, "hint", None):

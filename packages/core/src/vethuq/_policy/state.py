@@ -29,6 +29,8 @@ class _PolicyState:
     last_check: float = 0.0
     last_failure: float = 0.0
     update_required: bool = False
+    clock_offset: float = 0.0  # server time minus local time at the last fetch, in seconds
+    clock_synced_at: float = 0.0  # the local time of that fetch; 0 when never synced
 
     def with_accepted(self, kid: str, sequence: int) -> _PolicyState:
         """Record `sequence` for `kid`; a key's own counter never goes down."""
@@ -50,6 +52,8 @@ class _PolicyState:
             "last_check": self.last_check,
             "last_failure": self.last_failure,
             "update_required": self.update_required,
+            "clock_offset": self.clock_offset,
+            "clock_synced_at": self.clock_synced_at,
         }
 
     @staticmethod
@@ -73,6 +77,8 @@ class _PolicyState:
             last_check=_PolicyState._number(data.get("last_check")),
             last_failure=_PolicyState._number(data.get("last_failure")),
             update_required=data.get("update_required") is True,
+            clock_offset=_PolicyState._number(data.get("clock_offset")),
+            clock_synced_at=_PolicyState._number(data.get("clock_synced_at")),
         )
 
     @staticmethod

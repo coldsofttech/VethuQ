@@ -1,0 +1,67 @@
+{
+  "kid": "contract-test-1",
+  "note": "Test key only. 'last_good' is valid.envelope.json (sequence 5).",
+  "fixtures": [
+    {
+      "file": "valid.envelope.json",
+      "expect": "accepted",
+      "sequence": 5
+    },
+    {
+      "file": "valid-newer.envelope.json",
+      "expect": "accepted",
+      "sequence": 6
+    },
+    {
+      "file": "unknown-fields.envelope.json",
+      "expect": "accepted",
+      "sequence": 8
+    },
+    {
+      "file": "bad-signature.envelope.json",
+      "expect": "rejected"
+    },
+    {
+      "file": "wrong-signer.envelope.json",
+      "expect": "rejected"
+    },
+    {
+      "file": "unknown-key-id.envelope.json",
+      "expect": "rejected"
+    },
+    {
+      "file": "lower-sequence.envelope.json",
+      "expect": "rejected",
+      "reason": "downgrade"
+    },
+    {
+      "file": "higher-schema-major.envelope.json",
+      "expect": "update_required"
+    },
+    {
+      "file": "malformed-json.envelope.json",
+      "expect": "rejected"
+    },
+    {
+      "file": "payload-not-json.envelope.json",
+      "expect": "rejected"
+    }
+  ],
+  "notice_windows": {
+    "file": "valid.envelope.json",
+    "active": [
+      "active"
+    ],
+    "expired": [
+      "expired"
+    ],
+    "future": [
+      "future"
+    ]
+  },
+  "generated": [
+    "oversize payload",
+    "all URLs failing / offline",
+    "ETag unchanged"
+  ]
+}

@@ -6,6 +6,7 @@ import { PageBoundary } from './PageBoundary.jsx';
 import { NavRail } from './NavRail.jsx';
 import { StatusBar } from './StatusBar.jsx';
 import { TitleBar } from './TitleBar.jsx';
+import { UpdateDialog } from './UpdateDialog.jsx';
 
 const useStyles = makeStyles({
   root: {
@@ -46,6 +47,7 @@ export function AppShell() {
       </div>
       <StatusBar />
       <CloseGuard />
+      <UpdateDialog />
       <DropTarget />
     </div>
   );

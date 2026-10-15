@@ -13,22 +13,34 @@ data keep working, and only features that need a newer VethuQ are held back.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 
 from vethuq._db import _Database
 from vethuq._logs import _PolicyLog
 from vethuq._settings import _UpdateSettings, _UpdateView
 from vethuq._updates import (
     FeatureAccess,
+    InstallKind,
     UpdateResult,
+    UpgradeHelp,
     _Distribution,
     _FeatureGate,
+    _Install,
     _UpdateChecker,
     _Versions,
 )
 from vethuq.enums import UpdateCheckMode, UpdateStatus
 from vethuq.policy import PolicyClient
 
-__all__ = ["FeatureAccess", "UpdateCheckMode", "UpdateResult", "UpdateStatus", "Updates"]
+__all__ = [
+    "FeatureAccess",
+    "InstallKind",
+    "UpdateCheckMode",
+    "UpdateResult",
+    "UpdateStatus",
+    "Updates",
+    "UpgradeHelp",
+]
 
 
 class Updates:
@@ -112,3 +124,9 @@ class Updates:
             return _FeatureGate.check(name, default, policy, _Versions.installed())
         except Exception:  # noqa: BLE001 - a policy problem must not stop local work
             return FeatureAccess(name, default)
+
+    def upgrade_help(self, addons: Sequence[str] = ()) -> UpgradeHelp:
+        """The install type and the exact steps that upgrade it (pip, pipx, a virtual environment,
+        an externally-managed Python, or the desktop installer). `addons` are add-on packages to
+        include. Nothing is run and nothing is fetched; VethuQ never upgrades itself in place."""
+        return _Install.help(_Install.kind(), addons)

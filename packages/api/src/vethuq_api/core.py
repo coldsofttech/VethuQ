@@ -18,6 +18,7 @@ from vethuq_api.settings import SettingsService
 from vethuq_api.sources_service import SourcesService
 from vethuq_api.stats_service import StatsService
 from vethuq_api.support import build_report
+from vethuq_api.update_install import UpdateInstaller
 
 
 class Core(Protocol):
@@ -79,7 +80,13 @@ class VethuQCore:
         self._logs = LogsService(self._vethuq)
         self._github = GitHubService(self._vethuq)
         self._search = SearchService(self._vethuq)
-        self._maintenance = MaintenanceService(self._vethuq)
+        self._maintenance = MaintenanceService(
+            self._vethuq,
+            UpdateInstaller(
+                self._indexing.service_probe(),
+                lambda: self._indexing.service_action("stop"),
+            ),
+        )
 
     def _vethuq(self) -> Any:
         with self._lock:

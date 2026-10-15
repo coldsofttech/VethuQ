@@ -11,7 +11,7 @@ const BASE = {
   'GET /api/maintenance/tasks': TASKS,
   'GET /api/db': { last: null },
   'GET /api/updates': {
-    status: 'update_available',
+    status: 'available',
     current: '1.0.0',
     latest: '1.2.0',
     minimum_supported: '0.9.0',

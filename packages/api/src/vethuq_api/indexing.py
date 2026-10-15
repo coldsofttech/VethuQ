@@ -41,6 +41,10 @@ class IndexingService:
         thread = self._thread
         return thread is not None and thread.is_alive()
 
+    def service_probe(self) -> ServiceProbe:
+        """What asks the service manager whether the background service exists."""
+        return self._probe
+
     def state(self) -> dict[str, object]:
         """Everything the status bar and the Indexing page show, in one answer."""
         client = self._client()

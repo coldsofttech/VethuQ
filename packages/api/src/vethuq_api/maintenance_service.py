@@ -10,12 +10,13 @@ from typing import Any
 
 from vethuq_api.indexing import IndexingRefusedError
 
-TASKS = ("db-check", "search-rebuild")
+TASKS = ("db-check", "search-rebuild", "update-install")
 
 
 class MaintenanceService:
-    def __init__(self, client: Callable[[], Any]) -> None:
+    def __init__(self, client: Callable[[], Any], installer: Any = None) -> None:
         self._client = client
+        self._installer = installer
         self._lock = threading.Lock()
         self._tasks: dict[str, dict[str, Any]] = {
             name: {"running": False, "result": None, "error": None, "finished": False}
@@ -69,6 +70,34 @@ class MaintenanceService:
 
     def updates_check(self, force: bool) -> dict[str, object]:
         return self._client().updates.check(force).to_dict()
+
+    def update_later(self, days: float) -> dict[str, object]:
+        """Hide the update notice for `days` days."""
+        self._client().settings.updates.snooze(days)
+        return self._client().updates.status().to_dict()
+
+    def update_skip(self) -> dict[str, object]:
+        """Stop announcing the version that is on offer now (a newer one is announced again)."""
+        client = self._client()
+        latest = client.updates.status().latest
+        if not latest:
+            raise IndexingRefusedError("There is no update to skip.", 409)
+        client.settings.updates.skip_version(latest)
+        return client.updates.status().to_dict()
+
+    def update_help(self) -> dict[str, object]:
+        """The install type and the steps that upgrade it, for installs the dialog can't do."""
+        client = self._client()
+        return {**client.updates.status().to_dict(), **client.updates.upgrade_help().to_dict()}
+
+    def update_install(self) -> dict[str, Any]:
+        """Install now, as a task. The answer to the request is that it started."""
+        if self._installer is None:
+            raise IndexingRefusedError("Installing from here is not available.", 422)
+        installer = self._installer
+        client = self._client()
+        installer.plan(client)  # refuse now, in words, rather than inside the task
+        return self._start("update-install", lambda: installer.install(client))
 
     # ----- the signed policy ------------------------------------------------------------------
 

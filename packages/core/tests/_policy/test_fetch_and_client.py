@@ -71,7 +71,7 @@ class TestPolicyFetcher:
 
         (response,) = list(_fetcher(server.url("/p")).attempts())
 
-        assert response == _FetchResponse(server.url("/p"), b"hello", '"v1"')
+        assert (response.url, response.body, response.etag) == (server.url("/p"), b"hello", '"v1"')
 
     def test_identifies_itself_as_the_policy_client_and_not_the_app_version(self, server):
         server.routes["/p"] = (200, {}, b"x")

@@ -852,6 +852,51 @@ def updates_check(force: bool = typer.Option(False, "--force")) -> None:
     facts(client().updates.check(force))
 
 
+def _outdated_addon_packages() -> list[str]:
+    """Package names of installed add-ons the policy says have a newer version."""
+    from vethuq.updates import _Versions  # noqa: PLC0415
+
+    found = client()
+    rules = found.policy.current().policy.addons
+    names = []
+    for info in found.addons.list():
+        rule = rules.get(info.id)
+        if rule and rule.latest and _Versions.is_older(info.version, rule.latest):
+            names.append(info.name)
+    return names
+
+
+def update_command(
+    check: bool = typer.Option(
+        True, "--check/--no-check", help="Look for a newer version first (once a day at most)."
+    ),
+) -> None:
+    """Say whether a newer VethuQ exists and print the exact steps to upgrade. Changes nothing."""
+    updates = client().updates
+    result = updates.check() if check else updates.status()
+    try:
+        addons = _outdated_addon_packages()
+    except Exception:  # noqa: BLE001 - add-on information is a bonus
+        addons = []
+    help_ = updates.upgrade_help(addons)
+    if State.json:
+        dump({**result.to_dict(), **help_.to_dict()})
+        return
+    console.print(result.message or _update_word(result.status.value), style=Theme.OK)
+    console.print(f"Installed as: {help_.kind.value}", style=Theme.DIM)
+    if result.release_notes_url:
+        console.print(f"Release notes: {result.release_notes_url}", style=Theme.DIM)
+    for step in help_.steps:
+        console.print(f"  {step}")
+
+
+def _update_word(status: str) -> str:
+    return {
+        "up_to_date": "You have the latest version.",
+        "disabled": "The update check is turned off.",
+    }.get(status, "No update information yet. Run: vethuq policy refresh")
+
+
 policy_app = typer.Typer(help="The signed policy.", no_args_is_help=True)
 
 
@@ -859,6 +904,17 @@ policy_app = typer.Typer(help="The signed policy.", no_args_is_help=True)
 def policy_show() -> None:
     """The policy in force."""
     dump(client().policy.current())
+
+
+@policy_app.command("notices")
+def policy_notices() -> None:
+    """The notices active now."""
+    found = client().policy.notices()
+    table(
+        found,
+        ["severity", "message", "link"],
+        empty="No notices.",
+    )
 
 
 @policy_app.command("refresh")
@@ -906,6 +962,7 @@ def register(app: typer.Typer) -> None:
     app.add_typer(db_app, name="db")
     app.add_typer(logs_app, name="logs")
     app.add_typer(stats_app, name="stats")
+    app.command("update")(update_command)
     app.add_typer(updates_app, name="updates")
     app.add_typer(policy_app, name="policy")
     app.add_typer(addons_app, name="addons")

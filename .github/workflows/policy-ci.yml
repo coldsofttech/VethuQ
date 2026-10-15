@@ -30,6 +30,9 @@ jobs:
       - name: Unit tests (schema, signature, sequence, windows)
         run: python -m pytest -q tools/policy/tests
 
+      - name: Contract fixtures are up to date
+        run: python tools/policy/make_fixtures.py --check
+
       - name: Validate example payloads
         run: |
           for f in policy/examples/v1/*.payload.json; do

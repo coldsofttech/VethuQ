@@ -80,6 +80,7 @@ class UpdateResult:
             "disabled_by_environment": self.disabled_by_environment,
             "policy_update_required": self.policy_update_required,
             "notify": self.notify,
+            "offer_install": self.offer_install,
             "message": self.message,
         }
 

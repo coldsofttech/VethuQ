@@ -41,6 +41,16 @@ class Notice:
             return False
         return self.ends_at is None or now <= self.ends_at
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "message": self.message,
+            "severity": self.severity,
+            "link": self.link,
+            "starts_at": self.starts_at.isoformat() if self.starts_at else None,
+            "ends_at": self.ends_at.isoformat() if self.ends_at else None,
+        }
+
 
 @dataclass(frozen=True)
 class Feature:
