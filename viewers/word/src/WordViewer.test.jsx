@@ -68,4 +68,63 @@ describe('WordViewer', () => {
     render(<WordViewer document={{ blocks: [], first: 0, total: 0 }} />);
     expect(screen.getByText('This document has no text.')).toBeInTheDocument();
   });
+
+  it('shows formatting: bold, italic, underline, colour, size and alignment', () => {
+    const formatted = {
+      blocks: [
+        {
+          kind: 'text',
+          text: 'Wheat fell and rose',
+          start: 0,
+          align: 'center',
+          spans: [
+            { start: 0, end: 5, b: true },
+            { start: 6, end: 10, i: true, u: true },
+            { start: 15, end: 19, color: '#ff0000', size: 1.5, pos: 'super' },
+          ],
+        },
+      ],
+      first: 0,
+      total: 1,
+    };
+    const { container } = render(<WordViewer document={formatted} />);
+    const spans = container.querySelectorAll('p span');
+    expect(spans[0].textContent).toBe('Wheat');
+    expect(spans[0].style.fontWeight).toBe('700');
+    expect(spans[1].style.fontStyle).toBe('italic');
+    expect(spans[1].style.textDecoration).toContain('underline');
+    expect(spans[2].style.color).toBe('rgb(255, 0, 0)');
+    expect(spans[2].style.verticalAlign).toBe('super');
+    expect(container.querySelector('p').style.textAlign).toBe('center');
+    expect(container.querySelector('p').textContent).toBe('Wheat fell and rose');
+  });
+
+  it('marks a match across a change of formatting, keeping the formatting', () => {
+    const formatted = {
+      blocks: [
+        { kind: 'text', text: 'Wheat fell', start: 0, spans: [{ start: 0, end: 5, b: true }] },
+      ],
+      first: 0,
+      total: 1,
+    };
+    const { container } = render(<WordViewer document={formatted} match={{ start: 3, end: 8 }} />);
+    const marks = container.querySelectorAll('mark');
+    expect([...marks].map((m) => m.textContent).join('')).toBe('at fe');
+    expect(marks[0].style.fontWeight).toBe('700');
+  });
+
+  it('lays out an RTF row (cells joined by its separator) as a table row', () => {
+    const rtf = {
+      blocks: [
+        { kind: 'row', sep: '|', text: 'a|b|', start: 10, spans: [{ start: 2, end: 3, b: true }] },
+      ],
+      first: 0,
+      total: 1,
+    };
+    const { container } = render(<WordViewer document={rtf} match={{ start: 12, end: 13 }} />);
+    const cells = container.querySelectorAll('td');
+    expect(cells).toHaveLength(2);
+    expect(cells[1].querySelector('mark').textContent).toBe('b');
+    expect(cells[1].querySelector('mark').style.fontWeight).toBe('700');
+  });
 });

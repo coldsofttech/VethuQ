@@ -5,7 +5,7 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added (Word preview)
-- `/api/files/word?document_id=&page=&at=` returns a Word, RTF or OpenDocument text document for the Word preview: the text the index kept, line by line with each line's offset, and a kind for each line (heading, title, list item, table cell or row) read from the `.docx`, `.dotx`, `.odt` or `.ott` file; a window of at most 1500 lines around `at`. Other documents (`.doc`, `.dot`, `.rtf`) are plain lines.
+- `/api/files/word?document_id=&page=&at=` returns a Word, RTF or OpenDocument text document for the Word preview: the text the index kept, line by line with each line's offset, and a kind for each line (heading, title, list item, table cell or row) read from the `.docx`, `.dotx`, `.odt` or `.ott` file; a window of at most 1500 lines around `at`. An `.rtf` document also gets its formatting (bold, italic, underline, strike, size, colour, super and subscript, alignment, heading styles and table rows), read the way `striprtf` reads the text (needs `striprtf`). `.doc` and `.dot` are plain lines.
 
 ### Added (email preview)
 - `/api/files/email?path=&kind=eml|msg` returns a message for the email preview: its header lines and body lines, each with its offset in the indexed text, and its attachments (name, type, size). Outlook `.msg` files are read with `olefile`, as the MSG add-on does.

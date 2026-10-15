@@ -47,6 +47,29 @@ const css = {
 
 const HEADING_SIZES = [0, 24, 20, 17, 15, 14, 14];
 
+/** The part of a block from `lo` to `hi` (a table cell of a row): its text, where it starts in the
+ * indexed text and the formatting that falls in it. */
+function cut(block, lo, hi) {
+  const spans = (block.spans ?? [])
+    .filter((s) => s.end > lo && s.start < hi)
+    .map((s) => ({ ...s, start: Math.max(s.start, lo) - lo, end: Math.min(s.end, hi) - lo }));
+  return { ...block, text: block.text.slice(lo, hi), start: block.start + lo, spans };
+}
+
+/** The inline style of a stretch of text: what its formatting says. */
+function look(span) {
+  const style = {};
+  if (span.b) style.fontWeight = 700;
+  if (span.i) style.fontStyle = 'italic';
+  const lines = [span.u && 'underline', span.s && 'line-through'].filter(Boolean);
+  if (lines.length) style.textDecoration = lines.join(' ');
+  if (span.size) style.fontSize = `${span.size}em`;
+  if (span.color) style.color = span.color;
+  if (span.pos === 'super') Object.assign(style, { verticalAlign: 'super', fontSize: '0.75em' });
+  if (span.pos === 'sub') Object.assign(style, { verticalAlign: 'sub', fontSize: '0.75em' });
+  return style;
+}
+
 /** The blocks as the things a document is made of: runs of list items are a list, runs of cells or
  * rows are a table, and a heading, a title or a paragraph stands alone. */
 function group(blocks) {
@@ -61,10 +84,14 @@ function group(blocks) {
       const row = rows?.[rows.length - 1];
       if (block.kind === 'row') {
         const cells = [];
-        let from = block.start;
-        for (const piece of block.text.split('\t')) {
-          cells.push([{ block: { ...block, text: piece, start: from }, index }]);
-          from += piece.length + 1;
+        const sep = block.sep ?? '\t';
+        const pieces = block.text.split(sep);
+        // A row that ends in its separator (RTF's `a|b|`) has no cell after it.
+        if (pieces.length > 1 && pieces[pieces.length - 1] === '') pieces.pop();
+        let from = 0;
+        for (const piece of pieces) {
+          cells.push([{ block: cut(block, from, from + piece.length), index }]);
+          from += piece.length + sep.length;
         }
         const made = { key: `r${index}`, cells };
         if (rows) rows.push(made);
@@ -98,8 +125,11 @@ function group(blocks) {
  * @param {object} props
  * @param {object} props.document
  * @param {Array<{kind: string, text: string, start: number, level?: number, row?: number,
- *   cell?: number}>} props.document.blocks `kind` is `text`, `title`, `heading` (with a `level`),
- *   `list` (with a `level`), `cell` (with its `row` and `cell`) or `row` (cells joined by a tab).
+ *   cell?: number, sep?: string, align?: string, spans?: Array<object>}>} props.document.blocks
+ *   `kind` is `text`, `title`, `heading` (with a `level`), `list` (with a `level`), `cell` (with its
+ *   `row` and `cell`) or `row` (cells joined by `sep`, a tab if none). `align` is `center`, `right`
+ *   or `justify`. `spans` is the formatting: `{start, end, b, i, u, s, size, color, pos}`, the
+ *   offsets in the block's text, `size` a multiple of the usual size, `pos` `super` or `sub`.
  * @param {number} props.document.first How many blocks come before the first one shown.
  * @param {number} props.document.total How many blocks the document has.
  * @param {{start: number, end: number} | null} [props.match] The match, as offsets in the indexed text.
@@ -126,22 +156,51 @@ export function WordViewer({ document, match = null, onLocated }) {
     marked.current?.scrollIntoView?.({ block: 'center' });
   }, [document, target.start]);
 
+  // A block's text as pieces: each is a stretch with one formatting and either marked or not.
   const shown = (block) => {
+    const text = block.text;
     const lo = Math.max(target.start, block.start) - block.start;
-    const hi = Math.min(target.end, block.start + block.text.length) - block.start;
-    if (hi <= lo) return block.text;
-    return (
-      <>
-        {block.text.slice(0, lo)}
-        <mark style={css.mark} ref={marked}>
-          {block.text.slice(lo, hi)}
-        </mark>
-        {block.text.slice(hi)}
-      </>
-    );
+    const hi = Math.min(target.end, block.start + text.length) - block.start;
+    const hit = hi > lo;
+    const spans = block.spans ?? [];
+    if (!hit && spans.length === 0) return text;
+    const cuts = new Set([0, text.length]);
+    for (const s of spans) {
+      cuts.add(Math.min(s.start, text.length));
+      cuts.add(Math.min(s.end, text.length));
+    }
+    if (hit) {
+      cuts.add(lo);
+      cuts.add(hi);
+    }
+    const points = [...cuts].sort((x, y) => x - y);
+    let first = true;
+    return points.slice(0, -1).map((from, i) => {
+      const to = points[i + 1];
+      const piece = text.slice(from, to);
+      const span = spans.find((s) => s.start <= from && s.end >= to);
+      const style = span ? look(span) : null;
+      const inside = hit && from >= lo && to <= hi;
+      if (inside) {
+        const ref = first ? marked : undefined;
+        first = false;
+        return (
+          <mark key={from} style={{ ...css.mark, ...style }} ref={ref}>
+            {piece}
+          </mark>
+        );
+      }
+      return style ? (
+        <span key={from} style={style}>
+          {piece}
+        </span>
+      ) : (
+        piece
+      );
+    });
   };
   const flag = (index) => (index === current ? { 'aria-current': 'true' } : {});
-  const look = (index, style) => (index === current ? { ...style, ...css.current } : style);
+  const outline = (index, style) => (index === current ? { ...style, ...css.current } : style);
 
   const later = document.total - document.first - blocks.length;
   return (
@@ -158,7 +217,11 @@ export function WordViewer({ document, match = null, onLocated }) {
                 {g.items.map(({ block, index }) => (
                   <li
                     key={index}
-                    style={look(index, { ...css.item, marginLeft: (block.level ?? 0) * 20 })}
+                    style={outline(index, {
+                      ...css.item,
+                      marginLeft: (block.level ?? 0) * 20,
+                      textAlign: block.align,
+                    })}
                     {...flag(index)}
                   >
                     {shown(block)}
@@ -176,7 +239,11 @@ export function WordViewer({ document, match = null, onLocated }) {
                       {row.cells.map((cell, j) => (
                         <td key={j} style={css.cell}>
                           {cell.map(({ block, index }) => (
-                            <div key={index} style={look(index, {})} {...flag(index)}>
+                            <div
+                              key={index}
+                              style={outline(index, { textAlign: block.align })}
+                              {...flag(index)}
+                            >
                               {shown(block)}
                             </div>
                           ))}
@@ -196,11 +263,12 @@ export function WordViewer({ document, match = null, onLocated }) {
                 key={i}
                 role="heading"
                 aria-level={level}
-                style={look(index, {
+                style={outline(index, {
                   ...css.text,
                   fontSize: HEADING_SIZES[level],
                   fontWeight: 600,
                   marginTop: 8,
+                  textAlign: block.align,
                 })}
                 {...flag(index)}
               >
@@ -211,7 +279,10 @@ export function WordViewer({ document, match = null, onLocated }) {
           return (
             <p
               key={i}
-              style={look(index, block.kind === 'title' ? css.title : css.text)}
+              style={outline(index, {
+                ...(block.kind === 'title' ? css.title : css.text),
+                textAlign: block.align,
+              })}
               {...flag(index)}
             >
               {shown(block)}

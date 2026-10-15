@@ -25,6 +25,10 @@ has no dependency but React (a peer).
 - A block's `kind` is `text`, `title`, `heading` (with a `level`), `list` (with a `level`), `cell`
   (with the `row` and `cell` it is in) or `row` (a table row, its cells joined by a tab). Runs of
   list items become a list and runs of cells or rows a table.
+- A block may carry `align` (`center`, `right`, `justify`) and `spans`, its formatting:
+  `{ start, end, b, i, u, s, size, color, pos }` (offsets in the block's text; `size` a multiple of
+  the usual size, `pos` `super` or `sub`). A match is marked across a change of formatting, and the
+  marked words keep their formatting. A `row` joins its cells by `sep` (a tab if none).
 - A block's `start` is where it begins in the text the document was indexed as (the lines joined by
   a newline). The block the match is in is outlined and scrolled to, and the matched words marked,
   also inside a table cell.

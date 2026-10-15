@@ -4,13 +4,15 @@ The preview shows a document the way a reader would (headings, lists, tables), b
 be found in the text the index kept: the document's paragraphs, one a line. So the blocks are that
 stored text, line by line, each with its offset, and the document's own structure is laid over them
 where the file gives it (the style of a Word paragraph, the headings, lists and tables of an
-OpenDocument file). The structure is read the way the DOCX and ODT add-ons read the text, and a line
-it does not find a paragraph for (a legacy `.doc`, an `.rtf`, text read from a picture) is plain.
+OpenDocument file) and, for RTF, the formatting of the text too (bold, italic, underline, size,
+colour, alignment). The structure is read the way the add-ons read the text, and a line it does not
+find a paragraph for (a legacy `.doc`, text read from a picture) is plain.
 Nothing is run, and a file that cannot be read for its structure is shown as plain lines.
 """
 
 from __future__ import annotations
 
+import codecs
 import os
 import re
 import threading
@@ -289,6 +291,291 @@ def _odt(path: str) -> list[Item]:
     return _odt_blocks(document, False) if document is not None else []
 
 
+# ----- Rich Text Format (.rtf) ------------------------------------------------------------------
+
+MAX_RTF_BYTES = 8 * 1024 * 1024
+_STYLE = re.compile(r"\{\\s(\d+)([^{}]*);\}")
+_COLOUR = re.compile(r"\\red(\d+)\\green(\d+)\\blue(\d+)")
+_CONTROL_WORD = re.compile(r"\\[a-z]+-?\d* ?", re.IGNORECASE)
+_HEADING_NAME = re.compile(r"^heading\s*(\d)")
+
+# Character formatting is (bold, italic, underline, strike, size in half points, colour, position).
+_PLAIN = (False, False, False, False, None, None, None)
+
+
+def _group(text: str, name: str) -> str:
+    """The `{\\name ...}` group of an RTF text, or "" if it has none."""
+    start = text.find("\\" + name)
+    if start < 0:
+        return ""
+    depth = 1
+    for position in range(start, len(text)):
+        char = text[position]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:position]
+    return text[start:]
+
+
+def _rtf_tokens(text: str, strip) -> tuple[str, list[int], list[tuple], set[int]]:
+    """What `striprtf` makes of `text`, with the formatting of each character: `(plain text,
+    formatting index per character, paragraph properties per character, positions of the
+    newlines that end a table row)`. The loop follows `striprtf.rtf_to_text` step by step (its
+    tables and patterns are used as they are), so the text is the same."""
+    text = strip.remove_pict_groups(text)
+    text = re.sub(strip.HYPERLINKS, "\\1(\\2)", text)
+    colours = [None] + [
+        f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+        for r, g, b in _COLOUR.findall(_group(text, "colortbl"))
+    ]
+    names = {
+        int(number): _CONTROL_WORD.sub("", body).strip().lower()
+        for number, body in _STYLE.findall(_group(text, "stylesheet") + "}")
+    }
+    fonts = {}
+    encoding = "cp1252"
+    for font_id, charset, _name in strip.FONTTABLE.findall(strip.font_table_group(text)):
+        fonts[font_id] = strip.charset_map.get(int(charset), encoding)
+
+    stack: list[tuple] = []
+    state = {"ucskip": 1, "ignorable": False, "suppress": False, "char": _PLAIN}
+    paragraph: dict[str, Any] = {"align": None, "style": None, "outline": None}
+    out: list[str] = []
+    formats: list[int] = []
+    paragraphs: list[tuple] = []
+    row_ends: set[int] = set()
+    table: dict[tuple, int] = {}
+    curskip = 0
+    hexes: str | None = None
+    current_font = default_font = None
+    depth = 0
+    in_document = False
+    length = 0
+
+    def emit(piece: str) -> None:
+        nonlocal length
+        key = state["char"]
+        number = table.setdefault(key, len(table))
+        para = (paragraph["align"], paragraph["style"], paragraph["outline"])
+        for _ in piece:
+            formats.append(number)
+            paragraphs.append(para)
+        out.append(piece)
+        length += len(piece)
+
+    for match in strip.PATTERN.finditer(text):
+        word, arg, _hex, char, brace, tchar = match.groups()
+        if hexes and not _hex:
+            emit(bytes.fromhex(hexes).decode(fonts.get(current_font, encoding), errors="ignore"))
+            hexes = None
+        if brace:
+            curskip = 0
+            if brace == "{":
+                depth += 1
+                in_document = True
+                stack.append(
+                    (state["ucskip"], state["ignorable"], state["suppress"], state["char"])
+                )
+            else:
+                depth -= 1
+                if stack:
+                    state["ucskip"], state["ignorable"], state["suppress"], state["char"] = (
+                        stack.pop()
+                    )
+                else:
+                    state["ucskip"] = 0
+                    state["ignorable"] = True
+                if in_document and depth <= 0:
+                    break
+        elif char:
+            curskip = 0
+            if char in strip.specialchars:
+                if char in strip.sectionchars:
+                    current_font = default_font
+                if not state["ignorable"]:
+                    emit(strip.specialchars[char])
+            elif char == "*":
+                state["ignorable"] = True
+        elif word:
+            curskip = 0
+            if word in strip.destinations:
+                state["ignorable"] = True
+            elif word == "ansicpg":
+                encoding = f"cp{arg}"
+                try:
+                    codecs.lookup(encoding)
+                except LookupError:
+                    encoding = "utf8"
+            if state["ignorable"] or state["suppress"]:
+                pass
+            elif word in strip.specialchars:
+                emit(strip.specialchars[word])
+                if word == "row":
+                    row_ends.add(length - 1)
+            elif word == "uc":
+                state["ucskip"] = int(arg)
+            elif word == "u":
+                if arg is None:
+                    curskip = state["ucskip"]
+                else:
+                    code = int(arg)
+                    emit(chr(code + 0x10000 if code < 0 else code))
+                    curskip = state["ucskip"]
+            elif word == "f":
+                current_font = arg
+            elif word == "deff":
+                default_font = arg
+            elif word in ("fonttbl", "colortbl"):
+                state["suppress"] = True
+            else:
+                _format(word, arg, state, paragraph, colours, names)
+        elif _hex:
+            if curskip > 0:
+                curskip -= 1
+            elif not state["ignorable"]:
+                hexes = _hex if not hexes else hexes + _hex
+        elif tchar:
+            if curskip > 0:
+                curskip -= 1
+            elif not state["ignorable"] and not state["suppress"]:
+                emit(tchar)
+    by_number = sorted(table, key=table.get)
+    return "".join(out), formats, paragraphs, row_ends, by_number, names
+
+
+def _format(word, arg, state, paragraph, colours, names) -> None:
+    """One formatting control word: it changes the character formatting (kept with the group it is
+    in) or the properties of the paragraph."""
+    bold, italic, underline, strike, size, colour, position = state["char"]
+    on = arg != "0"
+    if word == "b":
+        bold = on
+    elif word == "i":
+        italic = on
+    elif word in ("ul", "uld", "uldb", "ulw", "ulth"):
+        underline = on
+    elif word == "ulnone":
+        underline = False
+    elif word in ("strike", "striked"):
+        strike = on
+    elif word == "fs" and arg is not None:
+        size = int(arg)
+    elif word == "cf" and arg is not None:
+        number = int(arg)
+        colour = colours[number] if 0 < number < len(colours) else None
+    elif word == "super":
+        position = "super"
+    elif word == "sub":
+        position = "sub"
+    elif word == "nosupersub":
+        position = None
+    elif word == "plain":
+        bold, italic, underline, strike, size, colour, position = _PLAIN
+    elif word == "pard":
+        paragraph.update(align=None, style=None, outline=None)
+    elif word in ("qc", "qr", "qj"):
+        paragraph["align"] = {"qc": "center", "qr": "right", "qj": "justify"}[word]
+    elif word == "ql":
+        paragraph["align"] = None
+    elif word == "s" and arg is not None:
+        paragraph["style"] = names.get(int(arg))
+    elif word == "outlinelevel" and arg is not None:
+        paragraph["outline"] = int(arg)
+    state["char"] = (bold, italic, underline, strike, size, colour, position)
+
+
+def _rtf(path: str) -> list[Item]:
+    if os.path.getsize(path) > MAX_RTF_BYTES:
+        return []
+    try:
+        from striprtf import striprtf as strip  # noqa: PLC0415 - only for these documents
+    except ImportError:
+        return []
+    for name in ("remove_pict_groups", "HYPERLINKS", "FONTTABLE", "font_table_group"):
+        if not hasattr(strip, name):
+            return []
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    if not raw.lstrip().startswith(b"{\\rtf"):
+        return []
+    text, formats, paragraphs, row_ends, by_number, names = _rtf_tokens(
+        raw.decode("latin-1"), strip
+    )
+    sizes: dict[int, int] = {}
+    for number in formats:
+        size = by_number[number][4]
+        if size:
+            sizes[size] = sizes.get(size, 0) + 1
+    base = max(sizes, key=sizes.get) if sizes else 24
+    items: list[Item] = []
+    position = 0
+    for raw_line in text.splitlines(keepends=True):
+        start = position
+        position += len(raw_line)
+        content = raw_line.rstrip("\r\n\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029")
+        # The add-on's tidying of a line: a run of spaces or tabs is one space, then a strip.
+        # Only a run of two or more is collapsed: a lone tab stays a tab.
+        shown: list[tuple[str, int]] = []
+        for piece in re.finditer(r"[ \t]{2,}|.", content, re.S):
+            if len(piece.group()) >= 2:
+                shown.append((" ", start + piece.start()))
+            else:
+                shown.append((piece.group(), start + piece.start()))
+        while shown and shown[0][0].isspace():
+            shown.pop(0)
+        while shown and shown[-1][0].isspace():
+            shown.pop()
+        if not shown:
+            continue
+        line = "".join(char for char, _ in shown)
+        first_at = shown[0][1]
+        align, style, outline = paragraphs[first_at]
+        row = start + len(raw_line) - 1 in row_ends
+        kind, more = "text", {}
+        name = style or ""
+        heading = _HEADING_NAME.match(name)
+        if heading:
+            kind, more = "heading", {"level": int(heading.group(1))}
+        elif name in ("title", "subtitle"):
+            kind = "title"
+        elif outline is not None and outline < 9:
+            kind, more = "heading", {"level": outline + 1}
+        if row:
+            kind, more = "row", {"sep": "|"}
+        if align:
+            more["align"] = align
+        spans = []
+        for index, (_, source) in enumerate(shown):
+            bold, italic, underline, strike, size, colour, place = by_number[formats[source]]
+            style_ = {}
+            if bold:
+                style_["b"] = True
+            if italic:
+                style_["i"] = True
+            if underline:
+                style_["u"] = True
+            if strike:
+                style_["s"] = True
+            if size and size != base:
+                style_["size"] = round(size / base, 2)
+            if colour and colour != "#000000":
+                style_["color"] = colour
+            if place:
+                style_["pos"] = place
+            if spans and spans[-1][2] == style_ and spans[-1][1] == index:
+                spans[-1][1] = index + 1
+            elif style_:
+                spans.append([index, index + 1, style_])
+        item = _item(kind, line, **more)
+        if spans:
+            item["spans"] = [{"start": a, "end": b, **f} for a, b, f in spans]
+        items.append(item)
+    return items
+
+
 # ----- laying it out ----------------------------------------------------------------------------
 
 
@@ -300,6 +587,8 @@ def structure(path: str, kind: str) -> list[Item]:
             return _docx(path)
         if kind in ("odt", "ott"):
             return _odt(path)
+        if kind == "rtf":
+            return _rtf(path)
     except Exception:  # noqa: BLE001 - the structure is a bonus: the text is shown without it
         return []
     return []
@@ -321,6 +610,8 @@ def layout(text: str, items: list[Item]) -> list[dict[str, Any]]:
                     block = {k: v for k, v in item.items() if k not in ("first", "text")}
                     at = index + 1
                     break
+        if "spans" in block and (line != want or len(line) > LINE_CLIP):
+            del block["spans"]  # the formatting is of the line as the file has it
         block["text"] = line if len(line) <= LINE_CLIP else line[:LINE_CLIP] + "…"
         block["start"] = offset
         blocks.append(block)

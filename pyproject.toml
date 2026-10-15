@@ -133,6 +133,8 @@ dev = [
     "numpy>=1.26",
     # The email preview reads an Outlook message (it comes with the MSG add-on in an install).
     "olefile>=0.46",
+    # The Word preview reads the formatting of an RTF document (it comes with the RTF add-on).
+    "striprtf>=0.0.26",
     "vethuq-addon-api",
     "vethuq-worker",
     "vethuq-api",

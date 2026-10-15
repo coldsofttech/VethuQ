@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import zipfile
 from pathlib import Path
 
@@ -131,6 +132,72 @@ class TestOdt:
             ("text", "Last"),
         ]
         assert items[0]["level"] == 2
+
+
+RTF = (
+    b"{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\fcharset0 Arial;}}"
+    b"{\\colortbl;\\red255\\green0\\blue0;}{\\stylesheet{\\s1\\b\\fs36 heading 1;}}\n"
+    b"\\pard\\s1 Annual Report\\par\n"
+    b"\\pard\\qc\\b\\fs32 Centered bold\\b0\\fs24\\par\n"
+    b"\\pard Wheat \\i fell\\i0  and \\ul prices\\ulnone  were \\cf1 red\\cf0  caf\\'e9 done\\par\n"
+    b"\\pard\\intbl a\\cell b\\cell\\row\n"
+    b"\\pard Last   line\\par\n}"
+)
+
+
+class TestRtf:
+    @pytest.fixture
+    def rtf(self, tmp_path):
+        pytest.importorskip("striprtf")
+        path = tmp_path / "a.rtf"
+        path.write_bytes(RTF)
+        return str(path)
+
+    @staticmethod
+    def stored(rtf):
+        """The text the RTF add-on stores for the file."""
+        from striprtf.striprtf import rtf_to_text
+
+        text = rtf_to_text(Path(rtf).read_bytes().decode("latin-1"), errors="ignore")
+        lines = (re.sub(r"[ \t]{2,}", " ", line).strip() for line in text.splitlines())
+        return "\n".join(line for line in lines if line)
+
+    def test_the_paragraphs_are_the_stored_lines(self, rtf):
+        items = word_view.structure(rtf, "rtf")
+        assert [i["first"] for i in items] == self.stored(rtf).split("\n")
+
+    def test_kinds_and_formatting(self, rtf):
+        blocks = word_view.layout(self.stored(rtf), word_view.structure(rtf, "rtf"))
+        assert [b["kind"] for b in blocks] == ["heading", "text", "text", "row", "text"]
+        assert blocks[0]["level"] == 1
+        assert blocks[1]["align"] == "center"
+        assert blocks[1]["spans"] == [{"start": 0, "end": 13, "b": True, "size": 1.33}]
+        spans = {(s["start"], s["end"]): s for s in blocks[2]["spans"]}
+        assert spans[(6, 10)] == {"start": 6, "end": 10, "i": True}
+        assert spans[(15, 21)]["u"] is True
+        assert [s["color"] for s in blocks[2]["spans"] if "color" in s] == ["#ff0000"]
+        assert blocks[2]["text"] == "Wheat fell and prices were red café done"
+        assert (blocks[3]["text"], blocks[3]["sep"]) == ("a|b|", "|")
+        assert blocks[4]["text"] == "Last line" and "spans" not in blocks[4]
+
+    def test_the_formatting_is_dropped_when_the_line_is_not_the_files(self, rtf):
+        blocks = word_view.layout("Centered bold ", word_view.structure(rtf, "rtf"))
+        assert "spans" not in blocks[0]
+
+    def test_not_an_rtf_or_too_large_is_plain(self, tmp_path, monkeypatch):
+        pytest.importorskip("striprtf")
+        path = tmp_path / "b.rtf"
+        path.write_bytes(b"plain text")
+        assert word_view.structure(str(path), "rtf") == []
+        path.write_bytes(RTF)
+        monkeypatch.setattr(word_view, "MAX_RTF_BYTES", 10)
+        assert word_view.structure(str(path), "rtf") == []
+
+    def test_the_text_is_the_addons(self, rtf):
+        parser = pytest.importorskip("vethuq_addon_rtf._parsers").RtfParser
+        text, _ = parser.extract(Path(rtf))
+        assert text == self.stored(rtf)
+        assert [i["first"] for i in word_view.structure(rtf, "rtf")] == text.split("\n")
 
 
 class TestWhatCannotBeRead:
