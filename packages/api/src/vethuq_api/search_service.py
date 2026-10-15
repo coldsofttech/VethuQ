@@ -11,7 +11,15 @@ from pathlib import Path
 from typing import Any
 
 from vethuq.errors import FileTypeUnavailableError
-from vethuq_api import email_view, excel_view, feed_view, images, mhtml_view, word_view
+from vethuq_api import (
+    email_view,
+    excel_view,
+    feed_view,
+    images,
+    mhtml_view,
+    slides_view,
+    word_view,
+)
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
@@ -21,6 +29,7 @@ DEFAULT_LIMIT = 50
 TEXT_TYPES = frozenset({"txt", "markdown", "png", "jpg", "tiff"})
 WORD_TYPES = frozenset({"docx", "dotx", "doc", "dot", "rtf", "odt", "ott"})
 EXCEL_TYPES = frozenset({"xlsx", "xlsm", "xlsb", "xls", "ods", "ots"})
+POWERPOINT_TYPES = frozenset({"pptx", "pptm", "ppsx", "ppt", "pps", "odp", "otp"})
 TEXT_MAX_LINES = 500
 TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
@@ -83,6 +92,7 @@ class SearchService:
         self._emails = email_view.Cache()
         self._words = word_view.Cache()
         self._books = excel_view.Cache()
+        self._decks = slides_view.Cache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
@@ -239,6 +249,32 @@ class SearchService:
         laid = self._books.get(page.file_path, page.file_type, page.text, may_open(page.file_path))
         return {
             **excel_view.window(laid, offset, number, row),
+            "file_type": page.file_type,
+            "file_name": page.file_name,
+            "file_path": page.file_path,
+        }
+
+    # ----- a presentation --------------------------------------------------------------------
+
+    def powerpoint_deck(
+        self, query: Mapping[str, Any], may_open: Callable[[str], bool]
+    ) -> dict[str, object]:
+        """A presentation's stored text laid over its slides: an outline of every slide, and a
+        window of slides from slide `first` (from 0, default around the character `at` of the
+        stored text, where the match is)."""
+        query = {k: _whole(v, k) for k, v in query.items()}
+        document_id = _number(query.get("document_id"), "document_id", None, 1)
+        if document_id is None:
+            raise ValueError("document_id is a whole number of 1 or more.")
+        page_number = _number(query.get("page"), "page", 1, 1)
+        at = query.get("at")
+        offset = _number(at, "at", 0, 0) if at is not None else None
+        first = query.get("first")
+        number = _number(first, "first", 0, 0) if first is not None else None
+        page, _ = self._lines_of(document_id, page_number, POWERPOINT_TYPES)
+        laid = self._decks.get(page.file_path, page.file_type, page.text, may_open(page.file_path))
+        return {
+            **slides_view.window(laid, offset, number),
             "file_type": page.file_type,
             "file_name": page.file_name,
             "file_path": page.file_path,

@@ -1960,6 +1960,111 @@ class TestExcelWorkbook:
         assert self.get(http, document_id=3).status_code == 422  # not a spreadsheet type
 
 
+class TestPowerPointDeck:
+    """A presentation as the slides of the PowerPoint preview. The presentation add-ons may not be
+    installed in this checkout, so the stored text is stood in for; the route, the cells read from
+    the file and the answer are what is tested."""
+
+    PRESENTATION = (
+        '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>'
+    )
+    RELS = (
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="x/slide" Target="slides/slide1.xml"/></Relationships>'
+    )
+    SLIDE = (
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>'
+        '<p:sp><p:nvSpPr><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r>'
+        "<a:t>Review</a:t></a:r></a:p></p:txBody></p:sp>"
+        '<p:sp><p:nvSpPr><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r>'
+        "<a:t>Wheat fell</a:t></a:r></a:p></p:txBody></p:sp>"
+        "</p:spTree></p:cSld></p:sld>"
+    )
+    TEXT = "Review\nWheat fell"
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        import types
+        import zipfile
+
+        folder = library / "a"
+        for path in (folder / "d.pptx", library / "outside.pptx"):
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("ppt/presentation.xml", self.PRESENTATION)
+                z.writestr("ppt/_rels/presentation.xml.rels", self.RELS)
+                z.writestr("ppt/slides/slide1.xml", self.SLIDE)
+        pages = {
+            1: ("pptx", str(folder / "d.pptx"), self.TEXT),
+            2: ("pptx", str(library / "outside.pptx"), self.TEXT),
+            3: ("csv", str(folder / "d.pptx"), "a,b"),
+        }
+
+        def lines_of(self, document_id, page_number, types_=None):
+            if document_id not in pages:
+                raise LookupError("That page is not in the index.")
+            file_type, path, text = pages[document_id]
+            if file_type not in SearchService_WORD:
+                raise ValueError("The text of that file cannot be shown this way.")
+            page = types.SimpleNamespace(
+                file_type=file_type, file_path=path, file_name=os.path.basename(path), text=text
+            )
+            return page, text.split("\n")
+
+        from vethuq_api import search_service
+
+        SearchService_WORD = search_service.POWERPOINT_TYPES
+        monkeypatch.setattr(SearchService, "_lines_of", lines_of)
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        return test
+
+    def get(self, http, **query):
+        return http.get("/api/files/powerpoint", query_string=query, base_url=ORIGIN)
+
+    def test_the_slides_with_their_items_and_offsets(self, http):
+        reply = self.get(http, document_id=1)
+        assert reply.status_code == 200
+        deck = reply.get_json()
+        assert deck["outline"] == [{"n": 1, "title": "Review"}]
+        (slide,) = deck["slides"]
+        assert slide["n"] == 1
+        assert slide["items"] == [
+            {"kind": "title", "level": 0, "lines": [{"text": "Review", "start": 0}]},
+            {"kind": "list", "level": 0, "lines": [{"text": "Wheat fell", "start": 7}]},
+        ]
+        assert (deck["first"], deck["total"], deck["file_type"]) == (0, 1, "pptx")
+        assert deck["file_name"] == "d.pptx"
+        assert self.get(http, document_id=1, at=9, first=0).status_code == 200
+
+    def test_a_file_outside_the_sources_is_the_stored_lines(self, http):
+        deck = self.get(http, document_id=2).get_json()
+        assert [i["kind"] for i in deck["slides"][0]["items"]] == ["text", "text"]
+
+    def test_bad_requests(self, http):
+        assert self.get(http).status_code == 422
+        assert self.get(http, document_id=1, at="x").status_code == 422
+        assert self.get(http, document_id=1, first=-1).status_code == 422
+        assert self.get(http, document_id=987).status_code == 404
+        assert self.get(http, document_id=3).status_code == 422  # not a presentation type
+
+
 class TestEmailMessage:
     """A message as the headers, attachments and body lines of the email preview. The add-ons may
     not be installed in this checkout, so the type check is replaced; the route and the answer are

@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (PowerPoint preview)
+- `/api/files/powerpoint?document_id=&page=&at=&first=` returns a PowerPoint (`.pptx`, `.pptm`, `.ppsx`, `.ppt`, `.pps`) or OpenDocument (`.odp`, `.otp`) presentation for the PowerPoint preview: an outline of every slide (number and title) and a window of at most 40 slides, each with its items (title, subtitle, text, list with its level, table row, speaker notes), every line with its offset in the text the index kept; text the slides do not hold (comments, SmartArt) comes as notes. The slides are read the way the add-ons read them; a file that cannot be read for them is shown as the stored lines in one slide.
+
 ### Added (Excel preview)
 - `/api/files/excel?document_id=&page=&at=&sheet=&first=` returns an Excel (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`) or OpenDocument (`.ods`, `.ots`) spreadsheet for the Excel preview: its sheets, and a window of at most 500 rows of one sheet (the one with the match, around it, unless asked for another) with each cell's column, text, whether it is a number and its offset in the text the index kept; text the cells do not hold (comments, text boxes) comes as notes. The cells are read the way the add-ons read them (`.xlsb` needs `pyxlsb`, `.xls` needs `xlrd`); a file that cannot be read for its cells is shown as the stored rows.
 

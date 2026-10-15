@@ -422,6 +422,12 @@ export const api = {
      * @param {{document_id: number, page?: number, at?: number, sheet?: number, first?: number}} params
      */
     excel: (params, signal) => request(`/api/files/excel${query(params)}`, { signal }),
+    /**
+     * A PowerPoint or OpenDocument presentation as it was indexed: an outline of its slides and a
+     * window of them with their text, tables and notes and their offsets in the indexed text.
+     * @param {{document_id: number, page?: number, at?: number, first?: number}} params
+     */
+    powerpoint: (params, signal) => request(`/api/files/powerpoint${query(params)}`, { signal }),
     rss: (params, signal) => request(`/api/files/rss${query(params)}`, { signal }),
     /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.

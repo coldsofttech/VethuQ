@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (PowerPoint preview)
+- Search results in PowerPoint (`.pptx`, `.pptm`, `.ppsx`, `.ppt`, `.pps`) and OpenDocument (`.odp`, `.otp`) presentations can be previewed slide by slide (the new `@vethuq/powerpoint-viewer`): an outline of the slides and each slide's title, text, tables and speaker notes, the slide of the match outlined and the match marked.
+
 ### Added (Excel preview)
 - Search results in Excel (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`) and OpenDocument (`.ods`, `.ots`) spreadsheets can be previewed as a spreadsheet (the new `@vethuq/excel-viewer`): sheet tabs and a grid with column letters and row numbers, the cell of the match outlined and the match marked.
 

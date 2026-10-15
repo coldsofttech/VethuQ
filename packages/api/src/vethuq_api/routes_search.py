@@ -58,6 +58,14 @@ def register(api: Blueprint, core: Core) -> None:
         except LookupError as error:
             return jsonify(error=str(error)), 404
 
+    @api.get("/files/powerpoint")
+    def powerpoint_deck() -> Response:
+        """A presentation as slides, with the offsets of the stored text."""
+        try:
+            return jsonify(core.search().powerpoint_deck(request.args, core.sources().may_open))
+        except LookupError as error:
+            return jsonify(error=str(error)), 404
+
     @api.get("/files/markdown")
     def markdown_file() -> Response:
         """A Markdown file of a source as it is on disk, for the rendered preview."""

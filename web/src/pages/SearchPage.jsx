@@ -44,6 +44,7 @@ const CodePreview = lazy(() => import('../search/code/CodePreview.jsx'));
 const HtmlPreview = lazy(() => import('../search/html/HtmlPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 const FeedPreview = lazy(() => import('../search/feed/FeedPreview.jsx'));
+const PowerPointPreview = lazy(() => import('../search/powerpoint/PowerPointPreview.jsx'));
 const ExcelPreview = lazy(() => import('../search/excel/ExcelPreview.jsx'));
 const WordPreview = lazy(() => import('../search/word/WordPreview.jsx'));
 const EmailPreview = lazy(() => import('../search/email/EmailPreview.jsx'));
@@ -81,6 +82,13 @@ const PREVIEWS = {
   xml: CodePreview,
   rss: FeedPreview,
   eml: EmailPreview,
+  pptx: PowerPointPreview,
+  pptm: PowerPointPreview,
+  ppsx: PowerPointPreview,
+  ppt: PowerPointPreview,
+  pps: PowerPointPreview,
+  odp: PowerPointPreview,
+  otp: PowerPointPreview,
   xlsx: ExcelPreview,
   xlsm: ExcelPreview,
   xlsb: ExcelPreview,

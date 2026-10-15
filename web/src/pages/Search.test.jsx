@@ -402,9 +402,7 @@ describe('Search', () => {
       ...ROUTES,
       'POST /api/search/run': {
         ...RESULT,
-        matches: [
-          match({ file_name: 'plan.pptx', file_path: '/docs/plan.pptx', file_type: 'pptx' }),
-        ],
+        matches: [match({ file_name: 'plan.xyz', file_path: '/docs/plan.xyz', file_type: 'xyz' })],
       },
     });
     renderWithProviders(<App />, { route: '/search' });
@@ -412,7 +410,7 @@ describe('Search', () => {
     const table = await screen.findByRole('table', { name: 'Search results' });
     await userEvent.pointer({
       keys: '[MouseRight]',
-      target: await within(table).findByText('plan.pptx'),
+      target: await within(table).findByText('plan.xyz'),
     });
     expect(await screen.findByRole('menuitem', { name: 'Preview' })).toHaveAttribute(
       'aria-disabled',
@@ -1843,6 +1841,61 @@ describe('Search', () => {
       expect(await within(panel).findByText(/Prices!C1/)).toBeInTheDocument();
       expect(within(panel).getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
       expect(within(panel).getByText(/Rows 1–1 of 1200/)).toBeInTheDocument();
+    });
+
+    it('shows a presentation slide by slide, outlines the slide of the match', async () => {
+      const deck = {
+        slides: [
+          {
+            n: 1,
+            items: [
+              { kind: 'title', level: 0, lines: [{ text: 'Review', start: 0 }] },
+              { kind: 'list', level: 0, lines: [{ text: 'Wheat fell', start: 7 }] },
+            ],
+          },
+          { n: 2, items: [{ kind: 'title', level: 0, lines: [{ text: 'Outlook', start: 18 }] }] },
+        ],
+        first: 0,
+        total: 2,
+        outline: [
+          { n: 1, title: 'Review' },
+          { n: 2, title: 'Outlook' },
+        ],
+        notes: [],
+        file_type: 'pptx',
+        file_name: 'd.pptx',
+        file_path: '/docs/d.pptx',
+      };
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'd.pptx',
+            file_path: '/docs/d.pptx',
+            file_type: 'pptx',
+            document_id: 8,
+            total_pages: 1,
+            page_number: 1,
+            start: 7,
+            end: 12,
+            matched: 'Wheat',
+          }),
+        ],
+      };
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/powerpoint': deck });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'PowerPoint preview' });
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Wheat'));
+      expect(await within(panel).findByText(/slide 1/)).toBeInTheDocument();
+      expect(within(panel).getByLabelText('Slide 1').getAttribute('aria-current')).toBe('true');
+      expect(within(panel).getByLabelText('Slide 2').getAttribute('aria-current')).toBeNull();
     });
 
     it('shows a still WebP as one picture, without frame buttons', async () => {

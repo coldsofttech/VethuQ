@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/powerpoint-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only reader for a presentation (PowerPoint, OpenDocument): a slide outline and each slide with its title, text, tables and speaker notes; can land on, and mark, a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}
