@@ -9,8 +9,7 @@ import {
   formatJs,
   formatJson,
   formatXml,
-  locateWords,
-} from '@vethuq/text-viewer';
+} from "@vethuq/text-viewer";
 
 /**
  * The key a match's value sits under, for a file the index flattened to `path: value` lines
@@ -21,9 +20,11 @@ import {
  * @returns {string | null}
  */
 export function keyBefore(before) {
-  const path = /(\S+):\s*$/.exec(before ?? '')?.[1];
+  const path = /(\S+):\s*$/.exec(before ?? "")?.[1];
   if (!path) return null;
-  const names = path.split(/[./@[\]]+/).filter((part) => part && !/^\d+$/.test(part));
+  const names = path
+    .split(/[./@[\]]+/)
+    .filter((part) => part && !/^\d+$/.test(part));
   return names.at(-1) ?? null;
 }
 
@@ -32,10 +33,20 @@ export function keyBefore(before) {
  * to lay out a minified file (none: it is readable as written), and how to find a match in it.
  */
 export const LANGUAGES = {
-  css: { label: 'CSS', Highlighter: CssHighlighter, format: formatCss, hint: () => null },
-  js: { label: 'JavaScript', Highlighter: JsHighlighter, format: formatJs, hint: () => null },
+  css: {
+    label: "CSS",
+    Highlighter: CssHighlighter,
+    format: formatCss,
+    hint: () => null,
+  },
+  js: {
+    label: "JavaScript",
+    Highlighter: JsHighlighter,
+    format: formatJs,
+    hint: () => null,
+  },
   json: {
-    label: 'JSON',
+    label: "JSON",
     Highlighter: JsonHighlighter,
     format: formatJson,
     hint: (before) => {
@@ -46,7 +57,7 @@ export const LANGUAGES = {
   // One JSON value to a line, so the JSON colouring (which takes a line on its own) fits; there
   // is no layout, because a minified line is a record and the file is readable as it is.
   ndjson: {
-    label: 'NDJSON',
+    label: "NDJSON",
     Highlighter: JsonHighlighter,
     format: null,
     hint: (before) => {
@@ -54,9 +65,22 @@ export const LANGUAGES = {
       return key ? `"${key}"` : null;
     },
   },
-  toml: { label: 'TOML', Highlighter: TomlHighlighter, format: null, hint: keyBefore },
-  yaml: { label: 'YAML', Highlighter: YamlHighlighter, format: null, hint: keyBefore },
-  xml: { label: 'XML', Highlighter: XmlHighlighter, format: formatXml, hint: keyBefore },
+  toml: {
+    label: "TOML",
+    Highlighter: TomlHighlighter,
+    format: null,
+    hint: keyBefore,
+  },
+  yaml: {
+    label: "YAML",
+    Highlighter: YamlHighlighter,
+    format: null,
+    hint: keyBefore,
+  },
+  xml: {
+    label: "XML",
+    Highlighter: XmlHighlighter,
+    format: formatXml,
+    hint: keyBefore,
+  },
 };
-
-export { locateWords };

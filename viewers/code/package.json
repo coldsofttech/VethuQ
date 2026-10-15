@@ -1,0 +1,16 @@
+{
+  "name": "@vethuq/code-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only viewer for source code and structured text (CSS, JavaScript, JSON, NDJSON, YAML, TOML, XML): line numbers, the colours of VS Code's themes, a layout for minified files, and a match found and marked",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "@vethuq/text-viewer": "*",
+    "react": ">=19"
+  }
+}
