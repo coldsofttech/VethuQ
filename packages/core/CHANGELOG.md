@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (Word preview)
+- Search results in Word (`.docx`, `.dotx`, `.doc`, `.dot`), RTF and OpenDocument text (`.odt`, `.ott`) documents can be previewed as a page (the new `@vethuq/word-viewer`), with headings, lists and tables where the file says so, and the match marked.
+
 ### Added (email preview)
 - Search results in `.eml` and `.msg` messages can be previewed as a mail program would show them (the new `@vethuq/email-viewer`): the headers, the attachments and the body, with the match marked.
 

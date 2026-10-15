@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/word-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only reader for a word-processor document (Word, RTF, OpenDocument text): paragraphs, headings, lists and tables; can land on, and mark, a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

@@ -44,6 +44,7 @@ const CodePreview = lazy(() => import('../search/code/CodePreview.jsx'));
 const HtmlPreview = lazy(() => import('../search/html/HtmlPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
 const FeedPreview = lazy(() => import('../search/feed/FeedPreview.jsx'));
+const WordPreview = lazy(() => import('../search/word/WordPreview.jsx'));
 const EmailPreview = lazy(() => import('../search/email/EmailPreview.jsx'));
 
 const PREVIEWS = {
@@ -79,6 +80,13 @@ const PREVIEWS = {
   xml: CodePreview,
   rss: FeedPreview,
   eml: EmailPreview,
+  docx: WordPreview,
+  dotx: WordPreview,
+  doc: WordPreview,
+  dot: WordPreview,
+  rtf: WordPreview,
+  odt: WordPreview,
+  ott: WordPreview,
   msg: EmailPreview,
   png: ImagePreview,
   jpg: ImagePreview,

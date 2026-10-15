@@ -1767,6 +1767,94 @@ class TestRssFeed:
         assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
 
 
+class TestWordDocument:
+    """A document as the blocks of the Word preview. The Word add-ons may not be installed in this
+    checkout, so the stored text is stood in for; the route, the structure read from the file and
+    the answer are what is tested."""
+
+    HEAD = (
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body>"
+        '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Summary</w:t></w:r></w:p>'
+        "<w:p><w:r><w:t>Wheat fell</w:t></w:r></w:p>"
+        "</w:body></w:document>"
+    )
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        import types
+        import zipfile
+
+        folder = library / "a"
+        with zipfile.ZipFile(folder / "d.docx", "w") as z:
+            z.writestr("word/document.xml", self.HEAD)
+        with zipfile.ZipFile(library / "outside.docx", "w") as z:
+            z.writestr("word/document.xml", self.HEAD)
+        pages = {
+            1: ("docx", str(folder / "d.docx"), "Summary\nWheat fell"),
+            2: ("docx", str(library / "outside.docx"), "Summary\nWheat fell"),
+            3: ("csv", str(folder / "d.docx"), "a,b"),
+        }
+
+        def lines_of(self, document_id, page_number, types_=None):
+            if document_id not in pages:
+                raise LookupError("That page is not in the index.")
+            file_type, path, text = pages[document_id]
+            if file_type not in SearchService_WORD:
+                raise ValueError("The text of that file cannot be shown this way.")
+            page = types.SimpleNamespace(
+                file_type=file_type, file_path=path, file_name=os.path.basename(path), text=text
+            )
+            return page, text.split("\n")
+
+        from vethuq_api import search_service
+
+        SearchService_WORD = search_service.WORD_TYPES
+        monkeypatch.setattr(SearchService, "_lines_of", lines_of)
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        return test
+
+    def get(self, http, **query):
+        return http.get("/api/files/word", query_string=query, base_url=ORIGIN)
+
+    def test_the_text_with_the_structure_of_the_file(self, http):
+        reply = self.get(http, document_id=1)
+        assert reply.status_code == 200
+        document = reply.get_json()
+        assert document["blocks"] == [
+            {"kind": "heading", "level": 1, "text": "Summary", "start": 0},
+            {"kind": "text", "text": "Wheat fell", "start": 8},
+        ]
+        assert (document["first"], document["total"], document["file_type"]) == (0, 2, "docx")
+        assert document["file_name"] == "d.docx"
+        assert self.get(http, document_id=1, at=10).status_code == 200
+
+    def test_a_file_outside_the_sources_is_plain_lines(self, http):
+        document = self.get(http, document_id=2).get_json()
+        assert [b["kind"] for b in document["blocks"]] == ["text", "text"]
+
+    def test_bad_requests(self, http):
+        assert self.get(http).status_code == 422
+        assert self.get(http, document_id=1, at="x").status_code == 422
+        assert self.get(http, document_id=987).status_code == 404
+        assert self.get(http, document_id=3).status_code == 422  # not a word-processor type
+
+
 class TestEmailMessage:
     """A message as the headers, attachments and body lines of the email preview. The add-ons may
     not be installed in this checkout, so the type check is replaced; the route and the answer are

@@ -403,7 +403,7 @@ describe('Search', () => {
       'POST /api/search/run': {
         ...RESULT,
         matches: [
-          match({ file_name: 'plan.docx', file_path: '/docs/plan.docx', file_type: 'docx' }),
+          match({ file_name: 'plan.xlsx', file_path: '/docs/plan.xlsx', file_type: 'xlsx' }),
         ],
       },
     });
@@ -412,7 +412,7 @@ describe('Search', () => {
     const table = await screen.findByRole('table', { name: 'Search results' });
     await userEvent.pointer({
       keys: '[MouseRight]',
-      target: await within(table).findByText('plan.docx'),
+      target: await within(table).findByText('plan.xlsx'),
     });
     expect(await screen.findByRole('menuitem', { name: 'Preview' })).toHaveAttribute(
       'aria-disabled',
@@ -1738,6 +1738,51 @@ describe('Search', () => {
       expect(within(panel).getByText('Wheat')).toBeInTheDocument();
       expect(within(panel).getByText('report.pdf (2.0 KB)')).toBeInTheDocument();
       expect(within(panel).getByText(/body/)).toBeInTheDocument();
+    });
+
+    it('shows a Word document as a page with its structure and marks the match', async () => {
+      const document = {
+        blocks: [
+          { kind: 'heading', text: 'Summary', start: 0, level: 1 },
+          { kind: 'text', text: 'Wheat prices fell', start: 8 },
+          { kind: 'list', text: 'First point', start: 26, level: 0 },
+        ],
+        first: 0,
+        total: 3,
+        file_type: 'docx',
+        file_name: 'r.docx',
+        file_path: '/docs/r.docx',
+      };
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'r.docx',
+            file_path: '/docs/r.docx',
+            file_type: 'docx',
+            document_id: 6,
+            total_pages: 1,
+            page_number: 1,
+            start: 8,
+            end: 13,
+            matched: 'Wheat',
+          }),
+        ],
+      };
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/word': document });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'Word preview' });
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Wheat'));
+      expect(within(panel).getByRole('heading', { name: 'Summary' })).toBeInTheDocument();
+      expect(panel.querySelectorAll('li')).toHaveLength(1);
+      expect(await within(panel).findByText(/line 2 of 3/)).toBeInTheDocument();
     });
 
     it('shows a still WebP as one picture, without frame buttons', async () => {

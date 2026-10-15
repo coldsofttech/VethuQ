@@ -410,6 +410,12 @@ export const api = {
      * @param {{path: string, kind: 'eml' | 'msg'}} params
      */
     email: (params, signal) => request(`/api/files/email${query(params)}`, { signal }),
+    /**
+     * A Word, RTF or OpenDocument text document as it was indexed: blocks (with headings, lists and
+     * table cells where the file says so) around the character `at`.
+     * @param {{document_id: number, page?: number, at?: number}} params
+     */
+    word: (params, signal) => request(`/api/files/word${query(params)}`, { signal }),
     rss: (params, signal) => request(`/api/files/rss${query(params)}`, { signal }),
     /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.

@@ -42,6 +42,14 @@ def register(api: Blueprint, core: Core) -> None:
         except LookupError as error:
             return jsonify(error=str(error)), 404
 
+    @api.get("/files/word")
+    def word_document() -> Response:
+        """A Word, RTF or OpenDocument text document as it was indexed, with its structure."""
+        try:
+            return jsonify(core.search().word_document(request.args, core.sources().may_open))
+        except LookupError as error:
+            return jsonify(error=str(error)), 404
+
     @api.get("/files/markdown")
     def markdown_file() -> Response:
         """A Markdown file of a source as it is on disk, for the rendered preview."""

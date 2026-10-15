@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vethuq.errors import FileTypeUnavailableError
-from vethuq_api import email_view, feed_view, images, mhtml_view
+from vethuq_api import email_view, feed_view, images, mhtml_view, word_view
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
@@ -19,6 +19,7 @@ DEFAULT_LIMIT = 50
 # The text viewer: which files it shows, how many lines it hands out at once, how much of a line it
 # keeps (a minified file can be one line of megabytes), and how long a file's lines stay split.
 TEXT_TYPES = frozenset({"txt", "markdown", "png", "jpg", "tiff"})
+WORD_TYPES = frozenset({"docx", "dotx", "doc", "dot", "rtf", "odt", "ott"})
 TEXT_MAX_LINES = 500
 TEXT_DEFAULT_LINES = 200
 TEXT_LINE_CLIP = 10_000
@@ -79,10 +80,13 @@ class SearchService:
         self._mhtml = mhtml_view.Cache()
         self._feeds = feed_view.Cache()
         self._emails = email_view.Cache()
+        self._words = word_view.Cache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
-    def _lines_of(self, document_id: int, page_number: int) -> tuple[Any, list[str]]:
+    def _lines_of(
+        self, document_id: int, page_number: int, types: frozenset[str] = TEXT_TYPES
+    ) -> tuple[Any, list[str]]:
         key = (document_id, page_number)
         now = time.monotonic()
         with self._texts_lock:
@@ -92,8 +96,8 @@ class SearchService:
         page = self._client().search.page_text(document_id, page_number)
         if page is None:
             raise LookupError("That page is not in the index.")
-        if page.file_type not in TEXT_TYPES:
-            raise ValueError("Only the text of a text or Markdown file can be shown here.")
+        if page.file_type not in types:
+            raise ValueError("The text of that file cannot be shown this way.")
         lines = [line.removesuffix("\r") for line in page.text.split("\n")]
         with self._texts_lock:
             self._texts[key] = (now, page, lines)
@@ -184,6 +188,29 @@ class SearchService:
             **feed_view.window(self._feeds.get(path), offset),
             "file_name": os.path.basename(path),
             "file_path": path,
+        }
+
+    # ----- a word-processor document ---------------------------------------------------------
+
+    def word_document(
+        self, query: Mapping[str, Any], may_open: Callable[[str], bool]
+    ) -> dict[str, object]:
+        """A document's stored text as blocks (headings, lists, table cells where the file says
+        so), a window of them around the character `at` of that text (where the match is)."""
+        query = {k: _whole(v, k) for k, v in query.items()}
+        document_id = _number(query.get("document_id"), "document_id", None, 1)
+        if document_id is None:
+            raise ValueError("document_id is a whole number of 1 or more.")
+        page_number = _number(query.get("page"), "page", 1, 1)
+        at = query.get("at")
+        offset = _number(at, "at", 0, 0) if at is not None else None
+        page, _ = self._lines_of(document_id, page_number, WORD_TYPES)
+        items = self._words.get(page.file_path, page.file_type) if may_open(page.file_path) else []
+        return {
+            **word_view.window(word_view.layout(page.text, items), offset),
+            "file_type": page.file_type,
+            "file_name": page.file_name,
+            "file_path": page.file_path,
         }
 
     # ----- an email message ------------------------------------------------------------------
