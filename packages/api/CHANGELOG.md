@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (TOML)
+- `/api/files/toml?path=` returns a TOML file's source for the code preview, like the other text file types.
+
 ### Added (RSS)
 - `/api/files/rss?path=&at=` returns a feed for the feed preview: its head lines and a window of at most 500 entries around the character `at` (the match) of the indexed text, each line with its kind and its offset in that text. Needs `defusedxml` (the RSS add-on brings it); a feed that is not well-formed is read as loose text, as the add-on does, and a test holds the two together.
 

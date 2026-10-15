@@ -39,6 +39,7 @@ const BY_TYPE = {
   json: Code20Regular,
   ndjson: Code20Regular,
   yaml: Code20Regular,
+  toml: Code20Regular,
   xml: Code20Regular,
   rss: Code20Regular,
   html: Code20Regular,

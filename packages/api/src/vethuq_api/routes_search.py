@@ -77,6 +77,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("html", "a web page"),
         ("json", "a JSON file"),
         ("yaml", "a YAML file"),
+        ("toml", "a TOML file"),
         ("ndjson", "an NDJSON file"),
         ("js", "a script"),
         ("xml", "an XML file"),

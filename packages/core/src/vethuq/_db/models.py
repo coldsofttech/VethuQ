@@ -478,6 +478,20 @@ class _YamlPage(_Base):
     max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class _TomlPage(_Base):
+    """What the TOML type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "toml_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # leaves flattened
+    table_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # the top level too
+    max_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class _DocxPage(_Base):
     """What the Word (.docx) type keeps about its page, beside the text in `pdf_pages`."""
 

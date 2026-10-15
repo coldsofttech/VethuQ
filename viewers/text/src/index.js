@@ -5,5 +5,6 @@ export { locateWords } from './locate.js';
 export { vscodeDark, vscodeLight } from './themes.js';
 export { JsonHighlighter, formatJson } from './json.js';
 export { YamlHighlighter } from './yaml.js';
+export { TomlHighlighter } from './toml.js';
 export { JsHighlighter, formatJs } from './js.js';
 export { XmlHighlighter, formatXml } from './xml.js';

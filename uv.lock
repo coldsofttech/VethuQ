@@ -4103,6 +4103,21 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-toml"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/toml" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-tsv"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/tsv" }
@@ -4318,12 +4333,14 @@ version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/bundles/developer" }
 dependencies = [
     { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-toml" },
     { name = "vethuq-addon-yaml" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-toml", editable = "../VethuQ-premium/packages/add-ons/file-types/toml" },
     { name = "vethuq-addon-yaml", editable = "../VethuQ-premium/packages/add-ons/file-types/yaml" },
 ]
 

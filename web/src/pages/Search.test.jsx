@@ -1250,7 +1250,7 @@ describe('Search', () => {
     });
   });
 
-  describe('the JSON, NDJSON, YAML, JavaScript and XML previews', () => {
+  describe('the JSON, NDJSON, YAML, TOML, JavaScript and XML previews', () => {
     const CASES = {
       json: {
         text: '{\n  "a": { "port": 80 },\n  "b": { "ports": [8080] },\n  "c": { "port": 8080 }\n}',
@@ -1292,6 +1292,13 @@ describe('Search', () => {
         line: 3,
         mark: 'Dune',
         label: 'XML',
+      },
+      toml: {
+        text: '# build\n[package]\nname = "wheat"\nversion = 3\n',
+        match: { before: 'package.name: ', matched: 'wheat', after: '' },
+        line: 3,
+        mark: 'wheat',
+        label: 'TOML',
       },
     };
 

@@ -56,6 +56,7 @@ const PREVIEWS = {
   json: CodePreview,
   ndjson: CodePreview,
   yaml: CodePreview,
+  toml: CodePreview,
   js: CodePreview,
   xml: CodePreview,
   rss: FeedPreview,

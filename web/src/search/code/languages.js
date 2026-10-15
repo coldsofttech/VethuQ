@@ -2,6 +2,7 @@ import {
   CssHighlighter,
   JsHighlighter,
   JsonHighlighter,
+  TomlHighlighter,
   XmlHighlighter,
   YamlHighlighter,
   formatCss,
@@ -53,6 +54,7 @@ export const LANGUAGES = {
       return key ? `"${key}"` : null;
     },
   },
+  toml: { label: 'TOML', Highlighter: TomlHighlighter, format: null, hint: keyBefore },
   yaml: { label: 'YAML', Highlighter: YamlHighlighter, format: null, hint: keyBefore },
   xml: { label: 'XML', Highlighter: XmlHighlighter, format: formatXml, hint: keyBefore },
 };

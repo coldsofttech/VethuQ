@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (TOML)
+- `.toml` files are read by the licensed `vethuq-addon-toml` add-on (the developer pack, and the worker image): the file is flattened into `path: value` lines, like YAML. Its page facts (`encoding`, `value_count`, `table_count`, `max_depth`) are kept in the new `toml_pages` table. The preview shows the source coloured as TOML, the match marked on its line. A developer pack licence issued before this lacks the `toml` entitlement.
+
 ### Added (RSS)
 - `.rss` and `.atom` files are read by the licensed `vethuq-addon-rss` add-on (part of the web pack, in the worker image), no longer by the XML add-on: a feed is its title and description then one block per entry (title, author, date, categories, link, text with the HTML stripped). Its page facts are kept in the new `rss_pages` table. The preview is a feed reader: entries with their title, author, date, categories, link and text, the match marked. A web pack licence issued before this has no `rss` entitlement, so it no longer unlocks `.rss`/`.atom` files until reissued.
 

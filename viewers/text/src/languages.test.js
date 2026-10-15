@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { JsHighlighter, formatJs } from './js.js';
 import { JsonHighlighter, formatJson } from './json.js';
 import { XmlHighlighter, formatXml } from './xml.js';
+import { TomlHighlighter } from './toml.js';
 import { YamlHighlighter } from './yaml.js';
 import { locateWords } from './locate.js';
 
@@ -117,6 +118,71 @@ describe('YAML', () => {
       i === 7000 ? 'k: |' : i > 7000 && i < 7010 ? '  body' : 'a: 1',
     );
     expect(new YamlHighlighter(lines).segments(7005)).toEqual([['string', '  body']]);
+  });
+});
+
+describe('TOML', () => {
+  const doc = [
+    '# project',
+    '[package]',
+    'name = "vethuq"  # the name',
+    "version = '1.2.0'",
+    'build = 42',
+    'ratio = -3.5e2',
+    'public = true',
+    'released = 2026-10-14T10:00:00Z',
+    'authors = ["Ada", "Grace"]',
+    'point = { x = 1, y = 2 }',
+    '[[bin]]',
+    'a.b."c d" = 0x1F',
+    'text = \"\"\"',
+    'line one [not.a.header]',
+    'key = "not a key"',
+    '\"\"\" # done',
+    "raw = '''",
+    'still raw \"\"\"',
+    "''' ",
+    'after = 1',
+  ];
+  const rows = colour(TomlHighlighter, doc);
+
+  it('colours comments, tables, keys, strings, numbers, dates and constants', () => {
+    expect(rows[0]).toEqual([['comment', '# project']]);
+    expect(rows[1]).toEqual([['function', '[package]']]);
+    expect(rows[2]).toContainEqual(['key', 'name']);
+    expect(rows[2]).toContainEqual(['string', '"vethuq"']);
+    expect(rows[2]).toContainEqual(['comment', '# the name']);
+    expect(rows[3]).toContainEqual(['string', "'1.2.0'"]);
+    expect(rows[4]).toContainEqual(['number', '42']);
+    expect(rows[5]).toContainEqual(['number', '-3.5e2']);
+    expect(rows[6]).toContainEqual(['constant', 'true']);
+    expect(rows[7]).toContainEqual(['number', '2026-10-14T10:00:00Z']);
+    expect(rows[8]).toContainEqual(['string', '"Ada"']);
+    expect(rows[9]).toContainEqual(['key', 'x']);
+    expect(rows[10]).toEqual([['function', '[[bin]]']]);
+    expect(rows[11]).toContainEqual(['key', 'a.b."c d"']);
+    expect(rows[11]).toContainEqual(['number', '0x1F']);
+  });
+
+  it('carries a multi-line string over its lines and ends it', () => {
+    expect(rows[12]).toContainEqual(['string', '\"\"\"']);
+    expect(rows[13]).toEqual([['string', 'line one [not.a.header]']]);
+    expect(rows[14]).toEqual([['string', 'key = "not a key"']]);
+    expect(rows[15]).toContainEqual(['string', '\"\"\"']);
+    expect(rows[15]).toContainEqual(['comment', '# done']);
+    expect(rows[17]).toEqual([['string', 'still raw \"\"\"']]);
+    expect(rows[19]).toContainEqual(['key', 'after']);
+  });
+
+  it('keeps every line whole and copes with odd input', () => {
+    for (const line of doc) expect(text(colour(TomlHighlighter, [line])[0])).toBe(line);
+    for (const line of ['= =', '[', ']]', '"', "'a", '{[', '\"\"\"', 'a = ,,', '[[]]=', '#']) {
+      expect(text(colour(TomlHighlighter, [line])[0])).toBe(line);
+    }
+    const lines = Array.from({ length: 20000 }, (_, i) =>
+      i === 7000 ? 'k = \"\"\"' : i > 7000 && i < 7010 ? 'body' : 'a = 1',
+    );
+    expect(new TomlHighlighter(lines).segments(7005)).toEqual([['string', 'body']]);
   });
 });
 
