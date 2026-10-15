@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (Excel preview)
+- Search results in Excel (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`) and OpenDocument (`.ods`, `.ots`) spreadsheets can be previewed as a spreadsheet (the new `@vethuq/excel-viewer`): sheet tabs and a grid with column letters and row numbers, the cell of the match outlined and the match marked.
+
 ### Added (Word preview)
 - Search results in Word (`.docx`, `.dotx`, `.doc`, `.dot`), RTF and OpenDocument text (`.odt`, `.ott`) documents can be previewed as a page (the new `@vethuq/word-viewer`), with headings, lists and tables where the file says so, and the match marked. RTF and OpenDocument text documents keep their formatting: bold, italic, underline, colour, size and alignment.
 

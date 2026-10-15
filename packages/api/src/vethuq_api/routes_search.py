@@ -50,6 +50,14 @@ def register(api: Blueprint, core: Core) -> None:
         except LookupError as error:
             return jsonify(error=str(error)), 404
 
+    @api.get("/files/excel")
+    def excel_workbook() -> Response:
+        """A spreadsheet as sheets and cells, with the offsets of the stored text."""
+        try:
+            return jsonify(core.search().excel_workbook(request.args, core.sources().may_open))
+        except LookupError as error:
+            return jsonify(error=str(error)), 404
+
     @api.get("/files/markdown")
     def markdown_file() -> Response:
         """A Markdown file of a source as it is on disk, for the rendered preview."""

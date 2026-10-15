@@ -403,7 +403,7 @@ describe('Search', () => {
       'POST /api/search/run': {
         ...RESULT,
         matches: [
-          match({ file_name: 'plan.xlsx', file_path: '/docs/plan.xlsx', file_type: 'xlsx' }),
+          match({ file_name: 'plan.pptx', file_path: '/docs/plan.pptx', file_type: 'pptx' }),
         ],
       },
     });
@@ -412,7 +412,7 @@ describe('Search', () => {
     const table = await screen.findByRole('table', { name: 'Search results' });
     await userEvent.pointer({
       keys: '[MouseRight]',
-      target: await within(table).findByText('plan.xlsx'),
+      target: await within(table).findByText('plan.pptx'),
     });
     expect(await screen.findByRole('menuitem', { name: 'Preview' })).toHaveAttribute(
       'aria-disabled',
@@ -1688,7 +1688,7 @@ describe('Search', () => {
       const panel = await screen.findByRole('region', { name: 'Feed preview' });
       await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Wheat'));
       expect(within(panel).getByText('Dev Blog')).toBeInTheDocument();
-      expect(within(panel).getByText(/entry 1 of 2/)).toBeInTheDocument();
+      expect(await within(panel).findByText(/entry 1 of 2/)).toBeInTheDocument();
       const entries = panel.querySelectorAll('article');
       expect(entries).toHaveLength(2);
       expect(entries[0].getAttribute('aria-current')).toBe('true');
@@ -1737,7 +1737,7 @@ describe('Search', () => {
       await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Prices'));
       expect(within(panel).getByText('Wheat')).toBeInTheDocument();
       expect(within(panel).getByText('report.pdf (2.0 KB)')).toBeInTheDocument();
-      expect(within(panel).getByText(/body/)).toBeInTheDocument();
+      expect(await within(panel).findByText(/body/)).toBeInTheDocument();
     });
 
     it('shows a Word document as a page with its structure and marks the match', async () => {
@@ -1783,6 +1783,66 @@ describe('Search', () => {
       expect(within(panel).getByRole('heading', { name: 'Summary' })).toBeInTheDocument();
       expect(panel.querySelectorAll('li')).toHaveLength(1);
       expect(await within(panel).findByText(/line 2 of 3/)).toBeInTheDocument();
+    });
+
+    it('shows a spreadsheet as a grid, outlines the cell of the match', async () => {
+      const workbook = {
+        sheets: [
+          { name: 'Prices', name_start: 0, rows: 1200, cols: 3 },
+          { name: 'Notes', name_start: null, rows: 1, cols: 1 },
+        ],
+        sheet: 0,
+        first: 0,
+        rows: [
+          {
+            r: 1,
+            cells: [
+              { c: 0, t: 'Region', n: false, s: 7 },
+              { c: 2, t: 'Wheat', n: false, s: 14 },
+            ],
+          },
+        ],
+        notes: [],
+        limited_columns: false,
+        file_type: 'xlsx',
+        file_name: 'p.xlsx',
+        file_path: '/docs/p.xlsx',
+      };
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'p.xlsx',
+            file_path: '/docs/p.xlsx',
+            file_type: 'xlsx',
+            document_id: 7,
+            total_pages: 1,
+            page_number: 1,
+            start: 14,
+            end: 19,
+            matched: 'Wheat',
+          }),
+        ],
+      };
+      mockApi({
+        ...ROUTES,
+        'POST /api/search/run': result,
+        'GET /api/files/excel': workbook,
+      });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'Excel preview' });
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Wheat'));
+      expect(panel.querySelector('td[aria-current="true"]').textContent).toBe('Wheat');
+      expect(await within(panel).findByText(/Prices!C1/)).toBeInTheDocument();
+      expect(within(panel).getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
+      expect(within(panel).getByText(/Rows 1–1 of 1200/)).toBeInTheDocument();
     });
 
     it('shows a still WebP as one picture, without frame buttons', async () => {

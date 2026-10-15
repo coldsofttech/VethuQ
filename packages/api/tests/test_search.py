@@ -1855,6 +1855,111 @@ class TestWordDocument:
         assert self.get(http, document_id=3).status_code == 422  # not a word-processor type
 
 
+class TestExcelWorkbook:
+    """A workbook as the sheets and cells of the Excel preview. The spreadsheet add-ons may not be
+    installed in this checkout, so the stored text is stood in for; the route, the cells read from
+    the file and the answer are what is tested."""
+
+    SHEET = (
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c>'
+        '<c r="C1" t="inlineStr"><is><t>Tonnes</t></is></c></row>'
+        '<row r="3"><c r="B3" t="inlineStr"><is><t>wheat</t></is></c></row>'
+        "</sheetData></worksheet>"
+    )
+    WORKBOOK = (
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="Prices" sheetId="1" r:id="rId1"/></sheets></workbook>'
+    )
+    RELS = (
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>'
+    )
+    TEXT = "Prices\nRegion\tTonnes\nwheat"
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        import types
+        import zipfile
+
+        folder = library / "a"
+        for path in (folder / "d.xlsx", library / "outside.xlsx"):
+            with zipfile.ZipFile(path, "w") as z:
+                z.writestr("xl/workbook.xml", self.WORKBOOK)
+                z.writestr("xl/_rels/workbook.xml.rels", self.RELS)
+                z.writestr("xl/worksheets/sheet1.xml", self.SHEET)
+        pages = {
+            1: ("xlsx", str(folder / "d.xlsx"), self.TEXT),
+            2: ("xlsx", str(library / "outside.xlsx"), self.TEXT),
+            3: ("csv", str(folder / "d.xlsx"), "a,b"),
+        }
+
+        def lines_of(self, document_id, page_number, types_=None):
+            if document_id not in pages:
+                raise LookupError("That page is not in the index.")
+            file_type, path, text = pages[document_id]
+            if file_type not in SearchService_WORD:
+                raise ValueError("The text of that file cannot be shown this way.")
+            page = types.SimpleNamespace(
+                file_type=file_type, file_path=path, file_name=os.path.basename(path), text=text
+            )
+            return page, text.split("\n")
+
+        from vethuq_api import search_service
+
+        SearchService_WORD = search_service.EXCEL_TYPES
+        monkeypatch.setattr(SearchService, "_lines_of", lines_of)
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        return test
+
+    def get(self, http, **query):
+        return http.get("/api/files/excel", query_string=query, base_url=ORIGIN)
+
+    def test_the_cells_with_their_places_and_offsets(self, http):
+        reply = self.get(http, document_id=1)
+        assert reply.status_code == 200
+        book = reply.get_json()
+        assert book["sheets"] == [{"name": "Prices", "name_start": 0, "rows": 2, "cols": 3}]
+        assert [r["r"] for r in book["rows"]] == [1, 3]
+        assert book["rows"][0]["cells"] == [
+            {"c": 0, "t": "Region", "n": False, "s": 7},
+            {"c": 2, "t": "Tonnes", "n": False, "s": 14},
+        ]
+        assert book["rows"][1]["cells"][0] == {"c": 1, "t": "wheat", "n": False, "s": 21}
+        assert (book["sheet"], book["first"], book["file_type"]) == (0, 0, "xlsx")
+        assert book["file_name"] == "d.xlsx"
+        assert self.get(http, document_id=1, at=22, sheet=0, first=1).get_json()["first"] == 1
+
+    def test_a_file_outside_the_sources_is_the_stored_rows(self, http):
+        book = self.get(http, document_id=2).get_json()
+        assert [c["t"] for c in book["rows"][1]["cells"]] == ["Region", "Tonnes"]
+        assert book["sheets"][0]["name"] == ""
+
+    def test_bad_requests(self, http):
+        assert self.get(http).status_code == 422
+        assert self.get(http, document_id=1, at="x").status_code == 422
+        assert self.get(http, document_id=1, sheet="x").status_code == 422
+        assert self.get(http, document_id=1, first=-1).status_code == 422
+        assert self.get(http, document_id=987).status_code == 404
+        assert self.get(http, document_id=3).status_code == 422  # not a spreadsheet type
+
+
 class TestEmailMessage:
     """A message as the headers, attachments and body lines of the email preview. The add-ons may
     not be installed in this checkout, so the type check is replaced; the route and the answer are

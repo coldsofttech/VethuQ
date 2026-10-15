@@ -416,6 +416,12 @@ export const api = {
      * @param {{document_id: number, page?: number, at?: number}} params
      */
     word: (params, signal) => request(`/api/files/word${query(params)}`, { signal }),
+    /**
+     * An Excel or OpenDocument spreadsheet as it was indexed: its sheets, and a window of one sheet's
+     * rows with their cells' places and offsets in the indexed text.
+     * @param {{document_id: number, page?: number, at?: number, sheet?: number, first?: number}} params
+     */
+    excel: (params, signal) => request(`/api/files/excel${query(params)}`, { signal }),
     rss: (params, signal) => request(`/api/files/rss${query(params)}`, { signal }),
     /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
