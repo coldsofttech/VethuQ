@@ -1,11 +1,6 @@
-import {
-  TextViewer,
-  locateWords,
-  vscodeDark,
-  vscodeLight,
-} from "@vethuq/text-viewer";
-import { useCallback, useEffect, useMemo } from "react";
-import { LANGUAGES } from "./languages.js";
+import { TextViewer, locateWords, vscodeDark, vscodeLight } from '@vethuq/text-viewer';
+import { useCallback, useEffect, useMemo } from 'react';
+import { LANGUAGES } from './languages.js';
 
 // A file bigger than this is not laid out (that would be a lot of text to make): its source is shown.
 const FORMAT_LIMIT = 20 * 1024 * 1024;
@@ -29,8 +24,8 @@ export function codeMode(language, text, longestLine, choice) {
   const tooBig = text !== null && text.length > FORMAT_LIMIT;
   const canFormat = Boolean(LANGUAGES[language]?.format) && !tooBig;
   const mode = !canFormat
-    ? "source"
-    : (choice ?? (longestLine > MINIFIED ? "formatted" : "source"));
+    ? 'source'
+    : (choice ?? (longestLine > MINIFIED ? 'formatted' : 'source'));
   return { mode, canFormat, tooBig };
 }
 
@@ -52,21 +47,20 @@ export function codeMode(language, text, longestLine, choice) {
 export function CodeViewer({
   text,
   language,
-  mode = "source",
+  mode = 'source',
   match = null,
   dark = false,
   onLocated,
 }) {
   const spec = LANGUAGES[language];
   const shown = useMemo(
-    () => (mode === "formatted" && spec.format ? spec.format(text) : text),
+    () => (mode === 'formatted' && spec.format ? spec.format(text) : text),
     [text, mode, spec],
   );
-  const lines = useMemo(() => shown.split("\n"), [shown]);
+  const lines = useMemo(() => shown.split('\n'), [shown]);
   const highlighter = useMemo(() => new spec.Highlighter(lines), [lines, spec]);
   const colour = useCallback(
-    (_, line) =>
-      lines[line].length > LONG_LINE ? null : highlighter.segments(line),
+    (_, line) => (lines[line].length > LONG_LINE ? null : highlighter.segments(line)),
     [lines, highlighter],
   );
   const loadLines = useCallback(
