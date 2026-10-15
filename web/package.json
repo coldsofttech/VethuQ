@@ -19,6 +19,9 @@
   "dependencies": {
     "@fluentui/react-components": "^9.74.9",
     "@fluentui/react-icons": "^2.0.344",
+    "@fontsource/noto-nastaliq-urdu": "^5.3.0",
+    "@fontsource/noto-sans-devanagari": "^5.3.0",
+    "@fontsource/noto-sans-telugu": "^5.3.0",
     "@vethuq/code-viewer": "file:../viewers/code",
     "@vethuq/email-viewer": "file:../viewers/email",
     "@vethuq/excel-viewer": "file:../viewers/excel",

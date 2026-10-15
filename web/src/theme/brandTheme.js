@@ -1,6 +1,19 @@
 import { webDarkTheme, webLightTheme } from '@fluentui/react-components';
 
 /**
+ * The bundled faces of the scripts VethuQ's languages use (see ../fonts.css), put ahead of the
+ * system fonts. Each is limited to its own script, so Latin text keeps the system font; Urdu comes
+ * first because Segoe UI and others have Arabic letters, but not in the Nastaliq style Urdu is read in.
+ */
+const SCRIPT_FONTS = "'Noto Nastaliq Urdu', 'Noto Sans Devanagari', 'Noto Sans Telugu'";
+
+const withScriptFonts = (theme) => ({
+  ...theme,
+  fontFamilyBase: `${SCRIPT_FONTS}, ${theme.fontFamilyBase}`,
+  fontFamilyNumeric: `${SCRIPT_FONTS}, ${theme.fontFamilyNumeric}`,
+});
+
+/**
  * The Fluent theme for one colour scheme, with VethuQ's palette applied on top.
  *
  * The palette (`primary`, `surface`, `text`, ...) is the core's design tokens, shared with the CLI
@@ -11,7 +24,7 @@ import { webDarkTheme, webLightTheme } from '@fluentui/react-components';
  * @param {import('../api/client.js').PaletteScheme | null | undefined} palette
  */
 export function buildTheme(scheme, palette) {
-  const base = scheme === 'dark' ? webDarkTheme : webLightTheme;
+  const base = withScriptFonts(scheme === 'dark' ? webDarkTheme : webLightTheme);
   if (!palette || !palette.primary) return base;
   const p = palette;
   const hover = p['primary-hover'] ?? p.primary;

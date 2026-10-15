@@ -15,8 +15,24 @@ const LIGHT = {
 
 describe('buildTheme', () => {
   it('uses the stock Fluent theme when there is no palette', () => {
-    expect(buildTheme('light', null)).toBe(webLightTheme);
-    expect(buildTheme('dark', {})).toBe(webDarkTheme);
+    expect(buildTheme('light', null)).toEqual({
+      ...webLightTheme,
+      fontFamilyBase: buildTheme('light', null).fontFamilyBase,
+      fontFamilyNumeric: buildTheme('light', null).fontFamilyNumeric,
+    });
+    expect(buildTheme('dark', {}).colorNeutralBackground1).toBe(
+      webDarkTheme.colorNeutralBackground1,
+    );
+  });
+
+  it('puts the bundled script fonts ahead of the system fonts, Urdu first', () => {
+    const stack = buildTheme('light', LIGHT).fontFamilyBase;
+    const at = (name) => stack.indexOf(name);
+    expect(at("'Noto Nastaliq Urdu'")).toBe(0);
+    expect(at("'Noto Sans Devanagari'")).toBeGreaterThan(0);
+    expect(at("'Noto Sans Telugu'")).toBeGreaterThan(at("'Noto Sans Devanagari'"));
+    expect(at("'Segoe UI'")).toBeGreaterThan(at("'Noto Sans Telugu'"));
+    expect(buildTheme('dark', null).fontFamilyNumeric).toContain("'Noto Sans Telugu'");
   });
 
   it('applies the brand palette on top of Fluent', () => {
@@ -32,6 +48,6 @@ describe('buildTheme', () => {
     const theme = buildTheme('light', { primary: '#005FB8' });
     expect(theme.colorNeutralBackground1).toBe(webLightTheme.colorNeutralBackground1);
     expect(theme.colorBrandBackgroundHover).toBe('#005FB8');
-    expect(theme.fontFamilyBase).toBe(webLightTheme.fontFamilyBase);
+    expect(theme.fontFamilyBase.endsWith(webLightTheme.fontFamilyBase)).toBe(true);
   });
 });

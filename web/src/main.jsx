@@ -7,6 +7,7 @@ import { NotifyProvider } from './components/Notifications.jsx';
 import { CreditsProvider } from './credits/CreditsProvider.jsx';
 import { IndexingProvider } from './indexing/IndexingProvider.jsx';
 import { PlatformProvider } from './platform/PlatformProvider.jsx';
+import './fonts.css';
 import './styles.css';
 import { ThemeProvider } from './theme/ThemeProvider.jsx';
 

@@ -5,7 +5,11 @@ import { piecesOf } from './pieces.js';
 export const CHUNK = 200;
 const OVERSCAN = 20;
 
-const FONT = 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace';
+// The script fonts are the ones the host bundles (they come ahead of the monospace fonts, which have
+// no Devanagari, Telugu or Urdu letters); a page without them falls back to the system's.
+const FONT =
+  'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, "Noto Nastaliq Urdu", ' +
+  '"Noto Sans Devanagari", "Noto Sans Telugu", monospace';
 
 // Colours come from the host's theme variables when it has them (Fluent UI sets these), else defaults.
 const css = {

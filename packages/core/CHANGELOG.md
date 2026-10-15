@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (fonts)
+- The interface bundles Noto Sans Devanagari (Hindi), Noto Sans Telugu and Noto Nastaliq Urdu (about 500 KB, SIL Open Font License, notice in `licenses/fonts.txt`), so those scripts look right on a machine without a font for them. Each face is limited to its own script and is fetched only when a page has that script; English, Spanish and French keep the system fonts.
+
 ### Added (PowerPoint preview)
 - Search results in PowerPoint (`.pptx`, `.pptm`, `.ppsx`, `.ppt`, `.pps`) and OpenDocument (`.odp`, `.otp`) presentations can be previewed slide by slide (the new `@vethuq/powerpoint-viewer`): an outline of the slides and each slide's title, text, tables and speaker notes, the slide of the match outlined and the match marked.
 
