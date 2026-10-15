@@ -1,10 +1,10 @@
-# @vethuq/csv-viewer
+# @vethuq/table-viewer
 
-A read-only table for large data (VethuQ's CSV preview). Like `viewers/text` it lives outside `web/`,
+A read-only table for large data (VethuQ's table preview: CSV, TSV and Parquet files). Like `viewers/text` it lives outside `web/`,
 knows nothing about VethuQ or its API, and has no dependency but React (a peer).
 
 ```jsx
-<CsvViewer
+<TableViewer
   columns={5}
   header={['id', 'name', ...]}                       // or null
   widths={[4, 20, ...]}                              // a starting width per column, in characters
