@@ -175,26 +175,176 @@ def _docx(path: str) -> list[Item]:
 
 # ----- OpenDocument text (.odt, .ott) -----------------------------------------------------------
 
+_STYLE_NS = "{urn:oasis:names:tc:opendocument:xmlns:style:1.0}"
+_FO = "{urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0}"
+_ODT_TITLES = ("title", "subtitle")
 
-def _odt_inline(element: Element, depth: int = 0) -> str:
-    if depth > MAX_DEPTH:
-        return ""
-    out = [element.text or ""]
-    for child in element:
-        tag = child.tag
-        if tag == _TEXT + "s":
-            raw = child.get(_TEXT + "c", "1")
-            out.append(" " * min(int(raw) if raw.isdigit() else 1, MAX_REPEAT))
-        elif tag == _TEXT + "tab":
-            out.append("\t")
-        elif tag == _TEXT + "line-break":
-            out.append("\n")
-        elif tag in (_TEXT + "note", _DRAW + "frame", _TEXT + "bookmark", _TEXT + "bookmark-start"):
-            pass
+Props = tuple[tuple[str, Any], ...]
+
+
+def _odt_text_props(element: Element | None) -> dict[str, Any]:
+    """What a `style:text-properties` element says about the look of text."""
+    found: dict[str, Any] = {}
+    if element is None:
+        return found
+    weight = element.get(_FO + "font-weight")
+    if weight is not None:
+        found["b"] = weight == "bold" or (weight.isdigit() and int(weight) >= 600)
+    style = element.get(_FO + "font-style")
+    if style is not None:
+        found["i"] = style in ("italic", "oblique")
+    underline = element.get(_STYLE_NS + "text-underline-style")
+    if underline is not None:
+        found["u"] = underline != "none"
+    line = element.get(_STYLE_NS + "text-line-through-style")
+    if line is not None:
+        found["s"] = line != "none"
+    colour = element.get(_FO + "color")
+    if colour is not None:
+        found["color"] = colour.lower() if re.fullmatch(r"#[0-9a-fA-F]{6}", colour) else None
+    size = element.get(_FO + "font-size")
+    if size is not None:
+        number = re.fullmatch(r"([\d.]+)(pt|%)", size)
+        found["size"] = (number.group(2), float(number.group(1))) if number else None
+    position = element.get(_STYLE_NS + "text-position")
+    if position is not None:
+        head = position.split()[0] if position.split() else ""
+        if head == "super" or (head.endswith("%") and head[:-1].lstrip("+").isdigit()):
+            found["pos"] = "super" if head == "super" or int(head[:-1]) > 0 else None
+        elif head == "sub" or head.startswith("-"):
+            found["pos"] = "sub"
         else:
-            out.append(_odt_inline(child, depth + 1))
-        out.append(child.tail or "")
-    return "".join(out)[:1_000_000]
+            found["pos"] = None
+    return found
+
+
+class _OdtStyles:
+    """The named styles of an OpenDocument text: what each says about text and paragraphs, and what
+    it inherits from its parent."""
+
+    def __init__(self, roots: list[Element]) -> None:
+        self.styles: dict[tuple[str, str], dict[str, Any]] = {}
+        self.base = 12.0
+        for root in roots:
+            for style in root.iter(_STYLE_NS + "default-style"):
+                if style.get(_STYLE_NS + "family") == "paragraph":
+                    size = _odt_text_props(style.find(_STYLE_NS + "text-properties")).get("size")
+                    if size and size[0] == "pt" and size[1] > 0:
+                        self.base = size[1]
+            for style in root.iter(_STYLE_NS + "style"):
+                name = style.get(_STYLE_NS + "name")
+                family = style.get(_STYLE_NS + "family")
+                if not name or not family:
+                    continue
+                paragraph = style.find(_STYLE_NS + "paragraph-properties")
+                self.styles[(family, name)] = {
+                    "parent": style.get(_STYLE_NS + "parent-style-name"),
+                    "text": _odt_text_props(style.find(_STYLE_NS + "text-properties")),
+                    "align": paragraph.get(_FO + "text-align") if paragraph is not None else None,
+                    "display": (style.get(_STYLE_NS + "display-name") or name).lower(),
+                }
+
+    def chain(self, family: str, name: str | None) -> list[dict[str, Any]]:
+        """The style and its ancestors, the style itself last."""
+        found: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        while name and name not in seen and (family, name) in self.styles:
+            seen.add(name)
+            style = self.styles[(family, name)]
+            found.append(style)
+            name = style["parent"]
+        return found[::-1]
+
+    def text(self, family: str, name: str | None, base: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for style in self.chain(family, name):
+            merged.update(style["text"])
+        return merged
+
+    def align(self, name: str | None) -> str | None:
+        value = None
+        for style in self.chain("paragraph", name):
+            value = style["align"] or value
+        return {"center": "center", "end": "right", "right": "right", "justify": "justify"}.get(
+            value or ""
+        )
+
+    def names(self, name: str | None) -> list[str]:
+        return [style["display"] for style in self.chain("paragraph", name)]
+
+    def span(self, props: dict[str, Any]) -> Props:
+        """The look of text as the keys a span has (what differs from plain text)."""
+        look: dict[str, Any] = {}
+        for key in ("b", "i", "u", "s"):
+            if props.get(key):
+                look[key] = True
+        size = props.get("size")
+        if size:
+            ratio = size[1] / self.base if size[0] == "pt" else size[1] / 100
+            if abs(ratio - 1) > 0.01 and ratio > 0:
+                look["size"] = round(ratio, 2)
+        if props.get("color") and props["color"] != "#000000":
+            look["color"] = props["color"]
+        if props.get("pos"):
+            look["pos"] = props["pos"]
+        return tuple(sorted(look.items()))
+
+
+def _odt_inline(
+    element: Element, styles: _OdtStyles, paragraph: dict[str, Any]
+) -> tuple[str, list[dict[str, Any]]]:
+    """The text of a paragraph or heading (spans and links keep their text, `text:s` is spaces,
+    `text:tab` a tab and `text:line-break` a newline; a picture or a note adds nothing) and its
+    formatting as spans over that text."""
+    out: list[str] = []
+    runs: list[tuple[int, int, Props]] = []
+    position = 0
+
+    def emit(text: str, props: dict[str, Any]) -> None:
+        nonlocal position
+        if not text:
+            return
+        look = styles.span(props)
+        if look:
+            if runs and runs[-1][1] == position and runs[-1][2] == look:
+                runs[-1] = (runs[-1][0], position + len(text), look)
+            else:
+                runs.append((position, position + len(text), look))
+        out.append(text)
+        position += len(text)
+
+    def walk(node: Element, props: dict[str, Any], depth: int) -> None:
+        if depth > MAX_DEPTH:
+            return
+        emit(node.text or "", props)
+        for child in node:
+            tag = child.tag
+            if tag == _TEXT + "s":
+                raw = child.get(_TEXT + "c", "1")
+                emit(" " * min(int(raw) if raw.isdigit() else 1, MAX_REPEAT), props)
+            elif tag == _TEXT + "tab":
+                emit("\t", props)
+            elif tag == _TEXT + "line-break":
+                emit("\n", props)
+            elif tag in (
+                _TEXT + "note",
+                _DRAW + "frame",
+                _TEXT + "bookmark",
+                _TEXT + "bookmark-start",
+            ):
+                pass
+            else:
+                inner = props
+                if tag in (_TEXT + "span", _TEXT + "a"):
+                    inner = styles.text("text", child.get(_TEXT + "style-name"), props)
+                walk(child, inner, depth + 1)
+            emit(child.tail or "", props)
+
+    walk(element, paragraph, 0)
+    full = "".join(out)[:1_000_000]
+    return full, [
+        {"start": a, "end": min(b, len(full)), **dict(look)} for a, b, look in runs if a < len(full)
+    ]
 
 
 def _repeats(element: Element, name: str) -> int:
@@ -218,55 +368,104 @@ def _odt_rows(table: Element, depth: int = 0) -> list[Element]:
     return found
 
 
-def _odt_cell(cell: Element) -> str:
-    shown = " ".join(item["text"] for item in _odt_blocks(cell, False)).strip()
-    if shown:
-        return shown
+def _trimmed(text: str, spans: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    """The text stripped, with its spans moved to fit and cut to it."""
+    lead = len(text) - len(text.lstrip())
+    stripped = text.strip()
+    moved = []
+    for span in spans:
+        start, end = max(span["start"] - lead, 0), min(span["end"] - lead, len(stripped))
+        if end > start:
+            moved.append({**span, "start": start, "end": end})
+    return stripped, moved
+
+
+def _odt_cell(cell: Element, styles: _OdtStyles) -> tuple[str, list[dict[str, Any]]]:
+    text = ""
+    spans: list[dict[str, Any]] = []
+    for item in _odt_blocks(cell, 0, styles):
+        offset = len(text) + (1 if text else 0)
+        text = f"{text} {item['text']}" if text else item["text"]
+        spans.extend(
+            {**s, "start": s["start"] + offset, "end": s["end"] + offset}
+            for s in item.get("spans", [])
+        )
+    if text.strip():
+        return text.strip(), spans
     value = cell.get(_OFFICE + "string-value") or cell.get(_OFFICE + "value")
     if value is None:
         value = cell.get(_OFFICE + "date-value") or cell.get(_OFFICE + "time-value")
     if value is None and cell.get(_OFFICE + "boolean-value") is not None:
         value = cell.get(_OFFICE + "boolean-value", "").upper()
-    return (value or "").replace("T", " ", 1) if cell.get(_OFFICE + "date-value") else (value or "")
+    value = (
+        (value or "").replace("T", " ", 1) if cell.get(_OFFICE + "date-value") else (value or "")
+    )
+    return value, []
 
 
-def _odt_blocks(element: Element, listed: bool, depth: int = 0) -> list[Item]:
+def _odt_blocks(element: Element, listed: int, styles: _OdtStyles, depth: int = 0) -> list[Item]:
     if depth > MAX_DEPTH:
         return []
     found: list[Item] = []
     for child in element:
         tag = child.tag
         if tag in (_TEXT + "p", _TEXT + "h"):
-            line = _odt_inline(child).strip()
+            name = child.get(_TEXT + "style-name")
+            heading = tag == _TEXT + "h"
+            names = styles.names(name)
+            title = not heading and any(n in _ODT_TITLES for n in names)
+            # A heading or title is set larger by the preview itself: its style's own look is not
+            # laid on it a second time, only what is set on the words.
+            base = {} if heading or title else styles.text("paragraph", name, {})
+            raw, spans = _odt_inline(child, styles, base)
+            line, spans = _trimmed(raw, spans)
             if line:
-                if tag == _TEXT + "h":
-                    raw = child.get(_TEXT + "outline-level", "1")
-                    found.append(
-                        {
-                            **_item("heading", line),
-                            "text": line,
-                            "level": int(raw) if raw.isdigit() else 1,
-                        }
-                    )
+                level = child.get(_TEXT + "outline-level", "1")
+                more: dict[str, Any] = {}
+                if heading:
+                    kind, more["level"] = "heading", int(level) if level.isdigit() else 1
+                elif title:
+                    kind = "title"
+                elif listed:
+                    kind, more["level"] = "list", listed - 1
                 else:
-                    found.append({**_item("list" if listed else "text", line), "text": line})
+                    kind = "text"
+                align = styles.align(name)
+                if align:
+                    more["align"] = align
+                if spans:
+                    more["spans"] = spans
+                found.append({**_item(kind, line, **more), "text": line})
             for note in child.iter(_TEXT + "note"):
                 body = note.find(_TEXT + "note-body")
                 if body is not None:
-                    found.extend(_odt_blocks(body, False, depth + 1))
+                    found.extend(_odt_blocks(body, 0, styles, depth + 1))
         elif tag == _TABLE + "table":
             for row in _odt_rows(child):
-                cells: list[str] = []
+                cells: list[tuple[str, list[dict[str, Any]]]] = []
                 for cell in row:
                     if cell.tag != _TABLE + "table-cell":
                         continue
-                    shown = _odt_cell(cell)
-                    if shown:
+                    shown = _odt_cell(cell, styles)
+                    if shown[0]:
                         cells.extend([shown] * _repeats(cell, "number-columns-repeated"))
                 if cells:
-                    text = "\t".join(cells)
+                    text, spans, offset = "", [], 0
+                    for index, (cell_text, cell_spans) in enumerate(cells):
+                        if index:
+                            text += "\t"
+                            offset += 1
+                        spans.extend(
+                            {**s, "start": s["start"] + offset, "end": s["end"] + offset}
+                            for s in cell_spans
+                        )
+                        text += cell_text
+                        offset += len(cell_text)
+                    more = {"sep": "\t"}
+                    if spans:
+                        more["spans"] = spans
                     found.extend(
-                        [{**_item("row", text), "text": text}]
+                        [{**_item("row", text, **more), "text": text}]
                         * _repeats(row, "number-rows-repeated")
                     )
         elif tag in (
@@ -277,18 +476,22 @@ def _odt_blocks(element: Element, listed: bool, depth: int = 0) -> list[Item]:
         ):
             continue
         else:
-            found.extend(_odt_blocks(child, listed or tag == _TEXT + "list-item", depth + 1))
+            found.extend(_odt_blocks(child, listed + (tag == _TEXT + "list"), styles, depth + 1))
     return found
 
 
 def _odt(path: str) -> list[Item]:
     with zipfile.ZipFile(path) as package:
-        if "content.xml" not in package.namelist():
+        names = package.namelist()
+        if "content.xml" not in names:
             return []
         root = _xml(_read(package, "content.xml"))
+        roots = [root]
+        if "styles.xml" in names:
+            roots.insert(0, _xml(_read(package, "styles.xml")))
     body = root.find(_OFFICE + "body")
     document = body.find(_OFFICE + "text") if body is not None else None
-    return _odt_blocks(document, False) if document is not None else []
+    return _odt_blocks(document, 0, _OdtStyles(roots)) if document is not None else []
 
 
 # ----- Rich Text Format (.rtf) ------------------------------------------------------------------

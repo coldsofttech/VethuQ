@@ -34,13 +34,35 @@ FOOTER = f"<w:ftr {W}><w:p><w:r><w:t>Page footer</w:t></w:r></w:p></w:ftr>"
 ODT = """<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
- xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+<office:automatic-styles>
+<style:style style:name="T1" style:family="text">
+<style:text-properties fo:font-weight="bold"/></style:style>
+<style:style style:name="T2" style:family="text">
+<style:text-properties fo:font-style="italic" style:text-underline-style="solid"
+ fo:color="#ff0000" fo:font-size="150%" style:text-position="super 58%"/></style:style>
+<style:style style:name="T3" style:family="text" style:parent-style-name="T1">
+<style:text-properties style:text-line-through-style="solid"/></style:style>
+<style:style style:name="P1" style:family="paragraph">
+<style:paragraph-properties fo:text-align="center"/></style:style>
+<style:style style:name="P2" style:family="paragraph">
+<style:text-properties fo:font-weight="bold"/></style:style>
+</office:automatic-styles>
 <office:body><office:text>
-<text:h text:outline-level="2">Chapter</text:h>
-<text:p>Plain  <text:s text:c="2"/>words</text:p>
-<text:list><text:list-item><text:p>An item</text:p></text:list-item></text:list>
+<text:h text:outline-level="2">Chapter <text:span text:style-name="T1">one</text:span></text:h>
+<text:p>Plain  <text:s text:c="2"/>words <text:span text:style-name="T1">bold</text:span> <text:span
+ text:style-name="T2">x</text:span></text:p>
+<text:p text:style-name="P1">Centred <text:a><text:span text:style-name="T3">gone</text:span>
+</text:a></text:p>
+<text:p text:style-name="P2">Whole paragraph bold</text:p>
+<text:list><text:list-item><text:p>An item</text:p>
+<text:list><text:list-item><text:p>Nested</text:p></text:list-item></text:list>
+</text:list-item></text:list>
 <table:table><table:table-row>
-<table:table-cell><text:p>a</text:p></table:table-cell><table:table-cell><text:p>b</text:p></table:table-cell>
+<table:table-cell><text:p>a</text:p></table:table-cell>
+<table:table-cell><text:p><text:span text:style-name="T1">b</text:span></text:p></table:table-cell>
 </table:table-row></table:table>
 <text:p>Last</text:p>
 </office:text></office:body></office:document-content>"""
@@ -125,13 +147,49 @@ class TestOdt:
     def test_structure_kinds(self, odt):
         items = word_view.structure(odt, "odt")
         assert [(i["kind"], i["first"]) for i in items] == [
-            ("heading", "Chapter"),
-            ("text", "Plain    words"),
+            ("heading", "Chapter one"),
+            ("text", "Plain    words bold x"),
+            ("text", "Centred gone"),
+            ("text", "Whole paragraph bold"),
             ("list", "An item"),
+            ("list", "Nested"),
             ("row", "a\tb"),
             ("text", "Last"),
         ]
         assert items[0]["level"] == 2
+        assert [i["level"] for i in items[4:6]] == [0, 1]
+
+    def test_formatting(self, odt):
+        items = {i["first"]: i for i in word_view.structure(odt, "odt")}
+        # A heading is set larger by the preview, so only the words' own look is kept.
+        assert items["Chapter one"]["spans"] == [{"start": 8, "end": 11, "b": True}]
+        plain = items["Plain    words bold x"]
+        assert plain["spans"][0] == {"start": 15, "end": 19, "b": True}
+        assert plain["spans"][1] == {
+            "start": 20,
+            "end": 21,
+            "i": True,
+            "u": True,
+            "color": "#ff0000",
+            "size": 1.5,
+            "pos": "super",
+        }
+        centred = items["Centred gone"]
+        assert centred["align"] == "center"
+        assert centred["spans"] == [{"start": 8, "end": 12, "b": True, "s": True}]
+        # A paragraph's own style sets the whole paragraph.
+        assert items["Whole paragraph bold"]["spans"] == [{"start": 0, "end": 20, "b": True}]
+        assert items["a\tb"]["spans"] == [{"start": 2, "end": 3, "b": True}]
+        assert "spans" not in items["Last"]
+
+    def test_the_stored_line_gets_the_formatting(self, odt):
+        text = "Chapter one\nPlain    words bold\n"
+        blocks = word_view.layout(text, word_view.structure(odt, "odt"))
+        assert blocks[0]["spans"] == [{"start": 8, "end": 11, "b": True}]
+        assert blocks[1]["text"].startswith("Plain")
+
+    def test_a_template_reads_as_a_document(self, odt):
+        assert word_view.structure(odt, "ott") == word_view.structure(odt, "odt")
 
 
 RTF = (
