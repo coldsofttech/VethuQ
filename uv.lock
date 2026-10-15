@@ -3388,6 +3388,9 @@ deep-scan = [
 developer = [
     { name = "vethuq-bundle-developer" },
 ]
+email = [
+    { name = "vethuq-bundle-email" },
+]
 fuzzy = [
     { name = "vethuq-addon-fuzzy" },
 ]
@@ -3455,13 +3458,14 @@ requires-dist = [
     { name = "vethuq-bundle-data", marker = "extra == 'data'", editable = "../VethuQ-premium/packages/bundles/data" },
     { name = "vethuq-bundle-deep-scan", marker = "extra == 'deep-scan'", editable = "../VethuQ-premium/packages/bundles/deep-scan" },
     { name = "vethuq-bundle-developer", marker = "extra == 'developer'", editable = "../VethuQ-premium/packages/bundles/developer" },
+    { name = "vethuq-bundle-email", marker = "extra == 'email'", editable = "../VethuQ-premium/packages/bundles/email" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", editable = "../VethuQ-premium/packages/bundles/image" },
     { name = "vethuq-bundle-office", marker = "extra == 'office'", editable = "../VethuQ-premium/packages/bundles/office" },
     { name = "vethuq-bundle-open-office", marker = "extra == 'open-office'", editable = "../VethuQ-premium/packages/bundles/open-office" },
     { name = "vethuq-bundle-search", marker = "extra == 'search'", editable = "../VethuQ-premium/packages/bundles/search" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", editable = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["data", "deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "open-office", "proximity", "search", "semantic", "tsv", "web"]
+provides-extras = ["data", "deep-scan", "developer", "email", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "open-office", "proximity", "search", "semantic", "tsv", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -3868,6 +3872,21 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-msg"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/msg" }
+dependencies = [
+    { name = "olefile" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "olefile", specifier = ">=0.46" },
     { name = "vethuq-addon-api", editable = "packages/addon-api" },
 ]
 
@@ -4534,24 +4553,81 @@ name = "vethuq-bundle-developer"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/bundles/developer" }
 dependencies = [
+    { name = "vethuq-addon-cs" },
+    { name = "vethuq-addon-css" },
+    { name = "vethuq-addon-go" },
+    { name = "vethuq-addon-html" },
     { name = "vethuq-addon-ini" },
+    { name = "vethuq-addon-ipynb" },
+    { name = "vethuq-addon-java" },
+    { name = "vethuq-addon-js" },
     { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-jsx" },
     { name = "vethuq-addon-log" },
+    { name = "vethuq-addon-markdown" },
+    { name = "vethuq-addon-mhtml" },
+    { name = "vethuq-addon-php" },
+    { name = "vethuq-addon-ps1" },
+    { name = "vethuq-addon-py" },
+    { name = "vethuq-addon-rb" },
+    { name = "vethuq-addon-rs" },
+    { name = "vethuq-addon-rss" },
     { name = "vethuq-addon-rst" },
+    { name = "vethuq-addon-sh" },
     { name = "vethuq-addon-sql" },
+    { name = "vethuq-addon-svg" },
     { name = "vethuq-addon-toml" },
+    { name = "vethuq-addon-ts" },
+    { name = "vethuq-addon-tsx" },
+    { name = "vethuq-addon-xml" },
     { name = "vethuq-addon-yaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "vethuq-addon-cs", editable = "../VethuQ-premium/packages/add-ons/file-types/cs" },
+    { name = "vethuq-addon-css", editable = "../VethuQ-premium/packages/add-ons/file-types/css" },
+    { name = "vethuq-addon-go", editable = "../VethuQ-premium/packages/add-ons/file-types/go" },
+    { name = "vethuq-addon-html", editable = "../VethuQ-premium/packages/add-ons/file-types/html" },
     { name = "vethuq-addon-ini", editable = "../VethuQ-premium/packages/add-ons/file-types/ini" },
+    { name = "vethuq-addon-ipynb", editable = "../VethuQ-premium/packages/add-ons/file-types/ipynb" },
+    { name = "vethuq-addon-java", editable = "../VethuQ-premium/packages/add-ons/file-types/java" },
+    { name = "vethuq-addon-js", editable = "../VethuQ-premium/packages/add-ons/file-types/js" },
     { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-jsx", editable = "../VethuQ-premium/packages/add-ons/file-types/jsx" },
     { name = "vethuq-addon-log", editable = "../VethuQ-premium/packages/add-ons/file-types/log" },
+    { name = "vethuq-addon-markdown", editable = "../VethuQ-premium/packages/add-ons/file-types/markdown" },
+    { name = "vethuq-addon-mhtml", editable = "../VethuQ-premium/packages/add-ons/file-types/mhtml" },
+    { name = "vethuq-addon-php", editable = "../VethuQ-premium/packages/add-ons/file-types/php" },
+    { name = "vethuq-addon-ps1", editable = "../VethuQ-premium/packages/add-ons/file-types/ps1" },
+    { name = "vethuq-addon-py", editable = "../VethuQ-premium/packages/add-ons/file-types/py" },
+    { name = "vethuq-addon-rb", editable = "../VethuQ-premium/packages/add-ons/file-types/rb" },
+    { name = "vethuq-addon-rs", editable = "../VethuQ-premium/packages/add-ons/file-types/rs" },
+    { name = "vethuq-addon-rss", editable = "../VethuQ-premium/packages/add-ons/file-types/rss" },
     { name = "vethuq-addon-rst", editable = "../VethuQ-premium/packages/add-ons/file-types/rst" },
+    { name = "vethuq-addon-sh", editable = "../VethuQ-premium/packages/add-ons/file-types/sh" },
     { name = "vethuq-addon-sql", editable = "../VethuQ-premium/packages/add-ons/file-types/sql" },
+    { name = "vethuq-addon-svg", editable = "../VethuQ-premium/packages/add-ons/file-types/svg" },
     { name = "vethuq-addon-toml", editable = "../VethuQ-premium/packages/add-ons/file-types/toml" },
+    { name = "vethuq-addon-ts", editable = "../VethuQ-premium/packages/add-ons/file-types/ts" },
+    { name = "vethuq-addon-tsx", editable = "../VethuQ-premium/packages/add-ons/file-types/tsx" },
+    { name = "vethuq-addon-xml", editable = "../VethuQ-premium/packages/add-ons/file-types/xml" },
     { name = "vethuq-addon-yaml", editable = "../VethuQ-premium/packages/add-ons/file-types/yaml" },
+]
+
+[[package]]
+name = "vethuq-bundle-email"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/bundles/email" }
+dependencies = [
+    { name = "vethuq-addon-eml" },
+    { name = "vethuq-addon-msg" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-eml", editable = "../VethuQ-premium/packages/add-ons/file-types/eml" },
+    { name = "vethuq-addon-msg", editable = "../VethuQ-premium/packages/add-ons/file-types/msg" },
 ]
 
 [[package]]
@@ -4590,11 +4666,19 @@ source = { editable = "../VethuQ-premium/packages/bundles/office" }
 dependencies = [
     { name = "vethuq-addon-doc" },
     { name = "vethuq-addon-docx" },
+    { name = "vethuq-addon-dot" },
+    { name = "vethuq-addon-dotx" },
     { name = "vethuq-addon-eml" },
+    { name = "vethuq-addon-msg" },
+    { name = "vethuq-addon-pps" },
+    { name = "vethuq-addon-ppsx" },
     { name = "vethuq-addon-ppt" },
+    { name = "vethuq-addon-pptm" },
     { name = "vethuq-addon-pptx" },
     { name = "vethuq-addon-rtf" },
     { name = "vethuq-addon-xls" },
+    { name = "vethuq-addon-xlsb" },
+    { name = "vethuq-addon-xlsm" },
     { name = "vethuq-addon-xlsx" },
 ]
 
@@ -4605,6 +4689,7 @@ requires-dist = [
     { name = "vethuq-addon-dot", editable = "../VethuQ-premium/packages/add-ons/file-types/dot" },
     { name = "vethuq-addon-dotx", editable = "../VethuQ-premium/packages/add-ons/file-types/dotx" },
     { name = "vethuq-addon-eml", editable = "../VethuQ-premium/packages/add-ons/file-types/eml" },
+    { name = "vethuq-addon-msg", editable = "../VethuQ-premium/packages/add-ons/file-types/msg" },
     { name = "vethuq-addon-pps", editable = "../VethuQ-premium/packages/add-ons/file-types/pps" },
     { name = "vethuq-addon-ppsx", editable = "../VethuQ-premium/packages/add-ons/file-types/ppsx" },
     { name = "vethuq-addon-ppt", editable = "../VethuQ-premium/packages/add-ons/file-types/ppt" },

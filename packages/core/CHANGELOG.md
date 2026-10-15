@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (email bundle)
+- `pip install vethuq[email]` installs the new `vethuq-bundle-email` (the `eml` and `msg` add-ons; one email pack licence unlocks both, and an office pack licence still does too).
+
 ### Added (Outlook messages)
 - `.msg` files are read by the licensed `vethuq-addon-msg` add-on (the office pack, and the worker image): the headers and body of an Outlook message, laid out as an `.eml` is. It keeps the same facts as `.eml` in its own `msg_pages` table. An office pack licence issued before this lacks the `msg` entitlement.
 
