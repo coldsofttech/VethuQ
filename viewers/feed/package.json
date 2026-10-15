@@ -1,0 +1,15 @@
+{
+  "name": "@vethuq/feed-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A read-only reader for an RSS or Atom feed: its title and facts, then each entry with its title, author, date, categories, link and text; can land on, and mark, a match",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "peerDependencies": {
+    "react": ">=19"
+  }
+}

@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../table && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../code && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../html && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../image && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../../keyboards/shared && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../en && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../te && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../hi && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../ur && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../fr && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../es && node ../../web/node_modules/eslint/bin/eslint.js .",
+    "lint": "eslint . && cd ../viewers/text && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../table && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../code && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../feed && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../markdown && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../html && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../image && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../../keyboards/shared && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../en && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../te && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../hi && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../ur && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../fr && node ../../web/node_modules/eslint/bin/eslint.js . && cd ../es && node ../../web/node_modules/eslint/bin/eslint.js .",
     "format": "prettier --write . ../viewers ../keyboards",
     "format:check": "prettier --check . ../viewers ../keyboards",
     "test": "vitest run"
@@ -20,6 +20,7 @@
     "@fluentui/react-components": "^9.74.9",
     "@fluentui/react-icons": "^2.0.344",
     "@vethuq/code-viewer": "file:../viewers/code",
+    "@vethuq/feed-viewer": "file:../viewers/feed",
     "@vethuq/html-viewer": "file:../viewers/html",
     "@vethuq/image-viewer": "file:../viewers/image",
     "@vethuq/keyboard-en": "file:../keyboards/en",
