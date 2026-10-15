@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (HEIC)
+- The picture preview shows a HEIC (`/api/files/heic?path=&page=`) as a PNG, one picture at a time, the primary first, as the HEIC add-on reads them (checked picture for picture). Needs `pillow-heif` (the HEIC add-on brings it); without it the preview says so. A picture over Pillow's pixel limit is refused, as pillow-heif makes no such check.
+
 ### Added (picture preview)
 - `GET /api/files/png`, `/jpg` and `/tiff` (`?path=`) serve a picture of a source: JPEG and PNG as they are, a TIFF frame (`page`, from 1) as a PNG, turned upright and brought to 8-bit colour. A frame over 40 megapixels is refused. `GET /api/files/text` also serves the text OCR read from these pictures.
 

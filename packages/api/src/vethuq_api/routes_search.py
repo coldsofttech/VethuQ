@@ -71,8 +71,8 @@ def register(api: Blueprint, core: Core) -> None:
         source_route(kind, what)
 
     # Pictures: JPEG and PNG as they are (a browser draws them), a TIFF one frame at a time as PNG,
-    # a GIF or WebP one page (distinct picture) at a time as PNG, and a BMP as PNG (a run-length
-    # encoded, OS/2 or headerless one is not drawn by every browser).
+    # a GIF, WebP or HEIC one page at a time as PNG, and a BMP as PNG (a run-length encoded, OS/2
+    # or headerless one is not drawn by every browser).
     def picture_route(file_type: str, what: str) -> None:
         def view() -> Response:
             path = request.args.get("path")
@@ -93,6 +93,10 @@ def register(api: Blueprint, core: Core) -> None:
             elif file_type == "webp":
                 response = Response(
                     core.search().webp_page(path, request.args), mimetype="image/png"
+                )
+            elif file_type == "heic":
+                response = Response(
+                    core.search().heic_page(path, request.args), mimetype="image/png"
                 )
             elif file_type == "bmp":
                 response = Response(core.search().bmp_image(path), mimetype="image/png")
@@ -115,6 +119,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("bmp", "a BMP picture"),
         ("gif", "a GIF picture"),
         ("webp", "a WebP picture"),
+        ("heic", "a HEIC picture"),
     ):
         picture_route(kind, what)
 

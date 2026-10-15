@@ -63,6 +63,7 @@ const PREVIEWS = {
   bmp: ImagePreview,
   gif: ImagePreview,
   webp: ImagePreview,
+  heic: ImagePreview,
   html: HtmlPreview,
   mhtml: HtmlPreview,
 };

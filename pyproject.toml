@@ -34,6 +34,7 @@ vethuq-addon-tsv = { path = "../VethuQ-premium/packages/add-ons/file-types/tsv",
 vethuq-addon-markdown = { path = "../VethuQ-premium/packages/add-ons/file-types/markdown", editable = true }
 vethuq-addon-png = { path = "../VethuQ-premium/packages/add-ons/file-types/png", editable = true }
 vethuq-addon-jpg = { path = "../VethuQ-premium/packages/add-ons/file-types/jpg", editable = true }
+vethuq-addon-heic = { path = "../VethuQ-premium/packages/add-ons/file-types/heic", editable = true }
 vethuq-addon-webp = { path = "../VethuQ-premium/packages/add-ons/file-types/webp", editable = true }
 vethuq-addon-gif = { path = "../VethuQ-premium/packages/add-ons/file-types/gif", editable = true }
 vethuq-addon-bmp = { path = "../VethuQ-premium/packages/add-ons/file-types/bmp", editable = true }
@@ -102,6 +103,7 @@ dev = [
     "pre-commit>=3.8",
     "jsonschema>=4.20",
     "pillow>=10",
+    "pillow-heif>=1.0",
     "pyyaml>=6",
     "pynacl>=1.5",
 ]

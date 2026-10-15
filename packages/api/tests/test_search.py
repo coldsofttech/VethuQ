@@ -1285,6 +1285,210 @@ class TestWebpPictures:
         assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
 
 
+class TestHeicPictures:
+    """A HEIC shown one picture at a time as a PNG (no browser but Safari draws HEIC). The HEIC
+    add-on may not be installed in this checkout, so the type check is replaced; the route and the
+    pictures are what is tested."""
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        pillow_heif = pytest.importorskip("pillow_heif")
+        from PIL import Image, ImageDraw
+
+        folder = library / "a"
+
+        def heic(name, images, primary=None, **kw):
+            file = pillow_heif.HeifFile()
+            for image in images:
+                file.add_from_pillow(image)
+            file.save(folder / name, quality=90, primary_index=primary, **kw)
+
+        red, green, blue = (
+            Image.new("RGB", (40, 20), colour) for colour in ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+        )
+        heic("three.heic", [red, green, blue], primary=0)
+        heic("primary.heic", [red, green, blue], primary=2)
+        heic("still.heic", [red])
+        ink = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        ImageDraw.Draw(ink).rectangle([20, 20, 44, 44], fill=(0, 0, 0, 255))
+        heic("transparent.heic", [ink])
+        exif = Image.Exif()
+        exif[0x0112] = 6  # shown turned a quarter: 40 x 20 is displayed as 20 x 40
+        heic("turned.heic", [red], exif=exif.tobytes())
+        (folder / "notes.heic").write_bytes(b"this is not a picture")
+        data = (folder / "three.heic").read_bytes()
+        (folder / "cut.heic").write_bytes(data[: len(data) // 2])
+        red.save(library / "outside.png", "PNG")
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "heic" and path.lower().endswith(".heic"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="three.heic", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/heic", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def picture(self, reply):
+        import io
+
+        from PIL import Image
+
+        return Image.open(io.BytesIO(reply.data)).convert("RGB")
+
+    @staticmethod
+    def is_colour(pixel, expected):
+        return all(abs(a - b) <= 12 for a, b in zip(pixel, expected, strict=True))
+
+    def test_each_page_is_a_png_of_that_picture(self, http):
+        first = self.get(http)
+        assert first.status_code == 200 and first.mimetype == "image/png"
+        assert first.headers["Content-Disposition"] == "inline"
+        assert self.picture(first).size == (40, 20)
+        assert self.is_colour(self.picture(first).getpixel((20, 10)), (255, 0, 0))
+        assert self.is_colour(self.picture(self.get(http, page=2)).getpixel((20, 10)), (0, 255, 0))
+        assert self.is_colour(self.picture(self.get(http, page=3)).getpixel((20, 10)), (0, 0, 255))
+
+    def test_the_primary_picture_is_the_first_page(self, http):
+        pages = [
+            self.picture(self.get(http, "primary.heic", page=n)).getpixel((20, 10))
+            for n in (1, 2, 3)
+        ]
+        expected = [(0, 0, 255), (255, 0, 0), (0, 255, 0)]
+        assert all(self.is_colour(p, e) for p, e in zip(pages, expected, strict=True))
+
+    def test_a_still_is_one_page(self, http):
+        assert self.get(http, "still.heic").status_code == 200
+        reply = self.get(http, "still.heic", page=2)
+        assert reply.status_code == 422 and "has 1 frame" in reply.get_json()["error"]
+
+    def test_a_page_that_is_not_there_or_not_a_number(self, http):
+        for page in (0, 4, "x", -1):
+            assert self.get(http, page=page).status_code == 422, page
+
+    def test_transparency_is_laid_on_white_so_ink_shows_on_any_theme(self, http):
+        picture = self.picture(self.get(http, "transparent.heic"))
+        assert self.is_colour(picture.getpixel((2, 2)), (255, 255, 255))
+        assert self.is_colour(picture.getpixel((32, 32)), (0, 0, 0))
+
+    def test_the_orientation_is_applied_once(self, http):
+        assert self.picture(self.get(http, "turned.heic")).size == (20, 40)
+
+    def test_only_a_heic_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.png")}
+        assert http.get("/api/files/heic", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.heic").status_code == 422
+
+    def test_damaged_files_say_so_and_never_give_a_server_error(self, http):
+        for name in ("notes.heic", "cut.heic"):
+            reply = self.get(http, name)
+            assert reply.status_code == 422, name
+            assert "cannot be read" in reply.get_json()["error"], name
+
+    def test_a_picture_that_is_too_large_is_refused(self, http, monkeypatch):
+        monkeypatch.setattr("vethuq_api.images.MAX_PIXELS", 500)
+        reply = self.get(http)  # 40 x 20 = 800 pixels
+        assert reply.status_code == 422 and "too large to preview" in reply.get_json()["error"]
+
+    def test_a_picture_over_pillows_limit_is_refused_too(self, http, monkeypatch):
+        from PIL import Image
+
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 500)  # pillow-heif makes no check itself
+        reply = self.get(http, "still.heic")
+        assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
+
+
+class TestHeicConverterNeverGivesAnUnhandledError:
+    def test_every_cut_and_flip_is_either_a_picture_or_a_readable_error(self, tmp_path):
+        pillow_heif = pytest.importorskip("pillow_heif")
+        from PIL import Image
+
+        from vethuq_api import images
+
+        file = pillow_heif.HeifFile()
+        file.add_from_pillow(Image.effect_noise((120, 90), 80).convert("RGB"))
+        source = tmp_path / "a.heic"
+        file.save(source, quality=90)
+        data = source.read_bytes()
+        path = tmp_path / "damaged.heic"
+        outcomes = set()
+        step = max(1, len(data) // 150)
+        for cut in range(0, len(data) - 1, step):
+            for damaged in (data[:cut], data[:cut] + bytes(len(data) - cut)):
+                path.write_bytes(damaged)
+                try:
+                    images.heic_page_as_png(str(path), 1)
+                    outcomes.add("picture")
+                except ValueError as error:  # the only kind the route turns into a 422
+                    assert "cannot be read" in str(error) or "has " in str(error)
+                    outcomes.add("readable")
+        assert "readable" in outcomes
+
+
+class TestHeicPagesAreTheOnesTheAddOnReads:
+    """The preview shows the picture that was read: its pages are the add-on's, one for one. This
+    needs the HEIC add-on, so it is skipped without it."""
+
+    def test_the_same_pictures_in_the_same_order(self, tmp_path):
+        import io
+
+        pillow_heif = pytest.importorskip("pillow_heif")
+        from PIL import Image
+
+        reader = pytest.importorskip("vethuq_addon_heic.reader")
+        from vethuq_api import images
+
+        def solid(colour):
+            return Image.new("RGB", (60, 30), colour)
+
+        cases = {
+            "still": ([solid((9, 9, 9))], None),
+            "three": ([solid((255, 0, 0)), solid((0, 255, 0)), solid((0, 0, 255))], 0),
+            "primary": ([solid((255, 0, 0)), solid((0, 255, 0)), solid((0, 0, 255))], 1),
+            "last": ([solid((n * 30, 0, 0)) for n in range(1, 6)], 4),
+        }
+        for name, (frames, primary) in cases.items():
+            file = pillow_heif.HeifFile()
+            for frame in frames:
+                file.add_from_pillow(frame)
+            path = tmp_path / f"{name}.heic"
+            file.save(path, quality=90, primary_index=primary)
+            read = [
+                page.render(None)[:, :, ::-1].copy()  # BGR to RGB
+                for page in reader.HeicReader().read(path)
+            ]
+            assert len(read) == len(frames), name
+            for number, expected in enumerate(read, start=1):
+                shown = Image.open(io.BytesIO(images.heic_page_as_png(str(path), number)))
+                assert shown.convert("RGB").tobytes() == expected.tobytes(), (name, number)
+
+    def test_the_limits_match(self):
+        reader = pytest.importorskip("vethuq_addon_heic.reader")
+        from vethuq_api import images
+
+        assert images.HEIC_MAX_PAGES == reader.HeicReader.MAX_PAGES
+
+
 class TestImageConverterNeverGivesAnUnhandledError:
     """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
     into a readable message (it was an unhandled server error for some of them)."""

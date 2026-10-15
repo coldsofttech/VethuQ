@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (HEIC)
+- `.heic`, `.heif` and `.hif` files are read by the free `vethuq-addon-heic` add-on (not in `vethuq[images]`: pillow-heif's wheels include GPLv2 libx265; `pip install vethuq-addon-heic`).
+
 ### Changed (languages, file types and tiers)
 - Asking for a language, file type or tier VethuQ doesn't know now raises an error, instead of returning nothing.
 - File types can be switched off and on (`file_types.disable` and `enable`); files of a switched-off type are no longer read. `file_types.list()` is now `list_all()`, with `list_enabled()` and `defaults()` added.

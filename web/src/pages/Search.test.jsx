@@ -1539,6 +1539,25 @@ describe('Search', () => {
       );
     });
 
+    it('opens a HEIC with several pictures at the page of the match', async () => {
+      const heic = found({
+        file_name: 'burst.heic',
+        file_path: '/docs/burst.heic',
+        file_type: 'heic',
+        total_pages: 3,
+        page_number: 2,
+      });
+      const { panel } = await show(heic);
+      loaded(panel);
+      expect(panel.querySelector('img').getAttribute('src')).toBe(
+        '/api/files/heic?path=%2Fdocs%2Fburst.heic&page=2',
+      );
+      await userEvent.click(within(panel).getByRole('button', { name: 'Next frame' }));
+      await waitFor(() =>
+        expect(panel.querySelector('img').getAttribute('src')).toContain('page=3'),
+      );
+    });
+
     it('shows a still WebP as one picture, without frame buttons', async () => {
       const still = found({ file_name: 's.webp', file_path: '/docs/s.webp', file_type: 'webp' });
       const { panel } = await show(still);

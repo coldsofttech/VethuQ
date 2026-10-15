@@ -122,6 +122,11 @@ class SearchService:
         page = _number(_whole(query.get("page", 1), "page"), "page", 1, 1)
         return images.webp_page_as_png(path, page)
 
+    def heic_page(self, path: str, query: Mapping[str, Any]) -> bytes:
+        """Picture `page` (from 1, default 1) of a HEIC as PNG bytes."""
+        page = _number(_whole(query.get("page", 1), "page"), "page", 1, 1)
+        return images.heic_page_as_png(path, page)
+
     def bmp_image(self, path: str) -> bytes:
         """A BMP of a source as PNG bytes."""
         return images.bmp_as_png(path)

@@ -53,6 +53,7 @@ paddleocr==3.4.1
 paddlepaddle==3.3.1
 paddlex==3.4.3
 pandas==3.0.6
+pillow-heif==1.8.1
 pillow==12.3.0
 prettytable==3.18.0
 protobuf==7.36.2

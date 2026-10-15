@@ -1,9 +1,10 @@
-"""Pictures for the preview: a TIFF frame, a GIF or WebP page or a BMP as a PNG a browser can show.
+"""Pictures for the preview: a TIFF frame, a GIF, WebP or HEIC page or a BMP as a PNG.
 
 Browsers draw JPEG and PNG themselves, so those are served as they are. A BMP can be run-length
 encoded, OS/2 or a headerless DIB, which browsers do not all draw, so it is converted too. A GIF or
 a WebP is shown one page at a time, the pages being the distinct pictures of its animation as the
-GIF and WebP add-ons read them."""
+GIF and WebP add-ons read them. A HEIC is shown one picture at a time, the primary one first, as the
+HEIC add-on reads them; no browser but Safari draws it."""
 
 from __future__ import annotations
 
@@ -19,6 +20,8 @@ MAX_PIXELS = 40_000_000
 ANIMATION_MAX_PAGES = 30
 ANIMATION_MAX_SCAN_FRAMES = 1000
 ANIMATED = ("GIF", "WEBP")
+# The pictures of a HEIC file, as the HEIC add-on reads them: the primary first, at most this many.
+HEIC_MAX_PAGES = 30
 
 
 def tiff_frames(path: str) -> int:
@@ -68,6 +71,38 @@ def webp_page_as_png(path: str, page: int) -> bytes:
     return _as_png(path, page, "WEBP", "frame")
 
 
+def heic_page_as_png(path: str, page: int) -> bytes:
+    """Page `page` (from 1) of a HEIC as PNG bytes: its pictures with the primary one first, as
+    the HEIC add-on reads them, with transparency flattened onto white as it is for OCR."""
+    return _as_png(path, page, "HEIC", "picture")
+
+
+def _heic_order(picture: Any) -> list[int]:
+    """The indexes of a HEIC's pictures: the primary first, then the rest in file order."""
+    count = max(int(getattr(picture, "n_frames", 1)), 1)
+    primary = min(max(picture.tell(), 0), count - 1)
+    return ([primary] + [i for i in range(count) if i != primary])[:HEIC_MAX_PAGES]
+
+
+def _open(Image: Any, path: str, kind: str) -> Any:
+    """The file opened as `kind`. A HEIC is opened with pillow-heif directly (it is not registered
+    with Pillow), and, as pillow-heif makes no check of its own, with Pillow's limit applied."""
+    if kind != "HEIC":
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            return Image.open(path)
+    try:
+        from pillow_heif import HeifImageFile  # noqa: PLC0415 - only for these pictures
+    except ImportError as error:  # pragma: no cover - the HEIC add-on needs pillow-heif
+        raise _Refused("pillow-heif is not installed, so a HEIC cannot be shown here.") from error
+    picture = HeifImageFile(path)
+    limit = Image.MAX_IMAGE_PIXELS
+    if limit is not None and picture.width * picture.height > limit:
+        picture.close()
+        raise Image.DecompressionBombError("too large")
+    return picture
+
+
 def _distinct_frames(picture: Any) -> list[int]:
     """The index of the first frame of each distinct picture, in order (see the GIF add-on)."""
     import hashlib  # noqa: PLC0415
@@ -96,14 +131,18 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
     # one becomes a message a person can read, never a server error. Only our own refusals
     # (`_Refused`) say something else.
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            picture = Image.open(path)
+        picture = _open(Image, path, kind)
+    except _Refused:
+        raise
     except Exception as error:  # noqa: BLE001
         raise unreadable from error
     with picture:
         try:
-            order = _distinct_frames(picture) if kind in ANIMATED else None
+            order = None
+            if kind in ANIMATED:
+                order = _distinct_frames(picture)
+            elif kind == "HEIC":
+                order = _heic_order(picture)
             # Reading the frame count reads every frame's header, so a cut-off file fails here.
             frames = len(order) if order is not None else int(getattr(picture, "n_frames", 1))
         except Exception as error:  # noqa: BLE001
@@ -124,7 +163,7 @@ def _as_png(path: str, frame: int, kind: str, noun: str) -> bytes:
             if kind == "BMP" and upright.mode == "RGBA":
                 if upright.getchannel("A").getextrema() == (0, 0):
                     upright = upright.convert("RGB")
-            if kind in ANIMATED:
+            if kind in ANIMATED or kind == "HEIC":
                 upright = _on_white(upright)
             if upright.mode not in ("RGB", "RGBA", "L", "LA"):
                 upright = upright.convert("RGBA" if "transparency" in upright.info else "RGB")
