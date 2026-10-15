@@ -80,7 +80,6 @@ def register(api: Blueprint, core: Core) -> None:
         ("ndjson", "an NDJSON file"),
         ("js", "a script"),
         ("xml", "an XML file"),
-        ("rss", "a feed"),
     ):
         source_route(kind, what)
 
@@ -177,6 +176,18 @@ def register(api: Blueprint, core: Core) -> None:
         ):
             raise ValueError("Only an MHTML file of a source that VethuQ reads can be shown here.")
         return jsonify(core.search().mhtml_page(path))
+
+    @api.get("/files/rss")
+    def rss_feed() -> Response:
+        """A feed of a source as entries for the feed preview, around the match at `at`."""
+        path = request.args.get("path")
+        if (
+            not isinstance(path, str)
+            or not core.search().is_type(path, "rss")
+            or not core.sources().may_open(path)
+        ):
+            raise ValueError("Only a feed of a source that VethuQ reads can be shown here.")
+        return jsonify(core.search().rss_feed(path, request.args))
 
     @api.get("/files/tsv")
     def tsv_window() -> Response:

@@ -43,6 +43,7 @@ const ImagePreview = lazy(() => import('../search/image/ImagePreview.jsx'));
 const CodePreview = lazy(() => import('../search/code/CodePreview.jsx'));
 const HtmlPreview = lazy(() => import('../search/html/HtmlPreview.jsx'));
 const TablePreview = lazy(() => import('../search/table/TablePreview.jsx'));
+const FeedPreview = lazy(() => import('../search/feed/FeedPreview.jsx'));
 
 const PREVIEWS = {
   pdf: PdfPreview,
@@ -57,7 +58,7 @@ const PREVIEWS = {
   yaml: CodePreview,
   js: CodePreview,
   xml: CodePreview,
-  rss: CodePreview,
+  rss: FeedPreview,
   png: ImagePreview,
   jpg: ImagePreview,
   tiff: ImagePreview,

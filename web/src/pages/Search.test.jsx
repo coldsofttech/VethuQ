@@ -1293,13 +1293,6 @@ describe('Search', () => {
         mark: 'Dune',
         label: 'XML',
       },
-      rss: {
-        text: '<rss version="2.0">\n  <channel>\n    <item>\n      <title>Wheat prices</title>\n    </item>\n  </channel>\n</rss>\n',
-        match: { before: 'Dev Blog ', matched: 'Wheat', after: ' prices' },
-        line: 4,
-        mark: 'Wheat',
-        label: 'RSS',
-      },
     };
 
     beforeEach(() => {
@@ -1583,6 +1576,68 @@ describe('Search', () => {
         '/api/files/svg?path=%2Fdocs%2Fs.svg',
       );
       expect(within(panel).queryByRole('button', { name: 'Next frame' })).toBeNull();
+    });
+
+    it('shows a feed as entries, outlines the match and marks it', async () => {
+      const feed = {
+        format: 'rss',
+        title: 'Dev Blog',
+        language: 'en',
+        updated: null,
+        well_formed: true,
+        head: [
+          { kind: 'title', text: 'Dev Blog', start: 0 },
+          { kind: 'description', text: 'Notes', start: 9 },
+        ],
+        entries: [
+          {
+            lines: [
+              { kind: 'title', text: 'First', start: 15 },
+              { kind: 'author', text: 'Author: Ada', start: 21 },
+              { kind: 'text', text: 'Wheat prices fell', start: 33 },
+            ],
+          },
+          { lines: [{ kind: 'title', text: 'Second', start: 51 }] },
+        ],
+        first: 0,
+        total: 2,
+        file_name: 'blog.rss',
+        file_path: '/docs/blog.rss',
+      };
+      const result = {
+        ...RESULT,
+        matches: [
+          match({
+            file_name: 'blog.rss',
+            file_path: '/docs/blog.rss',
+            file_type: 'rss',
+            document_id: 4,
+            total_pages: 1,
+            page_number: 1,
+            start: 33,
+            end: 38,
+            matched: 'Wheat',
+          }),
+        ],
+      };
+      mockApi({ ...ROUTES, 'POST /api/search/run': result, 'GET /api/files/rss': feed });
+      renderWithProviders(<App />, { route: '/search' });
+      await type('wheat{Enter}');
+      const table = await screen.findByRole('table', { name: 'Search results' });
+      await userEvent.pointer({
+        keys: '[MouseRight]',
+        target: (await within(table).findAllByText('1 of 1'))[0],
+      });
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Preview' }));
+      const panel = await screen.findByRole('region', { name: 'Feed preview' });
+      await waitFor(() => expect(panel.querySelector('mark')?.textContent).toBe('Wheat'));
+      expect(within(panel).getByText('Dev Blog')).toBeInTheDocument();
+      expect(within(panel).getByText(/entry 1 of 2/)).toBeInTheDocument();
+      const entries = panel.querySelectorAll('article');
+      expect(entries).toHaveLength(2);
+      expect(entries[0].getAttribute('aria-current')).toBe('true');
+      expect(entries[1].getAttribute('aria-current')).toBeNull();
+      expect(within(entries[0]).getByText(/Author: Ada/)).toBeInTheDocument();
     });
 
     it('shows a still WebP as one picture, without frame buttons', async () => {

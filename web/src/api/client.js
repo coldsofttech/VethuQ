@@ -404,6 +404,7 @@ export const api = {
      *   subject: string, frame_count: number, incomplete: boolean, file_name: string}>}
      */
     mhtml: (params, signal) => request(`/api/files/mhtml${query(params)}`, { signal }),
+    rss: (params, signal) => request(`/api/files/rss${query(params)}`, { signal }),
     /**
      * A window of rows of a CSV file read from disk: filtered, then sorted, as asked.
      * @param {{path: string, start?: number, count?: number, sort?: number, dir?: string,

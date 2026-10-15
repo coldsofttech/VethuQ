@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from vethuq.errors import FileTypeUnavailableError
-from vethuq_api import images, mhtml_view
+from vethuq_api import feed_view, images, mhtml_view
 from vethuq_api.csv_rows import CsvCache, clip, decode
 
 MAX_LIMIT = 500
@@ -77,6 +77,7 @@ class SearchService:
         self._texts_lock = threading.Lock()
         self._csv = CsvCache()
         self._mhtml = mhtml_view.Cache()
+        self._feeds = feed_view.Cache()
 
     # ----- the text of a file, a window of lines at a time ------------------------------------
 
@@ -167,6 +168,19 @@ class SearchService:
         self-contained so a sandboxed frame can show it, and facts about the archive."""
         return {
             **mhtml_view.view(self._mhtml.get(path)),
+            "file_name": os.path.basename(path),
+            "file_path": path,
+        }
+
+    # ----- a feed as entries ------------------------------------------------------------------
+
+    def rss_feed(self, path: str, query: Mapping[str, Any]) -> dict[str, object]:
+        """A feed's entries for the feed preview, a window of them around the character `at` of the
+        indexed text (where the match is)."""
+        at = query.get("at")
+        offset = _number(_whole(at, "at"), "at", 0, 0) if at is not None else None
+        return {
+            **feed_view.window(self._feeds.get(path), offset),
             "file_name": os.path.basename(path),
             "file_path": path,
         }

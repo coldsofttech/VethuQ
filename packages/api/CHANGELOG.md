@@ -5,7 +5,7 @@ All notable changes to `vethuq-api`.
 ## [Unreleased]
 
 ### Added (RSS)
-- `/api/files/rss?path=` returns a feed's source for the code preview, like the other text file types.
+- `/api/files/rss?path=&at=` returns a feed for the feed preview: its head lines and a window of at most 500 entries around the character `at` (the match) of the indexed text, each line with its kind and its offset in that text. Needs `defusedxml` (the RSS add-on brings it); a feed that is not well-formed is read as loose text, as the add-on does, and a test holds the two together.
 
 ### Added (SVG)
 - The preview shows an SVG drawing (`/api/files/svg?path=`) as it is, served under a sandboxing policy (`Content-Security-Policy: sandbox; default-src 'none'...`) so its scripts cannot run if the address is opened on its own; a compressed `.svgz` is sent with `Content-Encoding: gzip`. A response that sets its own Content-Security-Policy now keeps it.

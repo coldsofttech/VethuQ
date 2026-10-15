@@ -1685,6 +1685,88 @@ class TestSvgDrawings:
         assert self.get(http, "missing.svg").status_code == 422
 
 
+class TestRssFeed:
+    """A feed as the entries of the feed preview. The RSS add-on may not be installed in this
+    checkout, so the type check is replaced; the route and the answer are what is tested."""
+
+    FEED = (
+        b'<rss version="2.0"><channel><title>Dev Blog</title><description>Notes</description>'
+        b"<item><title>First</title>"
+        b"<description>&lt;p&gt;Wheat prices fell&lt;/p&gt;</description></item>"
+        b"<item><title>Second</title><link>https://example.com/2</link></item>"
+        b"</channel></rss>"
+    )
+
+    @pytest.fixture
+    def http(self, web_dist, library, monkeypatch):
+        folder = library / "a"
+        (folder / "d.rss").write_bytes(self.FEED)
+        (folder / "notes.rss").write_bytes(b"this is not a feed")
+        (library / "outside.rss").write_bytes(self.FEED)
+        monkeypatch.setattr(
+            SearchService,
+            "is_type",
+            lambda self, path, wanted: wanted == "rss" and path.lower().endswith(".rss"),
+        )
+        real = SourcesService.may_open
+        inside = os.path.realpath(folder)
+
+        def may_open(self, path):
+            real_path = os.path.realpath(path)
+            return real(self, path) or (
+                os.path.isfile(real_path) and real_path.startswith(inside + os.sep)
+            )
+
+        monkeypatch.setattr(SourcesService, "may_open", may_open)
+        core = VethuQCore(library / "vethuq.db")
+        core._vethuq().sources.create(folder)
+        app = create_app(bootstrap_token="t", web_dist=web_dist, core=core)
+        allow_host(app, "127.0.0.1:5000")
+        test = app.test_client()
+        test.get("/?t=t", base_url=ORIGIN)
+        test.library = library
+        return test
+
+    def get(self, http, name="d.rss", **query):
+        path = http.library / "a" / name
+        return http.get(
+            "/api/files/rss", query_string={"path": str(path), **query}, base_url=ORIGIN
+        )
+
+    def test_the_feed_is_its_head_and_entries_with_offsets(self, http):
+        reply = self.get(http)
+        assert reply.status_code == 200
+        feed = reply.get_json()
+        assert (feed["format"], feed["total"], feed["first"]) == ("rss", 2, 0)
+        assert [line["text"] for line in feed["head"]] == ["Dev Blog", "Notes"]
+        assert [line["start"] for line in feed["head"]] == [0, 9]
+        first, second = feed["entries"]
+        assert [(x["kind"], x["text"]) for x in first["lines"]] == [
+            ("title", "First"),
+            ("text", "Wheat prices fell"),
+        ]
+        assert second["lines"][1] == {
+            "kind": "link",
+            "text": "Link: https://example.com/2",
+            "start": first["lines"][1]["start"] + len("Wheat prices fell") + 1 + len("Second") + 1,
+        }
+        assert feed["file_name"] == "d.rss"
+
+    def test_a_match_offset_places_the_window(self, http):
+        assert self.get(http, at=20).status_code == 200
+        for bad in ("x", "-1"):
+            assert self.get(http, at=bad).status_code == 422, bad
+
+    def test_only_a_feed_of_a_source(self, http):
+        outside = {"path": str(http.library / "outside.rss")}
+        assert http.get("/api/files/rss", query_string=outside, base_url=ORIGIN).status_code == 422
+        assert self.get(http, "missing.rss").status_code == 422
+
+    def test_what_is_not_a_feed_says_so_and_is_never_a_server_error(self, http):
+        reply = self.get(http, "notes.rss")
+        assert reply.status_code == 422 and "cannot be read" in reply.get_json()["error"]
+
+
 class TestImageConverterNeverGivesAnUnhandledError:
     """Pillow's plugins raise all sorts of errors for a file cut off partway; the preview turns each
     into a readable message (it was an unhandled server error for some of them)."""
