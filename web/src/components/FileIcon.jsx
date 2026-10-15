@@ -40,6 +40,7 @@ const BY_TYPE = {
   ndjson: Code20Regular,
   yaml: Code20Regular,
   xml: Code20Regular,
+  rss: Code20Regular,
   html: Code20Regular,
   mhtml: Code20Regular,
   css: Code20Regular,

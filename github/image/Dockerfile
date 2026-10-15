@@ -23,7 +23,7 @@ COPY wheels /wheels
 RUN pip install --pre --find-links /wheels "vethuq-worker[run]" vethuq-entitlements \
         vethuq-addon-english vethuq-addon-pdf vethuq-addon-txt vethuq-addon-csv vethuq-addon-tsv \
         vethuq-addon-markdown vethuq-addon-png vethuq-addon-jpg vethuq-addon-tiff vethuq-addon-bmp vethuq-addon-gif vethuq-addon-webp vethuq-addon-jp2 vethuq-addon-svg vethuq-addon-heic \
-        vethuq-addon-html vethuq-addon-mhtml vethuq-addon-xml vethuq-addon-css vethuq-addon-js vethuq-addon-json vethuq-addon-yaml vethuq-addon-ndjson vethuq-addon-parquet \
+        vethuq-addon-html vethuq-addon-mhtml vethuq-addon-xml vethuq-addon-rss vethuq-addon-css vethuq-addon-js vethuq-addon-json vethuq-addon-yaml vethuq-addon-ndjson vethuq-addon-parquet \
         vethuq-addon-docx vethuq-addon-doc vethuq-addon-xlsx vethuq-addon-xls vethuq-addon-pptx \
         vethuq-addon-ppt vethuq-addon-rtf vethuq-addon-eml \
         vethuq-addon-telugu vethuq-addon-hindi vethuq-addon-urdu vethuq-addon-french vethuq-addon-spanish vethuq-addon-paddle \

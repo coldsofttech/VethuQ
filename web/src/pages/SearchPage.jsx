@@ -57,6 +57,7 @@ const PREVIEWS = {
   yaml: CodePreview,
   js: CodePreview,
   xml: CodePreview,
+  rss: CodePreview,
   png: ImagePreview,
   jpg: ImagePreview,
   tiff: ImagePreview,

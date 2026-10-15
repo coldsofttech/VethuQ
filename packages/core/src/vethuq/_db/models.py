@@ -375,6 +375,23 @@ class _MhtmlPage(_Base):
     frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pages saved inside
 
 
+class _RssPage(_Base):
+    """What the RSS type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "rss_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    encoding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feed_format: Mapped[str | None] = mapped_column(Text, nullable=True)  # rss, rdf or atom
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)  # the feed's title
+    language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # entries
+    updated: Mapped[str | None] = mapped_column(Text, nullable=True)  # as written
+    well_formed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
 class _SvgPage(_Base):
     """What the SVG type keeps about its page, beside the text in `pdf_pages`."""
 

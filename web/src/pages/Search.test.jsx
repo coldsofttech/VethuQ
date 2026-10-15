@@ -1293,6 +1293,13 @@ describe('Search', () => {
         mark: 'Dune',
         label: 'XML',
       },
+      rss: {
+        text: '<rss version="2.0">\n  <channel>\n    <item>\n      <title>Wheat prices</title>\n    </item>\n  </channel>\n</rss>\n',
+        match: { before: 'Dev Blog ', matched: 'Wheat', after: ' prices' },
+        line: 4,
+        mark: 'Wheat',
+        label: 'RSS',
+      },
     };
 
     beforeEach(() => {

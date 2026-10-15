@@ -80,6 +80,7 @@ def register(api: Blueprint, core: Core) -> None:
         ("ndjson", "an NDJSON file"),
         ("js", "a script"),
         ("xml", "an XML file"),
+        ("rss", "a feed"),
     ):
         source_route(kind, what)
 

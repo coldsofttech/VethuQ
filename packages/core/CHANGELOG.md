@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (RSS)
+- `.rss` and `.atom` files are read by the licensed `vethuq-addon-rss` add-on (part of the web pack, in the worker image), no longer by the XML add-on: a feed is its title and description then one block per entry (title, author, date, categories, link, text with the HTML stripped). Its page facts are kept in the new `rss_pages` table. The preview shows the feed's source, coloured as XML. A web pack licence issued before this has no `rss` entitlement, so it no longer unlocks `.rss`/`.atom` files until reissued.
+
 ### Added (SVG)
 - `.svg` and `.svgz` files are read by the free `vethuq-addon-svg` add-on, in the image bundle and the worker image: the text in the drawing is read straight from the file (never OCR'd, never charged for). Its page facts (`encoding`, `width`, `height`, `view_box`, `text_count`, `image_count`, `well_formed`) are kept in the new `svg_pages` table.
 

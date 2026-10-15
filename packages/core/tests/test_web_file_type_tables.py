@@ -21,6 +21,7 @@ from vethuq._db import (
     _PdfPage,
     _PptPage,
     _PptxPage,
+    _RssPage,
     _RtfPage,
     _SvgPage,
     _TsvPage,
@@ -106,6 +107,19 @@ CASES = [
     ("xls", _XlsPage, {"line_count": 12, "image_count": 2}),
     ("pptx", _PptxPage, {"line_count": 12, "image_count": 2}),
     ("ppt", _PptPage, {"line_count": 12, "image_count": 2}),
+    (
+        "rss",
+        _RssPage,
+        {
+            "encoding": "utf-8",
+            "feed_format": "atom",
+            "title": "Dev Blog",
+            "language": "en",
+            "item_count": 12,
+            "updated": "2026-10-14T10:00:00Z",
+            "well_formed": True,
+        },
+    ),
     ("rtf", _RtfPage, {"line_count": 12, "image_count": 2}),
     (
         "eml",

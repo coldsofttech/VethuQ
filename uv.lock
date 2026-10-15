@@ -3989,6 +3989,23 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vethuq-addon-rss"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/rss" }
+dependencies = [
+    { name = "charset-normalizer" },
+    { name = "defusedxml" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "charset-normalizer", specifier = ">=3" },
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
 name = "vethuq-addon-rtf"
 version = "0.1.0"
 source = { editable = "../VethuQ-premium/packages/add-ons/file-types/rtf" }
@@ -4386,6 +4403,7 @@ dependencies = [
     { name = "vethuq-addon-html" },
     { name = "vethuq-addon-js" },
     { name = "vethuq-addon-json" },
+    { name = "vethuq-addon-rss" },
     { name = "vethuq-addon-xml" },
 ]
 
@@ -4395,6 +4413,7 @@ requires-dist = [
     { name = "vethuq-addon-html", editable = "../VethuQ-premium/packages/add-ons/file-types/html" },
     { name = "vethuq-addon-js", editable = "../VethuQ-premium/packages/add-ons/file-types/js" },
     { name = "vethuq-addon-json", editable = "../VethuQ-premium/packages/add-ons/file-types/json" },
+    { name = "vethuq-addon-rss", editable = "../VethuQ-premium/packages/add-ons/file-types/rss" },
     { name = "vethuq-addon-xml", editable = "../VethuQ-premium/packages/add-ons/file-types/xml" },
 ]
 

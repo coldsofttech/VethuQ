@@ -55,6 +55,9 @@ export const LANGUAGES = {
   },
   yaml: { label: 'YAML', Highlighter: YamlHighlighter, format: null, hint: keyBefore },
   xml: { label: 'XML', Highlighter: XmlHighlighter, format: formatXml, hint: keyBefore },
+  // A feed is XML to look at. The index holds each entry's text with its HTML stripped, not
+  // `path: value` lines, so there is no key to look under: the words are searched for as they are.
+  rss: { label: 'RSS', Highlighter: XmlHighlighter, format: formatXml, hint: () => null },
 };
 
 export { locateWords };
