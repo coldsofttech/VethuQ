@@ -809,6 +809,78 @@ class _PpsxPage(_Base):
     image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
 
 
+class _OdtPage(_Base):
+    """What the odt type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "odt_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _OttPage(_Base):
+    """What the ott type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ott_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _OdsPage(_Base):
+    """What the ods type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ods_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _OtsPage(_Base):
+    """What the ots type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "ots_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _OdpPage(_Base):
+    """What the odp type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "odp_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
+class _OtpPage(_Base):
+    """What the otp type keeps about its page, beside the text in `pdf_pages`."""
+
+    __tablename__ = "otp_pages"
+
+    page_id: Mapped[int] = mapped_column(
+        ForeignKey("pdf_pages.id", ondelete="CASCADE"), primary_key=True
+    )
+    line_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # non-empty lines
+    image_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # embedded pictures
+
+
 class _DocxPage(_Base):
     """What the Word (.docx) type keeps about its page, beside the text in `pdf_pages`."""
 

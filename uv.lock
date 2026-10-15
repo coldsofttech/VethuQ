@@ -3406,6 +3406,9 @@ noise-fuzzy = [
 office = [
     { name = "vethuq-bundle-office" },
 ]
+open-office = [
+    { name = "vethuq-bundle-open-office" },
+]
 proximity = [
     { name = "vethuq-addon-proximity" },
 ]
@@ -3454,10 +3457,11 @@ requires-dist = [
     { name = "vethuq-bundle-developer", marker = "extra == 'developer'", editable = "../VethuQ-premium/packages/bundles/developer" },
     { name = "vethuq-bundle-image", marker = "extra == 'images'", editable = "../VethuQ-premium/packages/bundles/image" },
     { name = "vethuq-bundle-office", marker = "extra == 'office'", editable = "../VethuQ-premium/packages/bundles/office" },
+    { name = "vethuq-bundle-open-office", marker = "extra == 'open-office'", editable = "../VethuQ-premium/packages/bundles/open-office" },
     { name = "vethuq-bundle-search", marker = "extra == 'search'", editable = "../VethuQ-premium/packages/bundles/search" },
     { name = "vethuq-bundle-web", marker = "extra == 'web'", editable = "../VethuQ-premium/packages/bundles/web" },
 ]
-provides-extras = ["data", "deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "proximity", "search", "semantic", "tsv", "web"]
+provides-extras = ["data", "deep-scan", "developer", "fuzzy", "github", "images", "lexical", "noise-fuzzy", "office", "open-office", "proximity", "search", "semantic", "tsv", "web"]
 
 [[package]]
 name = "vethuq-addon-api"
@@ -3929,6 +3933,126 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "vethuq-addon-api", editable = "packages/addon-api" }]
+
+[[package]]
+name = "vethuq-addon-odp"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/odp" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-ods"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/ods" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-odt"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/odt" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-otp"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/otp" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-ots"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/ots" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
+
+[[package]]
+name = "vethuq-addon-ott"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/add-ons/file-types/ott" }
+dependencies = [
+    { name = "defusedxml" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
+    { name = "vethuq-addon-api" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "vethuq-addon-api", editable = "packages/addon-api" },
+]
 
 [[package]]
 name = "vethuq-addon-paddle"
@@ -4478,12 +4602,42 @@ dependencies = [
 requires-dist = [
     { name = "vethuq-addon-doc", editable = "../VethuQ-premium/packages/add-ons/file-types/doc" },
     { name = "vethuq-addon-docx", editable = "../VethuQ-premium/packages/add-ons/file-types/docx" },
+    { name = "vethuq-addon-dot", editable = "../VethuQ-premium/packages/add-ons/file-types/dot" },
+    { name = "vethuq-addon-dotx", editable = "../VethuQ-premium/packages/add-ons/file-types/dotx" },
     { name = "vethuq-addon-eml", editable = "../VethuQ-premium/packages/add-ons/file-types/eml" },
+    { name = "vethuq-addon-pps", editable = "../VethuQ-premium/packages/add-ons/file-types/pps" },
+    { name = "vethuq-addon-ppsx", editable = "../VethuQ-premium/packages/add-ons/file-types/ppsx" },
     { name = "vethuq-addon-ppt", editable = "../VethuQ-premium/packages/add-ons/file-types/ppt" },
+    { name = "vethuq-addon-pptm", editable = "../VethuQ-premium/packages/add-ons/file-types/pptm" },
     { name = "vethuq-addon-pptx", editable = "../VethuQ-premium/packages/add-ons/file-types/pptx" },
     { name = "vethuq-addon-rtf", editable = "../VethuQ-premium/packages/add-ons/file-types/rtf" },
     { name = "vethuq-addon-xls", editable = "../VethuQ-premium/packages/add-ons/file-types/xls" },
+    { name = "vethuq-addon-xlsb", editable = "../VethuQ-premium/packages/add-ons/file-types/xlsb" },
+    { name = "vethuq-addon-xlsm", editable = "../VethuQ-premium/packages/add-ons/file-types/xlsm" },
     { name = "vethuq-addon-xlsx", editable = "../VethuQ-premium/packages/add-ons/file-types/xlsx" },
+]
+
+[[package]]
+name = "vethuq-bundle-open-office"
+version = "0.1.0"
+source = { editable = "../VethuQ-premium/packages/bundles/open-office" }
+dependencies = [
+    { name = "vethuq-addon-odp" },
+    { name = "vethuq-addon-ods" },
+    { name = "vethuq-addon-odt" },
+    { name = "vethuq-addon-otp" },
+    { name = "vethuq-addon-ots" },
+    { name = "vethuq-addon-ott" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vethuq-addon-odp", editable = "../VethuQ-premium/packages/add-ons/file-types/odp" },
+    { name = "vethuq-addon-ods", editable = "../VethuQ-premium/packages/add-ons/file-types/ods" },
+    { name = "vethuq-addon-odt", editable = "../VethuQ-premium/packages/add-ons/file-types/odt" },
+    { name = "vethuq-addon-otp", editable = "../VethuQ-premium/packages/add-ons/file-types/otp" },
+    { name = "vethuq-addon-ots", editable = "../VethuQ-premium/packages/add-ons/file-types/ots" },
+    { name = "vethuq-addon-ott", editable = "../VethuQ-premium/packages/add-ons/file-types/ott" },
 ]
 
 [[package]]

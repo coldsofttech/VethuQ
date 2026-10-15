@@ -54,6 +54,8 @@ developer = ["vethuq-bundle-developer~=0.1"]
 data = ["vethuq-bundle-data~=0.1"]
 # The office file types (Word, Excel, PowerPoint, RTF, email; licensed): `vethuq-bundle-office`.
 office = ["vethuq-bundle-office~=0.1"]
+# The OpenDocument file types (ODT, ODS, ODP and their templates; licensed): `vethuq-bundle-open-office`.
+open-office = ["vethuq-bundle-open-office~=0.1"]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

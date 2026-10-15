@@ -46,7 +46,7 @@ env:
     file-types/pdf file-types/txt file-types/csv file-types/tsv file-types/markdown
     file-types/png file-types/jpg file-types/tiff file-types/bmp file-types/gif file-types/webp file-types/jp2 file-types/svg file-types/heic
     file-types/html file-types/mhtml file-types/xml file-types/rss file-types/css file-types/js file-types/json file-types/yaml file-types/toml file-types/py file-types/java file-types/ts file-types/tsx file-types/jsx file-types/cs file-types/go file-types/rs file-types/php file-types/rb file-types/sh file-types/ps1 file-types/ipynb file-types/ini file-types/sql file-types/rst file-types/log file-types/ndjson file-types/parquet
-    file-types/docx file-types/doc file-types/xlsx file-types/xls file-types/pptx file-types/ppt file-types/dot file-types/dotx file-types/xlsm file-types/xlsb file-types/pptm file-types/pps file-types/ppsx
+    file-types/docx file-types/doc file-types/xlsx file-types/xls file-types/pptx file-types/ppt file-types/odt file-types/ott file-types/ods file-types/ots file-types/odp file-types/otp file-types/dot file-types/dotx file-types/xlsm file-types/xlsb file-types/pptm file-types/pps file-types/ppsx
     file-types/rtf file-types/eml
     ocr/engines/paddle ocr/modes/quick ocr/modes/moderate ocr/modes/deep
     search/engines/like search/engines/exact search/engines/lexical search/engines/full-text

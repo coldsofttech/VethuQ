@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (open office)
+- `.odt`, `.ott`, `.ods`, `.ots`, `.odp` and `.otp` files are read by licensed add-ons of their own (`vethuq-addon-odt`, `-ott`, `-ods`, `-ots`, `-odp`, `-otp`), installed together by the new `vethuq-bundle-open-office` (`pip install vethuq[open-office]`; one open office pack licence unlocks all six) and included in the worker image. The text comes from the package's `content.xml` (a sheet is its name then its rows as the spreadsheet shows them; a slide's text includes its speaker notes); encrypted files are reported as password-protected. Each keeps `line_count` and `image_count` in its own table (`odt_pages`, ...).
+
 ### Added (office variants)
 - `.dot`, `.dotx`, `.xlsm`, `.xlsb`, `.pptm`, `.pps` and `.ppsx` files are read by licensed add-ons of their own (`vethuq-addon-dot`, `-dotx`, `-xlsm`, `-xlsb`, `-pptm`, `-pps`, `-ppsx`), in the office pack and the worker image. Each reads like the document it is a variant of (macros are never read or run); `.xlsb` is read with the new `pyxlsb` dependency. Each keeps `line_count` and `image_count` in its own table (`dot_pages`, ...). An office pack licence issued before this lacks the new entitlements.
 
