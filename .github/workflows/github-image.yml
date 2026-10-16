@@ -105,8 +105,8 @@ jobs:
         working-directory: work
         run: |
           python -m pip install build setuptools wheel "Cython>=3.0"
-          mkdir -p context/wheels
-          cp VethuQ/github/image/Dockerfile context/Dockerfile
+          mkdir -p context/wheels context/lists
+          cp VethuQ/github/image/Dockerfile VethuQ/github/image/slim.py context/
           for package in VethuQ/packages/addon-api VethuQ/packages/core VethuQ/packages/worker \
                          VethuQ-entitlements/packages/entitlements; do
             python -m build --wheel --outdir context/wheels "$package"
@@ -119,37 +119,49 @@ jobs:
           if ls context/wheels | grep -qi admin; then echo "admin wheel present"; exit 1; fi
           ls -l context/wheels
 
+      # The variants are defined once, in the worker package (vethuq_worker/variants.py). The file
+      # uses only the standard library, so it is run as it is.
+      - name: Write the add-on lists of the variants
+        working-directory: work
+        run: |
+          variants="VethuQ/packages/worker/src/vethuq_worker/variants.py"
+          python "$variants" --list slim > context/lists/base.txt
+          for variant in $(python "$variants" --names); do
+            python "$variants" --extra "$variant" > "context/lists/$variant.txt"
+          done
+          # Every add-on the variants name has a wheel in the context.
+          python "$variants" --all-addons | while read -r addon; do
+            ls context/wheels | grep -qi "^${addon//-/_}-" || { echo "no wheel for $addon"; exit 1; }
+          done
+          wc -l context/lists/*.txt
+
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build the image
-        uses: docker/build-push-action@v6
-        with:
-          context: work/context
-          platforms: linux/amd64
-          load: true
-          tags: ${{ env.IMAGE }}:candidate
-
-      - name: Smoke test (no network, the repository's synthetic job)
-        working-directory: work/VethuQ
+      # One builder builds every variant, so the layers of the shared base are built once.
+      - name: Build and smoke-test every variant
+        id: build
+        working-directory: work
+        env:
+          IMAGE: ${{ env.IMAGE }}
         run: |
-          mkdir -p "$RUNNER_TEMP/out"
-          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
-            --user "$(id -u):$(id -g)" \
-            -e VETHUQ_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 \
-            -v "$PWD/github/protocol/v1/fixtures/payload:/payload:ro" \
-            -v "$RUNNER_TEMP/out:/out" \
-            ${{ env.IMAGE }}:candidate \
-            run --job-id fixture-job-0001 --payload /payload --out /out
-          test -s "$RUNNER_TEMP/out/result.bin"
-          docker run --rm --network none --entrypoint python \
-            -e VETHUQ_MASTER_KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 \
-            -v "$RUNNER_TEMP/out:/out:ro" ${{ env.IMAGE }}:candidate -c "
-          import os
-          from vethuq_worker import ResultReader
-          r = ResultReader(os.environ['VETHUQ_MASTER_KEY']).read('fixture-job-0001', open('/out/result.bin','rb').read())
-          assert r.status == 'done' and len(r.pages) == 2, r.status
-          print('smoke test ok')
-          "
+          variants="VethuQ/packages/worker/src/vethuq_worker/variants.py"
+          {
+            echo "### Image variants"
+            echo
+            echo "| Variant | Uncompressed size | Layers |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for variant in $(python "$variants" --names); do
+            echo "::group::$variant"
+            docker buildx build context --load --build-arg "VARIANT=$variant" \
+              --tag "$IMAGE:candidate-$variant"
+            VethuQ/github/image/smoke.sh "$IMAGE:candidate-$variant" \
+              "$PWD/VethuQ/github/protocol/v1/fixtures" "$RUNNER_TEMP/smoke-$variant"
+            size="$(docker image inspect -f '{{.Size}}' "$IMAGE:candidate-$variant")"
+            layers="$(docker image inspect -f '{{len .RootFS.Layers}}' "$IMAGE:candidate-$variant")"
+            echo "| $variant | $((size / 1024 / 1024)) MB | $layers |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
+          done
 
       - name: Publish
         id: publish
@@ -160,33 +172,57 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The layers were just built, so this is the build cache again, pushed with zstd compression.
+      # `full` is also the plain version tag, the one the first compatibility rows name.
       - name: Push
         id: push
         if: steps.publish.outcome == 'success'
-        uses: docker/build-push-action@v6
-        with:
-          context: work/context
-          platforms: linux/amd64
-          push: true
-          tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+        working-directory: work
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          variants="VethuQ/packages/worker/src/vethuq_worker/variants.py"
+          : > "$RUNNER_TEMP/rows.jsonl"
+          for variant in $(python "$variants" --names); do
+            tags=(--tag "$IMAGE:$VERSION-$variant")
+            [ "$variant" = full ] && tags+=(--tag "$IMAGE:$VERSION")
+            docker buildx build context --build-arg "VARIANT=$variant" "${tags[@]}" \
+              --metadata-file "$RUNNER_TEMP/meta-$variant.json" \
+              --output "type=image,push=true,compression=zstd,compression-level=19,force-compression=true,oci-mediatypes=true"
+            digest="$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['containerimage.digest'])" "$RUNNER_TEMP/meta-$variant.json")"
+            echo "{\"variant\": \"$variant\", \"image\": \"$IMAGE:$VERSION-$variant@$digest\"}" \
+              >> "$RUNNER_TEMP/rows.jsonl"
+          done
 
       - name: Compatibility row
         if: steps.push.outcome == 'success'
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           {
             echo "### Add this row to the compatibility table (vethuq_addon_github/_compat.py)"
             echo
+            echo "One row per release: the worker image of every variant, by name. \`full\` is also the"
+            echo "row's own \`image\`."
+            echo
             echo '```json'
-            echo "{"
-            echo "  \"workflow_ref\": \"github-tier-v$VERSION\","
-            echo "  \"image\": \"$IMAGE:$VERSION@$DIGEST\","
-            echo "  \"protocol\": 1,"
-            echo "  \"min_client\": \"$VERSION\","
-            echo "  \"status\": \"current\""
-            echo "}"
+            python - <<'PY'
+          import json, os
+          version = os.environ["VERSION"]
+          images = {}
+          for line in open(os.path.join(os.environ["RUNNER_TEMP"], "rows.jsonl")):
+              row = json.loads(line)
+              images[row["variant"]] = row["image"]
+          print(json.dumps({
+              "workflow_ref": f"github-tier-v{version}",
+              "image": images["full"],
+              "variants": images,
+              "protocol": 1,
+              "min_client": version,
+              "status": "current",
+          }, indent=2))
+          PY
             echo '```'
             echo
             echo "Make the package public in the GitHub package settings the first time."

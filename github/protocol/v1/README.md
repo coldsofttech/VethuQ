@@ -54,5 +54,6 @@ spent reading, rounded up to a tenth of a second.
     VETHUQ_MASTER_KEY=... vethuq-worker run --job-id ID --payload DIR --out DIR
 
 reads `DIR/payload.bin` and writes `OUT/result.bin`. Exit code 0 when at least one page was read,
-1 when the job failed, 2 for a usage problem (no or bad key). `VETHUQ_MODELS` points at baked-in OCR
-models. The worker needs no network; run it without one where the runner allows.
+1 when the job failed, 2 for a usage problem (no or bad key). `VETHUQ_MODELS` points at the OCR models, which the
+runner fetched once and cached (`fetch-models`); the worker verifies them against the image's
+`models.lock.json` and fails with `models_missing` or `models_unverified` otherwise. The worker needs no network; run it without one where the runner allows.

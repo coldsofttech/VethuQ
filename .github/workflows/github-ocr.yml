@@ -7,6 +7,16 @@
 # It reads the encrypted payload from DIR, decrypts it with VETHUQ_MASTER_KEY, enforces the
 # licence, add-ons, settings and caps in the manifest, and writes the encrypted result to --out.
 # It makes no outbound calls, and nothing it logs names a file or holds OCR text.
+#
+# The image comes in variants (packages/worker/src/vethuq_worker/variants.py) and the caller says
+# which one a job needs. The caller's `images` map (variant -> image, every one from the
+# compatibility table) is checked here, in this pinned workflow, so the master key only ever meets an
+# image the table names.
+#
+# The OCR models are not in the image. The first job on a runner repository downloads them (the one
+# step with a network, a container that has neither the key nor the payload) into a cache; the
+# worker checks every file against the image's lock before it reads a page, and the job itself runs
+# with no network.
 name: github-ocr
 
 on:
@@ -24,6 +34,16 @@ on:
         description: "Worker image, from the compatibility table (tag or digest)"
         required: true
         type: string
+      images:
+        description: "JSON object: worker image by variant, from the compatibility table"
+        required: false
+        default: "{}"
+        type: string
+      variant:
+        description: "Which variant of the image this job needs (empty: use `image`)"
+        required: false
+        default: ""
+        type: string
     secrets:
       master_key:
         required: true
@@ -37,15 +57,24 @@ jobs:
     timeout-minutes: 350
     steps:
       - name: Check the inputs
+        id: check
         env:
           JOB_ID: ${{ inputs.job_id }}
           ASSET: ${{ inputs.asset }}
           IMAGE: ${{ inputs.image }}
+          IMAGES: ${{ inputs.images }}
+          VARIANT: ${{ inputs.variant }}
         run: |
           [[ "$JOB_ID" =~ ^[A-Za-z0-9_-]{8,64}$ ]] || { echo "bad job id"; exit 1; }
           [[ "$ASSET" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || { echo "bad asset"; exit 1; }
+          if [ -n "$VARIANT" ]; then
+            [[ "$VARIANT" =~ ^[a-z][a-z-]{0,23}$ ]] || { echo "bad variant"; exit 1; }
+            IMAGE="$(jq -r --arg v "$VARIANT" '.[$v] // empty' <<< "$IMAGES")"
+            [ -n "$IMAGE" ] || { echo "variant not offered"; exit 1; }
+          fi
           [[ "$IMAGE" =~ ^ghcr\.io/coldsofttech/vethuq-worker(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]{64})?$ ]] \
             || { echo "image not allowed"; exit 1; }
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Download the encrypted payload
         env:
@@ -53,18 +82,58 @@ jobs:
           JOB_ID: ${{ inputs.job_id }}
           ASSET: ${{ inputs.asset }}
         run: |
-          mkdir -p "$RUNNER_TEMP/payload" "$RUNNER_TEMP/out"
+          mkdir -p "$RUNNER_TEMP/payload" "$RUNNER_TEMP/out" "$RUNNER_TEMP/models"
           gh release download "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
             --pattern "$ASSET" --dir "$RUNNER_TEMP/payload"
 
       - name: Pull the worker image
         env:
-          IMAGE: ${{ inputs.image }}
+          IMAGE: ${{ steps.check.outputs.image }}
         run: docker pull "$IMAGE"
+
+      # The models cache is keyed by the image's own lock, so another release with other models
+      # starts a new cache and an old one is never read.
+      - name: Work out the models cache key
+        id: lock
+        env:
+          IMAGE: ${{ steps.check.outputs.image }}
+        run: |
+          sum="$(docker run --rm --network none --entrypoint cat "$IMAGE" /opt/vethuq/models.lock.json \
+            | sha256sum | cut -c1-32)"
+          echo "key=vethuq-models-$sum" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the OCR models
+        id: models
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.lock.outputs.key }}
+
+      # The first job on this repository (or after a release with other models). This container has
+      # a network and neither the master key nor the payload; the models it downloads are checked
+      # against the image's lock here and again before every job.
+      - name: Download the OCR models (first run only)
+        if: steps.models.outputs.cache-hit != 'true'
+        env:
+          IMAGE: ${{ steps.check.outputs.image }}
+        run: |
+          docker run --rm --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp \
+            -v "$RUNNER_TEMP/models:/opt/vethuq/models" \
+            "$IMAGE" fetch-models
+
+      # Saved now, not at the end, so models that took a while to download are kept even if the job
+      # that needed them fails.
+      - name: Keep the OCR models for the next job
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/models
+          key: ${{ steps.lock.outputs.key }}
 
       - name: Run the worker
         env:
-          IMAGE: ${{ inputs.image }}
+          IMAGE: ${{ steps.check.outputs.image }}
           JOB_ID: ${{ inputs.job_id }}
           VETHUQ_MASTER_KEY: ${{ secrets.master_key }}
         run: |
@@ -72,6 +141,7 @@ jobs:
             --user "$(id -u):$(id -g)" --tmpfs /tmp \
             -e VETHUQ_MASTER_KEY \
             -v "$RUNNER_TEMP/payload:/payload:ro" -v "$RUNNER_TEMP/out:/out" \
+            -v "$RUNNER_TEMP/models:/opt/vethuq/models:ro" \
             "$IMAGE" run --job-id "$JOB_ID" --payload /payload --out /out
 
       - name: Upload the encrypted result

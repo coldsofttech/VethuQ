@@ -1,9 +1,22 @@
 # Worker image
 
-One public `linux/amd64` image, `ghcr.io/coldsofttech/vethuq-worker`, built by
-`.github/workflows/github-image.yml` from the `Dockerfile` here. It holds the worker
-(`packages/worker`), VethuQ, the add-ons' wheels (compiled; gated at runtime by the licence) and
-the OCR models (`vethuq-worker bake-models`, run during the build so jobs need no network).
+One public `linux/amd64` image repository, `ghcr.io/coldsofttech/vethuq-worker`, in variants, built
+by `.github/workflows/github-image.yml` from the `Dockerfile` here. Each tag is `X.Y.Z-<variant>`
+(`slim`, `office`, `web`, `developer`, `open-office`, `deep-scan`, `email`, `image`, `full`;
+`X.Y.Z` alone is `full`). The variants are defined once, in
+`packages/worker/src/vethuq_worker/variants.py`; the build, the workflow, the tests and the GitHub
+tier all read that table. Every variant has every language. The tier asks for the lightest variant
+that has the OCR phases a job needs (`slim`: quick; `deep-scan`: moderate and deep; `full` when
+nothing lighter fits). The worker only reads rendered pages, so the file-type variants are for people
+who run the image themselves.
+
+No OCR models are in the image. The image carries `models.lock.json` (path, size and SHA-256 of every
+model file); the runner fetches the models once (`vethuq-worker fetch-models`, the only step with a
+network and no key or payload), caches them keyed by the lock's hash, and mounts them read-only at
+`VETHUQ_MODELS`. The worker checks the models against the lock before each job (`models_missing`,
+`models_unverified`). Layers are small: wheels and lists are bind-mounted rather than copied, the
+virtual environment is stripped of tests, docs, caches and type stubs (`slim.py`), and layers are
+zstd-compressed on push.
 
     docker run --rm --network none --user "$(id -u):$(id -g)" -e VETHUQ_MASTER_KEY \
       -v payload:/payload:ro -v out:/out ghcr.io/coldsofttech/vethuq-worker:X.Y.Z \

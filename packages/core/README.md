@@ -1236,7 +1236,7 @@ for entry in client.catalog.addons(language="es"):  # the catalog merged with wh
     print(entry.label, entry.state.value, entry.licence, entry.request_url)
 
 client.catalog.bundles()  # each bundle, with which of its add-ons are installed
-client.addons.catalog()   # the same list, from the add-ons object
+client.addons.catalog()  # the same list, from the add-ons object
 ```
 
 - A **`CatalogEntry`** has `id`, `label`, `summary`, `description`, `kind`, `licence` (`free` or `licensed`), `bundles`, `status` (`available`, `coming_soon`, `deprecated`), `state` (an `AddonState`: `NOT_INSTALLED`, `ENABLED`, `DISABLED`, `INCOMPATIBLE`, `FAILED`), `installed_version`, `min_client` / `requires_newer_client`, `docs_url` and `request_url`, the address where the add-on is asked for (the entry's own, else the catalog's). An installed add-on the catalog does not list is still returned, with `listed=False`.

@@ -5,6 +5,13 @@ tags named `vethuq-worker-vX.Y.Z` (through hatch-vcs), not from this file.
 
 ## [Unreleased]
 
+### Changed (image variants, models fetched on first run)
+- The worker image comes in variants (`slim`, `office`, `web`, `developer`, `open-office`, `deep-scan`,
+  `email`, `image`, `full`), defined in `vethuq_worker.variants` (`choose(phases, addons)` picks the
+  lightest). Models are no longer baked in: the image carries `models.lock.json`, `fetch-models`
+  downloads them once, and every job verifies them against the lock (`models_missing`,
+  `models_unverified`). Layers drop tests, docs and caches and are zstd-compressed.
+
 ### Added (deeper OCR phases)
 - Job protocol v1, additive: a manifest page may carry an `angle` (0 to 359, counter-clockwise).
   Several pages may name the same image `file` with different angles, so `JobBuilder` puts an image

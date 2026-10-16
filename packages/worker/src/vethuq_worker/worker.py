@@ -25,6 +25,7 @@ from vethuq_worker.container import Container
 from vethuq_worker.crypto import JobCrypto
 from vethuq_worker.errors import JobError
 from vethuq_worker.images import Images
+from vethuq_worker.models import ModelsCheck
 from vethuq_worker.protocol import JobResult, Manifest, PageResult, Protocol
 
 logger = logging.getLogger("vethuq.worker")
@@ -83,6 +84,10 @@ class CoreEngine(Engine):
     def open(cls, manifest: Manifest) -> Iterator[CoreEngine]:
         """An engine in a throwaway folder, with the models in `VETHUQ_MODELS` (if set)."""
         models = os.environ.get("VETHUQ_MODELS")
+        lock = os.environ.get(ModelsCheck.LOCK_VARIABLE)
+        # The models are not in the image: they were downloaded and cached. Hold them to the
+        # image's lock before reading anything (a no-op outside an image, where there is no lock).
+        ModelsCheck.before_a_job(Path(models) if models else None, Path(lock) if lock else None)
         with tempfile.TemporaryDirectory(prefix="vethuq-job-") as folder:
             engine = cls(manifest, Path(folder), Path(models) if models else None)
             try:
