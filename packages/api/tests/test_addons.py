@@ -365,3 +365,31 @@ class TestLicences:
             headers={"Origin": "https://evil.example"},
         )
         assert refused.status_code == 403
+
+
+class TestBundleLicenceRoutes:
+    @pytest.fixture
+    def http(self, web_dist, tmp_path):
+        app = create_app(
+            bootstrap_token="t", web_dist=web_dist, core=VethuQCore(tmp_path / "vethuq.db")
+        )
+        allow_host(app, "127.0.0.1:5000")
+        client = app.test_client()
+        client.get("/?t=t", base_url=ORIGIN)
+        return client
+
+    def test_bundle_states_are_listed(self, http, monkeypatch):
+        from vethuq.addons.manage import Addons
+
+        monkeypatch.setattr(Addons, "licence_bundles", lambda self: {"csv": ("office",)})
+        monkeypatch.setattr(Addons, "bundles", lambda self, language=None: [])
+        data = http.get("/api/licences/bundles", base_url=ORIGIN).get_json()
+        assert data == [
+            {
+                "bundle_id": "office",
+                "state": "not_licensed",
+                "licence_id": None,
+                "valid_until": None,
+                "licensed_addons": ["csv"],
+            }
+        ]

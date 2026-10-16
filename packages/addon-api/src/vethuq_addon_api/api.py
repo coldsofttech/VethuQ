@@ -6,6 +6,7 @@ import json
 from abc import ABC
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
@@ -206,6 +207,14 @@ class Host(Protocol):
     def addon_policy_enabled(self) -> bool:
         """False if the signed policy has switched this add-on off remotely."""
 
+    def trusted_now(self) -> datetime:
+        """The time to check a licence's validity against: the local clock corrected by the
+        offset seen at the last policy fetch, and never earlier than the cached policy was issued,
+        so setting the clock back does not revive an expired licence (pass it as
+        `Licences.verify(now=...)`). The local clock when no policy was ever fetched. No network.
+        An add-on written for an older VethuQ may find this missing: use
+        `getattr(host, "trusted_now", None)`."""
+
     def release_database(self) -> None:
         """Close VethuQ's connections to the database, e.g. before replacing the file."""
 
@@ -253,6 +262,13 @@ class Addon(ABC):  # noqa: B024 - hooks are optional, so there is nothing abstra
         `vethuq settings addons <group name> ...`. Describe them with `CliGroup`; no CLI library is
         needed."""
         return None
+
+    def licence_bundles(self) -> tuple[str, ...]:
+        """The ids of the bundles whose licence also unlocks this add-on (`()` for an add-on that
+        needs no licence, or is in no bundle). A licensed add-on checks its own licence and accepts
+        one that lists the add-on or any of these; VethuQ asks so that one bundle licence can be
+        installed on every add-on in the bundle."""
+        return ()
 
     def worker_scheduler(self) -> WorkerScheduler | None:
         """A scheduler that sets how many files are read at once, or `None` (the default).

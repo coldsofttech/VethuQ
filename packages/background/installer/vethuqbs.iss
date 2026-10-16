@@ -68,6 +68,14 @@ Compression=lzma2/ultra64
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Dirs]
+; The device folder: licences and the credit ledger, shared by every account on this computer and by
+; the background service (see vethuq._paths.device). An all-users install creates it here, open to
+; the Users group; a per-user install can't, so VethuQ makes it on first use if the account may, and
+; otherwise keeps those in the account's own data folder. Never removed by an uninstall, so
+; reinstalling does not hand out a fresh allowance.
+Name: "{commonappdata}\VethuQ"; Permissions: users-modify; Flags: uninsneveruninstall; Check: IsAdminInstallMode
+
 [Files]
 Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; The `vethuq background` commands: the package and its dist-info (its entry point), staged by release.py.

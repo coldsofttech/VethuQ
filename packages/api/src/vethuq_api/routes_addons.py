@@ -43,6 +43,10 @@ def register(api: Blueprint, core: Core) -> None:
     def licences_list() -> Response:
         return jsonify(core.addons().licences())
 
+    @api.get("/licences/bundles")
+    def licences_bundles() -> Response:
+        return jsonify(core.addons().licence_bundles())
+
     @api.post("/licences/install")
     def licences_install() -> Response:
         return jsonify(core.addons().install_licence(_body()))

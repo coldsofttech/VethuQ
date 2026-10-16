@@ -25,8 +25,13 @@ def client(tmp_path):
         yield client
 
 
-def fake_licence(*addons, status="ok", licence_id="LIC-1", kind="addon", detail=""):
+def fake_bundle(bundle_id, active=True):
+    return SimpleNamespace(bundle_id=bundle_id, expires=None, is_active=lambda now: active)
+
+
+def fake_licence(*addons, status="ok", licence_id="LIC-1", kind="addon", detail="", bundles=()):
     return SimpleNamespace(
+        bundles=[fake_bundle(b) if isinstance(b, str) else b for b in bundles],
         ok=status == "ok",
         status=SimpleNamespace(value=status),
         detail=detail,
@@ -343,3 +348,98 @@ def test_a_request_code_made_here_is_read_by_the_real_entitlements_package(clien
     assert (
         info.device_hash == client.licences.device_hash() and info.app_version == vethuq.APP_VERSION
     )
+
+
+class TestBundleLicences:
+    """One key for a bundle: stored on every add-on that says it is in the bundle."""
+
+    @pytest.fixture(autouse=True)
+    def declared(self, monkeypatch):
+        from vethuq.addons.manage import Addons
+
+        monkeypatch.setattr(
+            Addons,
+            "licence_bundles",
+            lambda self: {"csv": ("office",), "txt": ("office", "email"), "pdf": ("web",)},
+        )
+
+    def test_a_bundle_licence_is_stored_on_the_addons_in_the_bundle_only(
+        self, client, entitlements
+    ):
+        entitlements.licence = fake_licence(bundles=["office"])
+        results = {r.addon_id: (r.status, r.detail) for r in client.licences.install("VQLIC1.b")}
+        assert results == {
+            "csv": ("stored", "through the office bundle"),
+            "txt": ("stored", "through the office bundle"),
+        }
+        assert stored(client, "csv") == stored(client, "txt") == "VQLIC1.b"
+        assert stored(client, "pdf") is None
+
+    def test_an_addon_in_two_bundles_gets_the_licence_of_either(self, client, entitlements):
+        entitlements.licence = fake_licence(bundles=["email"])
+        assert {r.addon_id for r in client.licences.install("VQLIC1.e")} == {"txt"}
+
+    def test_listed_addons_and_bundle_members_are_both_reached(self, client, entitlements):
+        entitlements.licence = fake_licence("pdf", bundles=["email"])
+        results = {r.addon_id: r.detail for r in client.licences.install("VQLIC1.x")}
+        assert results == {"pdf": "", "txt": "through the email bundle"}
+
+    def test_a_bundle_the_installed_addons_do_not_know_is_reported(self, client, entitlements):
+        entitlements.licence = fake_licence("csv", bundles=["mystery"])
+        results = {r.addon_id: r.status for r in client.licences.install("VQLIC1.m")}
+        assert results == {"csv": "stored", "mystery": "unknown_bundle"}
+
+    def test_an_ended_bundle_is_reported_and_stores_nothing_through_it(self, client, entitlements):
+        entitlements.licence = fake_licence("pdf", bundles=[fake_bundle("office", active=False)])
+        results = {r.addon_id: r.status for r in client.licences.install("VQLIC1.old")}
+        assert results == {"office": "expired", "pdf": "stored"}
+        assert stored(client, "csv") is None
+
+    def test_a_licence_whose_only_bundle_cannot_be_used_is_refused(self, client, entitlements):
+        entitlements.licence = fake_licence(bundles=["mystery"])
+        with pytest.raises(errors.InvalidLicenceError, match="No add-on can be unlocked") as stop:
+            client.licences.install("VQLIC1.m")
+        assert "mystery" in str(stop.value)
+        assert stored(client, "csv") is None
+
+    def test_show_lists_the_bundle_and_the_addons_it_covers(self, client, entitlements):
+        entitlements.licence = fake_licence(bundles=["office"])
+        client.licences.install("VQLIC1.b")
+        (shown,) = client.licences.show()
+        assert shown.bundles == ("office",) and shown.lists == ("csv", "txt")
+        assert shown.to_dict()["bundles"] == ["office"]
+
+    def test_the_bundle_states(self, client, entitlements, monkeypatch):
+        states = {b.bundle_id: b for b in client.licences.bundles()}
+        assert set(states) == {"office", "email", "web"}
+        assert {b.state for b in states.values()} == {"not_licensed"}
+        assert states["office"].licensed_addons == ("csv", "txt")
+        entitlements.licence = fake_licence(bundles=["office"])
+        client.licences.install("VQLIC1.b")
+        states = {b.bundle_id: b for b in client.licences.bundles()}
+        assert states["office"].state == "licensed" and states["office"].licence_id == "LIC-1"
+        assert states["office"].valid_until == "2027-01-01"
+        # the email bundle here is just `txt`, which the office licence also covers; web is not
+        assert states["email"].state == "licensed" and states["web"].state == "not_licensed"
+        entitlements.licence = fake_licence(bundles=["office"], status="expired", detail="expired")
+        assert {b.bundle_id: b.state for b in client.licences.bundles()}["office"] == "expired"
+
+    def test_a_bundle_with_nothing_licensed_in_it_is_free(self, client, entitlements, monkeypatch):
+        from vethuq.addons.manage import Addons
+
+        monkeypatch.setattr(Addons, "licence_bundles", lambda self: {})
+        monkeypatch.setattr(
+            Addons,
+            "bundles",
+            lambda self, language=None: [
+                SimpleNamespace(id="images", addons=("png", "jpg")),
+            ],
+        )
+        assert [(b.bundle_id, b.state) for b in client.licences.bundles()] == [("images", "free")]
+
+    def test_the_addons_facade_reports_what_running_addons_declare(self, client):
+        assert client.addons.licence_bundles()["txt"] == ("office", "email")
+
+    def test_bundle_states_serialise(self, client, entitlements):
+        data = client.licences.bundles()[0].to_dict()
+        assert set(data) == {"bundle_id", "state", "licence_id", "valid_until", "licensed_addons"}

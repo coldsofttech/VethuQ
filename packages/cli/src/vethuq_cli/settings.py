@@ -196,6 +196,14 @@ def _stopped(client, group: typer.Typer) -> None:
             taken.add(info.id)
 
 
+_DEVICE_SCOPES = {
+    "device": "every account on this computer",
+    "custom": "every account that uses this folder (VETHUQ_DEVICE_HOME)",
+    "user": "this account only: the shared folder can't be used",
+    "database": "this database only",
+}
+
+
 def location_app() -> typer.Typer:
     """`settings location`: where the data folder and the backups live."""
     from vethuq import Paths
@@ -221,6 +229,13 @@ def location_app() -> typer.Typer:
                 "default": str(Paths.default_data_root()),
             },
             title="Data location",
+        )
+        facts(
+            {
+                "path": str(Paths.device_dir()),
+                "shared by": _DEVICE_SCOPES.get(Paths.device_scope(), Paths.device_scope()),
+            },
+            title="Licences and credits (device folder)",
         )
 
     @group.command("set")

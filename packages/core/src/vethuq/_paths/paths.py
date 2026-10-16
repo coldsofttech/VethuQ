@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -54,6 +55,23 @@ class _Paths:
     def platform_data_root() -> Path:
         """The platform's default per-user data directory, ignoring any override."""
         return Path(user_data_dir(_Paths.APP_NAME, appauthor=False))
+
+    @staticmethod
+    def platform_device_root() -> Path:
+        """The platform's folder shared by every account on this computer (see `_DeviceFolder`):
+        `%PROGRAMDATA%\\VethuQ`, `/Users/Shared/VethuQ` or `/var/lib/vethuq`."""
+        if os.name == "nt":
+            return Path(os.environ.get("PROGRAMDATA") or r"C:\ProgramData") / _Paths.APP_NAME
+        if sys.platform == "darwin":
+            return Path("/Users/Shared") / _Paths.APP_NAME
+        return Path("/var/lib") / _Paths.APP_NAME.lower()
+
+    @staticmethod
+    def is_standard_root(root: Path) -> bool:
+        """Whether `root` is an account's own data folder: the one this process resolves, or one
+        named like the app (the default of another account, which the background service is
+        pointed at with `--db`)."""
+        return root == _Paths.resolve_data_root() or root.name == _Paths.APP_NAME
 
     @staticmethod
     def location_file() -> Path:

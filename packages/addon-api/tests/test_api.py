@@ -122,3 +122,34 @@ class TestLanguages:
     def test_is_frozen(self):
         with pytest.raises(AttributeError):
             LanguageSpec("en", "English").id = "x"
+
+
+def test_the_fake_host_has_a_trusted_clock_tests_can_set():
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+
+    from vethuq_addon_api import Host
+    from vethuq_addon_api.testing import FakeHost
+
+    host = FakeHost(Path("x.db"))
+    assert isinstance(host, Host)
+    assert abs(host.trusted_now() - datetime.now(UTC)) < timedelta(seconds=30)
+    host.clock = lambda: datetime(2020, 1, 1, tzinfo=UTC)
+    assert host.trusted_now().year == 2020
+
+
+def test_an_addon_needs_no_bundles_unless_it_says_so():
+    from pathlib import Path
+
+    from vethuq_addon_api import Addon, Manifest
+    from vethuq_addon_api.testing import FakeHost
+
+    class Plain(Addon):
+        manifest = Manifest(id="plain", name="plain", version="1")
+
+    class Bundled(Plain):
+        def licence_bundles(self):
+            return ("office",)
+
+    assert Plain(FakeHost(Path("x.db"))).licence_bundles() == ()
+    assert Bundled(FakeHost(Path("x.db"))).licence_bundles() == ("office",)

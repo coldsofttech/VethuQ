@@ -5,6 +5,10 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
+### Added (bundle licences, a trusted clock)
+- `Addon.licence_bundles()` (default `()`): the bundle ids whose licence also unlocks the add-on, so one bundle licence can be installed on every add-on in the bundle.
+- `Host.trusted_now()`: the time to check a licence against (the policy-corrected clock; the local clock when no policy was fetched). `FakeHost.clock` sets it in tests. An add-on written for an older VethuQ finds it missing and uses `getattr(host, "trusted_now", None)`.
+
 ### Documented
 - The README describes how an add-on contributes commands and settings (`Addon.cli()`), how locked and not-running add-ons appear, and where add-on settings are kept.
 

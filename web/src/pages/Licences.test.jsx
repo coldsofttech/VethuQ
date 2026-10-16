@@ -14,6 +14,7 @@ const LICENCE = {
   valid_until: '2027-01-01',
   lists: ['doc', 'docx'],
   installed_on: ['doc', 'docx'],
+  bundles: ['office'],
 };
 const BASE = { 'GET /api/addons': ADDONS, 'GET /api/addons/job': JOB };
 const bodyOf = (fetchMock, path) =>
@@ -146,5 +147,58 @@ describe('Licences tab', () => {
     renderWithProviders(<App />, { route: '/addons/licences' });
     await userEvent.click(await screen.findByRole('button', { name: 'Prepare request' }));
     expect(await screen.findByText(/isn't an add-on or bundle id/)).toBeInTheDocument();
+  });
+
+  it('shows each bundle and whether a licence covers it', async () => {
+    mockApi({
+      ...BASE,
+      'GET /api/licences': [LICENCE],
+      'GET /api/licences/bundles': [
+        {
+          bundle_id: 'office',
+          state: 'licensed',
+          licence_id: 'LIC-1',
+          valid_until: '2027-01-01',
+          licensed_addons: ['doc', 'docx'],
+        },
+        {
+          bundle_id: 'email',
+          state: 'not_licensed',
+          licence_id: null,
+          valid_until: null,
+          licensed_addons: ['eml', 'msg'],
+        },
+        {
+          bundle_id: 'images',
+          state: 'free',
+          licence_id: null,
+          valid_until: null,
+          licensed_addons: [],
+        },
+      ],
+    });
+    renderWithProviders(<App />, { route: '/addons/licences' });
+    const table = await screen.findByRole('table', { name: 'Bundle licences' });
+    expect(within(table).getByText('Licensed')).toBeInTheDocument();
+    expect(within(table).getByText('Not licensed')).toBeInTheDocument();
+    expect(within(table).getByText('Free')).toBeInTheDocument();
+    expect(within(table).getByText('eml, msg')).toBeInTheDocument();
+    const installed = await screen.findByRole('table', { name: 'Installed licences' });
+    expect(within(installed).getByText('office')).toBeInTheDocument();
+  });
+
+  it('says why a bundle in the licence could not be used', async () => {
+    mockApi({
+      ...BASE,
+      'GET /api/licences': [],
+      'POST /api/licences/install': {
+        installed: 0,
+        results: [{ addon_id: 'mystery', status: 'unknown_bundle', detail: '' }],
+      },
+    });
+    renderWithProviders(<App />, { route: '/addons/licences' });
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Licence key' }), 'VQLIC1.m');
+    await userEvent.click(screen.getByRole('button', { name: 'Install' }));
+    expect(await screen.findByText('This VethuQ does not know the bundle')).toBeInTheDocument();
   });
 });

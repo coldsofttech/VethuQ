@@ -1155,9 +1155,10 @@ class _CreditGrant(_Base):
     """
 
     __tablename__ = "credit_grants"
+    # In the device database (attached as `device`), shared by every account on the computer.
     __table_args__ = (
         UniqueConstraint("wallet", "ref", name="uq_credit_grants_wallet_ref"),
-        {"sqlite_autoincrement": True},
+        {"sqlite_autoincrement": True, "schema": "device"},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -1176,7 +1177,7 @@ class _CreditLedger(_Base):
     """One movement of credits. A charge that spans several grants has a row for each."""
 
     __tablename__ = "credit_ledger"
-    __table_args__ = ({"sqlite_autoincrement": True},)
+    __table_args__ = ({"sqlite_autoincrement": True, "schema": "device"},)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     at: Mapped[str] = mapped_column(Text, nullable=False, index=True)
@@ -1184,12 +1185,11 @@ class _CreditLedger(_Base):
     kind: Mapped[_LedgerKind] = mapped_column(_enum(_LedgerKind, "ck_credit_ledger_kind"))
     amount_milli: Mapped[int] = mapped_column(Integer, nullable=False)
     grant_id: Mapped[int | None] = mapped_column(
-        ForeignKey("credit_grants.id", ondelete="SET NULL"), nullable=True
+        ForeignKey("device.credit_grants.id", ondelete="SET NULL"), nullable=True
     )
-    # What the credits were for. Deleted with the source (the balance lives in the grants).
-    source_id: Mapped[int | None] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True
-    )
+    # What the credits were for. Deleted with the source (the balance lives in the grants), by
+    # `_Sources.purge`: no foreign key, because `sources` is in another database.
+    source_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     run_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -19,6 +19,7 @@ from vethuq._db.schema import _Schema
 from vethuq._errors import _CorruptDatabaseError
 from vethuq._logs import _DatabaseLog
 from vethuq._paths import _Paths
+from vethuq._paths.device import _DeviceFolder, _DeviceLocation
 
 
 class _DatabaseHooks(Protocol):
@@ -50,6 +51,7 @@ class _Database:
         self._sessions: sessionmaker[Session] | None = None
         self._open_error: _CorruptDatabaseError | None = None
         self._lock = threading.Lock()
+        self.device: _DeviceLocation | None = None  # set once the database is opened
 
     @staticmethod
     def _configure_connection(dbapi_connection: Any, _record: Any) -> None:
@@ -62,6 +64,51 @@ class _Database:
             cursor.execute(f"PRAGMA busy_timeout = {_Database.BUSY_TIMEOUT_MS}")
         finally:
             cursor.close()
+
+    @staticmethod
+    def _attach_device(file: Path) -> Callable[[Any, Any], None]:
+        """A connect hook that attaches the device database as schema `device`: the credit ledger
+        lives there, so every account on the computer shares it (see `_DeviceFolder`). It keeps a
+        rollback journal, not WAL, so accounts with different rights can all use it."""
+
+        def attach(dbapi_connection: Any, _record: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("ATTACH DATABASE ? AS device", (str(file),))
+                cursor.execute("PRAGMA device.journal_mode = DELETE")
+            finally:
+                cursor.close()
+
+        return attach
+
+    # Statements that take SQLite's write lock.
+    _WRITES = ("INSERT", "UPDATE", "DELETE", "REPLACE")
+
+    @staticmethod
+    def _lock_both_databases(engine: Engine) -> None:
+        """Take the write lock on the main and the device database, in that order, at the first
+        write of every transaction.
+
+        A transaction that writes to both takes their locks as its statements run. Two such
+        transactions that take them in opposite orders deadlock, and SQLite reports that at once
+        (`database is locked`) instead of waiting for the busy timeout. Locking both up front, in
+        one fixed order, makes them queue behind each other instead. A no-op `DELETE ... WHERE 0`
+        takes the lock without changing anything.
+        """
+
+        @event.listens_for(engine, "begin")
+        def begun(connection: Any) -> None:
+            connection.info["write_locked"] = False
+
+        @event.listens_for(engine, "before_cursor_execute")
+        def before(connection: Any, cursor: Any, statement: str, *_rest: Any) -> None:
+            if connection.info.get("write_locked", True):
+                return
+            if not statement.lstrip().upper().startswith(_Database._WRITES):
+                return
+            connection.info["write_locked"] = True  # first: the statements below are writes too
+            cursor.execute("DELETE FROM main.schema_version WHERE 0")
+            cursor.execute("DELETE FROM device.credit_grants WHERE 0")
 
     @staticmethod
     def _corruption_error(exc: BaseException, db_path: Path) -> _CorruptDatabaseError | None:
@@ -102,8 +149,12 @@ class _Database:
             if self._sessions is None:
                 _Paths.ensure_writable(self.db_path.parent)
                 _DatabaseLog.setup(self.db_path)  # before the schema, so its creation is logged
+                device = _DeviceFolder.resolve(self.db_path)
+                _DeviceFolder.touch(device)
                 engine = create_engine(f"sqlite:///{self.db_path}")
                 event.listen(engine, "connect", self._configure_connection)
+                event.listen(engine, "connect", self._attach_device(device.database))
+                self._lock_both_databases(engine)
                 sessions = sessionmaker(engine, expire_on_commit=False)
                 try:
                     _Schema.ensure(
@@ -127,6 +178,7 @@ class _Database:
                     raise
                 self._engine = engine
                 self._sessions = sessions
+                self.device = device
                 self._maintain(sessions)
             return self._sessions
 

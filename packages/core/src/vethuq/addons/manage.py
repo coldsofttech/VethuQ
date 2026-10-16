@@ -144,6 +144,10 @@ class Addons:
         command line (see `Addon.cli()`)."""
         return self._manager.cli_groups()
 
+    def licence_bundles(self) -> dict[str, tuple[str, ...]]:
+        """`{add-on id: bundle ids}`: which bundle licences also unlock each running add-on."""
+        return self._manager.licence_bundles()
+
     def install_licence(self, token: str, github_owner_id: int | None = None) -> list[Any]:
         """Store a licence token as the licence of every installed add-on it lists (see
         `client.licences.install`). Returns what happened for each add-on."""

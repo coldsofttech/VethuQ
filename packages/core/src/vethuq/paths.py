@@ -7,6 +7,9 @@
         logs/           log files
         policy/         the cached policy and its state
 
+    <device folder>/    shared by every account on the computer (see `device_dir`)
+        device.db       licences and the credit ledger
+
 The data root is the `VETHUQ_HOME` environment variable if set, else the location saved
 in the per-user `db.json`, else the platform default. The getters only report paths and
 create nothing; `relocate`, `reset_location` and the backups equivalents change where data lives.
@@ -17,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from vethuq._paths import _Paths
+from vethuq._paths.device import _DeviceFolder
 
 __all__ = ["Paths"]
 
@@ -25,6 +29,7 @@ class Paths:
     DB_NAME: str = _Paths.DB_FILENAME
     CONFIG_FILENAME: str = _Paths.LOCATION_FILENAME
     ENV_VAR: str = _Paths.ENV_VAR
+    DEVICE_ENV_VAR: str = _DeviceFolder.ENV_VAR
 
     @staticmethod
     def data_root() -> Path:
@@ -60,6 +65,20 @@ class Paths:
     def policy_dir() -> Path:
         """The folder for the cached policy and its state."""
         return Paths.data_root() / _Paths.POLICY_DIRNAME
+
+    @staticmethod
+    def device_dir() -> Path:
+        """The folder licences and the credit ledger are kept in, shared by every account on this
+        computer and by the background service (see `device_scope`). Created, and its permissions
+        opened to every account, the first time it is asked for."""
+        return _DeviceFolder.resolve(Paths.db_path()).path
+
+    @staticmethod
+    def device_scope() -> str:
+        """Who shares `device_dir`: `device` (every account on this computer), `custom` (the
+        folder `VETHUQ_DEVICE_HOME` names), or `user` (only this account: the shared folder
+        couldn't be used, so it keeps its own licences and credits)."""
+        return _DeviceFolder.resolve(Paths.db_path()).scope
 
     @staticmethod
     def config_file() -> Path:

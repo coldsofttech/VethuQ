@@ -13,11 +13,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TypeVar
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from vethuq._db import _DocumentIndex, _Language, _Source, _SourceLanguage
+from vethuq._db import _CreditLedger, _DocumentIndex, _Language, _Source, _SourceLanguage
 from vethuq._documents import _Documents
 from vethuq._errors import (
     _LanguageUnavailableError,
@@ -317,6 +317,12 @@ class _Sources:
     # ----- purging --------------------------------------------------------------------------
 
     @staticmethod
+    def _forget_spending(session: Session, source_id: int) -> None:
+        """Delete what was spent on a source's pages from the credit ledger (the balance stays: it
+        lives in the grants). The ledger is in the device database, so no foreign key does this."""
+        session.execute(delete(_CreditLedger).where(_CreditLedger.source_id == source_id))
+
+    @staticmethod
     def purge(session: Session, id_or_path: int | str | Path) -> _Source:
         """Permanently delete a source that has been removed, with its language choices and the
         record of its files.
@@ -330,6 +336,7 @@ class _Sources:
                 f"Source is still active: {source.path}", "Remove it before purging."
             )
         _Documents.purge_source(session, source.id)
+        _Sources._forget_spending(session, source.id)
         session.delete(source)
         session.flush()
         _Sources._logger.info("Source purged: id=%d path=%s", source.id, source.path)
@@ -354,6 +361,7 @@ class _Sources:
         )
         for source in expired:
             _Documents.purge_source(session, source.id)
+            _Sources._forget_spending(session, source.id)
             session.delete(source)
             _Sources._logger.info(
                 "Cleanup (retention): purged source id=%d path=%s", source.id, source.path

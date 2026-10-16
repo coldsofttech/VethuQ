@@ -964,12 +964,27 @@ def catalog_list(
     _catalog_note()
 
 
+def _bundle_licence(state) -> str:
+    """`licensed until 2027-01-01`, `expired`, `not licensed` or `free` (blank when unknown)."""
+    if state is None:
+        return ""
+    if state.state == "licensed" and state.valid_until:
+        return f"licensed until {state.valid_until}"
+    return state.state.replace("_", " ")
+
+
 @catalog_app.command("bundles")
 def catalog_bundles(language: Language = None) -> None:
     """The bundles of add-ons, and how much of each is installed."""
+    found = client()
+    states = {b.bundle_id: b for b in found.licences.bundles()}
+    rows = [
+        {**bundle.to_dict(), "licence": _bundle_licence(states.get(bundle.id))}
+        for bundle in found.catalog.bundles(language)
+    ]
     table(
-        client().catalog.bundles(language),
-        ["id", "label", "status", "addons", "installed", "complete", "summary"],
+        rows,
+        ["id", "label", "status", "licence", "addons", "installed", "complete", "summary"],
         empty="No bundles in the catalog.",
     )
     _catalog_note()

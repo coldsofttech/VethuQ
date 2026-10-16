@@ -94,6 +94,24 @@ runs out) and the licences and policy switches described above.
 The reader and engine types are in this package, so an add-on and VethuQ share them; the heavy
 libraries stay inside the add-ons.
 
+## Licences
+
+A licensed add-on checks its own licence with `vethuq-entitlements`; VethuQ never says a licence is
+valid. Three things it should do:
+
+- **Use the host's clock.** Pass `Host.trusted_now()` as `Licences.verify(now=...)` and as the `now`
+  of `Licence.entitlement(...)`: it is the local clock corrected by what the last policy fetch said
+  the time was, so setting the clock back does not revive an expired licence. An older VethuQ has no
+  such method: `getattr(host, "trusted_now", None)`.
+- **Say which bundles it is in.** Override `Addon.licence_bundles()` with the bundle ids that include
+  the add-on, and accept a licence that lists the add-on or any of them:
+  `licence.entitlement(ADDON_ID, now, bundles=BUNDLES)`. VethuQ uses it to store a bundle licence on
+  every add-on in the bundle, so one key unlocks them all. (In the premium repository
+  `scripts/add-ons/check_addons.py` checks the list against the bundle packages.)
+- **Keep the token in the `licence` setting.** `Host.set_setting("licence", ...)` stores it in the
+  device folder, shared by every account on the computer and the background service (see
+  `docs/device-folder.md`), so the add-on never has to think about which account it runs as.
+
 ## Rules
 
 - Hooks are best effort. VethuQ logs a failing hook and carries on.

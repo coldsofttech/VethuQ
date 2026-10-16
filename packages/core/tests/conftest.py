@@ -36,6 +36,9 @@ def _isolated_data_root(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("data_root")
     monkeypatch.delenv(_Paths.ENV_VAR, raising=False)
     monkeypatch.setattr(_Paths, "platform_data_root", staticmethod(lambda: root))
+    # The shared device folder (licences and the credit ledger) must not be the real one either.
+    monkeypatch.setattr(_Paths, "platform_device_root", staticmethod(lambda: root / "device"))
+    monkeypatch.delenv("VETHUQ_DEVICE_HOME", raising=False)
     monkeypatch.setattr(_Paths, "location_file", staticmethod(lambda: root / "config" / "db.json"))
 
 

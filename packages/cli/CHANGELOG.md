@@ -4,6 +4,10 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Added (bundle licences, the device folder)
+- `vethuq licence bundles` (each bundle's licence state), a `bundles` column in `licence show`, a `licence` column in `catalog bundles`, and `licence install` reports which add-ons got the key through a bundle.
+- `vethuq settings location show` also shows the device folder (licences and credits) and who shares it.
+
 ### Added (licences)
 - `vethuq licence install KEY|--file F.vqlic` (one licence on every add-on it lists), `licence show`, `licence code` (the request code) and `licence request [--type new|top-up|rebind] [--addon ID] [--bundle ID] [--wallet W] [--note T] [--github] [--open]`, which shows the privacy text and exactly what the public issue will contain, and opens the prefilled form only with `--open` and a confirmation (`--yes` skips it).
 

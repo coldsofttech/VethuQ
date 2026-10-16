@@ -98,6 +98,10 @@ class AddonsService:
         """The installed licences, each with the add-ons it lists and where it is installed."""
         return [item.to_dict() for item in self._client().licences.show()]
 
+    def licence_bundles(self) -> list[dict[str, Any]]:
+        """Each bundle and whether a licence covers it (free, licensed, expired, not licensed)."""
+        return [item.to_dict() for item in self._client().licences.bundles()]
+
     def install_licence(self, body: dict[str, Any]) -> dict[str, Any]:
         """Install the pasted (or file's) licence on every add-on it lists."""
         token = body.get("token")

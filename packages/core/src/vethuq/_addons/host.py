@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq._addons.settings import _AddonSettingsStore
@@ -114,6 +115,16 @@ class _Host:
 
     def licence_tokens(self) -> dict[str, str]:
         return _AddonSettingsStore.licences(self._db_path)
+
+    def trusted_now(self) -> datetime:
+        """The trusted time for licence checks (see the add-on API's `Host.trusted_now`)."""
+        try:
+            if self._policy_source is not None:
+                return datetime.now(UTC)
+            directory = _Paths.policy_dir(self._db_path, create=False)
+            return _PolicyClient(directory, logger=logging.getLogger("vethuq.policy")).now()
+        except Exception:  # noqa: BLE001 - a clock problem never blocks an add-on
+            return datetime.now(UTC)
 
     def addon_policy_enabled(self) -> bool:
         policy = self._policy()

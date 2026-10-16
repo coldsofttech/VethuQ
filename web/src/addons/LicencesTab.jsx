@@ -35,7 +35,16 @@ const KINDS = [
   { value: 'rebind', label: 'Move to a new device (re-bind)' },
 ];
 
+const BUNDLE_STATES = {
+  free: 'Free',
+  licensed: 'Licensed',
+  expired: 'Licence ended',
+  not_licensed: 'Not licensed',
+};
+
 const STATUS_WORDS = {
+  expired: 'The licence for this bundle has ended',
+  unknown_bundle: 'This VethuQ does not know the bundle',
   stored: 'Installed',
   replaced: 'Replaced the earlier licence',
   unchanged: 'Already installed',
@@ -55,10 +64,35 @@ function InstalledLicences({ rows, styles }) {
         { key: 'licence_id', label: 'Licence', render: (row) => row.licence_id ?? '—' },
         { key: 'status', label: 'Status', render: (row) => row.status },
         { key: 'valid_until', label: 'Valid until', render: (row) => row.valid_until ?? '—' },
+        { key: 'bundles', label: 'Bundles', render: (row) => list(row.bundles) },
         { key: 'lists', label: 'Unlocks', render: (row) => list(row.lists) },
         { key: 'installed_on', label: 'Installed on', render: (row) => list(row.installed_on) },
       ]}
     />
+  );
+}
+
+function Bundles({ rows, styles }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className={styles.card}>
+      <Text weight="semibold">Bundles</Text>
+      <DataTable
+        label="Bundle licences"
+        rows={rows}
+        rowKey={(row) => row.bundle_id}
+        columns={[
+          { key: 'bundle_id', label: 'Bundle', render: (row) => row.bundle_id },
+          {
+            key: 'state',
+            label: 'Licence',
+            render: (row) => BUNDLE_STATES[row.state] ?? row.state,
+          },
+          { key: 'valid_until', label: 'Valid until', render: (row) => row.valid_until ?? '—' },
+          { key: 'licensed_addons', label: 'Needs', render: (row) => list(row.licensed_addons) },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -298,6 +332,7 @@ function RequestPanel({ styles }) {
 export function LicencesTab({ onInstalled }) {
   const styles = useStyles();
   const [rows, setRows] = useState(null);
+  const [bundles, setBundles] = useState([]);
   const [error, setError] = useState(null);
   const [reload, setReload] = useState(0);
 
@@ -310,6 +345,7 @@ export function LicencesTab({ onInstalled }) {
       },
       (failure) => failure?.name !== 'AbortError' && setError(failure),
     );
+    api.licences.bundles(controller.signal).then(setBundles, () => setBundles([]));
     return () => controller.abort();
   }, [reload]);
 
@@ -327,6 +363,7 @@ export function LicencesTab({ onInstalled }) {
       )}
       {!rows && !error && <Spinner size="small" label="Loading licences" />}
       {rows && <InstalledLicences rows={rows} styles={styles} />}
+      <Bundles rows={bundles} styles={styles} />
       <InstallPanel styles={styles} onInstalled={installed} />
       <RequestPanel styles={styles} />
     </div>

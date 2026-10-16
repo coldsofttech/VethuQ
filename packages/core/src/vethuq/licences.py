@@ -17,6 +17,7 @@ Never file names, paths, content, licence keys, tokens, e-mail addresses or othe
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -24,7 +25,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from vethuq.addons.manage import Addons
 
 __all__ = [
+    "BundleLicence",
     "InstalledLicence",
     "LicenceInstall",
     "LicenceRequest",
@@ -94,8 +96,9 @@ class InstalledLicence:
     status: str  # `ok`, or why it isn't (expired, revoked, device_mismatch, ...)
     detail: str
     valid_until: str | None
-    lists: tuple[str, ...]  # the add-ons the licence unlocks
+    lists: tuple[str, ...]  # the add-ons the licence unlocks, directly or through its bundles
     installed_on: tuple[str, ...]  # the add-ons that hold this token
+    bundles: tuple[str, ...] = ()  # the bundles the licence lists
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +109,29 @@ class InstalledLicence:
             "valid_until": self.valid_until,
             "lists": list(self.lists),
             "installed_on": list(self.installed_on),
+            "bundles": list(self.bundles),
+        }
+
+
+@dataclass(frozen=True)
+class BundleLicence:
+    """Where one bundle stands on licences: `free` (nothing in it needs one), `licensed` (an
+    installed licence covers it), `expired` (the licence for it has ended or isn't valid) or
+    `not_licensed`."""
+
+    bundle_id: str
+    state: str
+    licence_id: str | None = None
+    valid_until: str | None = None
+    licensed_addons: tuple[str, ...] = ()  # the add-ons of the bundle that need a licence
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "bundle_id": self.bundle_id,
+            "state": self.state,
+            "licence_id": self.licence_id,
+            "valid_until": self.valid_until,
+            "licensed_addons": list(self.licensed_addons),
         }
 
 
@@ -200,14 +226,40 @@ class Licences:
                 f"The licence isn't valid: {licence.detail or licence.status.value}.",
                 "Check that you pasted the whole key, and that it was issued for this device.",
             )
-        listed = sorted({e.addon_id for e in licence.entitlements})
-        if not listed:
+        moment = datetime.now(UTC)
+        members = self._bundle_members()
+        reached: dict[str, str] = {e.addon_id: "" for e in licence.entitlements}
+        unknown: list[LicenceInstall] = []
+        for bundle in getattr(licence, "bundles", ()):  # an older entitlements has none
+            if not bundle.is_active(moment):
+                unknown.append(
+                    LicenceInstall(
+                        bundle.bundle_id, "expired", "the licence for this bundle has ended"
+                    )
+                )
+            elif bundle.bundle_id not in members:
+                unknown.append(
+                    LicenceInstall(
+                        bundle.bundle_id,
+                        "unknown_bundle",
+                        "this VethuQ doesn't know the bundle: refresh the catalog or update VethuQ",
+                    )
+                )
+            else:
+                for addon_id in members[bundle.bundle_id]:
+                    reached.setdefault(addon_id, f"through the {bundle.bundle_id} bundle")
+        if not reached:
+            if unknown:
+                raise _InvalidLicenceError(
+                    "No add-on can be unlocked with this licence.",
+                    "; ".join(f"{u.addon_id}: {u.detail}" for u in unknown) + ".",
+                )
             raise _InvalidLicenceError(
                 "This licence doesn't unlock any add-on.",
                 "If it carries credits, redeem it with `client.credits.redeem_licence(token)`.",
             )
-        results = []
-        for addon_id in listed:
+        results = list(unknown)
+        for addon_id, via in sorted(reached.items()):
             if not self._addons.is_installed(addon_id):
                 results.append(
                     LicenceInstall(addon_id, "not_installed", "the add-on isn't installed")
@@ -216,11 +268,24 @@ class Licences:
             settings = self._addons.settings(addon_id)
             current = settings.get(LICENCE_KEY)
             if current == token:
-                results.append(LicenceInstall(addon_id, "unchanged"))
+                results.append(LicenceInstall(addon_id, "unchanged", via))
                 continue
             settings.set(LICENCE_KEY, token)
-            results.append(LicenceInstall(addon_id, "replaced" if current else "stored"))
+            results.append(LicenceInstall(addon_id, "replaced" if current else "stored", via))
         return results
+
+    def _bundle_members(self) -> dict[str, tuple[str, ...]]:
+        """`{bundle id: add-on ids}`: what the running add-ons say they are in (`licence_bundles`),
+        and the catalog's bundles (the signed one, or the baseline). Makes no request."""
+        members: dict[str, set[str]] = {}
+        with contextlib.suppress(Exception):  # a broken add-on never blocks reading a licence
+            for addon_id, bundles in self._addons.licence_bundles().items():
+                for bundle in bundles:
+                    members.setdefault(bundle, set()).add(addon_id)
+        with contextlib.suppress(Exception):  # without a catalog only the add-ons' own word is used
+            for entry in self._addons.bundles():
+                members.setdefault(entry.id, set()).update(entry.addons)
+        return {bundle: tuple(sorted(ids)) for bundle, ids in members.items()}
 
     def install_file(
         self, path: str | Path, github_owner_id: int | None = None
@@ -254,6 +319,10 @@ class Licences:
                 if licence.valid_until
                 else None
             )
+            members = self._bundle_members()
+            covered = {e.addon_id for e in licence.entitlements}
+            for bundle in getattr(licence, "bundles", ()):
+                covered.update(members.get(bundle.bundle_id, ()))
             shown.append(
                 InstalledLicence(
                     licence.licence_id,
@@ -261,11 +330,45 @@ class Licences:
                     licence.status.value,
                     licence.detail,
                     until,
-                    tuple(sorted({e.addon_id for e in licence.entitlements})),
+                    tuple(sorted(covered)),
                     tuple(holders),
+                    tuple(sorted(b.bundle_id for b in getattr(licence, "bundles", ()))),
                 )
             )
         return sorted(shown, key=lambda i: (i.licence_id or "", i.installed_on))
+
+    def bundles(self) -> list[BundleLicence]:
+        """Every bundle known here (the catalog's, and the ones add-ons say they are in) and where
+        it stands on licences: `free` when none of its add-ons needs one, `licensed` when an
+        installed, valid licence covers all the add-ons that do, `expired` when a licence that
+        would cover them isn't valid (any more), else `not_licensed`. Makes no request."""
+        try:
+            needs = {e.id for e in self._addons.catalog() if e.licence == "licensed"}
+        except Exception:  # noqa: BLE001 - without a catalog only the add-ons' own word is used
+            needs = set()
+        declared = self._addons.licence_bundles()
+        needs.update(declared)  # an add-on that names bundles has a licence
+        held = self.show()
+        found = []
+        for bundle, members in sorted(self._bundle_members().items()):
+            required = tuple(sorted(a for a in members if a in needs))
+            if not required:
+                found.append(BundleLicence(bundle, "free"))
+                continue
+            covering = [h for h in held if set(required) <= set(h.lists)]
+            valid = next((h for h in covering if h.status == "ok"), None)
+            if valid is not None:
+                found.append(
+                    BundleLicence(bundle, "licensed", valid.licence_id, valid.valid_until, required)
+                )
+            elif covering:
+                first = covering[0]
+                found.append(
+                    BundleLicence(bundle, "expired", first.licence_id, first.valid_until, required)
+                )
+            else:
+                found.append(BundleLicence(bundle, "not_licensed", licensed_addons=required))
+        return found
 
     # ----- asking -----------------------------------------------------------------------------
 

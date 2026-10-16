@@ -53,8 +53,18 @@ def show() -> None:
     """The installed licences: what each unlocks, until when, and where it is installed."""
     table(
         _client().licences.show(),
-        ["licence_id", "kind", "status", "valid_until", "lists", "installed_on"],
+        ["licence_id", "kind", "status", "valid_until", "bundles", "lists", "installed_on"],
         empty="No licence is installed.",
+    )
+
+
+@licence_app.command("bundles")
+def bundles() -> None:
+    """Each bundle and whether a licence covers it: free, licensed, expired or not licensed."""
+    table(
+        _client().licences.bundles(),
+        ["bundle_id", "state", "licence_id", "valid_until", "licensed_addons"],
+        empty="No bundles are known here.",
     )
 
 

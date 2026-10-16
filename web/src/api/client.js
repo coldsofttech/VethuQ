@@ -334,6 +334,8 @@ export const api = {
   },
   licences: {
     list: (signal) => request('/api/licences', { signal }),
+    /** Each bundle and whether a licence covers it. */
+    bundles: (signal) => request('/api/licences/bundles', { signal }),
     /** Install the licence (its text, pasted or read from a .vqlic file) on every add-on it lists. */
     install: (token, githubOwnerId) =>
       request('/api/licences/install', {

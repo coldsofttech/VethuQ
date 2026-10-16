@@ -138,3 +138,51 @@ def test_a_bad_request_is_refused_before_anything_opens(run, entitlements, monke
 
 def test_the_licence_group_is_in_the_help(run, entitlements):
     assert "licence" in run("--help").output
+
+
+@pytest.fixture
+def bundles(monkeypatch):
+    """Two add-ons say they are in the office bundle; the catalog lists it."""
+    from vethuq.addons.manage import Addons
+    from vethuq.catalog import BundleEntry
+
+    monkeypatch.setattr(
+        Addons, "licence_bundles", lambda self: {"csv": ("office",), "txt": ("office",)}
+    )
+    entry = BundleEntry("office", "Office", "Office files", ("csv", "txt"), ("csv", "txt"))
+    monkeypatch.setattr(Addons, "bundles", lambda self, language=None: [entry])
+    monkeypatch.setattr("vethuq.catalog.CatalogClient.bundles", lambda self, language=None: [entry])
+
+
+def with_bundle(state):
+    state.licence = SimpleNamespace(
+        **{**licence("csv").__dict__, "entitlements": []},
+        bundles=[SimpleNamespace(bundle_id="office", expires=None, is_active=lambda now: True)],
+    )
+
+
+def test_a_bundle_licence_is_installed_on_every_addon_of_the_bundle(
+    run, run_json, entitlements, bundles
+):
+    with_bundle(entitlements)
+    rows = run_json("licence", "install", "VQLIC1.bundle")
+    assert {r["addon_id"]: r["status"] for r in rows} == {"csv": "stored", "txt": "stored"}
+    assert rows[0]["detail"] == "through the office bundle"
+    (shown,) = run_json("licence", "show")
+    assert shown["bundles"] == ["office"] and shown["lists"] == ["csv", "txt"]
+
+
+def test_licence_bundles_says_where_each_bundle_stands(run, run_json, entitlements, bundles):
+    assert run_json("licence", "bundles")[0]["state"] == "not_licensed"
+    with_bundle(entitlements)
+    run("licence", "install", "VQLIC1.bundle")
+    (state,) = run_json("licence", "bundles")
+    assert state["state"] == "licensed" and state["valid_until"] == "2027-01-01"
+    assert "licensed" in run("licence", "bundles").output
+
+
+def test_the_catalog_lists_the_licence_state_of_each_bundle(run, run_json, entitlements, bundles):
+    assert run_json("catalog", "bundles")[0]["licence"] == "not licensed"
+    with_bundle(entitlements)
+    run("licence", "install", "VQLIC1.bundle")
+    assert run_json("catalog", "bundles")[0]["licence"] == "licensed until 2027-01-01"

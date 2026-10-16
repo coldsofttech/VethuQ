@@ -194,6 +194,22 @@ class _AddonManager:
         """The OCR phases the running add-ons provide, in the order they run."""
         return sorted(self._collect("ocr_phases"), key=lambda spec: (spec.order, spec.id))
 
+    def licence_bundles(self) -> dict[str, tuple[str, ...]]:
+        """`{add-on id: bundle ids}` for every running add-on whose licence also comes with a
+        bundle (see `Addon.licence_bundles`)."""
+        found: dict[str, tuple[str, ...]] = {}
+        for item in sorted(self.loaded().values(), key=lambda i: i.id):
+            if item.addon is None:
+                continue
+            try:
+                bundles = tuple(item.addon.licence_bundles())
+            except Exception:  # noqa: BLE001 - a broken add-on must not break VethuQ
+                self._logger.warning("Add-on %s failed in licence_bundles", item.id, exc_info=True)
+                continue
+            if bundles:
+                found[item.id] = bundles
+        return found
+
     def cli_groups(self) -> list[tuple[str, CliGroup]]:
         """`(add-on id, command group)` of every running add-on that adds commands, by add-on id."""
         found = []

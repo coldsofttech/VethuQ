@@ -100,6 +100,45 @@ class TestHost:
         assert "addon backup: hello" in caplog.text
 
 
+class TestTrustedNow:
+    """`Host.trusted_now`: the policy-corrected clock, so setting the clock back changes nothing."""
+
+    def test_it_is_the_policy_clock(self, db_path, monkeypatch):
+        from datetime import UTC, datetime
+
+        from vethuq._policy import _PolicyClient
+
+        later = datetime(2030, 1, 1, tzinfo=UTC)
+        monkeypatch.setattr(_PolicyClient, "now", lambda self: later)
+        assert _Host("a", db_path, lambda: None).trusted_now() == later
+
+    def test_without_a_policy_it_is_the_local_clock(self, db_path):
+        from datetime import UTC, datetime, timedelta
+
+        moment = _Host("a", db_path, lambda: None).trusted_now()
+        assert moment.tzinfo is not None
+        assert abs(moment - datetime.now(UTC)) < timedelta(seconds=30)
+
+    def test_a_clock_problem_never_raises(self, db_path, monkeypatch):
+        from datetime import UTC, datetime, timedelta
+
+        from vethuq._policy import _PolicyClient
+
+        def broken(self):
+            raise OSError("no clock")
+
+        monkeypatch.setattr(_PolicyClient, "now", broken)
+        assert abs(_Host("a", db_path, lambda: None).trusted_now() - datetime.now(UTC)) < timedelta(
+            seconds=30
+        )
+
+    def test_an_injected_policy_source_uses_the_local_clock(self, db_path):
+        from datetime import UTC, datetime, timedelta
+
+        host = _Host("a", db_path, lambda: None, policy=lambda: None)
+        assert abs(host.trusted_now() - datetime.now(UTC)) < timedelta(seconds=30)
+
+
 class TestPolicyModel:
     def test_addons_and_revoked_licences_are_parsed(self):
         policy = _policy(

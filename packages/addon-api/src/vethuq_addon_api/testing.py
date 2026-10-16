@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vethuq_addon_api.api import API_VERSION
@@ -53,6 +54,7 @@ class FakeHost:
         self._app_version = app_version
         self._revoked = revoked
         self._enabled = enabled
+        self.clock: Callable[[], datetime] = lambda: datetime.now(UTC)  # what `trusted_now` says
         self.settings: dict[str, str] = {}
         self.licences: dict[str, str] = {}
         self.logs: list[tuple[int, str]] = []
@@ -94,6 +96,9 @@ class FakeHost:
 
     def licence_tokens(self) -> dict[str, str]:
         return dict(self.licences)
+
+    def trusted_now(self) -> datetime:
+        return self.clock()
 
     def addon_policy_enabled(self) -> bool:
         return self._enabled
