@@ -92,6 +92,18 @@ def register(api: Blueprint, core: Core) -> None:
     def metrics_send() -> Response:
         return jsonify(service().metrics_send(_flag("force")))
 
+    @api.post("/metrics/opt-in")
+    def metrics_opt_in() -> Response:
+        return jsonify(service().metrics_opt_in())
+
+    @api.post("/metrics/prompt")
+    def metrics_prompt() -> Response:
+        return jsonify(service().metrics_dismiss_prompt())
+
+    @api.post("/metrics/rotate-id")
+    def metrics_rotate_id() -> Response:
+        return jsonify(service().metrics_rotate_id())
+
     @api.post("/metrics/delete-data")
     def metrics_delete() -> Response:
         return jsonify(service().metrics_delete())

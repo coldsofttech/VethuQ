@@ -7,7 +7,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -535,6 +535,12 @@ class _MetricsSettings:
     INSTALL_ID_KEY = "metrics_install_id"
     LAST_SENT_KEY = "metrics_last_sent_at"
     SENT_THROUGH_KEY = "metrics_sent_through"
+    CONSENT_KEY = "metrics_consent"
+    PROMPTED_KEY = "metrics_prompted"
+    # What sharing covers, as a number that goes up when a category is added or the consent text
+    # changes materially: 1 pages, failures and settings; 2 adds events (credits waits, searches).
+    # Sharing (and the bonus) pauses until the person agrees to the current one.
+    CONSENT_VERSION = 2
 
     @staticmethod
     def get_opt_in(session: Session) -> bool:
@@ -548,10 +554,42 @@ class _MetricsSettings:
                 f"Metrics sharing is on or off (True or False), not {on!r}."
             )
         if on == _MetricsSettings.get_opt_in(session):
+            if on and not _MetricsSettings.consent_current(session):  # agreeing again
+                _Settings.set(
+                    session, _MetricsSettings.CONSENT_KEY, str(_MetricsSettings.CONSENT_VERSION)
+                )
             return
         _Settings.set(session, _MetricsSettings.OPT_IN_KEY, "1" if on else "0")
+        _Settings.set(session, _MetricsSettings.PROMPTED_KEY, "1")
+        if not on:  # nothing waits to be sent later
+            yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+            _Settings.set(session, _MetricsSettings.SENT_THROUGH_KEY, yesterday)
         if on:
             _Settings.set(session, _MetricsSettings.OPTED_IN_ON_KEY, datetime.now(UTC).isoformat())
+            _Settings.set(
+                session, _MetricsSettings.CONSENT_KEY, str(_MetricsSettings.CONSENT_VERSION)
+            )
+
+    @staticmethod
+    def consent_current(session: Session) -> bool:
+        """Whether what was agreed to is what sharing covers now. Someone who opted in before a
+        category was added has to agree again (`opt_in()`)."""
+        stored = _Settings.get(session, _MetricsSettings.CONSENT_KEY)
+        return stored == str(_MetricsSettings.CONSENT_VERSION)
+
+    @staticmethod
+    def sharing(session: Session) -> bool:
+        """Opted in, to the current categories: what lets anything be sent or earns the bonus."""
+        return _MetricsSettings.get_opt_in(session) and _MetricsSettings.consent_current(session)
+
+    @staticmethod
+    def prompted(session: Session) -> bool:
+        """Whether the first-run question has been answered or dismissed."""
+        return _Settings.get(session, _MetricsSettings.PROMPTED_KEY) == "1"
+
+    @staticmethod
+    def set_prompted(session: Session) -> None:
+        _Settings.set(session, _MetricsSettings.PROMPTED_KEY, "1")
 
     @staticmethod
     def reset_opt_in(session: Session) -> None:

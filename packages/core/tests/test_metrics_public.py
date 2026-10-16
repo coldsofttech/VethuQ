@@ -399,3 +399,103 @@ class TestBonus:
         write(tmp_path / "d", "s.pdf", fp.scanned_page())
         client.sources.create(tmp_path / "d")
         assert client.index.run().credits_charged == 1.0
+
+
+class TestConsent:
+    def set_old_consent(self, client, version="1"):
+        from vethuq._settings import _MetricsSettings, _Settings
+
+        with client._db().session() as session:
+            _Settings.set(session, _MetricsSettings.CONSENT_KEY, version)
+
+    def test_opting_in_records_what_it_covers(self, client):
+        assert client.metrics.opt_in().consent_current
+
+    def test_after_a_new_category_nothing_is_sent_and_the_bonus_lapses(
+        self, client, time, collector, worked
+    ):
+        client.metrics.opt_in()
+        self.set_old_consent(client)  # agreed before events were added
+        status = client.metrics.status()
+        assert status.opted_in and not status.consent_current
+        time.next_day()
+        result = client.metrics.send(force=True)
+        assert result.status == "needs_consent" and collector.posts == []
+        assert not client.credits.balance().bonus_active
+
+    def test_agreeing_again_carries_on(self, client, time, collector, worked):
+        client.metrics.opt_in()
+        self.set_old_consent(client)
+        client.metrics.opt_in()
+        time.next_day()
+        assert client.metrics.send(force=True).status == "sent"
+
+    def test_opting_out_drops_what_was_waiting(self, client, time, worked):
+        client.metrics.opt_in()
+        time.next_day()
+        assert client.metrics.status().pending_days >= 1
+        client.metrics.opt_out()
+        assert client.metrics.status().pending_days == 0
+
+    def test_the_first_run_question_is_asked_once(self, client):
+        assert client.metrics.status().prompted is False
+        client.metrics.dismiss_prompt()
+        assert client.metrics.status().prompted is True and not client.metrics.status().opted_in
+
+
+class TestEvents:
+    def test_searches_are_counted_in_buckets_when_sharing(self, client, time, worked, collector):
+        client.metrics.opt_in()
+        client.search.run("words on", engine="like")
+        client.search.run("nothing like this at all anywhere", engine="like")
+        time.next_day()
+        batch = client.metrics.preview().data
+        events = [e for d in batch["days"] for e in d.get("events", [])]
+        assert {
+            (e["kind"], e["engine"], e["query_len"], e["script"], e["results"]) for e in events
+        } >= {
+            ("search", "like", "2-3", "latin", "1-9"),
+            ("search", "like", "4-8", "latin", "0"),
+        }
+        _Batch.check(batch)
+        text = json.dumps(batch)
+        assert "words on" not in text and "anywhere" not in text
+
+    def test_nothing_is_counted_unless_sharing(self, client, time, worked):
+        client.search.run("words", engine="like")
+        time.next_day()
+        assert all("events" not in d for d in client.metrics.preview().data["days"])
+
+    def test_a_run_that_ran_out_of_credits_is_counted(self, client, time, tmp_path):
+        client._credit_engine().policy = lambda: {
+            "wallets": {"local": {"daily": 2, "starter": 0}}, "grace_percent": 0,
+            "metrics": {"enabled": True, "endpoint": "https://metrics.example.test/"},
+        }  # fmt: skip
+        client.metrics.opt_in()
+        write(tmp_path / "w", "a.pdf", *(fp.scanned_page(f"page {i}") for i in range(12)))
+        client.sources.create(tmp_path / "w")
+        client.index.run(workers=0)
+        time.next_day()
+        events = [e for d in client.metrics.preview().data["days"] for e in d.get("events", [])]
+        assert any(e["kind"] == "waiting_credits" and e["count"] >= 1 for e in events)
+
+
+class TestWhatIsSent:
+    def test_preview_is_the_batch_that_goes(self, client, time, worked, collector):
+        client.metrics.opt_in()
+        time.next_day()
+        previewed = client.metrics.preview().data
+        client.metrics.send(force=True)
+        sent = collector.posts[-1][1]
+        assert {k: v for k, v in sent.items() if k != "batch_id"} == {
+            k: v for k, v in previewed.items() if k != "batch_id"
+        }
+
+    def test_a_new_id_on_request(self, client):
+        before = client.metrics.preview().data["install_id"]
+        assert client.metrics.rotate_id() != before
+
+    def test_days_older_than_the_backlog_are_dropped(self, client, time, worked):
+        client.metrics.opt_in()
+        time.next_day(45)
+        assert client.metrics.status().pending_days == 0

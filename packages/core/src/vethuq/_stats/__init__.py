@@ -3,6 +3,6 @@
 from __future__ import annotations
 
 from vethuq._stats.stats import _Row, _Stats
-from vethuq._stats.usage import _Bands, _ErrorCode, _PageFact, _Usage
+from vethuq._stats.usage import _Bands, _ErrorCode, _PageFact, _SearchBuckets, _Usage
 
-__all__ = ["_Bands", "_ErrorCode", "_PageFact", "_Row", "_Stats", "_Usage"]
+__all__ = ["_Bands", "_ErrorCode", "_PageFact", "_Row", "_SearchBuckets", "_Stats", "_Usage"]

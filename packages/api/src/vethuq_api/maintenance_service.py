@@ -170,6 +170,17 @@ class MaintenanceService:
     def metrics_send(self, force: bool) -> dict[str, object]:
         return self._client().metrics.send(force).to_dict()
 
+    def metrics_opt_in(self) -> dict[str, object]:
+        return self._client().metrics.opt_in().to_dict()
+
+    def metrics_dismiss_prompt(self) -> dict[str, object]:
+        self._client().metrics.dismiss_prompt()
+        return self._client().metrics.status().to_dict()
+
+    def metrics_rotate_id(self) -> dict[str, object]:
+        self._client().metrics.rotate_id()
+        return self._client().metrics.status().to_dict()
+
     def metrics_delete(self) -> dict[str, object]:
         return self._client().metrics.delete_data().to_dict()
 

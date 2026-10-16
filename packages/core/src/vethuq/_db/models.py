@@ -1257,6 +1257,28 @@ class _FileFootprint(_Base):
     workers: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class _UsageEvent(_Base):
+    """Counted events of a UTC day, by kind and content-free buckets: a run that ran out of
+    credits, or a search (engine, query length and script, result count, latency)."""
+
+    __tablename__ = "usage_events"
+    __table_args__ = (
+        Index("uq_usage_events_key", "day", "kind", "engine", "query_len", "script", "results",
+              "latency", unique=True),
+        {"sqlite_autoincrement": True},
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # waiting_credits, search
+    engine: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    query_len: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    script: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    results: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    latency: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
 class _UsageFailure(_Base):
     """Files that failed on a UTC day, by reason code."""
 

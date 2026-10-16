@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _UsageDaily, _UsageFailure
+from vethuq._db import _UsageDaily, _UsageEvent, _UsageFailure
 from vethuq.enums import ConfidenceBand
 
 
@@ -53,7 +54,70 @@ class _PageFact:
     passes: int
 
 
+class _SearchBuckets:
+    """What of a search may be counted: buckets only, never the query or the files found."""
+
+    @staticmethod
+    def length(query: str) -> str:
+        words = len(query.split())
+        return "1" if words <= 1 else "2-3" if words <= 3 else "4-8" if words <= 8 else "9+"
+
+    @staticmethod
+    def script(query: str) -> str:
+        """`latin`, `telugu`, `mixed` or `other` (by the letters of the query)."""
+        found = set()
+        for char in query:
+            if char.isalpha():
+                name = unicodedata.name(char, "")
+                found.add("latin" if name.startswith("LATIN") else
+                          "telugu" if name.startswith("TELUGU") else "other")  # fmt: skip
+        if not found:
+            return "other"
+        return next(iter(found)) if len(found) == 1 else "mixed"
+
+    @staticmethod
+    def results(total: int) -> str:
+        return "0" if total <= 0 else "1-9" if total < 10 else "10-99" if total < 100 else "100+"
+
+    @staticmethod
+    def latency(seconds: float) -> str:
+        ms = seconds * 1000
+        return "<50ms" if ms < 50 else "<200ms" if ms < 200 else "<1s" if ms < 1000 else ">=1s"
+
+
 class _Usage:
+    @staticmethod
+    def record_event(
+        session: Session,
+        day: str,
+        kind: str,
+        engine: str = "",
+        query_len: str = "",
+        script: str = "",
+        results: str = "",
+        latency: str = "",
+    ) -> None:
+        """Count one event (content-free buckets only)."""
+        row = session.scalars(
+            select(_UsageEvent).where(
+                _UsageEvent.day == day,
+                _UsageEvent.kind == kind,
+                _UsageEvent.engine == engine,
+                _UsageEvent.query_len == query_len,
+                _UsageEvent.script == script,
+                _UsageEvent.results == results,
+                _UsageEvent.latency == latency,
+            )
+        ).first()
+        if row is None:
+            row = _UsageEvent(
+                day=day, kind=kind, engine=engine, query_len=query_len, script=script,
+                results=results, latency=latency, count=0,
+            )  # fmt: skip
+            session.add(row)
+        row.count += 1
+        session.flush()
+
     @staticmethod
     def record_pages(
         session: Session,

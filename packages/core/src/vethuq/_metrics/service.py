@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -23,7 +24,7 @@ LAST_ATTEMPT_KEY = "metrics_last_attempt_on"
 
 @dataclass(frozen=True)
 class _Outcome:
-    status: str  # sent, not_opted_in, disabled, nothing_to_do, failed
+    status: str  # sent, not_opted_in, needs_consent, disabled, nothing_to_do, failed
     days: int = 0
     size_bytes: int = 0
     detail: str = ""
@@ -76,6 +77,8 @@ class _Metrics:
         today = _Clock.today(session)
         return {
             "opted_in": _MetricsSettings.get_opt_in(session),
+            "consent_current": _MetricsSettings.consent_current(session),
+            "prompted": _MetricsSettings.prompted(session),
             "available": self.collector(session) is not None,
             "last_sent_at": _Settings.get(session, _MetricsSettings.LAST_SENT_KEY),
             "sent_through": _MetricsSettings.sent_through(session),
@@ -105,6 +108,11 @@ class _Metrics:
         with self.database.session() as session:
             if not _MetricsSettings.get_opt_in(session):
                 return _Outcome("not_opted_in")
+            if not _MetricsSettings.consent_current(session):
+                return _Outcome(
+                    "needs_consent",
+                    detail="what is shared has grown since you agreed; opt in again to continue",
+                )
             base = self.collector(session)
             if base is None:
                 return _Outcome("disabled", detail="the policy doesn't allow sending right now")
@@ -126,6 +134,23 @@ class _Metrics:
             if last:
                 _Settings.set(session, _MetricsSettings.SENT_THROUGH_KEY, last)
         return _Outcome("sent", days=len(batch["days"]), size_bytes=len(body))
+
+    def rotate_id(self) -> str:
+        """A new install id. What was sent under the old one stays at the collector (ask for it
+        to be deleted first if it shouldn't)."""
+        with self.database.session() as session:
+            return _MetricsSettings.new_install_id(session)
+
+    def forget_unsent(self) -> None:
+        """Drop the data that has not been sent (closed days up to yesterday), as opting out
+        does: nothing waits to go out later."""
+        with self.database.session() as session:
+            yesterday = (_Clock.today(session) - timedelta(days=1)).isoformat()
+            _Settings.set(session, _MetricsSettings.SENT_THROUGH_KEY, yesterday)
+
+    def dismiss_prompt(self) -> None:
+        with self.database.session() as session:
+            _MetricsSettings.set_prompted(session)
 
     def delete_data(self) -> _Outcome:
         """Ask the collector to delete everything it holds for this install, then start with a

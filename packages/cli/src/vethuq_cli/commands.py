@@ -691,6 +691,13 @@ def metrics_send(force: bool = typer.Option(False, "--force")) -> None:
     facts(client().metrics.send(force))
 
 
+@metrics_app.command("rotate-id")
+def metrics_rotate_id() -> None:
+    """A new random install id (what was sent before stays under the old one)."""
+    client().metrics.rotate_id()
+    facts(client().metrics.status())
+
+
 @metrics_app.command("delete-data")
 def metrics_delete() -> None:
     """Ask for the data already sent to be deleted."""

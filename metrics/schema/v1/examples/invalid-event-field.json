@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "batch_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "install_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "client": {
+    "vethuq": "0.1.0",
+    "python": "3.13",
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu_bucket": "3-4",
+    "ram_bucket": "16"
+  },
+  "settings": {
+    "workers": "auto",
+    "retry_attempts": 3,
+    "languages": [
+      "en"
+    ],
+    "confidence_bands": [
+      70,
+      80,
+      90
+    ]
+  },
+  "days": [
+    {
+      "day": "2026-10-10",
+      "pages": [
+        {
+          "file_type": "pdf",
+          "phase": "quick",
+          "language": "en",
+          "engine": "paddleocr 3.0.1",
+          "page_source": "ocr",
+          "size_bucket": "m",
+          "band": "high",
+          "pages": 10,
+          "passes": 10,
+          "duration_ms": 5200,
+          "confidence_sum": 9.4,
+          "credits_milli": 10000
+        },
+        {
+          "file_type": "pdf",
+          "phase": "",
+          "language": "en",
+          "engine": "",
+          "page_source": "native",
+          "size_bucket": "m",
+          "band": "high",
+          "pages": 40,
+          "passes": 0,
+          "duration_ms": 0,
+          "confidence_sum": 40.0,
+          "credits_milli": 0
+        }
+      ],
+      "failures": [
+        {
+          "file_type": "pdf",
+          "code": "password",
+          "count": 1
+        }
+      ],
+      "events": [
+        {
+          "kind": "search",
+          "engine": "like",
+          "query_len": "2-3",
+          "script": "latin",
+          "results": "1-9",
+          "latency": "<50ms",
+          "count": 12,
+          "query": "secret words"
+        },
+        {
+          "kind": "search",
+          "engine": "fuzzy",
+          "query_len": "1",
+          "script": "telugu",
+          "results": "0",
+          "latency": "<200ms",
+          "count": 2
+        },
+        {
+          "kind": "waiting_credits",
+          "engine": "",
+          "query_len": "",
+          "script": "",
+          "results": "",
+          "latency": "",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

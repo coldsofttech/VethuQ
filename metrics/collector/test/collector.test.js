@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
-import { handle } from "../src/index.js";
+import { addBatch, handle, prune, LIMITS } from "../src/index.js";
 
 const examples = new URL("../../schema/v1/examples/", import.meta.url);
 const example = (name) => JSON.parse(readFileSync(new URL(name, examples), "utf8"));
@@ -9,11 +9,14 @@ const example = (name) => JSON.parse(readFileSync(new URL(name, examples), "utf8
 // A D1 look-alike over node:sqlite, so the real SQL and migration run in the tests.
 function d1() {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+  for (const file of ["0001_init.sql", "0002_events.sql"]) {
+    sqlite.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
+  }
   const statement = (sql, args = []) => ({
     bind: (...values) => statement(sql, values),
     run: async () => ({ meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) } }),
     all: async () => ({ results: sqlite.prepare(sql).all(...args) }),
+    first: async () => sqlite.prepare(sql).get(...args) ?? null,
   });
   return {
     sqlite,
@@ -120,5 +123,54 @@ describe("routes", () => {
     expect((await handle(new Request("https://x.test/v1/health"), env)).status).toBe(200);
     expect((await handle(new Request("https://x.test/v1/batch"), env)).status).toBe(404);
     expect((await post("/elsewhere", {}, env)).status).toBe(404);
+  });
+});
+
+describe("events, plausibility, limits and retention", () => {
+  const full = () => example("valid-full.json");
+
+  it("stores the counted events and deletes them with the install", async () => {
+    await post("/v1/batch", full(), env);
+    expect(count(env.DB, "events")).toBe(3);
+    await post("/v1/delete", { install_id: full().install_id }, env);
+    expect(count(env.DB, "events")).toBe(0);
+  });
+
+  it("refuses a batch no computer could make", async () => {
+    const batch = full();
+    batch.days[0].pages[0].pages = LIMITS.pagesPerRow + 1;
+    const response = await post("/v1/batch", batch, env);
+    expect(response.status).toBe(422);
+    expect((await response.json()).reason).toBe("too many pages");
+    expect(count(env.DB, "usage")).toBe(0);
+  });
+
+  it("refuses confidence above one hundred percent", async () => {
+    const batch = full();
+    batch.days[0].pages[0].confidence_sum = batch.days[0].pages[0].pages + 5;
+    expect((await post("/v1/batch", batch, env)).status).toBe(422);
+  });
+
+  it("allows a few batches an install a day, then asks it to wait", async () => {
+    const results = [];
+    for (let i = 0; i < LIMITS.batchesPerInstallPerDay + 1; i++) {
+      const batch = full();
+      batch.batch_id = String(i).padStart(32, "0");
+      results.push((await post("/v1/batch", batch, env)).status);
+    }
+    expect(results).toEqual([200, 200, 200, 429]);
+  });
+
+  it("limits by address when a limiter is bound", async () => {
+    const limited = { ...env, IP_LIMITER: { limit: async () => ({ success: false }) } };
+    expect((await post("/v1/batch", full(), limited)).status).toBe(429);
+  });
+
+  it("drops raw batch records after the retention, and keeps the totals", async () => {
+    await post("/v1/batch", full(), env);
+    const later = new Date(Date.now() + (LIMITS.retentionDays + 1) * 86_400_000);
+    expect((await prune(env.DB, later)).removed).toBe(1);
+    expect(count(env.DB, "batches")).toBe(0);
+    expect(count(env.DB, "usage")).toBeGreaterThan(0);
   });
 });

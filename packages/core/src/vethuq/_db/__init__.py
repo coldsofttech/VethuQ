@@ -77,6 +77,7 @@ from vethuq._db.models import (
     _TsxPage,
     _TxtPage,
     _UsageDaily,
+    _UsageEvent,
     _UsageFailure,
     _XlsbPage,
     _XlsmPage,
@@ -171,6 +172,7 @@ __all__ = [
     "_SourceLanguage",
     "_TxtPage",
     "_UsageDaily",
+    "_UsageEvent",
     "_UsageFailure",
     "_FileFootprint",
 ]

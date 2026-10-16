@@ -6,14 +6,14 @@ import os
 import platform
 import sys
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import psutil
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from vethuq._db import _UsageDaily, _UsageFailure
+from vethuq._db import _UsageDaily, _UsageEvent, _UsageFailure
 from vethuq._settings import (
     _ConfidenceSettings,
     _IndexSettings,
@@ -22,6 +22,7 @@ from vethuq._settings import (
 )
 
 SCHEMA_VERSION = 1
+BACKLOG_DAYS = 30  # unsent days older than this are dropped rather than sent late
 
 # The only fields a batch may hold, by object. The collector rejects anything else (see
 # metrics/schema/v1/batch.schema.json, which says the same).
@@ -29,7 +30,8 @@ ALLOWED = {
     "batch": {"schema", "batch_id", "install_id", "client", "settings", "days"},
     "client": {"vethuq", "python", "os", "arch", "cpu_bucket", "ram_bucket"},
     "settings": {"workers", "retry_attempts", "languages", "confidence_bands"},
-    "day": {"day", "pages", "failures"},
+    "day": {"day", "pages", "failures", "events"},
+    "event": {"kind", "engine", "query_len", "script", "results", "latency", "count"},
     "page": {
         "file_type",
         "phase",
@@ -74,8 +76,10 @@ class _Batch:
         """The closed UTC days (before today) with data that has not been sent, oldest first."""
         sent = _MetricsSettings.sent_through(session)
         days: set[str] = set()
-        for table in (_UsageDaily, _UsageFailure):
+        oldest = (today - timedelta(days=BACKLOG_DAYS)).isoformat()
+        for table in (_UsageDaily, _UsageFailure, _UsageEvent):
             statement = select(table.day).where(table.day < today.isoformat()).distinct()
+            statement = statement.where(table.day >= oldest)
             if sent:
                 statement = statement.where(table.day > sent)
             days.update(session.scalars(statement))
@@ -119,7 +123,25 @@ class _Batch:
                 .order_by(_UsageFailure.file_type, _UsageFailure.code)
             )
         ]
-        return {"day": day, "pages": pages, "failures": failures}
+        events = [
+            {"kind": r.kind, "engine": r.engine, "query_len": r.query_len, "script": r.script,
+             "results": r.results, "latency": r.latency, "count": int(r.count)}
+            for r in session.execute(
+                select(
+                    _UsageEvent.kind, _UsageEvent.engine, _UsageEvent.query_len,
+                    _UsageEvent.script, _UsageEvent.results, _UsageEvent.latency,
+                    func.sum(_UsageEvent.count).label("count"),
+                )
+                .where(_UsageEvent.day == day)
+                .group_by(_UsageEvent.kind, _UsageEvent.engine, _UsageEvent.query_len,
+                          _UsageEvent.script, _UsageEvent.results, _UsageEvent.latency)
+                .order_by(_UsageEvent.kind, _UsageEvent.engine)
+            )
+        ]  # fmt: skip
+        entry: dict[str, Any] = {"day": day, "pages": pages, "failures": failures}
+        if events:
+            entry["events"] = events
+        return entry
 
     @staticmethod
     def build(
@@ -172,3 +194,5 @@ class _Batch:
                 walk("page", page)
             for failure in day["failures"]:
                 walk("failure", failure)
+            for event in day.get("events", []):
+                walk("event", event)

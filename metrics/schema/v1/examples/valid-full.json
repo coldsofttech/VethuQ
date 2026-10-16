@@ -61,6 +61,35 @@
           "code": "password",
           "count": 1
         }
+      ],
+      "events": [
+        {
+          "kind": "search",
+          "engine": "like",
+          "query_len": "2-3",
+          "script": "latin",
+          "results": "1-9",
+          "latency": "<50ms",
+          "count": 12
+        },
+        {
+          "kind": "search",
+          "engine": "fuzzy",
+          "query_len": "1",
+          "script": "telugu",
+          "results": "0",
+          "latency": "<200ms",
+          "count": 2
+        },
+        {
+          "kind": "waiting_credits",
+          "engine": "",
+          "query_len": "",
+          "script": "",
+          "results": "",
+          "latency": "",
+          "count": 1
+        }
       ]
     }
   ]

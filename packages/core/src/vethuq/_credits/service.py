@@ -77,7 +77,7 @@ class _Credits:
     def bonus_active(session: Session, today: date) -> bool:
         """The metrics bonus applies while sharing is on and a batch was sent in the last 7 days.
         It starts the UTC day after a send, like other changes to limits."""
-        if not _MetricsSettings.get_opt_in(session):
+        if not _MetricsSettings.sharing(session):
             return False
         sent = _Settings.get(session, _MetricsSettings.LAST_SENT_KEY)
         try:

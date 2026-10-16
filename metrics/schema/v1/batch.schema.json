@@ -1,87 +1,333 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/coldsofttech/VethuQ/metrics/schema/v1/batch.schema.json",
-  "title": "VethuQ metrics batch (v1)",
-  "description": "What VethuQ sends when a user opts in to share anonymous usage metrics. Aggregated and content-free: no names, paths, text, user or licence ids. Any field not listed here is rejected.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema", "batch_id", "install_id", "client", "settings", "days"],
-  "properties": {
-    "schema": { "const": 1 },
-    "batch_id": { "description": "Random id of this batch; the collector ignores a batch it has seen.", "type": "string", "pattern": "^[0-9a-f]{32}$" },
-    "install_id": { "description": "Random id made on the install, not derived from the computer, user or licence. It exists so the data can be deleted on request.", "type": "string", "pattern": "^[0-9a-f]{32}$" },
-    "client": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["vethuq", "python", "os", "arch", "cpu_bucket", "ram_bucket"],
-      "properties": {
-        "vethuq": { "type": "string", "maxLength": 40 },
-        "python": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
-        "os": { "type": "string", "maxLength": 20 },
-        "arch": { "type": "string", "maxLength": 20 },
-        "cpu_bucket": { "enum": ["1-2", "3-4", "5-8", "9+"] },
-        "ram_bucket": { "enum": ["<=4", "8", "16", "32", ">32"] }
-      }
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/coldsofttech/VethuQ/metrics/schema/v1/batch.schema.json",
+ "title": "VethuQ metrics batch (v1)",
+ "description": "What VethuQ sends when a user opts in to share anonymous usage metrics. Aggregated and content-free: no names, paths, text, user or licence ids. Any field not listed here is rejected.",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema",
+  "batch_id",
+  "install_id",
+  "client",
+  "settings",
+  "days"
+ ],
+ "properties": {
+  "schema": {
+   "const": 1
+  },
+  "batch_id": {
+   "description": "Random id of this batch; the collector ignores a batch it has seen.",
+   "type": "string",
+   "pattern": "^[0-9a-f]{32}$"
+  },
+  "install_id": {
+   "description": "Random id made on the install, not derived from the computer, user or licence. It exists so the data can be deleted on request.",
+   "type": "string",
+   "pattern": "^[0-9a-f]{32}$"
+  },
+  "client": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "vethuq",
+    "python",
+    "os",
+    "arch",
+    "cpu_bucket",
+    "ram_bucket"
+   ],
+   "properties": {
+    "vethuq": {
+     "type": "string",
+     "maxLength": 40
     },
-    "settings": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["workers", "retry_attempts", "languages", "confidence_bands"],
-      "properties": {
-        "workers": { "oneOf": [{ "const": "auto" }, { "type": "integer", "minimum": 0, "maximum": 8 }] },
-        "retry_attempts": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "languages": { "type": "array", "maxItems": 50, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,19}$" } },
-        "confidence_bands": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 0, "maximum": 100 } }
-      }
+    "python": {
+     "type": "string",
+     "pattern": "^[0-9]+\\.[0-9]+$"
     },
-    "days": {
-      "type": "array",
-      "maxItems": 400,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["day", "pages", "failures"],
-        "properties": {
-          "day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
-          "pages": {
-            "type": "array",
-            "maxItems": 500,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["file_type", "phase", "language", "engine", "page_source", "size_bucket", "band", "pages", "passes", "duration_ms", "confidence_sum", "credits_milli"],
-              "properties": {
-                "file_type": { "type": "string", "pattern": "^[a-z0-9_-]{0,20}$" },
-                "phase": { "type": "string", "pattern": "^[a-z0-9_-]{0,20}$" },
-                "language": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,19}$" },
-                "engine": { "type": "string", "maxLength": 60 },
-                "page_source": { "enum": ["native", "ocr", "mixed"] },
-                "size_bucket": { "enum": ["xs", "s", "m", "l", "xl"] },
-                "band": { "enum": ["high", "medium", "low", "unreliable"] },
-                "pages": { "type": "integer", "minimum": 0 },
-                "passes": { "type": "integer", "minimum": 0 },
-                "duration_ms": { "type": "integer", "minimum": 0 },
-                "confidence_sum": { "type": "number", "minimum": 0 },
-                "credits_milli": { "type": "integer", "minimum": 0 }
-              }
-            }
-          },
-          "failures": {
-            "type": "array",
-            "maxItems": 100,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["file_type", "code", "count"],
-              "properties": {
-                "file_type": { "type": "string", "pattern": "^[a-z0-9_-]{0,20}$" },
-                "code": { "enum": ["password", "corrupt", "unreadable", "ocr_unavailable", "page_too_large", "language_unavailable", "other"] },
-                "count": { "type": "integer", "minimum": 0 }
-              }
-            }
-          }
-        }
-      }
+    "os": {
+     "type": "string",
+     "maxLength": 20
+    },
+    "arch": {
+     "type": "string",
+     "maxLength": 20
+    },
+    "cpu_bucket": {
+     "enum": [
+      "1-2",
+      "3-4",
+      "5-8",
+      "9+"
+     ]
+    },
+    "ram_bucket": {
+     "enum": [
+      "<=4",
+      "8",
+      "16",
+      "32",
+      ">32"
+     ]
     }
+   }
+  },
+  "settings": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "workers",
+    "retry_attempts",
+    "languages",
+    "confidence_bands"
+   ],
+   "properties": {
+    "workers": {
+     "oneOf": [
+      {
+       "const": "auto"
+      },
+      {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 8
+      }
+     ]
+    },
+    "retry_attempts": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 100
+    },
+    "languages": {
+     "type": "array",
+     "maxItems": 50,
+     "items": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,19}$"
+     }
+    },
+    "confidence_bands": {
+     "type": "array",
+     "minItems": 3,
+     "maxItems": 3,
+     "items": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+     }
+    }
+   }
+  },
+  "days": {
+   "type": "array",
+   "maxItems": 400,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "day",
+     "pages",
+     "failures"
+    ],
+    "properties": {
+     "day": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     },
+     "pages": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "file_type",
+        "phase",
+        "language",
+        "engine",
+        "page_source",
+        "size_bucket",
+        "band",
+        "pages",
+        "passes",
+        "duration_ms",
+        "confidence_sum",
+        "credits_milli"
+       ],
+       "properties": {
+        "file_type": {
+         "type": "string",
+         "pattern": "^[a-z0-9_-]{0,20}$"
+        },
+        "phase": {
+         "type": "string",
+         "pattern": "^[a-z0-9_-]{0,20}$"
+        },
+        "language": {
+         "type": "string",
+         "pattern": "^[a-z][a-z0-9_-]{0,19}$"
+        },
+        "engine": {
+         "type": "string",
+         "maxLength": 60
+        },
+        "page_source": {
+         "enum": [
+          "native",
+          "ocr",
+          "mixed"
+         ]
+        },
+        "size_bucket": {
+         "enum": [
+          "xs",
+          "s",
+          "m",
+          "l",
+          "xl"
+         ]
+        },
+        "band": {
+         "enum": [
+          "high",
+          "medium",
+          "low",
+          "unreliable"
+         ]
+        },
+        "pages": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "passes": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "duration_ms": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "confidence_sum": {
+         "type": "number",
+         "minimum": 0
+        },
+        "credits_milli": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      }
+     },
+     "failures": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "file_type",
+        "code",
+        "count"
+       ],
+       "properties": {
+        "file_type": {
+         "type": "string",
+         "pattern": "^[a-z0-9_-]{0,20}$"
+        },
+        "code": {
+         "enum": [
+          "password",
+          "corrupt",
+          "unreadable",
+          "ocr_unavailable",
+          "page_too_large",
+          "language_unavailable",
+          "other"
+         ]
+        },
+        "count": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      }
+     },
+     "events": {
+      "description": "Counted events of the day, in buckets only: a run that ran out of credits (waiting_credits), or a search (engine, query length in words, script of the query, result count, time). Never the query or what was found. Optional: added in the second set of categories; sharing asks for consent again when categories are added.",
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind",
+        "engine",
+        "query_len",
+        "script",
+        "results",
+        "latency",
+        "count"
+       ],
+       "properties": {
+        "kind": {
+         "enum": [
+          "waiting_credits",
+          "search"
+         ]
+        },
+        "engine": {
+         "type": "string",
+         "pattern": "^[a-z0-9_-]{0,30}$"
+        },
+        "query_len": {
+         "enum": [
+          "",
+          "1",
+          "2-3",
+          "4-8",
+          "9+"
+         ]
+        },
+        "script": {
+         "enum": [
+          "",
+          "latin",
+          "telugu",
+          "mixed",
+          "other"
+         ]
+        },
+        "results": {
+         "enum": [
+          "",
+          "0",
+          "1-9",
+          "10-99",
+          "100+"
+         ]
+        },
+        "latency": {
+         "enum": [
+          "",
+          "<50ms",
+          "<200ms",
+          "<1s",
+          ">=1s"
+         ]
+        },
+        "count": {
+         "type": "integer",
+         "minimum": 1,
+         "maximum": 10000000
+        }
+       }
+      }
+     }
+    }
+   }
   }
+ }
 }

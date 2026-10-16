@@ -16,6 +16,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
+from vethuq._credits import _Clock
 from vethuq._db import _Database
 from vethuq._errors import _IndexAlreadyRunningError, _SearchOptionError
 from vethuq._export import _Exporter
@@ -24,7 +25,8 @@ from vethuq._indexing.runs import _Runs
 from vethuq._search import HYBRID, _Engines, _Search, _SearchIndex
 from vethuq._search.index import _Scope
 from vethuq._search.service import _Match, _Synced
-from vethuq._settings import _SearchSettings
+from vethuq._settings import _MetricsSettings, _SearchSettings
+from vethuq._stats import _SearchBuckets, _Usage
 from vethuq.enums import ExportFormat, SearchSortBy, SortOrder
 
 __all__ = [
@@ -350,6 +352,7 @@ class Search:
         if combine is not None and not isinstance(combine, str):
             raise TypeError("combine is the id of a keyword engine.")
         asked = _Engines.parse_options(options)
+        started = time.perf_counter()
         outcome = self._search.run(
             query,
             name,
@@ -362,6 +365,7 @@ class Search:
             scope,
         )
         matches = outcome.matches
+        self._count(query, outcome.engine, len(matches), time.perf_counter() - started)
         if sort_by is None:
             sort_by = SearchSortBy.RANK if name == HYBRID else SearchSortBy.PATH
         if sort_by is SearchSortBy.RANK:
@@ -392,6 +396,21 @@ class Search:
             pending=outcome.pending,
             options=asked,
         )
+
+    def _count(self, query: str, engine: str, found: int, seconds: float) -> None:
+        """Count the search, if sharing metrics is on: buckets of its size, script, result count
+        and speed. Never the query, never what was found; never fails the search."""
+        try:
+            with self._database.session() as session:
+                if not _MetricsSettings.get_opt_in(session):
+                    return
+                _Usage.record_event(
+                    session, _Clock.today(session).isoformat(), "search", engine,
+                    _SearchBuckets.length(query), _SearchBuckets.script(query),
+                    _SearchBuckets.results(found), _SearchBuckets.latency(seconds),
+                )  # fmt: skip
+        except Exception:  # noqa: BLE001 - counting never gets in the way of a search
+            logging.getLogger("vethuq.search").debug("counting a search failed", exc_info=True)
 
     # File types whose single page is the file's own lines, so a match has a line (and, except for
     # CSV, TSV and Parquet whose fields are spread out, a column). HTML, XML and the like are read

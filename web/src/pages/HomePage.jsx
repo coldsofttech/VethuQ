@@ -15,6 +15,7 @@ import { CheckmarkCircle20Filled, Library20Regular, Rocket20Regular } from '@flu
 import { api } from '../api/client.js';
 import { useApi } from '../api/useApi.js';
 import { useBrand } from '../brand/BrandProvider.jsx';
+import { MetricsPrompt } from '../components/MetricsPrompt.jsx';
 import { strings } from '../strings.js';
 
 const useStyles = makeStyles({
@@ -46,6 +47,7 @@ export function HomePage() {
           <Body1 className={styles.tagline}>{brand.tagline}</Body1>
         </div>
       </div>
+      <MetricsPrompt />
       <Body1>{strings.home.welcome}</Body1>
       {error && (
         <MessageBar intent="error">

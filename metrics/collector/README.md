@@ -1,7 +1,7 @@
 # VethuQ metrics collector
 
-Receives the anonymous usage metrics VethuQ users **opt in** to share (see `docs/credits.md`,
-section 7.1, and `client.metrics` in the `VethuQ` package). A [Cloudflare Worker](https://developers.cloudflare.com/workers/)
+Receives the anonymous usage metrics VethuQ users **opt in** to share (see
+`docs/metrics.md`, and `client.metrics` in the `VethuQ` package). A [Cloudflare Worker](https://developers.cloudflare.com/workers/)
 with a [D1](https://developers.cloudflare.com/d1/) database. It is public on purpose: so is the
 [schema](../schema/v1/batch.schema.json) it enforces.
 
@@ -25,7 +25,7 @@ npm test        # uses node:sqlite for the real SQL; needs Node 22.5+
 
 ## Deploy
 
-Use the **Deploy metrics collector** workflow (`.github/workflows/deploy-collector.yml`), or by hand:
+Use the **metrics-collector** workflow (`.github/workflows/metrics-collector.yml`, run by hand with "deploy" ticked), or by hand (`OPERATIONS.md` has the rest):
 
 ```bash
 npx wrangler login

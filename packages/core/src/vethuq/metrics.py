@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from vethuq._db import _Database
 from vethuq._metrics import _Metrics
-from vethuq._settings import _MetricsSettings
+from vethuq._settings import _MetricsSettings, _Settings
 
 __all__ = ["Metrics", "MetricsBatch", "MetricsSendResult", "MetricsStatus"]
 
@@ -24,6 +24,8 @@ class MetricsStatus:
     """Where metrics sharing stands."""
 
     opted_in: bool
+    consent_current: bool  # what you agreed to is what is shared now (False: opt in again)
+    prompted: bool  # the first-run question has been answered or dismissed
     available: bool  # the policy allows sending and names a collector
     last_sent_at: str | None  # UTC, ISO 8601
     sent_through: str | None  # the last UTC day whose data was sent
@@ -93,7 +95,13 @@ class Metrics:
     def opt_in(self) -> MetricsStatus:
         """Turn sharing on. The credits bonus starts the UTC day after the first batch is sent."""
         with self._database.session() as session:
-            _MetricsSettings.set_opt_in(session, True)
+            if not _MetricsSettings.get_opt_in(session):
+                _MetricsSettings.set_opt_in(session, True)
+            else:  # opted in before a category was added: agree to the current ones
+                _Settings.set(
+                    session, _MetricsSettings.CONSENT_KEY, str(_MetricsSettings.CONSENT_VERSION)
+                )
+            _MetricsSettings.set_prompted(session)
         return self.status()
 
     def opt_out(self) -> MetricsStatus:
@@ -101,7 +109,18 @@ class Metrics:
         to be deleted with `delete_data()`."""
         with self._database.session() as session:
             _MetricsSettings.set_opt_in(session, False)
+            _MetricsSettings.set_prompted(session)
+        self._metrics.forget_unsent()
         return self.status()
+
+    def dismiss_prompt(self) -> None:
+        """The first-run question has been answered with "not now": don't ask again."""
+        self._metrics.dismiss_prompt()
+
+    def rotate_id(self) -> str:
+        """A new random install id, so what is sent from now on isn't linked to what was sent
+        before. Data already at the collector stays under the old id (see `delete_data`)."""
+        return self._metrics.rotate_id()
 
     def preview(self) -> MetricsBatch:
         """The batch that would be sent next, exactly as it would be sent."""

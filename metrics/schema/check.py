@@ -79,6 +79,7 @@ class SchemaCheck:
             "day": set(day),
             "page": set(day["pages"]["items"]["properties"]),
             "failure": set(day["failures"]["items"]["properties"]),
+            "event": set(day["events"]["items"]["properties"]),
         }
 
     def check_client(self) -> list[str] | None:

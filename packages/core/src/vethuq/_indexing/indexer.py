@@ -48,7 +48,13 @@ from vethuq._indexing.runs import _Runs
 from vethuq._indexing.store import _PageStore
 from vethuq._languages import _Languages
 from vethuq._ocr import _PageOcr, _PageResult
-from vethuq._settings import _ConfidenceSettings, _IndexSettings, _OcrSettings, _TierSettings
+from vethuq._settings import (
+    _ConfidenceSettings,
+    _IndexSettings,
+    _MetricsSettings,
+    _OcrSettings,
+    _TierSettings,
+)
 from vethuq._sources import _Files, _Sources
 from vethuq._stats import _ErrorCode, _PageFact, _Usage
 from vethuq._tiers import HYBRID, LOCAL, _Router, _Tiers, _TierView
@@ -1239,6 +1245,8 @@ class _Indexer:
         with self.database.session() as session:
             record = session.get(_IndexRun, run_id)
             record.status, record.error = status, error
+            if status is IndexRunStatus.WAITING_CREDITS and _MetricsSettings.get_opt_in(session):
+                _Usage.record_event(session, _Clock.today(session).isoformat(), "waiting_credits")
             record.completed_at = _Runs._now()
             record.control, record.phase = "run", ""
             record.current_files, record.workers_active = "[]", 0

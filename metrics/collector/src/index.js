@@ -14,6 +14,32 @@ import deleteSchema from "../../schema/v1/delete.schema.json" with { type: "json
 const batchValidator = new Validator(batchSchema, "2020-12", false);
 const deleteValidator = new Validator(deleteSchema, "2020-12", false);
 
+// What a believable batch looks like: metrics are advisory, so an implausible one is refused
+// rather than counted. A person's one computer does not read millions of pages in a day.
+export const LIMITS = {
+  batchesPerInstallPerDay: 3,
+  pagesPerRow: 1_000_000,
+  msPerPage: 3_600_000, // an hour for one page
+  maxCredits: 10_000_000_000, // milli-credits in a row
+  eventsPerRow: 10_000_000,
+  retentionDays: 90,
+};
+
+export function implausible(batch) {
+  for (const day of batch.days) {
+    for (const p of day.pages) {
+      if (p.pages > LIMITS.pagesPerRow || p.passes > p.pages * 50) return "too many pages";
+      if (p.duration_ms > Math.max(p.pages, 1) * LIMITS.msPerPage) return "too slow to be real";
+      if (p.credits_milli > LIMITS.maxCredits) return "too many credits";
+      if (p.confidence_sum > p.pages * 1.0001) return "confidence above 100%";
+    }
+    for (const e of day.events ?? []) {
+      if (e.count > LIMITS.eventsPerRow) return "too many events";
+    }
+  }
+  return null;
+}
+
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
 
 function reply(status, body) {
@@ -41,6 +67,16 @@ function problems(validator, value) {
 
 export async function addBatch(db, batch, now = new Date()) {
   const received = now.toISOString();
+  const problem = implausible(batch);
+  if (problem) return { status: "rejected", reason: problem };
+  const today = received.slice(0, 10);
+  const recent = await db
+    .prepare("SELECT COUNT(*) AS n FROM batches WHERE install_id = ? AND received_at >= ?")
+    .bind(batch.install_id, `${today}T00:00:00.000Z`)
+    .first();
+  if ((recent?.n ?? 0) >= LIMITS.batchesPerInstallPerDay) {
+    return { status: "rate_limited", retry: "tomorrow" };
+  }
   const seen = await db
     .prepare("INSERT OR IGNORE INTO batches (batch_id, install_id, received_at) VALUES (?, ?, ?)")
     .bind(batch.batch_id, batch.install_id, received)
@@ -85,6 +121,18 @@ export async function addBatch(db, batch, now = new Date()) {
           ),
       );
     }
+    for (const e of day.events ?? []) {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO events (install_id, day, kind, engine, query_len, script, results, latency, count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (install_id, day, kind, engine, query_len, script, results, latency)
+             DO UPDATE SET count = count + excluded.count`,
+          )
+          .bind(batch.install_id, day.day, e.kind, e.engine, e.query_len, e.script, e.results, e.latency, e.count),
+      );
+    }
     for (const f of day.failures) {
       statements.push(
         db
@@ -104,10 +152,18 @@ export async function deleteInstall(db, installId) {
   await db.batch([
     db.prepare("DELETE FROM usage WHERE install_id = ?").bind(installId),
     db.prepare("DELETE FROM failures WHERE install_id = ?").bind(installId),
+    db.prepare("DELETE FROM events WHERE install_id = ?").bind(installId),
     db.prepare("DELETE FROM batches WHERE install_id = ?").bind(installId),
     db.prepare("DELETE FROM installs WHERE install_id = ?").bind(installId),
   ]);
   return { status: "deleted" };
+}
+
+// Raw batch records (ids and times) are kept 90 days; the daily totals are kept.
+export async function prune(db, now = new Date()) {
+  const cutoff = new Date(now.getTime() - LIMITS.retentionDays * 86_400_000).toISOString();
+  const result = await db.prepare("DELETE FROM batches WHERE received_at < ?").bind(cutoff).run();
+  return { removed: result.meta.changes ?? 0 };
 }
 
 export async function handle(request, env) {
@@ -122,9 +178,18 @@ export async function handle(request, env) {
   const { value, error } = await readJson(request, limit);
   if (error) return error;
   if (url.pathname === "/v1/batch") {
+    // A second limit on the sender (Cloudflare's rate limiter, if bound; no address is stored).
+    if (env.IP_LIMITER) {
+      const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+      const { success } = await env.IP_LIMITER.limit({ key: ip });
+      if (!success) return reply(429, { error: "slow down" });
+    }
     const found = problems(batchValidator, value);
     if (found) return reply(422, { error: "invalid batch", problems: found });
-    return reply(200, await addBatch(env.DB, value));
+    const outcome = await addBatch(env.DB, value);
+    if (outcome.status === "rate_limited") return reply(429, outcome);
+    if (outcome.status === "rejected") return reply(422, outcome);
+    return reply(200, outcome);
   }
   const found = problems(deleteValidator, value);
   if (found) return reply(422, { error: "invalid request", problems: found });
@@ -138,5 +203,9 @@ export default {
     } catch {
       return reply(500, { error: "server error" });
     }
+  },
+  // Daily (see wrangler.toml): keep the raw batch records only as long as the retention says.
+  async scheduled(_event, env) {
+    await prune(env.DB);
   },
 };

@@ -6,6 +6,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (metrics: events, consent, rotation)
+- Sharing metrics counts events in buckets, when you opted in: a run that ran out of credits, and searches (engine, words in the query, script, result count, speed; never the text). `metrics/schema/v1` gets an optional `events` list per day.
+- What sharing covers is versioned: someone who agreed before a category was added is asked again (`consent_current`, `needs_consent`; the bonus pauses). `Metrics.rotate_id()`, `dismiss_prompt()`, a first-run question in the web interface, and unsent days older than 30 days are dropped; opting out drops what was waiting.
+
 ### Added (the device folder: licences and the credit ledger belong to the computer)
 - Licences and the credit ledger moved out of the user's database into a **device folder** shared by every OS account and the background service (`%PROGRAMDATA%\VethuQ`, `/Users/Shared/VethuQ`, `/var/lib/vethuq`; `VETHUQ_DEVICE_HOME` overrides it; the account's own `device/` folder when the shared one can't be used; `device/` next to a database kept somewhere else). A second account no longer gets a fresh free allowance, a licence installed once works for all accounts and the service, and a restored or reset database does not hand out credits again. `credit_grants` and `credit_ledger` are now the `device` schema, attached to every connection; transactions that write to both take the two write locks in one fixed order, so they queue instead of failing with `database is locked`; removing a source deletes its ledger rows explicitly. `Paths.device_dir()` and `Paths.device_scope()`, and `vethuq settings location show` report it. See `docs/device-folder.md` (permissions, fallbacks, what it is not).
 - `Host.trusted_now()` for add-ons: the policy-corrected clock, so setting the local clock back doesn't revive an expired licence.

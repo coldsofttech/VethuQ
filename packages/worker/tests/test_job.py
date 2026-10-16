@@ -403,3 +403,19 @@ def _with(manifest, profiles):
     from dataclasses import replace
 
     return replace(manifest, profiles=profiles)
+
+
+class TestNoNetwork:
+    def test_a_job_makes_no_network_call(self, tmp_path, monkeypatch):
+        """The worker reports what it did inside the sealed result and never calls out."""
+        import socket
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("the worker opened a network connection")
+
+        monkeypatch.setattr(socket.socket, "connect", refuse)
+        monkeypatch.setattr(socket, "create_connection", refuse)
+        builder = JobBuilder(KEY)
+        builder.add(request("a"))
+        result = worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
+        assert result.status == "done" and result.runner["cpu_model"]
