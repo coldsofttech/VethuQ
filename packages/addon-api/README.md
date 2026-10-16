@@ -119,6 +119,15 @@ valid. Three things it should do:
 - The API version is `major.minor.patch`, the same form as the policy's `compatibility.addon_api`. An add-on declares the range it works with; an add-on outside the
   range is listed as incompatible and not run.
 
+## Supported versions
+
+An add-on's `Manifest(api_min=, api_max=)` is the range of add-on API versions it works with (both
+default to the API it was built against). Outside the range VethuQ lists it as incompatible with both
+versions in the message and does not import it. A part of the API is deprecated for at least one minor
+release (a warning and a CHANGELOG line) before it is removed, and removal raises the API's minor (or
+major) version. The premium repository tests each add-on against the newest and the oldest supported
+VethuQ before a release (`docs/development.md` there).
+
 ## Testing an add-on
 
 ```python

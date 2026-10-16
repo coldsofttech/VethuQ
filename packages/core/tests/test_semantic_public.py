@@ -216,3 +216,63 @@ class TestWithoutTheModelLibraries:
         monkeypatch.setitem(__import__("sys").modules, "huggingface_hub", None)
         with pytest.raises(errors.SearchUnavailableError, match="huggingface_hub"):
             client.search.sync("semantic")
+
+
+class TestWhenTheDatabaseChanges:
+    """The vectors are the add-on's own file; the database can change under it."""
+
+    OPTIONS = "semantic.threshold=0.5"
+
+    @staticmethod
+    def stored(client):
+        return client._manager().loaded()["semantic"].addon.engine().store.counts()[0]
+
+    def test_a_purged_source_is_forgotten_by_the_next_sync_and_never_found(self, indexed):
+        indexed.search.sync("semantic")
+        assert self.stored(indexed) == 4
+        source = indexed.sources.list()[0]
+        indexed.sources.remove(source.id)
+        indexed.sources.purge(source.id)
+        result = indexed.search.run("reimbursement", engine="semantic", options=self.OPTIONS)
+        assert result.total == 0  # the old vectors are not used for pages that are gone
+        indexed.search.sync("semantic")
+        assert self.stored(indexed) == 0
+
+    def test_a_sync_that_ran_out_of_credits_still_forgets_what_is_gone(self, indexed, tmp_path):
+        indexed.search.sync("semantic")
+        source = indexed.sources.list()[0]
+        indexed.sources.remove(source.id)
+        indexed.sources.purge(source.id)
+        other = tmp_path / "other"
+        other.mkdir()
+        (other / "new.pdf").write_text(fp.pdf_document(fp.native_page("Something new.")))
+        indexed.sources.create(other)
+        indexed.index.run()
+        addon = indexed._manager().loaded()["semantic"].addon
+        addon.host.credits.charge(addon.host.credits.balance_milli())  # nothing left to spend
+        (report,) = indexed.search.sync("semantic")
+        assert report.paused and self.stored(indexed) == 0
+
+    def test_a_new_database_with_new_ids_does_not_reuse_old_vectors(self, indexed, tmp_path):
+        indexed.search.sync("semantic")
+        source = indexed.sources.list()[0]
+        indexed.sources.remove(source.id)
+        indexed.sources.purge(source.id)
+        other = tmp_path / "other"
+        other.mkdir()
+        (other / "unrelated.pdf").write_text(fp.pdf_document(fp.native_page("Gardening tips.")))
+        indexed.sources.create(other)
+        indexed.index.run()
+        # the new page may take an id the old one had; its text differs, so it is pending
+        result = indexed.search.run("reimbursement", engine="semantic", options=self.OPTIONS)
+        assert result.total == 0 and result.pending == {"semantic": 1}
+        indexed.search.sync("semantic")
+        assert self.stored(indexed) == 1
+
+    def test_turning_the_addon_off_and_on_keeps_its_vectors(self, indexed):
+        indexed.search.sync("semantic")
+        indexed.addons.set_enabled("semantic", False)
+        indexed.addons.set_enabled("semantic", True)
+        assert self.stored(indexed) == 4
+        result = indexed.search.run("reimbursement", engine="semantic", options=self.OPTIONS)
+        assert files(result) == ["refund.pdf", "terms.pdf"]
