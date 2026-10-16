@@ -32,7 +32,7 @@ proximity = ["vethuq-addon-proximity~=0.1"]
 # Similar words (misspellings, OCR misreads). Brings the leetspeak normaliser.
 fuzzy = ["vethuq-addon-fuzzy~=0.1"]
 noise-fuzzy = ["vethuq-addon-noise-fuzzy~=0.1"]
-# Every search engine and normalizer: the search pack bundle (adds lexical, proximity, fuzzy, noise-fuzzy,
+# Every search engine and normalizer: the search bundle (adds lexical, proximity, fuzzy, noise-fuzzy,
 # semantic and leetspeak to what VethuQ installs).
 search = ["vethuq-bundle-search~=0.1"]
 # Read TSV files (tab-separated values; a free add-on).

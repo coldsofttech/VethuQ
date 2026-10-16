@@ -4,6 +4,9 @@ All notable changes to `vethuq-desktop`.
 
 ## [Unreleased]
 
+### Added (discover)
+- Add-ons › Discover: every add-on and bundle that exists, with descriptions and where to ask for what is not installed; the Get more tab's "packs" are now "bundles".
+
 ### Added (updates)
 - An update dialog with Install now, Later and Skip this version; Install now checks the installer against the signed policy before running it, and stops and restarts the background service around it. The README describes it and what the policy fetch sends.
 

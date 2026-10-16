@@ -7,6 +7,8 @@ The public, static home of the signed **`policy.json`** that VethuQ clients fetc
 - feature flags
 - (later) time-boxed limit adjustments, per add-on policy and licence revocations
 
+A second signed file, **`catalog.json`**, lists the add-ons and bundles that exist, with descriptions.
+
 This lets us change behaviour without every user reinstalling. Hosting is static (GitHub Pages), so
 everything in this folder is world-readable and contains **only signed, non-secret data**.
 
@@ -17,6 +19,7 @@ policy/
   v1/
     index.html     # placeholder so /policy/v1/ resolves
     policy.json    # signed envelope for v1 clients (currently an unsigned placeholder)
+    catalog.json   # signed add-on and bundle catalog (currently an unsigned placeholder)
   schema/v1/       # JSON Schemas: envelope + payload
   docs/            # field documentation, envelope format, hosting and mirrors
   examples/v1/     # illustrative unsigned payloads (not live policy)
@@ -25,7 +28,7 @@ tools/policy/
   validate.py      # the validator used by CI (class based)
 ```
 
-See [docs/schema-v1.md](docs/schema-v1.md) for the fields and compatibility rules and
+See [docs/schema-catalog.md](docs/schema-catalog.md) for the add-on and bundle catalog, [docs/schema-v1.md](docs/schema-v1.md) for the fields and compatibility rules and
 [docs/envelope.md](docs/envelope.md) for the signed envelope format.
 
 `/policy/v1/` is a stable contract: it stays alive for old clients even if a `/policy/v2/`

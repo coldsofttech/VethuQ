@@ -44,6 +44,9 @@ jobs:
             python tools/policy/validate.py payload "$f"
           done
 
+      - name: Validate the example catalog
+        run: python tools/policy/validate.py catalog-payload policy/examples/v1/catalog.example.json
+
       - name: Find previous policy.json
         id: prev
         run: |
@@ -61,3 +64,6 @@ jobs:
 
       - name: Validate policy/v1/policy.json
         run: python tools/policy/validate.py envelope policy/v1/policy.json --keys-dir policy/keys --previous "${{ steps.prev.outputs.path }}"
+
+      - name: Validate policy/v1/catalog.json
+        run: python tools/policy/validate.py catalog-envelope policy/v1/catalog.json --keys-dir policy/keys

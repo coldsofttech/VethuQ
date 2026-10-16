@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "sequence": 1,
+  "issued_at": "2026-10-01T12:00:00Z",
+  "kid": "pol-0000000000000000",
+  "request_url": "https://github.com/coldsofttech/vethuq-support/issues/new?template=addon-request.yml",
+  "addons": [
+    {
+      "id": "pdf",
+      "label": "PDF",
+      "summary": "Read PDF files, with OCR for scanned pages.",
+      "description": "Reads the text of PDF files and sends scanned pages to OCR.\nFree, and part of every install.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "size_bytes": 12000000,
+      "docs_url": "https://github.com/coldsofttech/vethuq-support/blob/main/docs/addons/pdf.md"
+    },
+    {
+      "id": "docx",
+      "label": "Word documents",
+      "summary": "Read .docx files.",
+      "description": "Reads Word documents, including tables, headers and footnotes.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "bundles": ["office"],
+      "status": "available",
+      "min_client": "1.0.0",
+      "translations": {
+        "es": { "label": "Documentos de Word", "summary": "Lee archivos .docx." }
+      }
+    },
+    {
+      "id": "semantic",
+      "label": "Semantic search",
+      "summary": "Find pages by meaning, not only by words.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "coming_soon"
+    }
+  ],
+  "bundles": [
+    {
+      "id": "office",
+      "label": "Office",
+      "summary": "Word, Excel and PowerPoint files.",
+      "description": "Everything for the Microsoft Office file types, licensed together.",
+      "addons": ["docx"],
+      "status": "available"
+    }
+  ]
+}

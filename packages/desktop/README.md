@@ -54,6 +54,10 @@ Settings › General › Updates chooses `on` (check and offer), `notify-only` (
 
 Checking for updates fetches one small signed file (the policy) from a static web host. The host sees your IP address and the request's fixed identity, `VethuQ-policy/1`. **Your VethuQ version is not sent**: the comparison happens on your computer. No telemetry is added, and GitHub Pages gives no access logs to us.
 
+## Discover add-ons
+
+Add-ons › **Discover** shows every add-on and bundle that exists, not only the ones installed here: a card for each with its description, whether it is free or licensed, the bundles it belongs to, and where it stands on this computer (installed, turned off, not installed, coming soon, no longer offered). For one that is not installed, **Ask for it** opens the address the catalog gives, or says to ask your administrator when it gives none. Search the list, or show only what is not installed. It reads the saved catalog; **Check now** looks for a newer one (and says why it could not, for instance when the update check is off). The fetch exposes your IP address, like the policy fetch, and nothing else. Add-ons › **Get more** installs the bundles VethuQ names with pip; Discover is for finding out what exists and asking for it.
+
 ## Known limits
 
 - Windows only. The window is created with `gui="edgechromium"` and never falls back to the old

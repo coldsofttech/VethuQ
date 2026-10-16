@@ -59,6 +59,17 @@ After a command, when a newer version exists, one line is printed to stderr (for
 
 Checking for updates fetches one small signed file (the policy) from a static web host. The host sees your IP address and the request's fixed identity, `VethuQ-policy/1`. **Your VethuQ version is not sent**: the comparison happens on your computer. No telemetry is added, and GitHub Pages gives no access logs to us.
 
+## The catalog: what exists, not only what is installed
+
+    vethuq catalog list                  # every add-on, with where it stands on this computer
+    vethuq catalog list --missing        # only those not installed
+    vethuq catalog list --bundle office  # the add-ons of one bundle
+    vethuq catalog bundles               # the bundles, and how much of each is installed
+    vethuq catalog show docx             # one add-on or bundle: description, licence, how to ask for it
+    vethuq catalog refresh               # look for a newer catalog (about once a day unless --force)
+
+`--language es` shows the catalog's translated text where it has some, and `--json` / `--export FILE` work as for the other listings. The catalog comes from a signed file beside the policy; nothing is fetched until you run `vethuq catalog refresh` (or the policy refresh the notice starts), and not at all when the update check is off. Before the first catalog is received only the installed add-ons are listed, and the command says so. To ask for an add-on that is not installed, `catalog show` prints the address to ask at.
+
 ## Settings
 
     vethuq settings show

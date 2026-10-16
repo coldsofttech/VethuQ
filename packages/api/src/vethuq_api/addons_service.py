@@ -1,6 +1,6 @@
 """Add-ons for the interface: what is installed, what could be, and installing and updating.
 
-Installing runs `pip` in the environment VethuQ runs in. Only packs that VethuQ itself names as
+Installing runs `pip` in the environment VethuQ runs in. Only bundles that VethuQ itself names as
 extras, and updates the signed policy announces for an installed add-on, can be asked for: the
 interface never passes a name it was given to pip.
 """
@@ -23,7 +23,7 @@ from vethuq_api.indexing import IndexingRefusedError
 PIP_TIMEOUT_SECONDS = 20 * 60
 LOG_LINES = 200
 
-# What each pack adds, in words (VethuQ names the packs, not what they do).
+# What each bundle adds, in words (VethuQ names the bundles, not what they do).
 PACK_NOTES = {
     "images": (
         "Read image files (PNG, JPG, TIFF, BMP, GIF, WebP, JPEG 2000, SVG) and the pictures "
@@ -126,8 +126,25 @@ class AddonsService:
         except metadata.PackageNotFoundError:
             return None
 
-    def packs(self) -> list[dict[str, object]]:
-        """The optional packs VethuQ names (its extras), and whether each is installed."""
+    # ----- the catalog: everything that exists, installed or not ---------------------------------
+
+    def catalog(self, language: str | None = None) -> dict[str, object]:
+        """The add-ons and bundles that exist (from the saved catalog; no request) with where each
+        stands here, and what the catalog is (where it came from, its sequence)."""
+        client = self._client()
+        return {
+            "catalog": client.catalog.current().to_dict(),
+            "addons": [e.to_dict() for e in client.catalog.addons(language)],
+            "bundles": [b.to_dict() for b in client.catalog.bundles(language)],
+        }
+
+    def catalog_refresh(self, force: bool, language: str | None = None) -> dict[str, object]:
+        """Look for a newer catalog (about once a day unless `force`), then answer as `catalog`."""
+        result = self._client().catalog.refresh(force)
+        return {**self.catalog(language), "catalog": result.to_dict()}
+
+    def bundles(self) -> list[dict[str, object]]:
+        """The optional bundles VethuQ names (its extras), and whether each is installed."""
         found: dict[str, list[Requirement]] = {}
         for text in metadata.requires("vethuq") or []:
             requirement = Requirement(text)
@@ -138,10 +155,10 @@ class AddonsService:
                     {"extra": extra}
                 ) and not requirement.marker.evaluate({"extra": ""}):
                     found.setdefault(extra, []).append(requirement)
-        packs = []
+        bundles = []
         for extra, requirements in sorted(found.items()):
             versions = {r.name: self._installed_version(r.name) for r in requirements}
-            packs.append(
+            bundles.append(
                 {
                     "id": extra,
                     "note": PACK_NOTES.get(extra, ""),
@@ -151,7 +168,7 @@ class AddonsService:
                     "installed": all(v is not None for v in versions.values()),
                 }
             )
-        return packs
+        return bundles
 
     @staticmethod
     def _extras() -> set[str]:
@@ -184,19 +201,19 @@ class AddonsService:
         with self._lock:
             return {**self._job, "log": list(self._job["log"])}
 
-    def install(self, pack: str) -> dict[str, object]:
-        match = next((p for p in self.packs() if p["id"] == pack), None)
+    def install(self, bundle: str) -> dict[str, object]:
+        match = next((p for p in self.bundles() if p["id"] == bundle), None)
         if match is None:
-            raise ValueError(f"VethuQ has no pack called {pack!r}.")
+            raise ValueError(f"VethuQ has no bundle called {bundle!r}.")
         names = [str(p["name"]) for p in match["packages"]]  # type: ignore[union-attr]
-        # Name and version range only: the marker that ties it to the pack is not for pip.
+        # Name and version range only: the marker that ties it to the bundle is not for pip.
         requirements = [
             f"{r.name}{r.specifier}"
             for text in metadata.requires("vethuq") or []
             for r in [Requirement(text)]
-            if r.marker is not None and r.marker.evaluate({"extra": pack}) and r.name in names
+            if r.marker is not None and r.marker.evaluate({"extra": bundle}) and r.name in names
         ]
-        return self._start("install", pack, requirements)
+        return self._start("install", bundle, requirements)
 
     def update(self, addon_id: str) -> dict[str, object]:
         row = next((r for r in self.installed() if r["id"] == addon_id), None)

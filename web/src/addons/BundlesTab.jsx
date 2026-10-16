@@ -2,10 +2,10 @@ import { Badge, Button, MessageBar, MessageBarBody } from '@fluentui/react-compo
 import { ArrowDownload16Regular } from '@fluentui/react-icons';
 import { DataTable } from '../components/DataTable.jsx';
 
-/** The optional packs VethuQ names, and a button to install each that is not installed yet. */
-export function PacksTab({ packs, install, busy, onInstall }) {
+/** The optional bundles VethuQ names, and a button to install each that is not installed yet. */
+export function BundlesTab({ bundles, install, busy, onInstall }) {
   const columns = [
-    { key: 'id', label: 'Pack' },
+    { key: 'id', label: 'Bundle' },
     { key: 'note', label: 'What it adds' },
     {
       key: 'packages',
@@ -46,7 +46,7 @@ export function PacksTab({ packs, install, busy, onInstall }) {
           <MessageBarBody>{install.reason}</MessageBarBody>
         </MessageBar>
       )}
-      <DataTable label="Add-on packs" columns={columns} rows={packs} rowKey={(p) => p.id} />
+      <DataTable label="Add-on bundles" columns={columns} rows={bundles} rowKey={(p) => p.id} />
     </div>
   );
 }

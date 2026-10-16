@@ -320,14 +320,17 @@ export const api = {
   addons: {
     list: (signal) => request('/api/addons', { signal }),
     job: (signal) => request('/api/addons/job', { signal }),
+    catalog: (signal) => request('/api/addons/catalog', { signal }),
+    catalogRefresh: (force) =>
+      request('/api/addons/catalog/refresh', { method: 'POST', body: { force } }),
     setEnabled: (id, enabled) =>
       request(`/api/addons/${encodeURIComponent(id)}/enabled`, {
         method: 'POST',
         body: { enabled },
       }),
     update: (id) => request(`/api/addons/${encodeURIComponent(id)}/update`, { method: 'POST' }),
-    install: (pack) =>
-      request(`/api/addons/packs/${encodeURIComponent(pack)}/install`, { method: 'POST' }),
+    install: (bundle) =>
+      request(`/api/addons/bundles/${encodeURIComponent(bundle)}/install`, { method: 'POST' }),
   },
   ocr: {
     /** @returns {Promise<{ engines: object[], phases: object[] }>} */

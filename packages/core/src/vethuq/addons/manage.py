@@ -6,11 +6,14 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from vethuq._addons import _AddonManager, _AddonSettingsStore
 from vethuq.enums import AddonStatus
 from vethuq_addon_api import CliGroup
+
+if TYPE_CHECKING:
+    from vethuq.catalog import BundleEntry, CatalogClient, CatalogEntry
 
 __all__ = ["AddonInfo", "AddonSettings", "Addons"]
 
@@ -68,11 +71,16 @@ class Addons:
     """
 
     def __init__(
-        self, db_path: Path, manager: _AddonManager, open_database: Callable[[], None]
+        self,
+        db_path: Path,
+        manager: _AddonManager,
+        open_database: Callable[[], None],
+        catalog: Callable[[], CatalogClient] | None = None,
     ) -> None:
         self._db_path = db_path
         self._open_database = open_database
         self._manager = manager
+        self._catalog = catalog
 
     def list(self) -> list[AddonInfo]:
         """Every installed add-on, by id, with whether it is running."""
@@ -87,6 +95,20 @@ class Addons:
     def get(self, addon_id: str) -> AddonInfo | None:
         """One installed add-on, or None if it isn't installed."""
         return next((info for info in self.list() if info.id == addon_id), None)
+
+    def catalog(self, language: str | None = None) -> list[CatalogEntry]:
+        """Every add-on that exists, installed or not, with its description and where it stands on
+        this computer (see `VethuQ().catalog`). Makes no request."""
+        return self._catalog_client().addons(language)
+
+    def bundles(self, language: str | None = None) -> list[BundleEntry]:
+        """Every bundle of add-ons, with which of them are installed here."""
+        return self._catalog_client().bundles(language)
+
+    def _catalog_client(self) -> CatalogClient:
+        if self._catalog is None:
+            raise RuntimeError("This Addons has no catalog; use VethuQ().addons.")
+        return self._catalog()
 
     def is_installed(self, addon_id: str) -> bool:
         return self.get(addon_id) is not None

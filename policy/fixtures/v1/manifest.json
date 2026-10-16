@@ -90,6 +90,56 @@
       ]
     }
   },
+  "catalog": {
+    "valid": {
+      "file": "catalog-valid.envelope.json",
+      "sequence": 5,
+      "addons": 3,
+      "bundles": 1
+    },
+    "valid_newer": {
+      "file": "catalog-valid-newer.envelope.json",
+      "sequence": 6
+    },
+    "accepted": [
+      {
+        "file": "catalog-unknown-fields.envelope.json",
+        "sequence": 8
+      }
+    ],
+    "rejected": [
+      {
+        "file": "catalog-bad-signature.envelope.json"
+      },
+      {
+        "file": "catalog-wrong-signer.envelope.json"
+      },
+      {
+        "file": "catalog-unknown-key-id.envelope.json"
+      },
+      {
+        "file": "catalog-lower-sequence.envelope.json",
+        "reason": "downgrade"
+      },
+      {
+        "file": "catalog-malformed-json.envelope.json"
+      },
+      {
+        "file": "catalog-payload-not-json.envelope.json"
+      },
+      {
+        "file": "catalog-is-a-policy.envelope.json"
+      }
+    ],
+    "update_required": [
+      {
+        "file": "catalog-higher-schema-major.envelope.json"
+      }
+    ],
+    "refused_once_key_revoked": [
+      "catalog-signed-by-revoked-key.envelope.json"
+    ]
+  },
   "generated": [
     "oversize payload",
     "all URLs failing / offline",

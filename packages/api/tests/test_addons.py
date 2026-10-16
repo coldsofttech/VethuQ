@@ -89,14 +89,14 @@ class TestInstalled:
             service.set_enabled("english", False)
 
 
-class TestPacks:
+class TestBundles:
     def test_the_packs_vethuq_names_are_listed_with_what_is_installed(self, vethuq):
-        packs = {p["id"]: p for p in AddonsService(lambda: vethuq).packs()}
-        assert {"images", "deep-scan", "search", "web", "data"} <= set(packs)
-        assert packs["data"]["note"]
-        assert packs["images"]["packages"][0]["name"] == "vethuq-bundle-image"
-        assert packs["images"]["note"]
-        assert isinstance(packs["fuzzy"]["installed"], bool)
+        bundles = {p["id"]: p for p in AddonsService(lambda: vethuq).bundles()}
+        assert {"images", "deep-scan", "search", "web", "data"} <= set(bundles)
+        assert bundles["data"]["note"]
+        assert bundles["images"]["packages"][0]["name"] == "vethuq-bundle-image"
+        assert bundles["images"]["note"]
+        assert isinstance(bundles["fuzzy"]["installed"], bool)
 
 
 class TestInstalling:
@@ -166,6 +166,23 @@ class TestInstalling:
             service.install("images")
 
 
+class TestCatalog:
+    def test_it_is_the_catalog_merged_with_what_is_installed(self, vethuq):
+        data = AddonsService(lambda: vethuq).catalog()
+
+        assert set(data) == {"catalog", "addons", "bundles"}
+        assert {a["id"] for a in data["addons"]} == {i["id"] for i in vethuq_installed(vethuq)}
+
+    def test_a_refresh_without_keys_asks_nothing(self, vethuq):
+        data = AddonsService(lambda: vethuq).catalog_refresh(True)
+
+        assert data["catalog"]["status"] == "skipped"
+
+
+def vethuq_installed(vethuq):
+    return [i.to_dict() for i in vethuq.addons.list()]
+
+
 class TestHttp:
     @pytest.fixture
     def http(self, web_dist, tmp_path):
@@ -179,12 +196,36 @@ class TestHttp:
 
     def test_the_endpoints_answer(self, http):
         data = http.get("/api/addons", base_url=ORIGIN).get_json()
-        assert data["installed"] and data["packs"] and data["install"]["ok"] in (True, False)
+        assert data["installed"] and data["bundles"] and data["install"]["ok"] in (True, False)
         assert http.get("/api/addons/job", base_url=ORIGIN).get_json()["running"] is False
         off = http.post(
             "/api/addons/csv/enabled", json={"enabled": False}, base_url=ORIGIN, headers=HEADERS
         )
         assert off.get_json()["disabled"] is True
+
+    def test_the_catalog_endpoints_answer_even_before_a_catalog_is_received(self, http):
+        data = http.get("/api/addons/catalog?language=es", base_url=ORIGIN).get_json()
+
+        assert data["catalog"]["source"] == "baseline" and data["bundles"] == []
+        assert data["addons"] and all(not a["listed"] for a in data["addons"])
+        refreshed = http.post(
+            "/api/addons/catalog/refresh",
+            json={"force": True},
+            base_url=ORIGIN,
+            headers=HEADERS,
+        )
+        assert refreshed.status_code == 200
+        assert refreshed.get_json()["catalog"]["status"] == "skipped"  # no keys embedded yet
+
+    def test_a_bad_catalog_request_is_refused(self, http):
+        bad = http.post(
+            "/api/addons/catalog/refresh",
+            json={"force": "yes"},
+            base_url=ORIGIN,
+            headers=HEADERS,
+        )
+        assert bad.status_code == 422
+        assert http.post("/api/addons/catalog/refresh", json={}, base_url=ORIGIN).status_code == 403
 
     def test_bad_requests_are_refused(self, http):
         post = lambda path, **body: http.post(  # noqa: E731
@@ -192,6 +233,6 @@ class TestHttp:
         )
         assert post("csv/enabled", enabled="no").status_code == 422
         assert post("nothing/enabled", enabled=False).status_code == 422
-        assert post("packs/evil/install").status_code == 422
+        assert post("bundles/evil/install").status_code == 422
         assert post("csv/update").status_code == 422
         assert http.post("/api/addons/csv/enabled", json={}, base_url=ORIGIN).status_code == 403

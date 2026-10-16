@@ -923,6 +923,86 @@ def policy_refresh(force: bool = typer.Option(False, "--force")) -> None:
     facts(client().policy.refresh(force), skip=("policy",))
 
 
+catalog_app = typer.Typer(
+    help="Every add-on and bundle that exists, installed or not.", no_args_is_help=True
+)
+Language = Annotated[
+    str | None, typer.Option("--language", "-l", help="Show the text in this language (es, te).")
+]
+
+
+def _catalog_note() -> None:
+    """Said when there is nothing but what is installed: no catalog has been received yet."""
+    result = client().catalog.current()
+    if result.source.value == "baseline" and not State.json:
+        console.print(
+            "No catalog received yet: only installed add-ons are listed. "
+            "Run: vethuq catalog refresh",
+            style=Theme.DIM,
+        )
+
+
+@catalog_app.command("list")
+@exportable("Add-ons", "catalog", facets=("state", "licence", "kind"))
+def catalog_list(
+    language: Language = None,
+    missing: bool = typer.Option(False, "--missing", help="Only add-ons that are not installed."),
+    bundle: str | None = typer.Option(None, "--bundle", help="Only add-ons of this bundle."),
+) -> None:
+    """The add-ons that exist, with where each stands on this computer."""
+    entries = client().catalog.addons(language)
+    if missing:
+        entries = [e for e in entries if not e.installed]
+    if bundle:
+        entries = [e for e in entries if bundle in e.bundles]
+    table(
+        entries,
+        ["id", "label", "kind", "licence", "state", "status", "bundles", "summary"],
+        empty="No add-ons to show.",
+    )
+    _catalog_note()
+
+
+@catalog_app.command("bundles")
+def catalog_bundles(language: Language = None) -> None:
+    """The bundles of add-ons, and how much of each is installed."""
+    table(
+        client().catalog.bundles(language),
+        ["id", "label", "status", "addons", "installed", "complete", "summary"],
+        empty="No bundles in the catalog.",
+    )
+    _catalog_note()
+
+
+@catalog_app.command("show")
+def catalog_show(item: str, language: Language = None) -> None:
+    """Everything about one add-on or bundle, including how to ask for it."""
+    found = client().catalog
+    entry = found.get(item, language) or found.get_bundle(item, language)
+    if entry is None:
+        raise typer.BadParameter(f"{item!r} is not an add-on or a bundle in the catalog.")
+    if State.json:
+        dump(entry)
+        return
+    console.print(f"{entry.label}  ({entry.id})", style="bold")
+    console.print(entry.summary)
+    if entry.description:
+        console.print()
+        console.print(entry.description)
+    console.print()
+    facts(
+        {k: v for k, v in entry.to_dict().items() if k not in ("label", "summary", "description")}
+    )
+    if entry.request_url:
+        console.print(f"\nTo ask for it: {entry.request_url}")
+
+
+@catalog_app.command("refresh")
+def catalog_refresh(force: bool = typer.Option(False, "--force")) -> None:
+    """Fetch the catalog again (about once a day unless --force)."""
+    facts(client().catalog.refresh(force))
+
+
 addons_app = typer.Typer(help="Installed add-ons.", no_args_is_help=True)
 
 
@@ -966,4 +1046,5 @@ def register(app: typer.Typer) -> None:
     app.add_typer(updates_app, name="updates")
     app.add_typer(policy_app, name="policy")
     app.add_typer(addons_app, name="addons")
+    app.add_typer(catalog_app, name="catalog")
     app.command("version", help="Show the version.")(show_version)

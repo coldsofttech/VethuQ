@@ -5,6 +5,9 @@ All notable changes to `vethuq-interactive-cli`.
 ## [Unreleased]
 
 ### Documented
+- The `Catalog` menu, built from the `vethuq catalog` commands.
+
+### Documented
 - The README says how the update check applies to the shell.
 
 ### Added

@@ -36,7 +36,7 @@ class _GrantKind(StrEnum):
 
     PROMO = "promo"  # a promotion: spent first
     DAILY = "daily"  # the day's allowance, with the metrics bonus
-    ONE_OFF = "one_off"  # starter, licence and pack credits
+    ONE_OFF = "one_off"  # starter, licence and bundle credits
     GRACE = "grace"  # the small allowance after everything else is used
 
 

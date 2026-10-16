@@ -6,6 +6,12 @@ schema major (`/v1/`) and their `sequence` number, not by release tags.
 
 ## [Unreleased]
 
+### Added
+- The add-on and bundle catalog: `catalog.json` (signed like the policy, own sequence), its schema `schema/v1/catalog.schema.json`, documentation, an example and validator modes `catalog-envelope` and `catalog-payload`.
+
+### Changed
+- "Pack" is now "bundle" in the documentation: a bundle is a group of add-ons licensed together.
+
 ### Changed
 - The policy moved into the VethuQ repository (`policy/`, validator in `tools/policy/validate.py`,
   workflows `policy-ci` and `policy-pages`). It is published at

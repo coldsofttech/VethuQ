@@ -37,6 +37,15 @@ class _VerifiedEnvelope:
     policy: Policy
 
 
+@dataclass(frozen=True)
+class _SignedBytes:
+    """An envelope whose signature checked out: who signed it and the exact bytes they signed."""
+
+    kid: str
+    standby: bool
+    payload: bytes
+
+
 class _EnvelopeVerifier:
     ALGORITHM = "Ed25519"
     SIGNATURE_BYTES = 64
@@ -59,6 +68,18 @@ class _EnvelopeVerifier:
 
     def verify(self, raw: bytes, revoked: Collection[str] = ()) -> _VerifiedEnvelope:
         """Verify `raw` (the envelope file). Raises a `_PolicyError` subclass on any problem."""
+        signed = self.verify_signed(raw, revoked)
+        return _VerifiedEnvelope(
+            signed.kid,
+            signed.standby,
+            signed.payload,
+            self._parse_payload(signed.payload, signed.kid),
+        )
+
+    def verify_signed(self, raw: bytes, revoked: Collection[str] = ()) -> _SignedBytes:
+        """Check the envelope and its signature, and return the signed bytes unparsed. The payload
+        is only read after this, by whoever knows what kind of document it is (the policy, the
+        catalog). Raises a `_PolicyError` subclass on any problem."""
         try:
             envelope = json.loads(raw)
         except ValueError as exc:  # includes bad UTF-8
@@ -83,7 +104,7 @@ class _EnvelopeVerifier:
             Ed25519PublicKey.from_public_bytes(key.public_key).verify(signature, payload)
         except InvalidSignature as exc:
             raise _SignatureError(f"signature does not match key id {kid!r}") from exc
-        return _VerifiedEnvelope(kid, key.standby, payload, self._parse_payload(payload, kid))
+        return _SignedBytes(kid, key.standby, payload)
 
     def _parse_payload(self, payload: bytes, kid: str) -> Policy:
         try:

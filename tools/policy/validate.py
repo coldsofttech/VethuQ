@@ -258,6 +258,47 @@ class PolicyValidator:
         errs = self.schema_errors(payload, "policy.schema.json")
         return errs if errs else self.semantic_errors(payload)
 
+    def catalog_errors(self, payload):
+        """Schema, then the rules a schema can't say: ids are unique, every bundle names add-ons
+        that exist and every add-on names bundles that exist and that list it back."""
+        errs = self.schema_errors(payload, "catalog.schema.json")
+        if errs:
+            return errs
+        addons = {}
+        for item in payload["addons"]:
+            if item["id"] in addons:
+                errs.append(f"addons: duplicate id {item['id']!r}")
+            addons[item["id"]] = item
+        bundles = {}
+        for item in payload["bundles"]:
+            if item["id"] in bundles:
+                errs.append(f"bundles: duplicate id {item['id']!r}")
+            bundles[item["id"]] = item
+        for bundle in bundles.values():
+            for addon_id in bundle["addons"]:
+                if addon_id not in addons:
+                    errs.append(f"bundles.{bundle['id']}: unknown add-on {addon_id!r}")
+                elif bundle["id"] not in addons[addon_id].get("bundles", []):
+                    errs.append(
+                        f"bundles.{bundle['id']}: add-on {addon_id!r} does not list this bundle"
+                    )
+        for addon in addons.values():
+            for bundle_id in addon.get("bundles", []):
+                if bundle_id not in bundles:
+                    errs.append(f"addons.{addon['id']}: unknown bundle {bundle_id!r}")
+                elif addon["id"] not in bundles[bundle_id]["addons"]:
+                    errs.append(
+                        f"addons.{addon['id']}: bundle {bundle_id!r} does not include this add-on"
+                    )
+            if addon.get("min_client") and not self.SEMVER_RE.match(addon["min_client"]):
+                errs.append(f"addons.{addon['id']}: min_client is not a version")
+        for where, items in (("addons", addons), ("bundles", bundles)):
+            for item in items.values():
+                for key in ("label", "summary", "description"):
+                    if key in item and "<" in item[key] and ">" in item[key]:
+                        errs.append(f"{where}.{item['id']}.{key}: plain text only, no markup")
+        return errs
+
     def check_sequence(self, payload, previous_doc):
         """previous_doc is the previous commit's policy.json (parsed); a placeholder is skipped."""
         if self.is_placeholder(previous_doc):
@@ -274,8 +315,8 @@ class PolicyValidator:
             ]
         return []
 
-    def validate_envelope(self, env, previous=None):
-        """Return (errors, payload_or_None)."""
+    def validate_envelope(self, env, previous=None, kind="policy"):
+        """Return (errors, payload_or_None). `kind` is `policy` or `catalog`."""
         errs = self.schema_errors(env, "envelope.schema.json")
         if errs:
             return errs, None
@@ -295,7 +336,7 @@ class PolicyValidator:
             payload = json.loads(payload_bytes.decode("utf-8"))
         except ValueError as e:
             return [f"payload is not valid UTF-8 JSON: {e}"], None
-        errs = self.validate_payload(payload)
+        errs = self.catalog_errors(payload) if kind == "catalog" else self.validate_payload(payload)
         if not errs and payload.get("kid") != env["kid"]:
             errs.append(f"payload.kid {payload.get('kid')!r} != envelope kid {env['kid']!r}")
         if not errs and previous is not None:
@@ -303,10 +344,15 @@ class PolicyValidator:
         return errs, payload
 
     def validate_file(self, mode, path, previous_path=None):
-        """Validate a file for the CLI. Returns (errors, warnings)."""
+        """Validate a file for the CLI. Returns (errors, warnings). Modes: payload, envelope, and
+        catalog-payload / catalog-envelope for the add-on and bundle catalog."""
         doc = self.load_json(path)
+        kind = "catalog" if mode.startswith("catalog-") else "policy"
+        mode = mode.removeprefix("catalog-")
         if mode == "payload":
-            return self.validate_payload(doc), []
+            return (
+                self.catalog_errors(doc) if kind == "catalog" else self.validate_payload(doc)
+            ), []
         if self.is_placeholder(doc):
             return [], ["unsigned placeholder accepted; replace with signed output"]
         previous = None
@@ -314,7 +360,7 @@ class PolicyValidator:
             previous = self.load_json(previous_path)
             if previous == doc:
                 previous = None  # unchanged file: no sequence bump required
-        return self.validate_envelope(doc, previous)[0], []
+        return self.validate_envelope(doc, previous, kind)[0], []
 
 
 def main(argv=None):
@@ -331,6 +377,12 @@ def main(argv=None):
     )
     pl = sub.add_parser("payload")
     pl.add_argument("file")
+    ce = sub.add_parser("catalog-envelope", help="a signed catalog.json")
+    ce.add_argument("file")
+    ce.add_argument("--keys-dir", default=str(ROOT / "keys"))
+    ce.add_argument("--previous", help="previous commit's catalog.json (sequence must increase)")
+    cp = sub.add_parser("catalog-payload", help="an unsigned catalog payload (an example)")
+    cp.add_argument("file")
     a = ap.parse_args(argv)
 
     validator = PolicyValidator(keys_dir=getattr(a, "keys_dir", ROOT / "keys"))

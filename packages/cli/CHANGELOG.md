@@ -4,6 +4,12 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Added (catalog)
+- `vethuq catalog list|bundles|show|refresh`: every add-on and bundle that exists, with its description, licence and state on this computer, and where to ask for it. `list` takes `--missing`, `--bundle`, `--language`, `--json` and `--export`.
+
+### Changed
+- "Pack" is now "bundle" in the documentation.
+
 ### Documented
 - The README describes `vethuq update`, the after-command notice, `vethuq policy notices`, the three update modes, `VETHUQ_UPDATE_CHECK` and what the policy fetch sends.
 

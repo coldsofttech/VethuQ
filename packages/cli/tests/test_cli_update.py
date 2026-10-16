@@ -112,3 +112,32 @@ class TestCommands:
         result = run("policy", "notices")
 
         assert result.exit_code == 0 and "No notices." in result.output
+
+
+class TestCatalogCommands:
+    def test_the_catalog_lists_what_is_installed_before_one_is_received(self, run):
+        result = run("catalog", "list")
+
+        assert result.exit_code == 0, result.output
+        assert "No catalog received yet" in result.output
+
+    def test_json_lists_entries_with_their_state(self, run_json):
+        data = run_json("catalog", "list")
+
+        assert isinstance(data, list)
+        assert all({"id", "state", "installed", "listed"} <= set(row) for row in data)
+
+    def test_bundles_with_no_catalog_is_empty(self, run):
+        result = run("catalog", "bundles")
+
+        assert result.exit_code == 0 and "No bundles in the catalog." in result.output
+
+    def test_showing_something_unknown_is_an_error_that_says_so(self, run):
+        result = run("catalog", "show", "no-such-addon")
+
+        assert result.exit_code != 0 and "not an add-on or a bundle" in result.output
+
+    def test_refresh_without_embedded_keys_asks_nothing_and_says_why(self, run_json):
+        data = run_json("catalog", "refresh")
+
+        assert data["status"] == "skipped" and "no policy keys" in data["detail"]

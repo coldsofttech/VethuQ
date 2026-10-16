@@ -7,6 +7,7 @@ from enum import StrEnum
 __all__ = [
     "FileStatus",
     "ExportFormat",
+    "AddonState",
     "AddonStatus",
     "CreditEntryKind",
     "ProcessingTier",
@@ -153,6 +154,16 @@ class AddonStatus(StrEnum):
     INCOMPATIBLE = "incompatible"  # it needs a different add-on API version
     FAILED = "failed"  # it couldn't be loaded
     DISABLED = "disabled"  # turned off with `addons.set_enabled`; it is not loaded
+
+
+class AddonState(StrEnum):
+    """Where an add-on in the catalog stands on this computer."""
+
+    NOT_INSTALLED = "not_installed"
+    ENABLED = "enabled"  # installed and running
+    DISABLED = "disabled"  # installed and turned off
+    INCOMPATIBLE = "incompatible"  # installed, but it needs a different add-on API version
+    FAILED = "failed"  # installed, but it couldn't be loaded
 
 
 class PolicyStatus(StrEnum):

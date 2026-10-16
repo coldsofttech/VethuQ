@@ -83,6 +83,11 @@ class Updates:
             skipped_version=view.skipped_version,
         )
 
+    def check_enabled(self) -> bool:
+        """Whether the update check is on: not switched off by the setting or by
+        `VETHUQ_UPDATE_CHECK`. Other fetches that follow it, such as the catalog's, ask this."""
+        return self._view().mode is not UpdateCheckMode.OFF
+
     def status(self) -> UpdateResult:
         """What the saved policy says about this version. Makes no network request."""
         current, distribution = "unknown", _Distribution.current()

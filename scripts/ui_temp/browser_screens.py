@@ -635,7 +635,7 @@ def credits_screens(browser: Browser, out: Path) -> None:
         expect(page.get_by_text("Remove models nothing uses?")).to_be_visible()
         shot(page, out, "settings-ocr-confirm")
         page.get_by_role("button", name="Cancel").click()
-        # Add-ons: installed, turn one off, and the packs that can be added.
+        # Add-ons: installed, turn one off, and the bundles that can be added.
         page.get_by_role("tab", name="Add-ons").first.click()
         expect(page.get_by_role("table", name="Installed add-ons")).to_be_visible()
         page.get_by_role("switch", name="Turn csv on or off").click()
@@ -643,7 +643,7 @@ def credits_screens(browser: Browser, out: Path) -> None:
         page.wait_for_timeout(400)
         shot(page, out, "addons-installed")
         page.get_by_role("tab", name="Get more").click()
-        expect(page.get_by_role("table", name="Add-on packs")).to_be_visible()
+        expect(page.get_by_role("table", name="Add-on bundles")).to_be_visible()
         shot(page, out, "addons-get-more")
         page.get_by_role("button", name="Install images").click()
         expect(page.get_by_text("Install images?")).to_be_visible()

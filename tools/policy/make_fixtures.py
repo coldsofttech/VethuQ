@@ -80,6 +80,80 @@ def envelope(body: dict[str, Any] | bytes, seed: bytes = SEED, kid: str = KID, *
     return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 
+def catalog_payload(sequence: int, kid: str = KID, **over: Any) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "schema_version": 1,
+        "sequence": sequence,
+        "issued_at": "2026-10-01T12:00:00Z",
+        "kid": kid,
+        "request_url": "https://example.test/request",
+        "addons": [
+            {
+                "id": "pdf",
+                "label": "PDF",
+                "summary": "Read PDF files.",
+                "description": "Reads PDF files, with OCR for scanned pages.",
+                "kind": "file-type",
+                "licence": "free",
+                "status": "available",
+            },
+            {
+                "id": "docx",
+                "label": "Word documents",
+                "summary": "Read .docx files.",
+                "kind": "file-type",
+                "licence": "licensed",
+                "bundles": ["office"],
+                "translations": {"es": {"label": "Documentos de Word"}},
+            },
+            {
+                "id": "semantic",
+                "label": "Semantic search",
+                "summary": "Find pages by meaning.",
+                "status": "coming_soon",
+                "request_url": "https://example.test/semantic",
+            },
+        ],
+        "bundles": [
+            {
+                "id": "office",
+                "label": "Office",
+                "summary": "Word, Excel and PowerPoint.",
+                "addons": ["docx"],
+            }
+        ],
+    }
+    data.update(over)
+    return data
+
+
+def build_catalog() -> dict[str, str]:
+    """The catalog fixtures: the same failure modes as the policy ones, with the catalog's own
+    counter (a catalog's sequence is independent of the policy's)."""
+    tampered = json.loads(envelope(catalog_payload(6)))
+    tampered["sig"] = b64url(bytes(64))
+    unknown = catalog_payload(8, future_section={"x": 1})
+    unknown["addons"][0]["future_field"] = True
+    return {
+        "catalog-valid.envelope.json": envelope(catalog_payload(5)),
+        "catalog-valid-newer.envelope.json": envelope(catalog_payload(6)),
+        "catalog-lower-sequence.envelope.json": envelope(catalog_payload(4)),
+        "catalog-unknown-fields.envelope.json": envelope(unknown),
+        "catalog-bad-signature.envelope.json": json.dumps(tampered, indent=2, sort_keys=True)
+        + "\n",
+        "catalog-wrong-signer.envelope.json": envelope(catalog_payload(7), seed=OTHER_SEED),
+        "catalog-unknown-key-id.envelope.json": envelope(
+            catalog_payload(7, UNKNOWN_KID), seed=OTHER_SEED, kid=UNKNOWN_KID
+        ),
+        "catalog-higher-schema-major.envelope.json": envelope(catalog_payload(9, schema_version=2)),
+        "catalog-malformed-json.envelope.json": '{"alg": "Ed25519", "kid": \n',
+        "catalog-payload-not-json.envelope.json": envelope(b"this is not json"),
+        # A signed policy served where the catalog is expected: valid signature, wrong document.
+        "catalog-is-a-policy.envelope.json": envelope(payload(10)),
+        "catalog-signed-by-revoked-key.envelope.json": envelope(catalog_payload(30)),
+    }
+
+
 def build() -> dict[str, str]:
     notices = [
         {"id": "active", "message": "Active now.", "severity": "info"},
@@ -132,6 +206,7 @@ def build() -> dict[str, str]:
             STANDBY_KID,
         ),
     }
+    files |= build_catalog()
     files[f"keys/{KID}.pub"] = b64url(public_of(SEED)) + "\n"
     files[f"keys/{STANDBY_KID}.pub"] = b64url(public_of(STANDBY_SEED)) + "\n"
     manifest = {
@@ -177,6 +252,29 @@ def build() -> dict[str, str]:
                 "ignored": [STANDBY_KID],
                 "revokes": [LICENCE_KID],
             },
+        },
+        "catalog": {
+            "valid": {
+                "file": "catalog-valid.envelope.json",
+                "sequence": 5,
+                "addons": 3,
+                "bundles": 1,
+            },
+            "valid_newer": {"file": "catalog-valid-newer.envelope.json", "sequence": 6},
+            "accepted": [
+                {"file": "catalog-unknown-fields.envelope.json", "sequence": 8},
+            ],
+            "rejected": [
+                {"file": "catalog-bad-signature.envelope.json"},
+                {"file": "catalog-wrong-signer.envelope.json"},
+                {"file": "catalog-unknown-key-id.envelope.json"},
+                {"file": "catalog-lower-sequence.envelope.json", "reason": "downgrade"},
+                {"file": "catalog-malformed-json.envelope.json"},
+                {"file": "catalog-payload-not-json.envelope.json"},
+                {"file": "catalog-is-a-policy.envelope.json"},
+            ],
+            "update_required": [{"file": "catalog-higher-schema-major.envelope.json"}],
+            "refused_once_key_revoked": ["catalog-signed-by-revoked-key.envelope.json"],
         },
         "generated": ["oversize payload", "all URLs failing / offline", "ETag unchanged"],
     }

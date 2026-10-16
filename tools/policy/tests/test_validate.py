@@ -475,3 +475,71 @@ class TestKeyRevocation(ValidatorTestCase):
     def test_older_validators_ignore_the_field(self, signer, validator):
         # Additive: a payload with the field is still an ordinary valid payload.
         assert self.errors(signer, validator, revoked_key_ids=["pol-aaaa"], future_field=1) == []
+
+
+def catalog_payload(**over):
+    payload = json.loads((ROOT / "examples/v1/catalog.example.json").read_text())
+    payload["kid"] = KID
+    payload.update(over)
+    return payload
+
+
+class TestCatalog(ValidatorTestCase):
+    def errors(self, validator, payload):
+        return validator.catalog_errors(payload)
+
+    def test_the_example_is_valid(self, validator):
+        assert self.errors(validator, catalog_payload()) == []
+
+    def test_a_catalog_envelope_verifies_and_needs_a_rising_sequence(self, validator, signer):
+        env = signer.sign(catalog_payload(sequence=2))
+        prev = signer.sign(catalog_payload(sequence=2))
+
+        assert validator.validate_envelope(env, kind="catalog")[0] == []
+        errs = validator.validate_envelope(env, prev, kind="catalog")[0]
+        assert any("strictly greater" in e for e in errs)
+
+    def test_a_catalog_is_not_a_policy(self, validator):
+        assert validator.validate_payload(catalog_payload())  # no versions
+
+    def test_a_bad_signature_is_refused(self, validator, signer):
+        env = signer.sign(catalog_payload(), key=Ed25519PrivateKey.generate())
+
+        assert validator.validate_envelope(env, kind="catalog")[0]
+
+    @pytest.mark.parametrize(
+        "mutate, message",
+        [
+            (lambda p: p["addons"].append(dict(p["addons"][0])), "duplicate id"),
+            (lambda p: p["bundles"][0]["addons"].append("ghost"), "unknown add-on 'ghost'"),
+            (lambda p: p["addons"][1]["bundles"].append("ghost"), "unknown bundle 'ghost'"),
+            (lambda p: p["addons"][1].pop("bundles"), "does not list this bundle"),
+            (lambda p: p["addons"][0].update(bundles=["office"]), "does not include this add-on"),
+            (lambda p: p["addons"][0].update(summary="<b>bold</b>"), "no markup"),
+            (lambda p: p["addons"][0].update(docs_url="http://x"), "schema"),
+            (lambda p: p["addons"][0].update(id="Bad Id"), "schema"),
+            (lambda p: p["addons"][0].update(licence="paid"), "schema"),
+            (lambda p: p["bundles"][0].update(addons=[]), "schema"),
+            (lambda p: p.pop("bundles"), "schema"),
+            (lambda p: p.update(schema_version=2), "schema"),
+        ],
+    )
+    def test_a_broken_catalog_is_refused(self, validator, mutate, message):
+        payload = catalog_payload()
+        mutate(payload)
+
+        assert any(message in e for e in self.errors(validator, payload))
+
+    def test_unknown_fields_and_values_are_allowed(self, validator):
+        payload = catalog_payload(future_section={"x": 1})
+        payload["addons"][0].update(kind="something-new", status="someday", extra=1)
+
+        assert self.errors(validator, payload) == []
+
+    def test_the_placeholder_is_accepted_with_a_warning(self, tmp_path):
+        placeholder = tmp_path / "catalog.json"
+        placeholder.write_text(json.dumps({"_placeholder": True}))
+
+        errs, warnings = vp.PolicyValidator().validate_file("catalog-envelope", placeholder)
+
+        assert errs == [] and warnings

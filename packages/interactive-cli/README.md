@@ -18,3 +18,5 @@ Errors print in the CLI's `Error: ... / What to do: ...` style and the shell car
 ## Updates
 
 The shell shows the same `Updates` and `Policy` menus as `vethuq`, and `Update` (the upgrade steps for how VethuQ is installed). It does not print the after-command update notice: that line is for the plain command line. The update check is described in the [`vethuq-cli` README](../cli/README.md#updates-and-notices); it can be switched off with `VETHUQ_UPDATE_CHECK=off`.
+
+The `Catalog` menu (`list`, `bundles`, `show`, `refresh`) lists every add-on and bundle that exists, with its description and how to ask for it; see the [`vethuq-cli` README](../cli/README.md#the-catalog-what-exists-not-only-what-is-installed).

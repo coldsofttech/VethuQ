@@ -6,6 +6,13 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (add-on and bundle catalog)
+- `client.catalog` (types in `vethuq.catalog`): the signed catalog of every add-on and bundle that exists, with descriptions, merged with what is installed here (`addons()`, `bundles()`, `get()`; `AddonState`; `CatalogEntry`, `BundleEntry`). Also `client.addons.catalog()` and `client.addons.bundles()`. `refresh()` is the only call that uses the network and follows the update check; it keeps the last good catalog on any failure. Signed like the policy (same keys, mirrors and ETag), with its own sequence counter, and refused when the policy has revoked its signing key.
+- `client.updates.check_enabled()`, `client.policy` unchanged otherwise. Contract fixtures for the catalog in `policy/fixtures/v1/`.
+
+### Changed
+- "Pack" is now "bundle" throughout: a bundle is a group of add-ons licensed together (and, for some, installed together by a `vethuq-bundle-*` package).
+
 ### Added (key revocation)
 - `client.policy.revoked_key_ids()` and `PolicyResult.revoked_key_ids` expose, read-only, the signing key ids the signed policy has revoked (only a policy signed with the standby key can revoke; the set only grows and survives restarts). When the key that signed the saved policy is revoked, trust fails closed (the built-in baseline applies) and `PolicyResult.trust_message` says so; the CLI prints it and the Policy settings tab shows it.
 - `host.revoked_licence_ids()` and `client.credits.redeem_licence()` include the revoked signing key ids, so a licence signed by a revoked key stops verifying (`LicenceStatus.KEY_REVOKED` in `vethuq-entitlements`) without any change to the add-ons.
@@ -38,28 +45,28 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - Search results in `.eml` and `.msg` messages can be previewed as a mail program would show them (the new `@vethuq/email-viewer`): the headers, the attachments and the body, with the match marked.
 
 ### Added (email bundle)
-- `pip install vethuq[email]` installs the new `vethuq-bundle-email` (the `eml` and `msg` add-ons; one email pack licence unlocks both, and an office pack licence still does too).
+- `pip install vethuq[email]` installs the new `vethuq-bundle-email` (the `eml` and `msg` add-ons; one email bundle licence unlocks both, and an office bundle licence still does too).
 
 ### Added (Outlook messages)
-- `.msg` files are read by the licensed `vethuq-addon-msg` add-on (the office pack, and the worker image): the headers and body of an Outlook message, laid out as an `.eml` is. It keeps the same facts as `.eml` in its own `msg_pages` table. An office pack licence issued before this lacks the `msg` entitlement.
+- `.msg` files are read by the licensed `vethuq-addon-msg` add-on (the office bundle, and the worker image): the headers and body of an Outlook message, laid out as an `.eml` is. It keeps the same facts as `.eml` in its own `msg_pages` table. An office bundle licence issued before this lacks the `msg` entitlement.
 
 ### Added (open office)
-- `.odt`, `.ott`, `.ods`, `.ots`, `.odp` and `.otp` files are read by licensed add-ons of their own (`vethuq-addon-odt`, `-ott`, `-ods`, `-ots`, `-odp`, `-otp`), installed together by the new `vethuq-bundle-open-office` (`pip install vethuq[open-office]`; one open office pack licence unlocks all six) and included in the worker image. The text comes from the package's `content.xml` (a sheet is its name then its rows as the spreadsheet shows them; a slide's text includes its speaker notes); encrypted files are reported as password-protected. Each keeps `line_count` and `image_count` in its own table (`odt_pages`, ...).
+- `.odt`, `.ott`, `.ods`, `.ots`, `.odp` and `.otp` files are read by licensed add-ons of their own (`vethuq-addon-odt`, `-ott`, `-ods`, `-ots`, `-odp`, `-otp`), installed together by the new `vethuq-bundle-open-office` (`pip install vethuq[open-office]`; one open office bundle licence unlocks all six) and included in the worker image. The text comes from the package's `content.xml` (a sheet is its name then its rows as the spreadsheet shows them; a slide's text includes its speaker notes); encrypted files are reported as password-protected. Each keeps `line_count` and `image_count` in its own table (`odt_pages`, ...).
 
 ### Added (office variants)
-- `.dot`, `.dotx`, `.xlsm`, `.xlsb`, `.pptm`, `.pps` and `.ppsx` files are read by licensed add-ons of their own (`vethuq-addon-dot`, `-dotx`, `-xlsm`, `-xlsb`, `-pptm`, `-pps`, `-ppsx`), in the office pack and the worker image. Each reads like the document it is a variant of (macros are never read or run); `.xlsb` is read with the new `pyxlsb` dependency. Each keeps `line_count` and `image_count` in its own table (`dot_pages`, ...). An office pack licence issued before this lacks the new entitlements.
+- `.dot`, `.dotx`, `.xlsm`, `.xlsb`, `.pptm`, `.pps` and `.ppsx` files are read by licensed add-ons of their own (`vethuq-addon-dot`, `-dotx`, `-xlsm`, `-xlsb`, `-pptm`, `-pps`, `-ppsx`), in the office bundle and the worker image. Each reads like the document it is a variant of (macros are never read or run); `.xlsb` is read with the new `pyxlsb` dependency. Each keeps `line_count` and `image_count` in its own table (`dot_pages`, ...). An office bundle licence issued before this lacks the new entitlements.
 
 ### Added (source code and notebooks)
-- `.py`, `.java`, `.ts`, `.tsx`, `.jsx`, `.cs`, `.go`, `.rs`, `.php`, `.rb`, `.sh` and `.ps1` files are read by licensed add-ons of their own (`vethuq-addon-py`, `-java`, ... , `-ps1`), and `.ipynb` notebooks by `vethuq-addon-ipynb` (their cells and text output), all in the developer pack and the worker image. JavaScript (`vethuq-addon-js`) moves from the web pack to the developer pack. Each type keeps its page facts in its own table (`py_pages`, ... , `ipynb_pages`). The preview shows each coloured as its own language (TypeScript, TSX and JSX as JavaScript). Web or developer pack licences issued before this need reissuing for the entitlements they gain or lose.
+- `.py`, `.java`, `.ts`, `.tsx`, `.jsx`, `.cs`, `.go`, `.rs`, `.php`, `.rb`, `.sh` and `.ps1` files are read by licensed add-ons of their own (`vethuq-addon-py`, `-java`, ... , `-ps1`), and `.ipynb` notebooks by `vethuq-addon-ipynb` (their cells and text output), all in the developer bundle and the worker image. JavaScript (`vethuq-addon-js`) moves from the web bundle to the developer bundle. Each type keeps its page facts in its own table (`py_pages`, ... , `ipynb_pages`). The preview shows each coloured as its own language (TypeScript, TSX and JSX as JavaScript). Web or developer bundle licences issued before this need reissuing for the entitlements they gain or lose.
 
 ### Added (INI, SQL, reStructuredText, log)
-- `.ini`, `.sql`, `.rst` and `.log` files are read by the licensed `vethuq-addon-ini`, `-sql`, `-rst` and `-log` add-ons (the developer pack, and the worker image). INI is flattened to `section.key: value` lines, SQL and logs are indexed as written (a log is cut at 64 MB at a line end and says so), reStructuredText is indexed as prose without its markup. Their page facts are kept in the new `ini_pages`, `sql_pages`, `rst_pages` and `log_pages` tables. SQL and log matches carry their line (the index keeps those files' lines). The preview shows each coloured as its own language, the match marked. A developer pack licence issued before this lacks the new entitlements. `.env` is not done.
+- `.ini`, `.sql`, `.rst` and `.log` files are read by the licensed `vethuq-addon-ini`, `-sql`, `-rst` and `-log` add-ons (the developer bundle, and the worker image). INI is flattened to `section.key: value` lines, SQL and logs are indexed as written (a log is cut at 64 MB at a line end and says so), reStructuredText is indexed as prose without its markup. Their page facts are kept in the new `ini_pages`, `sql_pages`, `rst_pages` and `log_pages` tables. SQL and log matches carry their line (the index keeps those files' lines). The preview shows each coloured as its own language, the match marked. A developer bundle licence issued before this lacks the new entitlements. `.env` is not done.
 
 ### Added (TOML)
-- `.toml` files are read by the licensed `vethuq-addon-toml` add-on (the developer pack, and the worker image): the file is flattened into `path: value` lines, like YAML. Its page facts (`encoding`, `value_count`, `table_count`, `max_depth`) are kept in the new `toml_pages` table. The preview shows the source coloured as TOML, the match marked on its line. A developer pack licence issued before this lacks the `toml` entitlement.
+- `.toml` files are read by the licensed `vethuq-addon-toml` add-on (the developer bundle, and the worker image): the file is flattened into `path: value` lines, like YAML. Its page facts (`encoding`, `value_count`, `table_count`, `max_depth`) are kept in the new `toml_pages` table. The preview shows the source coloured as TOML, the match marked on its line. A developer bundle licence issued before this lacks the `toml` entitlement.
 
 ### Added (RSS)
-- `.rss` and `.atom` files are read by the licensed `vethuq-addon-rss` add-on (part of the web pack, in the worker image), no longer by the XML add-on: a feed is its title and description then one block per entry (title, author, date, categories, link, text with the HTML stripped). Its page facts are kept in the new `rss_pages` table. The preview is a feed reader: entries with their title, author, date, categories, link and text, the match marked. A web pack licence issued before this has no `rss` entitlement, so it no longer unlocks `.rss`/`.atom` files until reissued.
+- `.rss` and `.atom` files are read by the licensed `vethuq-addon-rss` add-on (part of the web bundle, in the worker image), no longer by the XML add-on: a feed is its title and description then one block per entry (title, author, date, categories, link, text with the HTML stripped). Its page facts are kept in the new `rss_pages` table. The preview is a feed reader: entries with their title, author, date, categories, link and text, the match marked. A web bundle licence issued before this has no `rss` entitlement, so it no longer unlocks `.rss`/`.atom` files until reissued.
 
 ### Added (SVG)
 - `.svg` and `.svgz` files are read by the free `vethuq-addon-svg` add-on, in the image bundle and the worker image: the text in the drawing is read straight from the file (never OCR'd, never charged for). Its page facts (`encoding`, `width`, `height`, `view_box`, `text_count`, `image_count`, `well_formed`) are kept in the new `svg_pages` table.
@@ -89,8 +96,8 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 ### Added (MHTML files)
 - The `.mhtml` and `.mht` (web archive) file types, as the licensed add-on `vethuq-addon-mhtml` (not installed with VethuQ: `pip install vethuq-addon-mhtml`, then `Mhtml(client).set_licence(token)`). A page is read like an HTML file, with its address and the text of frames saved inside it, and the pictures in the archive are read with OCR from the moderate phase. It keeps `encoding`, `title`, `url`, `lang`, `link_count`, `image_count` and `frame_count` in the `mhtml_pages` table. The web interface shows the archive as the page it was, or as its source (see the API changelog).
 
-### Added (the data pack)
-- `pip install vethuq[data]` installs `vethuq-bundle-data`: the CSV, TSV, Parquet, JSON and NDJSON file types in one install. Parquet, JSON and NDJSON are licensed (one data pack licence carries an entitlement for each); CSV and TSV are free. `client.version.bundles` lists it as `data`, and the add-ons screen of the interface describes it.
+### Added (the data bundle)
+- `pip install vethuq[data]` installs `vethuq-bundle-data`: the CSV, TSV, Parquet, JSON and NDJSON file types in one install. Parquet, JSON and NDJSON are licensed (one data bundle licence carries an entitlement for each); CSV and TSV are free. `client.version.bundles` lists it as `data`, and the add-ons screen of the interface describes it.
 
 ### Added (NDJSON files)
 - The `.ndjson` and `.jsonl` (JSON Lines) file types, as the licensed add-on `vethuq-addon-ndjson` (not installed with VethuQ: `pip install vethuq-addon-ndjson`, then `Ndjson(client).set_licence(token)`). Each line is flattened to `path: value` lines like a JSON file, records are separated by a blank line, a line that is not valid JSON is left out and counted, and the file is read a line at a time. It keeps `encoding`, `record_count`, `invalid_line_count`, `value_count`, `max_depth` and `truncated` in the `ndjson_pages` table. The web interface previews the file as it is on disk, coloured like JSON.
@@ -140,8 +147,8 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   to one page; `ExportSection`. New templates `section.html` and `sections_export.html`; `list_export.html` has the
   script and the filter slot.
 
-### Added (search pack)
-- `vethuq[search]`: the search pack bundle (`vethuq-bundle-search`), which installs every search
+### Added (search bundle)
+- `vethuq[search]`: the search bundle (`vethuq-bundle-search`), which installs every search
   engine and normalizer.
 
 ### Changed (default search engines)
@@ -167,14 +174,14 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ### Added (office file types)
 - Tables for the Word, Excel, PowerPoint, RTF and email file types (`docx_pages`, `doc_pages`, `xlsx_pages`,
-  `xls_pages`, `pptx_pages`, `ppt_pages`, `rtf_pages`, `eml_pages`); `vethuq[office]` installs the licensed office pack.
+  `xls_pages`, `pptx_pages`, `ppt_pages`, `rtf_pages`, `eml_pages`); `vethuq[office]` installs the licensed office bundle.
 
 ### Added (YAML)
-- `yaml_pages` table for the YAML file type; `vethuq[developer]` installs the licensed developer pack.
+- `yaml_pages` table for the YAML file type; `vethuq[developer]` installs the licensed developer bundle.
 
 ### Added (web file types)
 - Tables for the HTML, XML, CSS, JavaScript and JSON file types (`html_pages`, `xml_pages`, `css_pages`,
-  `js_pages`, `json_pages`), filled from `ReadPage.details`; `vethuq[web]` installs the licensed web pack.
+  `js_pages`, `json_pages`), filled from `ReadPage.details`; `vethuq[web]` installs the licensed web bundle.
 
 ### Added (formatting)
 - `vethuq.formatting.Formatting`: sizes, durations and timestamps for front ends; exports use it for file sizes.
@@ -251,7 +258,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
   `pdf_pages`: `txt_pages` (encoding), `csv_pages` (encoding, delimiter, row and column counts) and
   `markdown_pages` (encoding, number of linked pictures).
 - A Markdown file's linked pictures are read with OCR when an installed add-on reads their format.
-  Without one (the image pack is to come) the picture is skipped with a warning in the
+  Without one (the image bundle is to come) the picture is skipped with a warning in the
   `vethuq.indexing` log and the text is indexed anyway.
 
 ### Added (export)

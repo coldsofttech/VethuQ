@@ -13,7 +13,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { InstalledTab } from '../addons/InstalledTab.jsx';
-import { PacksTab } from '../addons/PacksTab.jsx';
+import { BundlesTab } from '../addons/BundlesTab.jsx';
+import { DiscoverTab } from '../addons/DiscoverTab.jsx';
 import { useAddonsJob } from '../addons/useAddonsJob.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { useNotify } from '../components/Notifications.jsx';
@@ -36,6 +37,7 @@ const useStyles = makeStyles({
 
 const TABS = [
   { value: 'installed', label: 'Installed' },
+  { value: 'discover', label: 'Discover' },
   { value: 'get', label: 'Get more' },
 ];
 
@@ -47,9 +49,11 @@ export function AddonsPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [asking, setAsking] = useState(
-    /** @type {{ kind: 'pack' | 'update', item: any } | null} */ (null),
+    /** @type {{ kind: 'bundle' | 'update', item: any } | null} */ (null),
   );
   const [reload, setReload] = useState(0);
+  const [catalog, setCatalog] = useState(null);
+  const [checking, setChecking] = useState(false);
   const current = TABS.find((tab) => pathname.endsWith(`/${tab.value}`))?.value ?? 'installed';
 
   const refresh = useCallback(() => setReload((n) => n + 1), []);
@@ -58,7 +62,7 @@ export function AddonsPage() {
       refresh();
       if (!job.error)
         notify({
-          title: job.action === 'update' ? 'Add-on updated' : 'Pack installed',
+          title: job.action === 'update' ? 'Add-on updated' : 'Bundle installed',
           body: 'Restart VethuQ to start using it.',
         });
       else notify({ title: 'Could not finish', body: job.error, intent: 'error' });
@@ -79,6 +83,31 @@ export function AddonsPage() {
     return () => controller.abort();
   }, [reload]);
 
+  useEffect(() => {
+    if (current !== 'discover') return undefined;
+    const controller = new AbortController();
+    api.addons.catalog(controller.signal).then(
+      (result) => setCatalog(result),
+      (failure) => failure?.name !== 'AbortError' && setError(failure),
+    );
+    return () => controller.abort();
+  }, [current, reload]);
+
+  const checkNow = async () => {
+    setChecking(true);
+    try {
+      const result = await api.addons.catalogRefresh(true);
+      setCatalog(result);
+      const { status, detail } = result.catalog;
+      if (status === 'skipped' || status === 'offline' || status === 'rejected')
+        notify({ title: 'Could not get a newer list', body: detail || status, intent: 'warning' });
+    } catch (failure) {
+      notify({ title: 'Could not check', body: failure.message, intent: 'error' });
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const toggle = async (addon, on) => {
     try {
       await api.addons.setEnabled(addon.id, on);
@@ -93,7 +122,9 @@ export function AddonsPage() {
     const { kind, item } = asking;
     setAsking(null);
     try {
-      await run(() => (kind === 'pack' ? api.addons.install(item.id) : api.addons.update(item.id)));
+      await run(() =>
+        kind === 'bundle' ? api.addons.install(item.id) : api.addons.update(item.id),
+      );
     } catch (failure) {
       notify({ title: 'Could not start', body: failure.message, intent: 'error' });
     }
@@ -156,20 +187,23 @@ export function AddonsPage() {
           onUpdate={(item) => setAsking({ kind: 'update', item })}
         />
       )}
+      {current === 'discover' && catalog && (
+        <DiscoverTab data={catalog} busy={checking} onRefresh={checkNow} />
+      )}
       {data && current === 'get' && (
-        <PacksTab
-          packs={data.packs}
+        <BundlesTab
+          bundles={data.bundles}
           install={data.install}
           busy={job.running}
-          onInstall={(item) => setAsking({ kind: 'pack', item })}
+          onInstall={(item) => setAsking({ kind: 'bundle', item })}
         />
       )}
       <ConfirmDialog
         open={asking !== null}
         title={
-          asking?.kind === 'pack' ? `Install ${asking.item.id}?` : `Update ${asking?.item.id}?`
+          asking?.kind === 'bundle' ? `Install ${asking.item.id}?` : `Update ${asking?.item.id}?`
         }
-        confirmLabel={asking?.kind === 'pack' ? 'Install' : 'Update'}
+        confirmLabel={asking?.kind === 'bundle' ? 'Install' : 'Update'}
         onConfirm={confirm}
         onCancel={() => setAsking(null)}
       >

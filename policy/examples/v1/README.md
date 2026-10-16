@@ -14,3 +14,4 @@ policy; the live signed envelope is `/v1/policy.json`. All URLs, hashes and the 
 | `with-key-revocation.payload.json` | A policy signed by a standby key that revokes a compromised policy key id and a licence key id, with a critical notice and a raised `minimum_supported` |
 | `with-addons.payload.json` | Per add-on policy (`addons.backup`) and `revoked_licence_ids` |
 | `envelope.example.json` | Envelope wrapping the minimal payload (placeholder signature, does not verify) |
+| `catalog.example.json` | A catalog payload (valid against `schema/v1/catalog.schema.json`): free and licensed add-ons, a bundle, a translation and a `coming_soon` entry |

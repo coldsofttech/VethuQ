@@ -1,0 +1,6 @@
+{
+  "alg": "Ed25519",
+  "kid": "test-pol-534200f601ad1487",
+  "payload": "eyJpc3N1ZWRfYXQiOiAiMjAyNi0xMC0wMVQxMjowMDowMFoiLCAia2lkIjogInRlc3QtcG9sLTUzNDIwMGY2MDFhZDE0ODciLCAic2NoZW1hX3ZlcnNpb24iOiAxLCAic2VxdWVuY2UiOiAxMCwgInZlcnNpb25zIjogeyJkZXNrdG9wIjogeyJsYXRlc3QiOiAiMi4wLjAiLCAibWluaW11bV9zdXBwb3J0ZWQiOiAiMS4wLjAifSwgInBpcCI6IHsibGF0ZXN0IjogIjIuMC4wIiwgIm1pbmltdW1fc3VwcG9ydGVkIjogIjEuMC4wIn19fQ",
+  "sig": "ouBwNNE0lpA8O67mQlMnsZPgCtjlpiqLGxw_PczU4RQM8g01WOHRkT72-v6xJou2plNBIiTPJyTW2EOsnPbcAQ"
+}

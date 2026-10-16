@@ -64,7 +64,7 @@ const DATA = {
       licence: true,
     },
   ],
-  packs: [
+  bundles: [
     {
       id: 'images',
       note: 'Read image files.',
@@ -133,19 +133,19 @@ describe('Add-ons', () => {
     expect(await screen.findByText(/Updating pdf/)).toBeInTheDocument();
   });
 
-  it('lists the packs and installs one after asking', async () => {
+  it('lists the bundles and installs one after asking', async () => {
     let going = false;
     const fetchMock = mockApi({
       ...ROUTES,
       'GET /api/addons/job': () =>
         going ? { ...JOB, running: true, action: 'install', target: 'images' } : JOB,
-      'POST /api/addons/packs/images/install': () => {
+      'POST /api/addons/bundles/images/install': () => {
         going = true;
         return { ...JOB, running: true, action: 'install', target: 'images' };
       },
     });
     renderWithProviders(<App />, { route: '/addons/get' });
-    const table = await screen.findByRole('table', { name: 'Add-on packs' });
+    const table = await screen.findByRole('table', { name: 'Add-on bundles' });
     expect(within(table).getByText('Installed')).toBeInTheDocument();
     expect(within(table).getByText('Not installed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Install fuzzy' })).not.toBeInTheDocument();
@@ -154,7 +154,7 @@ describe('Add-ons', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Install' }),
     );
     await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([p]) => p === '/api/addons/packs/images/install')).toBe(
+      expect(fetchMock.mock.calls.some(([p]) => p === '/api/addons/bundles/images/install')).toBe(
         true,
       ),
     );

@@ -4,6 +4,12 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (catalog)
+- `GET /api/addons/catalog?language=` returns the catalog (where it came from and its sequence), every add-on in it merged with what is installed here, and the bundles; `POST /api/addons/catalog/refresh` (`{force}`) looks for a newer one first.
+
+### Changed
+- The optional extras are "bundles" now: `GET /api/addons` returns `bundles` (was `packs`) and the install route is `POST /api/addons/bundles/<bundle>/install` (was `/packs/<pack>/install`).
+
 ### Added (PowerPoint preview)
 - `/api/files/powerpoint?document_id=&page=&at=&first=` returns a PowerPoint (`.pptx`, `.pptm`, `.ppsx`, `.ppt`, `.pps`) or OpenDocument (`.odp`, `.otp`) presentation for the PowerPoint preview: an outline of every slide (number and title) and a window of at most 40 slides, each with its items (title, subtitle, text, list with its level, table row, speaker notes), every line with its offset in the text the index kept; text the slides do not hold (comments, SmartArt) comes as notes. The slides are read the way the add-ons read them; a file that cannot be read for them is shown as the stored lines in one slide.
 
@@ -105,8 +111,8 @@ All notable changes to `vethuq-api`.
 - GitHub tier: `/api/github/*` (availability, the runner's setup, status, update and removal, the jobs sent to
   GitHub, and a token kept in memory for the session only). The GitHub add-on is imported only when asked.
 - Add-ons: `/api/addons` (installed add-ons with status, update announced by the signed policy, licence entered,
-  and the packs VethuQ names as extras), turning one off or on, and installing a pack or updating an add-on with
-  pip on a background job. Only VethuQ's own pack names and announced updates reach pip; a packaged copy refuses.
+  and the bundles VethuQ names as extras), turning one off or on, and installing a bundle or updating an add-on with
+  pip on a background job. Only VethuQ's own bundle names and announced updates reach pip; a packaged copy refuses.
 - OCR: `/api/ocr` (engines and phases), `/api/ocr/models` (with size on disk), a background download job
   with progress (`/api/ocr/models/download`, `/redownload`, `/api/ocr/job`) and removal (`/clear`, `/clean`).
 - Statistics: `/api/stats/summary` (totals and pages per day), `/api/stats/breakdown` (grouped, filtered, sorted

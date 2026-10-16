@@ -80,13 +80,13 @@ until a policy is available, and for any value the policy leaves out.
 Credit amounts are non-negative numbers with **at most 3 decimal places** (clients convert to
 integer millicredits).
 
-### Terms: add-ons and packs
+### Terms: add-ons and bundles
 
 An **add-on** is one individual element (Word, Excel, PowerPoint, Email, Lexical, Semantic, ...).
-A **pack** (Office, Web, Telugu, the text pack, ...) is a bundle of add-ons licensed together.
+A **bundle** (Office, Web, Telugu, the text bundle, ...) is a group of add-ons licensed together.
 Everything in this schema that names an add-on (`wallets.addons.<id>`, `promotions[].applies_to.addons`,
-the `addon:<id>` uplift wallet key) uses the **add-on** id, such as `semantic`, never a pack name.
-Packs are not part of the schema yet (see "Not defined yet").
+the `addon:<id>` uplift wallet key) uses the **add-on** id, such as `semantic`, never a bundle name.
+Bundles are described in the catalog ([schema-catalog.md](schema-catalog.md)), not in the policy.
 
 ### When changes take effect
 
@@ -169,8 +169,9 @@ Absent phases use the client's default.
 
 ### Not defined yet
 
-Pack definitions (which add-ons a pack contains) and scoped one-off amounts (#221) may become policy-tunable; they are not part of
-the schema yet and will arrive as a further additive section.
+Scoped one-off amounts (#221) may become policy-tunable; they are not part of the schema yet and will
+arrive as a further additive section. Which add-ons a bundle contains is in the catalog
+([schema-catalog.md](schema-catalog.md)).
 
 ### Key revocation (`revoked_key_ids`)
 

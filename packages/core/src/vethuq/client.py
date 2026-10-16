@@ -22,6 +22,7 @@ from vethuq._settings import _FileTypeSettings, _OcrSettings, _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq._version import _Version
 from vethuq.addons import Addons
+from vethuq.catalog import CatalogClient
 from vethuq.credits import Credits
 from vethuq.db import Db
 from vethuq.export import Export
@@ -63,6 +64,7 @@ class VethuQ:
         self._logs: Logs | None = None
         self._export: Export | None = None
         self._policy: PolicyClient | None = None
+        self._addon_catalog: CatalogClient | None = None
         self._updates: Updates | None = None
         self._checks: Db | None = None
         self._addon_manager: _AddonManager | None = None
@@ -361,6 +363,15 @@ class VethuQ:
         return self._policy
 
     @property
+    def catalog(self) -> CatalogClient:
+        """The add-on and bundle catalog: what exists, merged with what is installed."""
+        if self._addon_catalog is None:
+            self._addon_catalog = CatalogClient(
+                self._db(), self.policy, lambda: self.addons, lambda: self.updates.check_enabled()
+            )
+        return self._addon_catalog
+
+    @property
     def db(self) -> Db:
         """Checks on the database file, such as the integrity check."""
         if self._checks is None:
@@ -378,7 +389,9 @@ class VethuQ:
     def addons(self) -> Addons:
         """The add-ons installed next to VethuQ. It doesn't open the database."""
         if self._addons is None:
-            self._addons = Addons(self.db_path, self._manager(), self._open_database)
+            self._addons = Addons(
+                self.db_path, self._manager(), self._open_database, lambda: self.catalog
+            )
         return self._addons
 
     @property
@@ -398,6 +411,7 @@ class VethuQ:
             self._logs = None
             self._export = None
             self._policy = None
+            self._addon_catalog = None
             self._updates = None
             self._checks = None
             self._addons = None
