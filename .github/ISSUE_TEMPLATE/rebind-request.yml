@@ -1,0 +1,46 @@
+name: Re-bind request
+description: Ask for your licence to be moved to a new device. Easiest from VethuQ on the new device - run "vethuq licence request --type rebind".
+title: "Re-bind request"
+labels: ["rebind-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue is public. Anyone can read it.**
+
+        Run `vethuq licence request --type rebind` (or use **Add-ons > Licences**) **on the new
+        device** and the fields below are filled in for you. The request code holds only an
+        anonymous hash of the new device, your numeric GitHub id (only if you asked for one), the
+        runner owner's numeric id, and the VethuQ version. Never file names, paths, content, keys,
+        tokens, e-mail addresses or names.
+
+        **Do not paste** your licence key, any token, an e-mail address or other contact details,
+        file names or paths. The re-issued licence is **never posted here**: it is sent to you
+        privately ([how](https://github.com/coldsofttech/VethuQ/blob/main/docs/licence-requests.md)).
+        Each licence can be re-bound a limited number of times. We reply when we can; a licence is
+        issued by a person, not automatically.
+  - type: input
+    id: request_code
+    attributes:
+      label: Request code of the new device
+      description: Starts with VQREQ1. Run `vethuq licence code` on the new device.
+      placeholder: VQREQ1.…
+    validations:
+      required: true
+  - type: input
+    id: addons
+    attributes:
+      label: The licence's add-ons or bundle (optional)
+      description: So we can find your licence, for example `office`. Don't paste the key.
+  - type: textarea
+    id: note
+    attributes:
+      label: Note (optional)
+      description: A short note, for example what changed. It is public, so no contact details.
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Before you submit
+      options:
+        - label: I understand this issue is public, and I have not put a key, token, e-mail address or file name in it.
+          required: true

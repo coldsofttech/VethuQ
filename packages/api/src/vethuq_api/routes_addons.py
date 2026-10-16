@@ -39,6 +39,18 @@ def register(api: Blueprint, core: Core) -> None:
             raise ValueError("force is true or false.")
         return jsonify(core.addons().catalog_refresh(bool(force), _language()))
 
+    @api.get("/licences")
+    def licences_list() -> Response:
+        return jsonify(core.addons().licences())
+
+    @api.post("/licences/install")
+    def licences_install() -> Response:
+        return jsonify(core.addons().install_licence(_body()))
+
+    @api.post("/licences/request")
+    def licences_request() -> Response:
+        return jsonify(core.addons().licence_request(_body()))
+
     @api.get("/addons/job")
     def addons_job() -> Response:
         return jsonify(core.addons().job())

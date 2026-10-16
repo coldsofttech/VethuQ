@@ -29,6 +29,7 @@ from vethuq.export import Export
 from vethuq.file_types import FileTypes
 from vethuq.index import Index
 from vethuq.languages import Languages
+from vethuq.licences import Licences
 from vethuq.logs import Logs
 from vethuq.metrics import Metrics
 from vethuq.ocr import Ocr
@@ -69,6 +70,7 @@ class VethuQ:
         self._checks: Db | None = None
         self._addon_manager: _AddonManager | None = None
         self._addons: Addons | None = None
+        self._licences: Licences | None = None
         self._file_types: FileTypes | None = None
         self._index: Index | None = None
         self._ocr: Ocr | None = None
@@ -395,6 +397,14 @@ class VethuQ:
         return self._addons
 
     @property
+    def licences(self) -> Licences:
+        """Installing licences (one key for every add-on it lists) and asking for them. It doesn't
+        open the database."""
+        if self._licences is None:
+            self._licences = Licences(self.addons, self.db_path, self._open_database)
+        return self._licences
+
+    @property
     def version(self) -> Version:
         """What this install is running. It doesn't open the database."""
         return Version._collect(self._manager())
@@ -415,6 +425,7 @@ class VethuQ:
             self._updates = None
             self._checks = None
             self._addons = None
+            self._licences = None
             self._file_types = None
             self._index = None
             self._ocr = None

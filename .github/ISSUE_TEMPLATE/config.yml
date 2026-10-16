@@ -1,0 +1,7 @@
+# Issue chooser: the three licence request forms, and ordinary issues. Licence requests are public;
+# docs/licence-requests.md says what they hold and what must never be put in one.
+blank_issues_enabled: true
+contact_links:
+  - name: What a licence request contains, and how a licence is delivered
+    url: https://github.com/coldsofttech/VethuQ/blob/main/docs/licence-requests.md
+    about: Read this before you open a licence, top-up or re-bind request. Requests are public.

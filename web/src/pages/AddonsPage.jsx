@@ -15,6 +15,7 @@ import { api } from '../api/client.js';
 import { InstalledTab } from '../addons/InstalledTab.jsx';
 import { BundlesTab } from '../addons/BundlesTab.jsx';
 import { DiscoverTab } from '../addons/DiscoverTab.jsx';
+import { LicencesTab } from '../addons/LicencesTab.jsx';
 import { useAddonsJob } from '../addons/useAddonsJob.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.jsx';
 import { useNotify } from '../components/Notifications.jsx';
@@ -39,6 +40,7 @@ const TABS = [
   { value: 'installed', label: 'Installed' },
   { value: 'discover', label: 'Discover' },
   { value: 'get', label: 'Get more' },
+  { value: 'licences', label: 'Licences' },
 ];
 
 export function AddonsPage() {
@@ -198,6 +200,7 @@ export function AddonsPage() {
           onInstall={(item) => setAsking({ kind: 'bundle', item })}
         />
       )}
+      {current === 'licences' && <LicencesTab onInstalled={refresh} />}
       <ConfirmDialog
         open={asking !== null}
         title={

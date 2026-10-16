@@ -92,6 +92,50 @@ class AddonsService:
             "finished": False,
         }
 
+    # ----- licences ---------------------------------------------------------------------------
+
+    def licences(self) -> list[dict[str, Any]]:
+        """The installed licences, each with the add-ons it lists and where it is installed."""
+        return [item.to_dict() for item in self._client().licences.show()]
+
+    def install_licence(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Install the pasted (or file's) licence on every add-on it lists."""
+        token = body.get("token")
+        if not isinstance(token, str):
+            raise ValueError("token is the licence key as text.")
+        owner = body.get("github_owner_id")
+        if owner is not None and (isinstance(owner, bool) or not isinstance(owner, int)):
+            raise ValueError("github_owner_id is a whole number.")
+        results = self._client().licences.install(token, owner)
+        installed = sum(1 for r in results if r.status != "not_installed")
+        return {"results": [r.to_dict() for r in results], "installed": installed}
+
+    def licence_request(self, body: dict[str, Any]) -> dict[str, Any]:
+        """A prefilled request (code, public issue URL, exactly what it carries, privacy text).
+        Nothing is opened or sent from here: the interface shows it and opens the link itself."""
+        addons = body.get("addons") or []
+        if not isinstance(addons, list) or not all(isinstance(a, str) for a in addons):
+            raise ValueError("addons is a list of add-on ids.")
+        fields: dict[str, Any] = {}
+        for key in ("bundle", "wallet", "note", "runner_owner"):
+            value = body.get(key)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{key} is text.")
+            fields[key] = value or None
+        for key in ("github_owner_id", "runner_owner_id"):
+            value = body.get(key)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+                raise ValueError(f"{key} is a whole number.")
+            fields[key] = value
+        github = body.get("github", False)
+        if not isinstance(github, bool):
+            raise ValueError("github is true or false.")
+        kind = body.get("kind", "new")
+        if not isinstance(kind, str):
+            raise ValueError("kind is new, top-up or rebind.")
+        made = self._client().licences.request(kind=kind, addons=addons, github=github, **fields)
+        return made.to_dict()
+
     # ----- what is installed ------------------------------------------------------------------
 
     def installed(self) -> list[dict[str, object]]:

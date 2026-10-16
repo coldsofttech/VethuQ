@@ -14,6 +14,7 @@ from vethuq.enums import SortOrder, SourceSortBy
 from vethuq_cli.console import Theme, console
 from vethuq_cli.display import index_panel, search_panel, stats_panel
 from vethuq_cli.export import exportable
+from vethuq_cli.licence import licence_app
 from vethuq_cli.output import dump, facts, plain, say, table
 from vethuq_cli.state import State
 
@@ -1037,6 +1038,7 @@ def register(app: typer.Typer) -> None:
     app.add_typer(languages_app, name="languages")
     app.add_typer(tiers_app, name="tiers")
     app.add_typer(credits_app, name="credits")
+    app.add_typer(licence_app, name="licence")
     app.add_typer(metrics_app, name="metrics")
     app.add_typer(ocr_app, name="ocr")
     app.add_typer(db_app, name="db")

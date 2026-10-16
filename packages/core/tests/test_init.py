@@ -30,6 +30,7 @@ class TestPublicApi:
             "file_types",
             "formatting",
             "index",
+            "licences",
             "logs",
             "metrics",
             "ocr",

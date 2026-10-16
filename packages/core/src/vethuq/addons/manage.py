@@ -144,6 +144,13 @@ class Addons:
         command line (see `Addon.cli()`)."""
         return self._manager.cli_groups()
 
+    def install_licence(self, token: str, github_owner_id: int | None = None) -> list[Any]:
+        """Store a licence token as the licence of every installed add-on it lists (see
+        `client.licences.install`). Returns what happened for each add-on."""
+        from vethuq.licences import Licences  # noqa: PLC0415 - Licences uses Addons
+
+        return Licences(self, self._db_path, self._open_database).install(token, github_owner_id)
+
     def reload(self) -> None:
         """Look for installed add-ons again (after installing one in a running process)."""
         self._manager.reload()

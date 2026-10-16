@@ -1,0 +1,52 @@
+name: Top-up request
+description: Ask for more credits, or for an uplift of an existing licence. Easiest from VethuQ - run "vethuq licence request --type top-up".
+title: "Top-up request"
+labels: ["top-up-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue is public. Anyone can read it.**
+
+        Open this from VethuQ (`vethuq licence request --type top-up`, or **Add-ons > Licences**) and
+        the fields below are filled in for you. The request code holds only an anonymous hash of
+        your device, your numeric GitHub id (only if you asked for one), the runner owner's numeric
+        id, and the VethuQ version. Never file names, paths, content, keys, tokens, e-mail addresses
+        or names.
+
+        **Do not paste** a licence key, any token, an e-mail address or other contact details, file
+        names or paths, or screenshots of any of these. The new licence is **never posted here**: it
+        is sent to you privately ([how](https://github.com/coldsofttech/VethuQ/blob/main/docs/licence-requests.md)).
+        We reply when we can; a licence is issued by a person, not automatically.
+  - type: input
+    id: request_code
+    attributes:
+      label: Request code
+      description: Starts with VQREQ1. Run `vethuq licence code` to get it.
+      placeholder: VQREQ1.…
+    validations:
+      required: true
+  - type: input
+    id: wallet
+    attributes:
+      label: Wallet
+      description: Which wallet to top up, for example `local`.
+    validations:
+      required: true
+  - type: input
+    id: addons
+    attributes:
+      label: Add-ons (optional)
+      description: If the top-up is for an add-on's work, its id, for example `semantic`.
+  - type: textarea
+    id: note
+    attributes:
+      label: Note (optional)
+      description: A short note, for example how much you need. It is public, so no contact details.
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Before you submit
+      options:
+        - label: I understand this issue is public, and I have not put a key, token, e-mail address or file name in it.
+          required: true

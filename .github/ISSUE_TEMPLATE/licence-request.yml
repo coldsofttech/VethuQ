@@ -1,0 +1,49 @@
+name: Licence request
+description: Ask for a licence (one add-on, several, or a whole bundle). Easiest from VethuQ itself - run "vethuq licence request" or use Add-ons > Licences.
+title: "Licence request"
+labels: ["licence-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue is public. Anyone can read it.**
+
+        Open this from VethuQ (`vethuq licence request`, or **Add-ons > Licences** in the app) and the
+        fields below are filled in for you. The request code holds only an anonymous hash of your
+        device, your numeric GitHub id (only if you asked for one), the numeric id of your runner
+        repository's owner, and the VethuQ version. It never holds file names, paths, document
+        content, keys, tokens, e-mail addresses or names.
+
+        **Do not paste** a licence key, a GitHub or other access token, your master key, an e-mail
+        address or other contact details, file names or paths, or screenshots of any of these.
+
+        Your licence key is **never posted here**. It is sent to you privately; see
+        [how a licence is delivered](https://github.com/coldsofttech/VethuQ/blob/main/docs/licence-requests.md).
+        We reply when we can; a licence is issued by a person, not automatically.
+  - type: input
+    id: request_code
+    attributes:
+      label: Request code
+      description: Starts with VQREQ1. Run `vethuq licence code` to get it.
+      placeholder: VQREQ1.…
+    validations:
+      required: true
+  - type: input
+    id: addons
+    attributes:
+      label: Add-ons or bundle
+      description: Add-on or bundle ids, separated by commas, for example `docx, doc` or `office`.
+    validations:
+      required: true
+  - type: textarea
+    id: note
+    attributes:
+      label: Note (optional)
+      description: A short note. It is public, so no contact details.
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Before you submit
+      options:
+        - label: I understand this issue is public, and I have not put a key, token, e-mail address or file name in it.
+          required: true

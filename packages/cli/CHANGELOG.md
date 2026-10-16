@@ -4,6 +4,9 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Added (licences)
+- `vethuq licence install KEY|--file F.vqlic` (one licence on every add-on it lists), `licence show`, `licence code` (the request code) and `licence request [--type new|top-up|rebind] [--addon ID] [--bundle ID] [--wallet W] [--note T] [--github] [--open]`, which shows the privacy text and exactly what the public issue will contain, and opens the prefilled form only with `--open` and a confirmation (`--yes` skips it).
+
 ### Added (add-ons that are not running)
 - An installed add-on that is turned off, built for another Python or platform, or failing to load gets a stand-in `vethuq <add-on id>` and an entry under `vethuq settings addons`; both say why it is not running and what to do, and exit with status 1, instead of the add-on's commands being missing. A setting that an add-on refuses (for example without a licence) now shows `Unavailable: <reason>` instead of a traceback.
 

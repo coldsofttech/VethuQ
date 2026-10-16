@@ -236,3 +236,132 @@ class TestHttp:
         assert post("bundles/evil/install").status_code == 422
         assert post("csv/update").status_code == 422
         assert http.post("/api/addons/csv/enabled", json={}, base_url=ORIGIN).status_code == 403
+
+
+class TestLicences:
+    """Licences through the interface: install one key everywhere, and prefill a request."""
+
+    @pytest.fixture
+    def entitlements(self, monkeypatch):
+        import sys
+        from datetime import UTC, datetime
+        from types import ModuleType
+
+        seen = SimpleNamespace(codes=[])
+        licence = SimpleNamespace(
+            ok=True,
+            status=SimpleNamespace(value="ok"),
+            detail="",
+            licence_id="LIC-9",
+            kind="addon",
+            valid_until=datetime(2027, 1, 1, tzinfo=UTC),
+            entitlements=[SimpleNamespace(addon_id="csv"), SimpleNamespace(addon_id="nope")],
+        )
+
+        class Licences:
+            def verify(self, token, revoked=(), github_owner_id=None):
+                return licence
+
+            @staticmethod
+            def device_hash():
+                return "a" * 64
+
+        class RequestCode:
+            @staticmethod
+            def encode(device, version, github=None, runner=None):
+                seen.codes.append((github, runner))
+                return "VQREQ1.api"
+
+        module = ModuleType("vethuq_entitlements")
+        module.Licences, module.RequestCode = Licences, RequestCode
+        monkeypatch.setitem(sys.modules, "vethuq_entitlements", module)
+        return seen
+
+    @pytest.fixture
+    def http(self, web_dist, tmp_path):
+        app = create_app(
+            bootstrap_token="t", web_dist=web_dist, core=VethuQCore(tmp_path / "vethuq.db")
+        )
+        allow_host(app, "127.0.0.1:5000")
+        client = app.test_client()
+        client.get("/?t=t", base_url=ORIGIN)
+        return client
+
+    def post(self, http, path, body):
+        return http.post(path, json=body, base_url=ORIGIN, headers=HEADERS)
+
+    def test_one_paste_installs_and_shows(self, http, entitlements):
+        done = self.post(http, "/api/licences/install", {"token": "VQLIC1.t"})
+        assert done.status_code == 200
+        data = done.get_json()
+        assert data["installed"] == 1
+        assert {r["addon_id"]: r["status"] for r in data["results"]} == {
+            "csv": "stored",
+            "nope": "not_installed",
+        }
+        (shown,) = http.get("/api/licences", base_url=ORIGIN).get_json()
+        assert shown["licence_id"] == "LIC-9" and shown["installed_on"] == ["csv"]
+
+    def test_an_invalid_licence_is_a_422_with_the_reason(self, http, entitlements, monkeypatch):
+        import sys
+
+        sys.modules["vethuq_entitlements"].Licences.verify = lambda *a, **k: SimpleNamespace(
+            ok=False, status=SimpleNamespace(value="expired"), detail="expired on 2025-01-01"
+        )
+        done = self.post(http, "/api/licences/install", {"token": "VQLIC1.old"})
+        assert done.status_code == 422 and "expired on 2025-01-01" in done.get_json()["error"]
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {},
+            {"token": 5},
+            {"token": "x", "github_owner_id": "7"},
+            {"token": "x", "github_owner_id": True},
+        ],
+    )
+    def test_bad_install_bodies_are_422(self, http, entitlements, body):
+        assert self.post(http, "/api/licences/install", body).status_code == 422
+
+    def test_a_request_returns_what_the_issue_will_carry(self, http, entitlements):
+        done = self.post(
+            http,
+            "/api/licences/request",
+            {"kind": "top-up", "addons": ["docx"], "wallet": "local", "note": "hi",
+             "github_owner_id": 42, "runner_owner_id": 7},
+        )  # fmt: skip
+        data = done.get_json()
+        assert done.status_code == 200 and entitlements.codes == [(42, 7)]
+        assert data["fields"] == {
+            "request_code": "VQREQ1.api",
+            "addons": "docx",
+            "wallet": "local",
+            "note": "hi",
+        }
+        assert data["url"].startswith("https://github.com/coldsofttech/VethuQ/issues/new?")
+        assert "PUBLIC" in data["privacy"]
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"kind": 3},
+            {"addons": "docx"},
+            {"addons": [1]},
+            {"note": 5},
+            {"github": "yes"},
+            {"github_owner_id": 1.5},
+            {"addons": ["../x"]},
+            {"kind": "buy"},
+        ],
+    )
+    def test_bad_request_bodies_are_422(self, http, entitlements, body):
+        assert self.post(http, "/api/licences/request", body).status_code == 422
+
+    def test_the_endpoints_refuse_a_foreign_origin(self, http, entitlements):
+        refused = http.post(
+            "/api/licences/install",
+            json={"token": "x"},
+            base_url=ORIGIN,
+            headers={"Origin": "https://evil.example"},
+        )
+        assert refused.status_code == 403

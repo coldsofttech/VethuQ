@@ -332,6 +332,17 @@ export const api = {
     install: (bundle) =>
       request(`/api/addons/bundles/${encodeURIComponent(bundle)}/install`, { method: 'POST' }),
   },
+  licences: {
+    list: (signal) => request('/api/licences', { signal }),
+    /** Install the licence (its text, pasted or read from a .vqlic file) on every add-on it lists. */
+    install: (token, githubOwnerId) =>
+      request('/api/licences/install', {
+        method: 'POST',
+        body: githubOwnerId ? { token, github_owner_id: githubOwnerId } : { token },
+      }),
+    /** A prefilled request: its code, public issue URL, exact fields and privacy text. */
+    request: (body) => request('/api/licences/request', { method: 'POST', body }),
+  },
   ocr: {
     /** @returns {Promise<{ engines: object[], phases: object[] }>} */
     overview: (signal) => request('/api/ocr', { signal }),

@@ -4,6 +4,10 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (licences)
+- `GET /api/licences`, `POST /api/licences/install` (`{token, github_owner_id?}`: one licence on every add-on it lists) and `POST /api/licences/request` (a prefilled public request: its code, URL, exact fields and privacy text; nothing is opened or sent).
+- The desktop Add-ons screen has a **Licences** tab: installed licences, install by paste or `.vqlic` file, and "Request a licence" with the privacy statement, the exact fields, a copy button and a link to the public issue.
+
 ### Added (add-ons that are not running)
 - The add-on settings list has a read-only `Status` row, with the reason, for every installed add-on that is not running.
 

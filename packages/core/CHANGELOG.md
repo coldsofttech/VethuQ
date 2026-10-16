@@ -6,6 +6,12 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (licences: install once, ask for one)
+- `client.licences` (`vethuq.licences`): `install(token)` / `install_file(path)` verify a licence and store it as the `licence` setting of **every installed add-on it lists**, so one paste unlocks them all (each add-on still checks it itself; an add-on that isn't installed is reported, not an error, and an invalid licence stores nothing); `show()` lists installed licences with what each unlocks and where it is installed; `client.addons.install_licence(token)` does the same. Needs `vethuq-entitlements`.
+- `request_code()` (the anonymous device hash, the app version and, only when asked for, the numeric GitHub id and the runner owner's id) and `request(kind, addons, bundle, wallet, note)`, which builds the prefilled issue URL for the **public** `vethuq` repository's issue forms (`REQUEST_FIELDS` are the only fields that can reach it; `REQUEST_PRIVACY` is the text to show first). Looking up a GitHub id is the only use of the network and only on request.
+- Errors `LicenceError`, `InvalidLicenceError` and `LicenceRequestError`.
+- The three issue forms (`licence-request`, `top-up-request`, `rebind-request`) in `.github/ISSUE_TEMPLATE` and `docs/licence-requests.md` (what a request contains, what must never be in one, how a licence is delivered).
+
 ### Added (wheel tags checked before an add-on is imported)
 - The loader reads the `WHEEL` tags of an installed add-on and compares them with the running Python and platform before importing it. A mismatch marks the add-on `incompatible` with a message ("built for Windows; VethuQ is running on Linux (Python 3.12), which this add-on doesn't support", or "built for Python 3.12; VethuQ is running Python 3.11") in `addons.list()` instead of a bare `ModuleNotFoundError`; `abi3` wheels are accepted on any newer Python. A failure to import after a passing check reports the original error and the add-on's folder. Installs without a `WHEEL` file (editable, source) are never refused.
 - `AddonStatus.INCOMPATIBLE` and `AddonState.INCOMPATIBLE` now cover another add-on API version, Python or platform.

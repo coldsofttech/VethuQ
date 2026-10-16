@@ -116,3 +116,10 @@ def test_addon_settings_and_stopped_addons_appear_as_menus(capsys, scripted_ui):
     assert "vethuq-addon-off isn't running" in out.err
     addons_menu = [a[2] for a in selects(ui) if a[2] and "demo" in a[2] and "off" in a[2]]
     assert addons_menu
+
+
+def test_the_licence_menu_is_built_from_the_command_tree(shell, capsys):
+    ui = shell("licence", "show", BACK, EXIT)
+    commands = selects(ui)[1][2]
+    assert {"install", "show", "code", "request"} <= set(commands)
+    assert "No licence is installed" in capsys.readouterr().out

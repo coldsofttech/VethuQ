@@ -19,3 +19,6 @@ _SearchError = errors.SearchError
 _SearchUnavailableError = errors.SearchUnavailableError
 _SearchOptionError = errors.SearchOptionError
 _SearchQueryError = errors.SearchQueryError
+_LicenceError = errors.LicenceError
+_InvalidLicenceError = errors.InvalidLicenceError
+_LicenceRequestError = errors.LicenceRequestError
