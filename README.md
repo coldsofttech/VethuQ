@@ -3,6 +3,8 @@ VethuQ — open-source document intelligence and evidence infrastructure for sea
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for what you can run with only this repository and for the maintainer setup with the private repositories.
+
 If `vethuq` is not found after a plain `uv sync`, restore the whole workspace with
 `uv run python scripts/dev/sync.py` (same as `uv sync --all-packages --group dev`).
 
