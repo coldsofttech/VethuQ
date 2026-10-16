@@ -35,6 +35,30 @@ They are `source list|files`, `index queue list|history|jobs`, `search-engines l
 and `addons list`. The HTML page has filters (a dropdown per column that has more than one value), a live
 "Showing X of Y", and prints with every row open.
 
+## Updates and notices
+
+VethuQ checks a signed policy file (at most about once a day) to learn the newest version, notices and feature switches. It makes no request until something asks for one, and local work is never blocked by it.
+
+    vethuq update                 # is a newer VethuQ out? prints the exact upgrade steps for how it is installed
+    vethuq update --no-check      # the same from what is already saved, with no request
+    vethuq updates status         # what was last found out
+    vethuq updates check --force  # look now
+    vethuq policy notices         # the notices active now
+    vethuq policy show            # the policy in force
+
+`vethuq update` names how VethuQ is installed (installer, pipx, virtual environment, externally-managed Python, or pip) and prints the command that upgrades it, including add-ons that have a newer version. It changes nothing: VethuQ never upgrades itself inside the running command.
+
+After a command, when a newer version exists, one line is printed to stderr (for example `VethuQ 2.0.0 is available (you have 1.5.0). Run: vethuq update`), followed by any active notice with its severity and link. It never asks a question, and is not printed when output is piped or redirected, with `--json`, with `--help`/`--version`, or when the check is off.
+
+| To | Do |
+|---|---|
+| Check and offer (default) | `vethuq settings updates check on` |
+| Only tell me | `vethuq settings updates check notify-only` |
+| Never check | `vethuq settings updates check off`, or set `VETHUQ_UPDATE_CHECK=off` (also `0`, `false`, `no`, `disable`, `disabled`), which wins over the setting |
+| Hide the notice for a day | `vethuq settings updates snoozed-until` (see `vethuq settings show`) |
+
+Checking for updates fetches one small signed file (the policy) from a static web host. The host sees your IP address and the request's fixed identity, `VethuQ-policy/1`. **Your VethuQ version is not sent**: the comparison happens on your computer. No telemetry is added, and GitHub Pages gives no access logs to us.
+
 ## Settings
 
     vethuq settings show

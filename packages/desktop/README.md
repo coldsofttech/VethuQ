@@ -40,6 +40,20 @@ window controller shows it (`choose_folder`, through `POST /api/dialog/folder`),
 is then confirmed in the interface. A host without a picker (`--no-window`, a browser) types the
 folder instead.
 
+## Updates
+
+When a newer VethuQ is available a dialog offers three choices:
+
+- **Install now** downloads the installer named by the signed policy, checks that its size and sha256 match the policy entry (and that the address is https), stops the background service, runs the installer silently and starts the service again if it was running, so queued indexing jobs carry on. Nothing is run if the check fails, and the dialog says why.
+- **Later** hides the notice for a day.
+- **Skip this version** stops announcing that version; a newer one is announced again.
+
+A version below the oldest supported one is explained but cannot be put off; indexing, search and your data keep working, and only features that need a newer version are held back. Installs that are not the installer (pip, pipx) show the upgrade command instead of Install now. Active notices from the policy are listed under Settings › Policy.
+
+Settings › General › Updates chooses `on` (check and offer), `notify-only` (check and only tell me) or `off`. The environment variable `VETHUQ_UPDATE_CHECK=off` turns the check off whatever the setting says.
+
+Checking for updates fetches one small signed file (the policy) from a static web host. The host sees your IP address and the request's fixed identity, `VethuQ-policy/1`. **Your VethuQ version is not sent**: the comparison happens on your computer. No telemetry is added, and GitHub Pages gives no access logs to us.
+
 ## Known limits
 
 - Windows only. The window is created with `gui="edgechromium"` and never falls back to the old

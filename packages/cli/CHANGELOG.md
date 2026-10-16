@@ -4,6 +4,9 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Documented
+- The README describes `vethuq update`, the after-command notice, `vethuq policy notices`, the three update modes, `VETHUQ_UPDATE_CHECK` and what the policy fetch sends.
+
 ### Added
 - `vethuq update` says whether a newer VethuQ exists and prints the exact upgrade steps for how it is installed (installer, pipx, virtual environment, externally-managed Python or pip), including add-ons that have a newer version. It changes nothing.
 - A one-line notice after a command when a newer version is available, and the policy's active notices with their severity and link. It never asks anything, goes to stderr, and is not printed when the output is piped, with `--json`, or when the update check is off. `vethuq policy notices` lists the notices.

@@ -14,3 +14,7 @@ hierarchy (`Settings › Search › fuzzy › threshold`) and the commands insta
 without any code here. Search is guided: query, engine, that engine's options, case, languages.
 
 Errors print in the CLI's `Error: ... / What to do: ...` style and the shell carries on.
+
+## Updates
+
+The shell shows the same `Updates` and `Policy` menus as `vethuq`, and `Update` (the upgrade steps for how VethuQ is installed). It does not print the after-command update notice: that line is for the plain command line. The update check is described in the [`vethuq-cli` README](../cli/README.md#updates-and-notices); it can be switched off with `VETHUQ_UPDATE_CHECK=off`.

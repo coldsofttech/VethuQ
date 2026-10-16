@@ -1220,7 +1220,7 @@ They are plain files, not database rows, on purpose: the policy and the update c
 
 ### Privacy
 
-Fetching the policy exposes your IP address to its host. The request identifies itself only as `VethuQ-policy/1`; **your VethuQ version is not sent** (the comparison happens on your machine). Nothing else is sent, and GitHub Pages gives no access logs to us. Turn the update check off and nothing is fetched on its behalf (see [Update settings](#update-settings)).
+Fetching the policy exposes your IP address to its host (and nothing that identifies you). The request identifies itself only as `VethuQ-policy/1`; **your VethuQ version is not sent** (the comparison happens on your machine). Nothing else is sent, and GitHub Pages gives no access logs to us. Turn the update check off and nothing is fetched on its behalf (see [Update settings](#update-settings)).
 
 ## Updates
 

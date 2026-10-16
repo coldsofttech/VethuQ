@@ -4,6 +4,9 @@ All notable changes to `vethuq-desktop`.
 
 ## [Unreleased]
 
+### Added (updates)
+- An update dialog with Install now, Later and Skip this version; Install now checks the installer against the signed policy before running it, and stops and restarts the background service around it. The README describes it and what the policy fetch sends.
+
 ### Added (installer)
 - `vethuqd.exe`, the frozen desktop application (PyInstaller, no console), and `VethuQ-Desktop-Setup.exe` (Inno Setup), which installs it into the command line's folder. Released with tag `vethuq-desktop-vX.Y.Z` (`release-desktop.yml`); built by `scripts/release/release.py --desktop`.
 

@@ -20,4 +20,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\par
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\par
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\par
 SOFTWARE.\par
+\par
+\par
+\b Update check and policy\b0\par
+\par
+VethuQ checks for updates by fetching one small signed file (the policy) from a static web host, at most about once a day.
+The host can see your IP address and the request's fixed identity, VethuQ-policy/1. Your VethuQ version is not sent,
+no telemetry is added, and GitHub Pages gives us no access logs. You can turn the check off in the settings
+or with the environment variable VETHUQ_UPDATE_CHECK=off. The policy fetch is separate from a licence request,
+which sends only the data that request needs (your device hash and GitHub id).\par
 }
