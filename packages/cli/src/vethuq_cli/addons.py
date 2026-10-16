@@ -95,3 +95,50 @@ def mount(app: typer.Typer, groups: Sequence[tuple[str, CliGroup]]) -> None:
             taken.add(group.name)
         except Exception as exc:  # noqa: BLE001 - one bad add-on must not break the CLI
             error_console.print(f"Warning: add-on {addon_id} commands skipped ({exc}).")
+
+
+def _stopped_hint(info: Any) -> str:
+    status = info.status.value
+    if info.disabled or status == "disabled":
+        return (
+            "It is turned off. Turn it on with `vethuq addons enable "
+            + info.id
+            + "`, then restart."
+        )
+    if status == "incompatible":
+        return f"It can't run here: {info.detail}. Install a build made for this computer."
+    return f"It couldn't be loaded: {info.detail or 'unknown error'}. See `vethuq addons list`."
+
+
+STOPPED_CONTEXT = {"allow_extra_args": True, "ignore_unknown_options": True}
+
+
+def stopped_command(app: typer.Typer, info: Any, what: str = "commands") -> None:
+    """Add a stand-in `<add-on id> ...` for an add-on that is not running. Whatever follows the name
+    is ignored: any use of it explains why the add-on isn't running, and exits with status 1."""
+
+    def explain() -> None:
+        error_console.print(
+            f"{info.name} isn't running, so its {what} aren't available. {_stopped_hint(info)}",
+            style=Theme.WARN,
+        )
+        raise typer.Exit(1)
+
+    app.command(
+        info.id,
+        help=f"(not running: {info.status.value}) {info.name}.",
+        context_settings=STOPPED_CONTEXT,
+    )(explain)
+
+
+def mount_stopped(app: typer.Typer, infos: Sequence[Any]) -> None:
+    """Add a stand-in `vethuq <add-on id> ...` for every installed add-on that is not running, so
+    its commands are not simply missing."""
+    taken = {g.name for g in app.registered_groups} | {
+        c.name or (c.callback.__name__ if c.callback else "") for c in app.registered_commands
+    }
+    for info in infos:
+        if info.status.value == "loaded" or info.id in taken:
+            continue
+        stopped_command(app, info)
+        taken.add(info.id)

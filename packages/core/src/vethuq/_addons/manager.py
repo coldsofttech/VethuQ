@@ -12,6 +12,7 @@ from pathlib import Path
 from vethuq._addons.finder import _AddonFinder
 from vethuq._addons.host import _Host
 from vethuq._addons.settings import _AddonSettingsStore
+from vethuq._addons.tags import _WheelTags
 from vethuq._credits import _Credits
 from vethuq.enums import AddonStatus
 from vethuq_addon_api import (
@@ -87,12 +88,25 @@ class _AddonManager:
                 AddonStatus.DISABLED,
                 "turned off in settings",
             )
+        dist = getattr(point, "dist", None)
+        problem = _WheelTags.problem(dist)
+        if problem is not None:
+            # Not imported at all: a wrong-ABI extension would only say "No module named ...".
+            self._logger.warning("Add-on %s can't run here: %s", point.name, problem)
+            return _Loaded(
+                point.name,
+                dist.name if dist is not None else point.name,
+                dist.version if dist is not None else "",
+                AddonStatus.INCOMPATIBLE,
+                problem,
+            )
         try:
             cls = point.load()
             manifest = cls.manifest
         except Exception as exc:  # noqa: BLE001 - a broken add-on must not break VethuQ
             self._logger.warning("Couldn't load add-on %s", point.name, exc_info=True)
-            return _Loaded(point.name, point.name, "", AddonStatus.FAILED, f"{exc}")
+            where = self._where(dist)
+            return _Loaded(point.name, point.name, "", AddonStatus.FAILED, f"{exc}{where}")
         if manifest.id != point.name:
             detail = f"its entry point is {point.name!r} but it declares id {manifest.id!r}"
             return _Loaded(point.name, manifest.name, manifest.version, AddonStatus.FAILED, detail)
@@ -112,6 +126,14 @@ class _AddonManager:
                 manifest.id, manifest.name, manifest.version, AddonStatus.FAILED, f"{exc}"
             )
         return _Loaded(manifest.id, manifest.name, manifest.version, AddonStatus.LOADED, "", addon)
+
+    @staticmethod
+    def _where(dist: object) -> str:
+        """` (in <folder>)` for a distribution that has a location, to say where the add-on is."""
+        try:
+            return f" (in {dist.locate_file('')})" if dist is not None else ""  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 - only a hint
+            return ""
 
     def loaded(self) -> dict[str, _Loaded]:
         with self._lock:

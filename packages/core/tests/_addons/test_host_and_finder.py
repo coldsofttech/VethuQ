@@ -168,7 +168,13 @@ class TestManager:
             "unicode",
         }  # installed with VethuQ
         before = set(manager.loaded())
-        assert always <= before and before - always <= {"semantic", "png", "jpg", "tiff"}  # extras
+        assert always <= before and before - always <= {
+            "semantic",
+            "png",
+            "jpg",
+            "tiff",
+            "tsv",
+        }  # extras
         folder = tmp_path / "site"
         folder.mkdir()
         try:

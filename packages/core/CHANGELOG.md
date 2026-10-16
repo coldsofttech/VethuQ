@@ -6,6 +6,10 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (wheel tags checked before an add-on is imported)
+- The loader reads the `WHEEL` tags of an installed add-on and compares them with the running Python and platform before importing it. A mismatch marks the add-on `incompatible` with a message ("built for Windows; VethuQ is running on Linux (Python 3.12), which this add-on doesn't support", or "built for Python 3.12; VethuQ is running Python 3.11") in `addons.list()` instead of a bare `ModuleNotFoundError`; `abi3` wheels are accepted on any newer Python. A failure to import after a passing check reports the original error and the add-on's folder. Installs without a `WHEEL` file (editable, source) are never refused.
+- `AddonStatus.INCOMPATIBLE` and `AddonState.INCOMPATIBLE` now cover another add-on API version, Python or platform.
+
 ### Added (add-on and bundle catalog)
 - `client.catalog` (types in `vethuq.catalog`): the signed catalog of every add-on and bundle that exists, with descriptions, merged with what is installed here (`addons()`, `bundles()`, `get()`; `AddonState`; `CatalogEntry`, `BundleEntry`). Also `client.addons.catalog()` and `client.addons.bundles()`. `refresh()` is the only call that uses the network and follows the update check; it keeps the last good catalog on any failure. Signed like the policy (same keys, mirrors and ETag), with its own sequence counter, and refused when the policy has revoked its signing key.
 - `client.updates.check_enabled()`, `client.policy` unchanged otherwise. Contract fixtures for the catalog in `policy/fixtures/v1/`.

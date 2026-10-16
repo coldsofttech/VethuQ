@@ -152,6 +152,18 @@ def _search_extras(client, sub: typer.Typer) -> None:
         sub.add_typer(group, name=engine.id)
 
 
+def _unavailable(action):
+    """Run `action`; an add-on that refuses (not licensed, say) gives a message, not a traceback."""
+
+    def run(*args):
+        try:
+            return action(*args)
+        except Exception as error:  # noqa: BLE001 - the add-on's own reason is the hint
+            raise SystemExit(f"Unavailable: {error}") from None
+
+    return run
+
+
 def addon_app(client) -> typer.Typer:
     group = typer.Typer(help="Settings of installed add-ons.", no_args_is_help=True)
     for _addon_id, spec in client.addons.cli():
@@ -163,12 +175,25 @@ def addon_app(client) -> typer.Typer:
                 sub,
                 setting.name,
                 setting.help,
-                lambda s=setting: s.get(client),
-                lambda v, s=setting: s.set(client, str(v)),
-                (lambda s=setting: s.reset(client)) if setting.reset else None,
+                _unavailable(lambda s=setting: s.get(client)),
+                _unavailable(lambda v, s=setting: s.set(client, str(v))),
+                _unavailable(lambda s=setting: s.reset(client)) if setting.reset else None,
             )
         group.add_typer(sub, name=spec.name)
+    _stopped(client, group)
     return group
+
+
+def _stopped(client, group: typer.Typer) -> None:
+    """A stand-in for every installed add-on that isn't running: its settings can't be listed, so
+    it says why instead of leaving the add-on out."""
+    from vethuq_cli.addons import stopped_command
+
+    taken = {g.name for g in group.registered_groups}
+    for info in client.addons.list():
+        if info.status.value != "loaded" and info.id not in taken:
+            stopped_command(group, info, "settings")
+            taken.add(info.id)
 
 
 def location_app() -> typer.Typer:

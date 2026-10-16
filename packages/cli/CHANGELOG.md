@@ -4,6 +4,9 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Added (add-ons that are not running)
+- An installed add-on that is turned off, built for another Python or platform, or failing to load gets a stand-in `vethuq <add-on id>` and an entry under `vethuq settings addons`; both say why it is not running and what to do, and exit with status 1, instead of the add-on's commands being missing. A setting that an add-on refuses (for example without a licence) now shows `Unavailable: <reason>` instead of a traceback.
+
 ### Added (catalog)
 - `vethuq catalog list|bundles|show|refresh`: every add-on and bundle that exists, with its description, licence and state on this computer, and where to ask for it. `list` takes `--missing`, `--bundle`, `--language`, `--json` and `--export`.
 

@@ -5,6 +5,9 @@ All notable changes to `vethuq-addon-api` are documented here. The format is bas
 
 ## [Unreleased]
 
+### Documented
+- The README describes how an add-on contributes commands and settings (`Addon.cli()`), how locked and not-running add-ons appear, and where add-on settings are kept.
+
 ### Added (where a line was read)
 - `OcrResult.boxes`: for an engine that knows where it read each line, one `(x0, y0, x1, y1)` per line in `lines`, as fractions (0 to 1) of the image's width and height from its top-left corner, in the image as it was passed. Optional and empty by default, so no add-on has to change and the API version stays 0.11.0.
 

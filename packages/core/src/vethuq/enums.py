@@ -151,7 +151,7 @@ class AddonStatus(StrEnum):
     """Whether an installed add-on is running."""
 
     LOADED = "loaded"
-    INCOMPATIBLE = "incompatible"  # it needs a different add-on API version
+    INCOMPATIBLE = "incompatible"  # a different add-on API version, Python or platform
     FAILED = "failed"  # it couldn't be loaded
     DISABLED = "disabled"  # turned off with `addons.set_enabled`; it is not loaded
 
@@ -162,7 +162,9 @@ class AddonState(StrEnum):
     NOT_INSTALLED = "not_installed"
     ENABLED = "enabled"  # installed and running
     DISABLED = "disabled"  # installed and turned off
-    INCOMPATIBLE = "incompatible"  # installed, but it needs a different add-on API version
+    INCOMPATIBLE = (
+        "incompatible"  # installed, but for another add-on API version, Python or platform
+    )
     FAILED = "failed"  # installed, but it couldn't be loaded
 
 

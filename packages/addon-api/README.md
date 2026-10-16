@@ -64,6 +64,26 @@ exists but can't be used right now (a lapsed licence) is returned with `availabl
   never prepares anything. VethuQ does the ranking, the merging of hits several engines agree on and
   the `hybrid` fusion; an engine only reports its hits.
 
+## Commands and settings
+
+`Addon.cli()` returns a `CliGroup`: commands (`CliCommand`, with typed `CliParam`s), nested groups and
+settings (`CliSetting`: `get(client)` and `set(client, value)` work in text; `reset` is optional;
+`choices` limits the values). No CLI library is involved. VethuQ mounts the group as
+`vethuq <group name> ...` and the settings under `vethuq settings addons <group name> ...`; the
+interactive shell and the desktop Settings screen are built from the same description, so an add-on
+writes nothing for them. Store a setting with `Host.set_setting`: it is kept in VethuQ's database as
+`addon.<id>.<key>`, so a backup holds it, a restore brings it back and a reset leaves the default.
+
+- A command returns a `CliResult` (`lines`, a `table`, `data` for `--json`, `ok=False` for exit status 1),
+  a string, or nothing.
+- A licensed add-on that is not licensed still loads: `get` or `set` may raise with the reason (for
+  example "needs a licence"); the CLI shows it as `Unavailable: <reason>` and the Settings screen shows
+  the setting read-only with that note.
+- An add-on that is installed but not running (turned off, built for another Python or platform,
+  or failing to load) cannot describe its commands. VethuQ mounts a stand-in `vethuq <add-on id>`
+  and a row in the add-on settings that say why it is not running and what to do.
+- `licence_commands(Docx, "Word (.docx)")` gives the shared `licence show|set|remove` group.
+
 ## What the host gives an add-on
 
 `Host` (see `Addon.host`): its settings (`get_setting`, `set_setting`), `data_dir()` (a folder of its

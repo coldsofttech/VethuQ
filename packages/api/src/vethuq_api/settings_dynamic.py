@@ -181,7 +181,36 @@ def addon_specs(client: Any) -> list[Spec]:
     for _addon_id, group in client.addons.cli():
         for setting in group.settings or ():
             specs.append(_addon_spec(client, group, setting))
+    specs.extend(_stopped_specs(client))
     return specs
+
+
+def _stopped_specs(client: Any) -> list[Spec]:
+    """One read-only row for every installed add-on that is not running. Its settings can't be
+    listed (it did not load), so the row says why, instead of leaving the add-on out."""
+    try:
+        infos = list(client.addons.list())
+    except Exception:  # noqa: BLE001 - a client without a list shows only what runs
+        return []
+    return [
+        Spec(
+            id=f"{info.id}.status",
+            section="addons",
+            group=info.name,
+            label="Status",
+            description="Whether this add-on is running.",
+            kind=TEXT,
+            default=None,
+            read=lambda _c, i=info: f"Not running ({i.status.value})",
+            write=None,
+            reset=None,
+            resettable=False,
+            catches=(Exception,),
+            note=info.detail or "It is not running.",
+        )
+        for info in infos
+        if info.status.value != "loaded"
+    ]
 
 
 def _addon_spec(client: Any, group: Any, setting: Any) -> Spec:

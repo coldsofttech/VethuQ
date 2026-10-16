@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import typer
 from typer.testing import CliRunner
-from vethuq_cli.addons import build, mount
+from vethuq_cli.addons import build, mount, mount_stopped
+from vethuq_cli.settings import addon_app
 
+from vethuq.enums import AddonStatus
 from vethuq_addon_api import CliCommand, CliGroup, CliParam, CliResult, CliSetting
 
 
@@ -84,3 +88,79 @@ def test_a_group_that_clashes_with_a_builtin_is_skipped():
 
 def test_build_returns_a_typer_app():
     assert isinstance(build(group([])), typer.Typer)
+
+
+def info(addon_id, status, detail="", disabled=False):
+    return SimpleNamespace(
+        id=addon_id,
+        name=f"vethuq-addon-{addon_id}",
+        status=status,
+        detail=detail,
+        disabled=disabled,
+    )
+
+
+STOPPED = [
+    info("off", AddonStatus.DISABLED, "turned off in settings", disabled=True),
+    info("odd", AddonStatus.INCOMPATIBLE, "built for Windows; VethuQ is running on Linux"),
+    info("bad", AddonStatus.FAILED, "No module named 'x'"),
+    info("fine", AddonStatus.LOADED),
+]
+
+
+def stopped_app():
+    app = typer.Typer()
+
+    @app.command("keep")
+    def keep() -> None: ...
+
+    mount_stopped(app, STOPPED)
+    return app
+
+
+def test_a_stopped_addon_is_listed_and_explains_itself():
+    runner = CliRunner()
+    listing = runner.invoke(stopped_app(), ["--help"]).output
+    assert "off" in listing and "odd" in listing and "bad" in listing and "fine" not in listing
+    for name, hint in (
+        ("off", "vethuq addons enable off"),
+        ("odd", "built for Windows"),
+        ("bad", "No module named"),
+    ):
+        result = runner.invoke(stopped_app(), [name, "licence", "show"])
+        assert result.exit_code == 1 and "isn't running" in result.output and hint in result.output
+
+
+def test_a_stopped_addon_never_replaces_a_builtin():
+    app = typer.Typer()
+    app.command("off")(lambda: None)
+    mount_stopped(app, STOPPED)
+    assert [c.name for c in app.registered_commands].count("off") == 1
+    assert "(not running" not in (app.registered_commands[0].help or "")
+
+
+def settings_client(groups, infos):
+    return SimpleNamespace(addons=SimpleNamespace(cli=lambda: groups, list=lambda: infos))
+
+
+def test_settings_of_a_stopped_addon_say_why():
+    app = typer.Typer()
+    app.add_typer(addon_app(settings_client([("demo", group([]))], STOPPED)), name="addons")
+    runner = CliRunner()
+    shown = runner.invoke(app, ["addons", "demo", "level"])
+    assert shown.exit_code == 0 and "level: 1" in shown.output
+    result = runner.invoke(app, ["addons", "off"])
+    assert result.exit_code == 1 and "settings aren't available" in result.output
+
+
+def test_a_setting_that_refuses_gives_a_message_not_a_traceback():
+    def refuse(client):
+        raise PermissionError("Word files need a licence")
+
+    locked = CliGroup(
+        "locked", "Locked.", settings=(CliSetting("mode", "A mode.", refuse, lambda c, v: None),)
+    )
+    app = typer.Typer()
+    app.add_typer(addon_app(settings_client([("locked", locked)], [])), name="addons")
+    result = CliRunner().invoke(app, ["addons", "locked", "mode"])
+    assert result.exit_code != 0 and "Unavailable: Word files need a licence" in result.output

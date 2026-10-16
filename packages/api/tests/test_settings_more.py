@@ -287,6 +287,27 @@ class TestAddons:
     def addons(self, fake):
         return SettingsService(lambda: fake)
 
+    def test_an_add_on_that_is_not_running_gets_a_read_only_row_with_the_reason(self, fake):
+        fake.addons = SimpleNamespace(
+            cli=fake._cli,
+            list=lambda: [
+                SimpleNamespace(
+                    id="docx",
+                    name="vethuq-addon-docx",
+                    status=SimpleNamespace(value="incompatible"),
+                    detail="built for Windows; VethuQ is running on Linux",
+                ),
+                SimpleNamespace(
+                    id="backup", name="b", status=SimpleNamespace(value="loaded"), detail=""
+                ),
+            ],
+        )
+        row = by_id(SettingsService(lambda: fake).list("addons"))["docx.status"]
+        assert row["value"] == "Not running (incompatible)"
+        assert row["note"] == "built for Windows; VethuQ is running on Linux"
+        assert row["group"] == "vethuq-addon-docx" and not row["resettable"]
+        assert "backup.status" not in by_id(SettingsService(lambda: fake).list("addons"))
+
     def test_without_add_on_settings_the_section_is_empty(self, service):
         assert service.list("addons") == []
 

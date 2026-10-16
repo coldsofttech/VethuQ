@@ -74,3 +74,46 @@ def test_the_settings_hierarchy_is_nested_menus(shell, capsys):
 def test_version_runs_from_the_main_menu(shell, capsys):
     shell("version", EXIT)
     assert "VethuQ" in capsys.readouterr().out
+
+
+def test_addon_settings_and_stopped_addons_appear_as_menus(capsys):
+    """The menus come from the command tree, so an add-on's settings are there with no shell code,
+    and an add-on that isn't running shows its reason."""
+    from types import SimpleNamespace
+
+    import typer
+    from conftest import ScriptedUi
+    from vethuq_cli.settings import addon_app
+    from vethuq_interactive_cli.shell import Shell
+
+    from vethuq.enums import AddonStatus
+    from vethuq_addon_api import CliGroup, CliSetting
+
+    group = CliGroup(
+        "demo",
+        "Demo.",
+        settings=(CliSetting("level", "A level.", lambda c: "3", lambda c, v: None),),
+    )
+    stopped = SimpleNamespace(
+        id="off",
+        name="vethuq-addon-off",
+        status=AddonStatus.DISABLED,
+        detail="turned off in settings",
+        disabled=True,
+    )
+    client = SimpleNamespace(
+        addons=SimpleNamespace(cli=lambda: [("demo", group)], list=lambda: [stopped])
+    )
+    app = typer.Typer()
+    settings = typer.Typer()
+    settings.add_typer(addon_app(client), name="addons")
+    app.add_typer(settings, name="settings")
+    ui = ScriptedUi(
+        ["settings", "addons", "demo", "level", None, False, BACK, "off", BACK, BACK, BACK, EXIT]
+    )
+    Shell(ui, typer.main.get_command(app)).run()
+    out = capsys.readouterr()
+    assert "level: 3" in out.out
+    assert "vethuq-addon-off isn't running" in out.err
+    addons_menu = [a[2] for a in selects(ui) if a[2] and "demo" in a[2] and "off" in a[2]]
+    assert addons_menu

@@ -92,6 +92,7 @@ def build_app() -> typer.Typer:
     _mount_plugins(app)
     try:
         addons.mount(app, client.addons.cli())
+        addons.mount_stopped(app, client.addons.list())
     except Exception as exc:  # noqa: BLE001 - never block the built-in commands
         error_console.print(f"Warning: add-on commands unavailable ({exc}).", style=Theme.WARN)
     return app

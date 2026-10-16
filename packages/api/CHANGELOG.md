@@ -4,6 +4,9 @@ All notable changes to `vethuq-api`.
 
 ## [Unreleased]
 
+### Added (add-ons that are not running)
+- The add-on settings list has a read-only `Status` row, with the reason, for every installed add-on that is not running.
+
 ### Added (catalog)
 - `GET /api/addons/catalog?language=` returns the catalog (where it came from and its sequence), every add-on in it merged with what is installed here, and the bundles; `POST /api/addons/catalog/refresh` (`{force}`) looks for a newer one first.
 
