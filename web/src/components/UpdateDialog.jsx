@@ -100,7 +100,8 @@ export function UpdateDialog() {
             {working && (
               <Text block>
                 <Spinner size="tiny" /> Installing the update. VethuQ will close and open again; any
-                indexing that was waiting carries on afterwards.
+                indexing that was waiting carries on afterwards. Windows may ask for permission to
+                restart the background service.
               </Text>
             )}
             {!canInstall && help?.commands?.length > 0 && (

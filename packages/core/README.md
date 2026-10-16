@@ -1250,7 +1250,7 @@ help_.commands  # ("python -m pip install --upgrade vethuq vethuq-addon-pdf",)
 help_.steps  # the same, as sentences
 ```
 
-The desktop installer build has no command: its update dialog offers **Install now**, which downloads the installer named by the signed policy, checks its size and sha256 against the policy entry, stops the background service, runs the installer silently and starts the service again.
+The desktop installer build has no command: its update dialog offers **Install now**, which downloads the installer named by the signed policy, checks its size and sha256 against the policy entry, stops the background service, runs the installer silently, starts the service again and reopens VethuQ.
 
 ### The result
 

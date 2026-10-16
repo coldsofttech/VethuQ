@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -70,7 +69,11 @@ RUNNING = ServiceInfo("RUNNING")
 
 
 def _installer(info=RUNNING, frozen=True, fetch=None, stop=None):
-    log = SimpleNamespace(stopped=0, launched=[])
+    log = SimpleNamespace(stopped=0, launched=[], scripts=[])
+
+    def launch(command):
+        log.launched.append(command)
+        log.scripts.append(Path(command[-1]).read_text("utf-8"))
 
     def default_fetch(entry, folder):
         path = Path(folder) / "S.exe"
@@ -85,9 +88,10 @@ def _installer(info=RUNNING, frozen=True, fetch=None, stop=None):
     installer = UpdateInstaller(
         _Probe(info),
         do_stop,
-        launch=log.launched.append,
+        launch=launch,
         fetch=fetch or default_fetch,
         frozen=lambda: frozen,
+        application=lambda: Path("C:/Apps/VethuQ/vethuqd.exe"),
     )
     return installer, log
 
@@ -112,33 +116,49 @@ class TestPlan:
             installer.plan(_client(_policy([_download(platform="linux-x64")])))
 
 
+def _script(log) -> str:
+    """The batch file the launched command runs (read while the temp folder still exists)."""
+    (command,) = log.launched
+    assert command[:2] == ["cmd.exe", "/c"]
+    return log.scripts[0]
+
+
 class TestInstall:
-    def test_stops_the_service_runs_the_installer_silently_and_restarts_the_service(self):
+    def test_stops_the_service_runs_the_installer_silently_restarts_the_service_and_the_app(self):
         installer, log = _installer()
 
         done = installer.install(_client(_policy([_download()])))
 
         assert done == {"installing": True, "version": "2.0.0", "restarts_service": True}
         assert log.stopped == 1
-        ((command,),) = [(c,) for c in log.launched]
-        chain = command[-1]
-        assert command[:2] == ["cmd.exe", "/c"]
-        assert all(flag in chain for flag in SILENT_FLAGS)
-        assert chain.endswith("& sc start VethuQBackground")
+        lines = _script(log).splitlines()
+        assert lines[0] == "@echo off"
+        assert lines[1].endswith(" ".join(SILENT_FLAGS)) and "S.exe" in lines[1]
+        assert "sc.exe" in lines[2] and "VethuQBackground" in lines[2] and "-Verb RunAs" in lines[2]
+        assert lines[3].startswith('start "" "') and lines[3].endswith('vethuqd.exe"')
 
-    def test_a_stopped_service_is_left_stopped(self):
+    def test_the_service_is_started_before_the_app_and_after_the_installer(self):
+        installer, log = _installer()
+        installer.install(_client(_policy([_download()])))
+        text = _script(log)
+
+        assert text.index("S.exe") < text.index("sc.exe") < text.index("vethuqd.exe")
+
+    def test_a_stopped_service_is_left_stopped_but_the_app_still_comes_back(self):
         installer, log = _installer(info=ServiceInfo("STOPPED"))
 
         done = installer.install(_client(_policy([_download()])))
 
-        assert done["restarts_service"] is False and "sc start" not in log.launched[0][-1]
+        text = _script(log)
+        assert done["restarts_service"] is False and "sc.exe" not in text
+        assert "vethuqd.exe" in text
 
     def test_no_service_installed_means_nothing_to_stop_or_start(self):
         installer, log = _installer(info=None)
 
         installer.install(_client(_policy([_download()])))
 
-        assert log.stopped == 0 and "sc start" not in log.launched[0][-1]
+        assert log.stopped == 0 and "sc.exe" not in _script(log)
 
     def test_a_download_that_fails_verification_stops_nothing_and_runs_nothing(self):
         def bad(entry, folder):
@@ -160,6 +180,16 @@ class TestInstall:
         assert log.launched == []
 
 
+class TestScript:
+    def test_percent_signs_in_paths_are_escaped_for_cmd(self):
+        text = UpdateInstaller.script(Path("C:/100%/S.exe"), False, Path("C:/a/app.exe"))
+
+        assert "100%%" in text and "100%/" not in text
+
+    def test_lines_end_the_windows_way(self):
+        assert UpdateInstaller.script(Path("S.exe"), True, Path("a.exe")).endswith("\r\n")
+
+
 class TestThroughTheMaintenanceService:
     def test_a_refusal_is_immediate_and_starts_no_task(self):
         installer, _ = _installer(frozen=False)
@@ -173,9 +203,3 @@ class TestThroughTheMaintenanceService:
     def test_without_an_installer_it_is_not_available(self):
         with pytest.raises(IndexingRefusedError, match="not available"):
             MaintenanceService(lambda: None).update_install()
-
-
-def test_the_command_is_for_cmd():
-    command = UpdateInstaller.command(Path("C:/t/S.exe"), True)
-
-    assert command[0] == "cmd.exe" and sys.platform  # built the same on every platform

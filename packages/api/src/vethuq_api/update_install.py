@@ -3,8 +3,9 @@ service, run the installer silently and bring the service back.
 
 The installer replaces the program that is running this code, so it is started as a separate
 process that outlives it. That process runs the installer to the end and then starts the service
-again if it was running, which lets queued indexing jobs resume. Nothing is run unless the file's
-size and sha256 matched the signed policy.
+again if it was running, which lets queued indexing jobs resume, and then starts the application
+again (a silent install does not). Nothing is run unless the file's size and sha256 matched the
+signed policy.
 """
 
 from __future__ import annotations
@@ -51,19 +52,33 @@ class UpdateInstaller:
         launch: Callable[[Sequence[str]], None] = _launch_detached,
         fetch: Callable[..., Path] = _Installer.fetch,
         frozen: Callable[[], bool] = lambda: bool(getattr(sys, "frozen", False)),
+        application: Callable[[], Path] = lambda: Path(sys.executable),
     ) -> None:
         self._probe = probe
         self._stop_service = stop_service
         self._launch = launch
         self._fetch = fetch
         self._frozen = frozen
+        self._application = application
 
     @staticmethod
-    def command(installer: Path, restart_service: bool) -> list[str]:
-        """The one detached command: the installer, then (if the service was running) start it."""
-        run = " ".join([f'"{installer}"', *SILENT_FLAGS])
-        chain = f"{run} & sc start {SERVICE_NAME}" if restart_service else run
-        return ["cmd.exe", "/c", chain]
+    def script(installer: Path, restart_service: bool, application: Path) -> str:
+        """The batch file the detached process runs: the installer, then (if the service was
+        running) start it, then the application. Starting a service needs administrator rights, so
+        it asks the same way stopping did (a UAC prompt). A step that fails does not stop the next,
+        so the application always comes back."""
+
+        def quoted(path: Path) -> str:
+            return '"' + str(path).replace("%", "%%") + '"'
+
+        lines = ["@echo off", " ".join([quoted(installer), *SILENT_FLAGS])]
+        if restart_service:
+            lines.append(
+                'powershell.exe -NoProfile -Command "Start-Process -FilePath sc.exe '
+                f"-ArgumentList 'start','{SERVICE_NAME}' -Verb RunAs -Wait -WindowStyle Hidden\""
+            )
+        lines.append(f'start "" {quoted(application)}')
+        return "\r\n".join(lines) + "\r\n"
 
     def plan(self, client: Any) -> tuple[Any, InstallerDownload]:
         """The update on offer and its installer. Raises `UpdateInstallRefusedError` when this
@@ -106,7 +121,9 @@ class UpdateInstaller:
                 raise UpdateInstallRefusedError(
                     f"The background service could not be stopped: {failure}", 422
                 ) from failure
-        self._launch(self.command(installer, was_running))
+        script = folder / "update.cmd"
+        script.write_text(self.script(installer, was_running, self._application()), "utf-8")
+        self._launch(["cmd.exe", "/c", str(script)])
         return {
             "installing": True,
             "version": result.latest,

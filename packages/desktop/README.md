@@ -44,7 +44,7 @@ folder instead.
 
 When a newer VethuQ is available a dialog offers three choices:
 
-- **Install now** downloads the installer named by the signed policy, checks that its size and sha256 match the policy entry (and that the address is https), stops the background service, runs the installer silently and starts the service again if it was running, so queued indexing jobs carry on. Nothing is run if the check fails, and the dialog says why.
+- **Install now** downloads the installer named by the signed policy, checks that its size and sha256 match the policy entry (and that the address is https), stops the background service, runs the installer silently, starts the service again if it was running (Windows asks for permission, as it did to stop it), so queued indexing jobs carry on, and then opens VethuQ again (a silent install does not do that by itself). Nothing is run if the check fails, and the dialog says why.
 - **Later** hides the notice for a day.
 - **Skip this version** stops announcing that version; a newer one is announced again.
 
