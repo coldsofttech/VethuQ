@@ -45,6 +45,10 @@ def register(api: Blueprint, core: Core) -> None:
     def service() -> CreditsService:
         return core.credits()
 
+    @api.get("/credits/report")
+    def credits_report() -> Response:
+        return jsonify(service().report())
+
     @api.get("/credits/summary")
     def credits_summary() -> Response:
         return jsonify(service().summary())

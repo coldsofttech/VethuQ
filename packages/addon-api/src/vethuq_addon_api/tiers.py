@@ -98,3 +98,6 @@ class TierSpec:
     executor: OcrExecutor | None = None
     available: bool = True
     reason: str = ""
+    # Whether the repository the tier runs in is private (None: not known, or not applicable).
+    # The GitHub wallet's daily amount depends on it.
+    private: bool | None = None

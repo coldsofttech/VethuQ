@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import func, select
+
 from vethuq._credits import _Credits
 from vethuq._db import _CreditLedger, _Database
 from vethuq._errors import _InvalidGrantError
@@ -24,6 +26,7 @@ __all__ = [
     "CreditBalance",
     "CreditEntry",
     "CreditGrant",
+    "CreditReport",
     "CreditUsage",
     "CreditEntryKind",
     "CreditSortBy",
@@ -56,6 +59,9 @@ class CreditBalance:
     bonus_active: bool  # the metrics-sharing bonus is part of today's allowance
     bonus: float  # how much of today's allowance it is
     next_reset: str  # UTC, ISO 8601
+    # Why the daily amount is what it is, when that depends on something (the GitHub wallet:
+    # the visibility of the runner repository), for example "20/day (private repository)".
+    limit_note: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return dict(self.__dict__)
@@ -79,6 +85,7 @@ class CreditEntry:
     page_number: int | None
     phase: str | None
     language: str | None
+    device: str | None
     size_factor: float | None
     rate_card_version: int | None
     note: str | None
@@ -98,6 +105,7 @@ class CreditEntry:
             page_number=row.page_number,
             phase=row.phase,
             language=row.language,
+            device=row.device,
             size_factor=_credits(row.size_factor_milli),
             rate_card_version=row.rate_card_version,
             note=row.note,
@@ -188,7 +196,9 @@ class Credits:
         estimate: Callable[[int | str | Path | None], tuple[int, int, int, int]],
         wallets: Callable[[], list[str]],
         revoked_keys: Callable[[], frozenset[str]] = frozenset,
+        facts: Callable[[], Mapping[str, Any]] = dict,
     ) -> None:
+        self._facts = facts
         self._database = database
         self._credits = credits
         self._revoked_keys = revoked_keys
@@ -213,6 +223,11 @@ class Credits:
         with self._database.session() as session:
             balance, _terms, reset = self._credits.balance(session, name)
             base, bonus, promo = self._credits.today_allowance(session, name)
+            note = None
+            if name == "github":
+                private = self._credits.github_private(session)
+                amount = _terms.daily_for("github", private)
+                note = f"{amount:g}/day ({'private' if private else 'public'} repository)"
         return CreditBalance(
             wallet=name,
             daily=balance.daily_milli / 1000,
@@ -223,6 +238,33 @@ class Credits:
             bonus_active=bonus > 0,
             bonus=bonus / 1000,
             next_reset=reset.isoformat(),
+            limit_note=note,
+        )
+
+    def report(self) -> CreditReport:
+        """A summary to send when asking for help: balances, what the ledger holds, the licence
+        ids and the versions. It has no file names, paths or document content."""
+        with self._database.session() as session:
+            rows = session.execute(
+                select(
+                    _CreditLedger.wallet,
+                    _CreditLedger.kind,
+                    func.count(),
+                    func.coalesce(func.sum(_CreditLedger.amount_milli), 0),
+                ).group_by(_CreditLedger.wallet, _CreditLedger.kind)
+            ).all()
+        ledger = [
+            {"wallet": w, "kind": k.value, "entries": int(n), "credits": int(total) / 1000}
+            for w, k, n, total in rows
+        ]
+        balances = [self.balance(name).to_dict() for name in self.wallets()]
+        facts = dict(self._facts())
+        return CreditReport(
+            version=str(facts.pop("version", "")),
+            device_folder=str(facts.pop("device_folder", "")),
+            wallets=balances,
+            ledger=ledger,
+            licences=list(facts.pop("licences", [])),
         )
 
     def next_reset(self) -> str:
@@ -432,6 +474,24 @@ class Credits:
             maximum=cost * 1.25 / 1000,
             affordable=cost <= have,
         )
+
+
+@dataclass(frozen=True)
+class CreditReport:
+    """What to send when asking for help with credits (see `Credits.report`)."""
+
+    version: str  # the VethuQ version
+    device_folder: str  # where the credits are kept: `device`, `user` or `custom`
+    wallets: list[dict[str, object]]  # each wallet's balance
+    ledger: list[dict[str, object]]  # entries and credits per wallet and kind
+    licences: list[dict[str, object]]  # id, kind and status of each installed licence
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self.__dict__)
+
+    def to_json(self, indent: int | None = None) -> str:
+        """The same details as `to_dict()`, as a JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
 
 
 @dataclass(frozen=True)

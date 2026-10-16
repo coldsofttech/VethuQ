@@ -249,3 +249,8 @@ def _everything(service):
         offset=0,
         limit=100,
     )["items"]
+
+
+def test_the_support_report_has_what_support_needs(service):
+    body = service.report()
+    assert {"version", "device_folder", "wallets", "ledger", "licences"} <= set(body)

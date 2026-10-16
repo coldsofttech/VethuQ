@@ -10,9 +10,11 @@ from typing import Annotated
 import typer
 from rich.live import Live
 
-from vethuq.enums import SortOrder, SourceSortBy
+from vethuq.enums import IndexRunStatus, SortOrder, SourceSortBy, UpdateStatus
+from vethuq_cli import exit_codes
 from vethuq_cli.console import Theme, console
 from vethuq_cli.display import index_panel, search_panel, stats_panel
+from vethuq_cli.exit_codes import leave
 from vethuq_cli.export import exportable
 from vethuq_cli.licence import licence_app
 from vethuq_cli.output import dump, facts, plain, say, table
@@ -175,6 +177,10 @@ def _run_report(run) -> None:
         title=f"Index run {run.id}: {plain(run.status)}",
         skip=("eta",) if State.json else (),
     )
+    if run.status is IndexRunStatus.WAITING_CREDITS:
+        leave(exit_codes.WAITING_CREDITS)
+    if run.status is IndexRunStatus.WAITING_REMOTE:
+        leave(exit_codes.WAITING_REMOTE)
 
 
 @index_app.command("run")
@@ -299,7 +305,7 @@ def index_submit(
 
 queue_app = typer.Typer(help="Requests waiting for a background worker.", no_args_is_help=True)
 index_app.add_typer(queue_app, name="queue")
-JOB_COLUMNS = ["id", "mode", "target", "status", "run_id", "requested_at", "error"]
+JOB_COLUMNS = ["id", "mode", "target", "status", "reason", "run_id", "requested_at", "error"]
 
 
 @queue_app.command("list")
@@ -583,9 +589,21 @@ credits_app = typer.Typer(help="Credits.", no_args_is_help=True)
 
 
 @credits_app.command("balance")
-def credits_balance(wallet: str = typer.Option("local", "--wallet")) -> None:
+def credits_balance(
+    wallet: str = typer.Option("local", "--wallet"), exit_code: bool = exit_codes.ExitCode
+) -> None:
     """The balance of a wallet."""
-    facts(client().credits.balance(wallet))
+    balance = client().credits.balance(wallet)
+    facts(balance)
+    if exit_code and balance.total <= 0:
+        leave(exit_codes.CREDITS_EMPTY)
+
+
+@credits_app.command("report")
+def credits_report() -> None:
+    """What to send when asking for help: balances, ledger totals, licence ids, versions. It has
+    no file names, paths or document content."""
+    facts(client().credits.report())
 
 
 @credits_app.command("history")
@@ -842,15 +860,28 @@ updates_app = typer.Typer(help="Updates.", no_args_is_help=True)
 
 
 @updates_app.command("status")
-def updates_status() -> None:
+def updates_status(exit_code: bool = exit_codes.ExitCode) -> None:
     """What was last found out about updates."""
-    facts(client().updates.status())
+    result = client().updates.status()
+    facts(result)
+    _update_exit(result, exit_code)
+
+
+def _update_exit(result, exit_code: bool) -> None:
+    if exit_code and result.status is UpdateStatus.AVAILABLE:
+        leave(exit_codes.UPDATE_AVAILABLE)
+    if exit_code and result.status is UpdateStatus.BELOW_MINIMUM:
+        leave(exit_codes.BELOW_MINIMUM)
 
 
 @updates_app.command("check")
-def updates_check(force: bool = typer.Option(False, "--force")) -> None:
+def updates_check(
+    force: bool = typer.Option(False, "--force"), exit_code: bool = exit_codes.ExitCode
+) -> None:
     """Look for an update now."""
-    facts(client().updates.check(force))
+    result = client().updates.check(force)
+    facts(result)
+    _update_exit(result, exit_code)
 
 
 def _outdated_addon_packages() -> list[str]:

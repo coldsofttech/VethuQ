@@ -71,6 +71,10 @@ class IndexingService:
             "workers_active": status.workers_active if status else 0,
             "remote_jobs_open": status.remote_jobs_open if status else 0,
             "queued": client.index.queue.queued(),
+            "waiting_credits": [
+                {"id": job.id, "resume_at": job.resume_at}
+                for job in client.index.queue.list("waiting_credits")
+            ],
             "runner": {
                 "mode": mode,
                 "service_running": service_running,

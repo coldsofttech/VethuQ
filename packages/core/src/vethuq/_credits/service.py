@@ -33,9 +33,13 @@ class _Credits:
         database: _Database,
         policy: Callable[[], Mapping[str, Any]],
         client_version: str,
+        device: Callable[[], str] = lambda: "cpu",
+        private: Callable[[], bool | None] = lambda: None,
     ) -> None:
         self.database = database
         self.policy = policy
+        self.private = private  # whether the GitHub runner repo is private, if known
+        self.device = device  # `gpu` while OCR may use the GPU, else `cpu`
         self.client_version = client_version
         self.wallets: dict[str, _Wallet] = {LOCAL: _Wallet(LOCAL)}
         self.wallet = self.wallets[LOCAL]  # the local wallet
@@ -94,10 +98,16 @@ class _Credits:
             raise ValueError(f"{name!r} isn't a wallet name.")
         return self.wallets.setdefault(name, _Wallet(name))
 
-    @staticmethod
-    def github_private(session: Session) -> bool:
-        """Whether the GitHub runner repo is private (which sets the GitHub daily amount)."""
-        return _Settings.get(session, _Credits.GITHUB_PRIVATE_KEY) != "0"
+    def github_private(self, session: Session) -> bool:
+        """Whether the GitHub runner repo is private (which sets the GitHub daily amount). What
+        the tier reports is remembered, so it still holds when the tier can't be reached; a
+        change applies from the next UTC day, as the day's grant is already given."""
+        reported = self.private()
+        stored = _Settings.get(session, self.GITHUB_PRIVATE_KEY)
+        if reported is not None and stored != ("1" if reported else "0"):
+            self.set_github_private(session, reported)
+            return reported
+        return stored != "0"
 
     @staticmethod
     def set_github_private(session: Session, private: bool) -> None:
@@ -497,6 +507,8 @@ class _PageMeter:
         self.label, self.language = label, language
         self.additional_language = additional_language
         self.scope = scope
+        # Remote tiers run on CPU only; the local one on the device the OCR engine is set to use.
+        self.device = credits.device() if wallet == LOCAL else "cpu"
         self.ledger_ids: list[int] = []
         self.charged_milli = 0
         self._pricing: _Pricing | None = None
@@ -514,7 +526,10 @@ class _PageMeter:
         pricing = self.pricing()
         factor = pricing.size_factor(width_pt, height_pt)
         cost = pricing.cost_milli(
-            factor, additional_language=self.additional_language, covered=covered
+            factor,
+            additional_language=self.additional_language,
+            covered=covered,
+            device=self.device,
         )
         return factor, cost
 
@@ -531,7 +546,7 @@ class _PageMeter:
         phases do. Raises `_PageTooLarge`."""
         pricing = self.pricing()
         factor = pricing.size_factor(width_pt, height_pt)
-        return factor, pricing.rotated_milli(factor, passes, covered=covered)
+        return factor, pricing.rotated_milli(factor, passes, covered=covered, device=self.device)
 
     def commit(
         self,
@@ -555,6 +570,7 @@ class _PageMeter:
                 phase=phase,
                 angle=angle,
                 language=self.language,
+                device=self.device,
                 size_factor_milli=milli(factor),
                 rate_card_version=self._terms.rate_card_version if self._terms else None,
                 note=self.label,

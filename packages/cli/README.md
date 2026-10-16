@@ -94,3 +94,34 @@ add-on is installed. `vethuq addons list` shows what is installed.
 `vethuq index submit` and `vethuq index queue list|show|cancel` follow queued requests. With `vethuq-background` installed, `vethuq background install|start|stop|status ...` appears (packages add commands through the `vethuq.cli` entry-point group), and while its service runs, `index run|restart|reindex` queue their work (`--one-off` runs one here).
 
 Errors print `Error: ...` and `What to do: ...` and exit with the error's own code.
+
+### Exit codes
+
+`0` is success. An error exits with its own code, the same in every front end:
+
+| Code | Meaning |
+|---|---|
+| 1 | Anything not listed below |
+| 10-18 | Start-up: configuration, data folder, database, OCR model, schema, lock, language, file type |
+| 20-25 | Sources: path, already exists, not found, not removed, overlap |
+| 30-31 | Settings |
+| 40-42 | Logs |
+| 50-57 | Indexing: already running, run or request not found, database integrity |
+| 60-62 | Credits: invalid grant (61), **credits exhausted (62)** |
+| 65-67 | Licences: **licence invalid or expired (66)**, licence request |
+| 80-82 | Processing tiers: **GitHub tier unavailable (81)**, tier not found |
+| 90-93 | Search |
+
+A few commands report a state, not an error. An index run that stopped without finishing always does:
+
+| Code | Meaning | Command |
+|---|---|---|
+| 62 | Nothing left to spend | `credits balance --exit-code` |
+| 63 | The run ran out of credits; it carries on after the reset (00:00 UTC) | `index run`, `restart`, `reindex`, `file` |
+| 64 | Pages were sent to a remote tier; collect the results later | the same |
+| 65 | An installed licence is expired, revoked or not for this device | `licence show --exit-code` |
+| 100 | An update is available | `updates check --exit-code`, `updates status --exit-code` |
+| 101 | This version is older than the minimum supported | the same |
+
+`--json` works on every command; its output has no keys, tokens, file names or document text beyond what the command lists. When a background service takes the work, `index queue show ID` gives the request's `status`, and `reason` and `resume_at` while it waits for credits. A locked or missing add-on exits with 1 and says so in the message.
+

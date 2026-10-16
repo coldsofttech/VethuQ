@@ -23,6 +23,7 @@ class _TierView:
     reason: str
     executor: OcrExecutor | None
     asynchronous: bool = False
+    private: bool | None = None
 
 
 class _Tiers:
@@ -50,6 +51,7 @@ class _Tiers:
                     reason,
                     executor,
                     bool(executor and executor.asynchronous),
+                    spec.private,
                 )  # fmt: skip
             )
         github = next((v for v in views if v.id == GITHUB), None)

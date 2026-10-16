@@ -13,7 +13,8 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from datetime import time as _time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,15 @@ _logger = __import__("logging").getLogger("vethuq.indexing")
 
 def _stamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _next_reset(after: str | None) -> datetime:
+    """The next 00:00 UTC after `after` (an ISO stamp), when credits come back."""
+    try:
+        moment = datetime.fromisoformat(after) if after else datetime.now(UTC)
+    except ValueError:
+        moment = datetime.now(UTC)
+    return datetime.combine(moment.astimezone(UTC).date() + timedelta(days=1), _time.min, UTC)
 
 
 @dataclass(frozen=True)
@@ -63,6 +73,20 @@ class IndexJob:
         """Still waiting or running."""
         return self.status in (IndexJobStatus.QUEUED, IndexJobStatus.RUNNING)
 
+    @property
+    def resume_at(self) -> str | None:
+        """When a request waiting for credits is taken up again (the next 00:00 UTC), else None."""
+        if self.status is not IndexJobStatus.WAITING_CREDITS:
+            return None
+        return _next_reset(self.finished_at).isoformat()
+
+    @property
+    def reason(self) -> str | None:
+        """Why the request is not moving, in words: waiting for credits, or running remotely."""
+        if self.status is IndexJobStatus.WAITING_CREDITS:
+            return f"Waiting for credits until {self.resume_at}"
+        return None
+
     @classmethod
     def _from_model(cls, row: _IndexJob) -> IndexJob:
         return cls(
@@ -88,6 +112,8 @@ class IndexJob:
         data["status"] = self.status.value
         data["languages"] = list(self.languages)
         data["open"] = self.open
+        data["resume_at"] = self.resume_at
+        data["reason"] = self.reason
         return data
 
     def to_json(self, indent: int | None = None) -> str:
@@ -204,10 +230,26 @@ class IndexQueue:
                     count += 1
         return count
 
+    def resume_waiting(self) -> int:
+        """Queue the requests that were waiting for credits once the reset has passed. They are
+        kept in the database, so this also works after the service was restarted. A resumed
+        request carries on (`run`): what was already read is not read, or paid for, again."""
+        now, count = datetime.now(UTC), 0
+        with self._database.session() as session:
+            for row in session.scalars(
+                select(_IndexJob).where(_IndexJob.status == IndexJobStatus.WAITING_CREDITS.value)
+            ):
+                if _next_reset(row.finished_at) <= now:
+                    row.status, row.mode = IndexJobStatus.QUEUED.value, "run"
+                    row.pid, row.started_at, row.finished_at = None, None, None
+                    count += 1
+        return count
+
     def claim_next(self, pid: int | None = None) -> IndexJob | None:
         """Take the oldest waiting request for this worker (`pid`, default this process), or None.
         Two workers never get the same one."""
         self.reconcile()
+        self.resume_waiting()
         pid = os.getpid() if pid is None else pid
         while True:
             with self._database.session() as session:
@@ -290,6 +332,8 @@ class IndexQueue:
             return self.finish(job.id, IndexJobStatus.CANCELLED, run_id=run.id, error=run.error)
         if run.status is IndexRunStatus.FAILED:
             return self.finish(job.id, IndexJobStatus.FAILED, run_id=run.id, error=run.error)
+        if run.status is IndexRunStatus.WAITING_CREDITS:
+            return self.finish(job.id, IndexJobStatus.WAITING_CREDITS, run_id=run.id)
         return self.finish(job.id, IndexJobStatus.COMPLETED, run_id=run.id)
 
     # ----- the service marker -------------------------------------------------------------------

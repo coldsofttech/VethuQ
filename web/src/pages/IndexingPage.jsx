@@ -101,6 +101,15 @@ function Activity() {
           {state.queued} request{state.queued === 1 ? '' : 's'} waiting in the queue.
         </Text>
       )}
+      {state.waiting_credits?.length > 0 && (
+        <MessageBar intent="warning">
+          <MessageBarBody>
+            {state.waiting_credits.length} request{state.waiting_credits.length === 1 ? '' : 's'}{' '}
+            waiting for credits; the background service takes them up again at{' '}
+            {formatDate(state.waiting_credits[0].resume_at)}.
+          </MessageBarBody>
+        </MessageBar>
+      )}
       {run ? (
         <>
           <div className={styles.bar}>
@@ -279,12 +288,15 @@ export function IndexingPage() {
           label="Queue"
           load={loadQueue}
           empty="The queue is empty. Requests wait here when the background service does the work."
-          columns={['Request', 'Target', 'Mode', 'Status', 'Requested', '']}
+          columns={['Request', 'Target', 'Mode', 'Status', 'Why', 'Requested', '']}
           row={(job) => [
             job.id,
             job.target ? baseName(String(job.target)) : 'All sources',
             job.mode,
             <StatusBadge key="s" status={job.status} title={job.error ?? undefined} />,
+            job.status === 'waiting_credits'
+              ? `Credits are back ${formatDate(job.resume_at)}`
+              : (job.reason ?? ''),
             formatDate(job.requested_at),
             job.open ? (
               <Button

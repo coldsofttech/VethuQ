@@ -1196,6 +1196,7 @@ class _CreditLedger(_Base):
     phase: Mapped[str | None] = mapped_column(Text, nullable=True)
     angle: Mapped[int | None] = mapped_column(Integer, nullable=True)
     language: Mapped[str | None] = mapped_column(Text, nullable=True)
+    device: Mapped[str | None] = mapped_column(Text, nullable=True)  # cpu or gpu
     size_factor_milli: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rate_card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -165,3 +165,33 @@ class TestTheServiceMarker:
 
 
 _ = _IndexJob
+
+
+class TestWaitingForCredits:
+    def _waiting(self, client, finished_at):
+        job = client.index.queue.submit(1)
+        client.index.queue.claim_next()
+        client.index.queue.finish(job.id, IndexJobStatus.WAITING_CREDITS)
+        with client._db().session() as session:
+            session.get(_IndexJob, job.id).finished_at = finished_at
+        return job
+
+    def test_it_says_why_and_until_when(self, client):
+        job = self._waiting(client, "2030-01-01T10:00:00+00:00")
+        got = client.index.queue.get(job.id)
+        assert not got.open
+        assert got.resume_at == "2030-01-02T00:00:00+00:00"
+        assert "Waiting for credits until 2030-01-02" in got.reason
+        assert got.to_dict()["reason"] == got.reason
+
+    def test_it_stays_waiting_until_the_reset(self, client):
+        from datetime import UTC, datetime
+
+        job = self._waiting(client, datetime.now(UTC).isoformat())
+        assert client.index.queue.claim_next() is None
+        assert client.index.queue.get(job.id).status is IndexJobStatus.WAITING_CREDITS
+
+    def test_it_is_taken_up_again_after_the_reset_even_after_a_restart(self, client):
+        job = self._waiting(client, "2020-01-01T10:00:00+00:00")
+        taken = client.index.queue.claim_next()  # a new service looks in the database
+        assert taken.id == job.id and taken.mode == "run"

@@ -13,7 +13,9 @@ import typer
 from rich.table import Table
 
 from vethuq.errors import InvalidLicenceError
+from vethuq_cli import exit_codes
 from vethuq_cli.console import Theme, console
+from vethuq_cli.exit_codes import leave
 from vethuq_cli.output import dump, say, table
 from vethuq_cli.state import State
 
@@ -49,13 +51,16 @@ def install(
 
 
 @licence_app.command("show")
-def show() -> None:
+def show(exit_code: bool = exit_codes.ExitCode) -> None:
     """The installed licences: what each unlocks, until when, and where it is installed."""
+    found = _client().licences.show()
     table(
-        _client().licences.show(),
+        found,
         ["licence_id", "kind", "status", "valid_until", "bundles", "lists", "installed_on"],
         empty="No licence is installed.",
     )
+    if exit_code and any(item.status != "ok" for item in found):
+        leave(exit_codes.LICENCE_NOT_OK)
 
 
 @licence_app.command("bundles")

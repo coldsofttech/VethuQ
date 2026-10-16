@@ -44,6 +44,10 @@ class CreditsService:
             out.append(balance)
         return out
 
+    def report(self) -> dict[str, object]:
+        """What to send when asking for help (no file names, paths or document content)."""
+        return self._client().credits.report().to_dict()
+
     def summary(self) -> dict[str, object]:
         """The small figure for the status bar: what is left of today's allowance."""
         wallets = self.wallets()

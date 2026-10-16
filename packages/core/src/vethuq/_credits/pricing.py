@@ -35,24 +35,31 @@ class _Pricing:
         return next(name for limit, name in BUCKETS if factor <= limit)
 
     def cost_milli(
-        self, factor: float, *, additional_language: bool = False, covered: float = 1.0
+        self,
+        factor: float,
+        *,
+        additional_language: bool = False,
+        covered: float = 1.0,
+        device: str = "cpu",
     ) -> int:
         """The cost of reading a page: `factor` x the pass rate x the device and model
         multipliers. `covered` is the share of the page read (images only, on a mixed page): the
         cost is that share of the page, but never less than the minimum nor more than the page."""
         t = self.terms
         rate = t.language_pass if additional_language else t.quick
-        full = factor * rate * t.cpu * t.fast
+        full = factor * rate * t.device_factor(device) * t.fast
         if covered >= 1.0:
             return milli(full)
         return milli(min(full, max(full * covered, t.minimum)))
 
-    def rotated_milli(self, factor: float, passes: int, *, covered: float = 1.0) -> int:
+    def rotated_milli(
+        self, factor: float, passes: int, *, covered: float = 1.0, device: str = "cpu"
+    ) -> int:
         """The cost of reading a page at `passes` rotated angles (the deeper phases): each pass is
         `factor` x the rotated rate x the device and model multipliers. `covered` is the share of
         the page read (images only), as for `cost_milli`."""
         t = self.terms
-        one = factor * t.rotated_factor * t.cpu * t.fast
+        one = factor * t.rotated_factor * t.device_factor(device) * t.advanced
         if covered < 1.0:
             one = min(one, max(one * covered, t.minimum))
         return milli(one * passes)

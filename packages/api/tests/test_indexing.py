@@ -290,7 +290,9 @@ class TestRefresh:
                     eta=SimpleNamespace(to_dict=lambda: {}),
                 ),
                 collect=lambda: collected.append(True),
-                queue=SimpleNamespace(service_running=lambda: False, queued=lambda: 0),
+                queue=SimpleNamespace(
+                    service_running=lambda: False, queued=lambda: 0, list=lambda *a, **k: []
+                ),
             )
         )
         return client, collected

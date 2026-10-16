@@ -102,7 +102,7 @@ export function OverviewTab() {
           wide
           title="Today's allowance"
           value={`${formatCredits(current.daily)} left of ${formatCredits(current.daily_allowance)}`}
-          note={`${formatCredits(current.daily_used)} used today${bonus}. Resets ${formatDate(current.next_reset)}.`}
+          note={`${formatCredits(current.daily_used)} used today${bonus}. Resets ${formatDate(current.next_reset)}.${current.limit_note ? ` Limit: ${current.limit_note}.` : ''}`}
         >
           <ProgressBar
             value={share}

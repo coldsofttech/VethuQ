@@ -793,3 +793,36 @@ class TestGraceStaysInternal:
         assert run.ocr_pages == 1  # the grace let the page through
         assert client.credits.history(kind=CreditEntryKind.CHARGE) == []
         assert client.credits.usage("day") == [] and client.credits.usage("file") == []
+
+
+class TestGithubLimit:
+    def test_the_visibility_of_the_runner_sets_the_daily_amount(self, client):
+        engine = client._credit_engine()
+        engine.private = lambda: True
+        with client._db().session() as session:
+            balance, terms, _ = engine.balance(session, "github")
+            assert terms.daily_for("github", engine.github_private(session)) == 20
+            engine.private = lambda: False
+            assert engine.github_private(session) is False
+            assert terms.daily_for("github", False) == 200
+
+    def test_what_the_tier_reported_is_remembered(self, client):
+        engine = client._credit_engine()
+        engine.private = lambda: False
+        with client._db().session() as session:
+            assert engine.github_private(session) is False
+            engine.private = lambda: None  # the tier can't be reached
+            assert engine.github_private(session) is False
+
+
+class TestReport:
+    def test_it_has_balances_and_the_ledger_but_no_names(self, client, root):
+        write(root, "secret-name.pdf", scan())
+        client.sources.create(root)
+        client.index.run()
+        report = client.credits.report()
+        text = report.to_json()
+        assert report.wallets[0]["wallet"] == "local"
+        assert any(row["kind"] == "grant" for row in report.ledger)
+        assert "secret-name" not in text and str(root) not in text
+        assert report.version and report.device_folder

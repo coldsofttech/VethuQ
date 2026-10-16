@@ -212,3 +212,23 @@ class TestPromotions:
 
     def test_a_promotion_for_a_newer_client_is_skipped(self):
         assert [p.id for p in self.terms("0.5.0").promotions] == ["a", "other-wallet"]
+
+
+class TestMultipliers:
+    def test_the_advanced_model_prices_rotated_passes_only(self):
+        t = _Terms.from_policy({"rate_card": {"model_multiplier": {"advanced": 3.0}}})
+        assert t.advanced == 3.0 and t.fast == 1.0
+        p = _Pricing(t)
+        assert p.cost_milli(1.0) == 1000  # the quick pass is unchanged
+        assert p.rotated_milli(1.0, 1) == 2400  # 0.8 x 3.0
+
+    def test_the_gpu_multiplier_applies_to_what_ran_on_it(self):
+        t = _Terms.from_policy({"rate_card": {"device_multiplier": {"gpu": 1.5}}})
+        p = _Pricing(t)
+        assert p.cost_milli(1.0, device="gpu") == 1500
+        assert p.cost_milli(1.0, device="cpu") == 1000
+        assert p.rotated_milli(1.0, 1, device="gpu") == 1200
+
+    def test_the_baseline_keeps_every_price(self):
+        p = _Pricing(_Terms())
+        assert p.cost_milli(1.0, device="gpu") == 1000 and p.rotated_milli(1.0, 1) == 800

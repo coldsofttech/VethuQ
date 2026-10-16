@@ -17,6 +17,7 @@ from vethuq._maintenance import _Maintenance
 from vethuq._metrics import _Metrics
 from vethuq._ocr import _Models, _Ocr
 from vethuq._paths import _Paths
+from vethuq._paths.device import _DeviceFolder
 from vethuq._search import _Engines, _Search, _SearchIndex
 from vethuq._settings import _FileTypeSettings, _OcrSettings, _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
@@ -124,6 +125,30 @@ class VethuQ:
                 )
             return self._ocr_runtime
 
+    def _report_facts(self) -> dict[str, object]:
+        """What `credits.report()` adds to the ledger: versions, device folder, licence ids."""
+        licences = []
+        try:
+            for item in self.licences.show():
+                licences.append(
+                    {"licence_id": item.licence_id, "kind": item.kind, "status": item.status}
+                )
+        except Exception:  # noqa: BLE001 - a report is still useful without them
+            licences = []
+        return {
+            "version": _Version.app_version(),
+            "device_folder": _DeviceFolder.resolve(self.db_path).scope,
+            "licences": licences,
+        }
+
+    def _github_private(self) -> bool | None:
+        """Whether the GitHub runner repo is private, as its tier reports (None: not known)."""
+        try:
+            views = self._tier_engine().views()
+        except Exception:  # noqa: BLE001 - an add-on that fails must not stop credits
+            return None
+        return next((v.private for v in views if v.id == "github"), None)
+
     def _gpu_enabled(self) -> bool:
         with self._db().session() as session:
             return _OcrSettings.get_gpu(session)
@@ -133,7 +158,11 @@ class VethuQ:
         with self._lock:
             if self._credit_service is None:
                 self._credit_service = _Credits(
-                    db, lambda: self.policy.current().policy.raw, _Version.app_version()
+                    db,
+                    lambda: self.policy.current().policy.raw,
+                    _Version.app_version(),
+                    lambda: "gpu" if self._gpu_enabled() else "cpu",
+                    self._github_private,
                 )
             return self._credit_service
 
@@ -281,6 +310,7 @@ class VethuQ:
                 indexer.estimate,
                 wallets,
                 lambda: self.policy.revoked_key_ids(),
+                self._report_facts,
             )
         return self._credits
 

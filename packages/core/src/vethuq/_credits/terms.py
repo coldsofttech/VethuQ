@@ -57,7 +57,12 @@ class _Terms:
     language_pass: float = 1.0
     rotated_factor: float = 0.8
     cpu: float = 1.0
+    gpu: float = 1.0
+    # Model profiles: the quick pass runs on the fast profile (the reference, 1.0); the rotated
+    # passes of the deeper phases run on the advanced one, whose compute costs more. 1.0 keeps
+    # their price; the signed policy raises it from the next UTC day.
     fast: float = 1.0
+    advanced: float = 1.0
     local_daily: float = 500.0
     local_starter: float = 2000.0
     github_daily_private: float = 20.0
@@ -150,7 +155,9 @@ class _Terms:
         values["language_pass"] = number(card.get("language_pass"), base.language_pass)
         values["rotated_factor"] = number(card.get("rotated_factor"), base.rotated_factor)
         values["cpu"] = number(device.get("cpu"), base.cpu)
+        values["gpu"] = number(device.get("gpu"), base.gpu)
         values["fast"] = number(model.get("fast"), base.fast)
+        values["advanced"] = number(model.get("advanced"), base.advanced)
 
         wallets = section("wallets")
         local = wallets.get("local") if isinstance(wallets.get("local"), Mapping) else {}
@@ -256,6 +263,10 @@ class _Terms:
         if wallet == "local":
             return self.local_daily
         return self.addon_wallets.get(wallet, {}).get("local_daily", 0.0)
+
+    def device_factor(self, device: str) -> float:
+        """The multiplier for the compute device a page was read on (`cpu` or `gpu`)."""
+        return self.gpu if device == "gpu" else self.cpu
 
     def rate_for(self, key: str, default: float) -> float:
         """What an add-on's work costs per page, from the rate card (`default` if it has none)."""

@@ -95,6 +95,9 @@ class IndexJobStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"  # taken out before it started, or its run was stopped
+    WAITING_CREDITS = (
+        "waiting_credits"  # its run ran out of credits; a worker resumes it at the reset
+    )
 
 
 class IndexRunStatus(StrEnum):
