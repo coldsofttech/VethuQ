@@ -11,6 +11,14 @@
     "status": {"enum": ["done", "partial", "failed"]},
     "worker": {"type": "string"},
     "billable_seconds": {"type": "number", "minimum": 0},
+    "runner": {
+      "description": "What the job ran on and with: the CPU model and the profiles used.",
+      "type": "object",
+      "properties": {
+        "cpu_model": {"type": "string", "maxLength": 120},
+        "profiles": {"type": "array", "items": {"enum": ["fast", "advanced"]}}
+      }
+    },
     "error": {"$ref": "#/$defs/error"},
     "pages": {
       "type": "array",

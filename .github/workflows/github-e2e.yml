@@ -1,0 +1,36 @@
+# The GitHub tier against a real throwaway repository, on release tags (public minutes: the test
+# repository is public). Needs the repository variable GITHUB_E2E_REPO (owner/name) and the secret
+# GITHUB_E2E_TOKEN (a fine-grained token limited to that repository: Contents, Actions, Secrets
+# and Workflows read and write). Without the variable the job is skipped, so a tag never waits
+# on it. The result is reported as the run's status.
+name: github-e2e
+
+on:
+  push:
+    tags:
+      - "github-tier-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: vars.GITHUB_E2E_REPO != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: github-e2e
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the published packages
+        run: python -m pip install vethuq vethuq-addon-github
+      - name: Run it
+        env:
+          E2E_REPO: ${{ vars.GITHUB_E2E_REPO }}
+          VETHUQ_GITHUB_TOKEN: ${{ secrets.GITHUB_E2E_TOKEN }}
+        run: python github/e2e/run.py

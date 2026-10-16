@@ -21,6 +21,10 @@ class Protocol:
     """The protocol's version, its caps and its schemas."""
 
     VERSION = 1
+    # The model profile each OCR phase reads with: the first pass on the fast one, the deeper
+    # (rotated) passes on the advanced one.
+    PHASE_PROFILES = {"quick": "fast", "moderate": "advanced", "high": "advanced"}
+    PROFILES = ("fast", "advanced")
     MAX_PAGES = 200
     MAX_BYTES = 200 * 1024 * 1024
 
@@ -66,6 +70,7 @@ class Manifest:
     addon_settings: dict[str, dict[str, str]] = field(default_factory=dict)
     created: str = ""
     client: str = ""
+    profiles: dict[str, str] = field(default_factory=dict)  # phase -> profile
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +78,7 @@ class Manifest:
             "job_id": self.job_id,
             "created": self.created,
             "client": self.client,
+            "profiles": self.profiles,
             "limits": {"max_pages": self.max_pages, "max_bytes": self.max_bytes},
             "addon_settings": self.addon_settings,
             "pages": [
@@ -109,6 +115,7 @@ class Manifest:
             addon_settings=document.get("addon_settings", {}),
             created=document.get("created", ""),
             client=document.get("client", ""),
+            profiles=dict(document.get("profiles", {})),
         )
 
 
@@ -171,6 +178,7 @@ class JobResult:
     worker: str = ""
     error_code: str = ""
     error_message: str = ""
+    runner: dict[str, Any] = field(default_factory=dict)  # cpu_model, profiles
 
     def to_dict(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -181,6 +189,8 @@ class JobResult:
             "billable_seconds": self.billable_seconds,
             "pages": [p.to_dict() for p in self.pages],
         }
+        if self.runner:
+            document["runner"] = self.runner
         if self.error_code:
             document["error"] = {"code": self.error_code, "message": self.error_message}
         return document
@@ -213,4 +223,5 @@ class JobResult:
             worker=document.get("worker", ""),
             error_code=error.get("code", ""),
             error_message=error.get("message", ""),
+            runner=dict(document.get("runner", {})),
         )

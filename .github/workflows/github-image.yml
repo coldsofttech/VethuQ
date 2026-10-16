@@ -61,6 +61,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless signing (cosign) and the provenance attestation
+      attestations: write
     steps:
       - name: Work out the version
         id: version
@@ -163,6 +165,17 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Known vulnerabilities in what each image carries. Publication needs a clean result for
+      # CRITICAL findings that have a fix (the agreed severity: raise or lower it here).
+      - name: Scan every variant for vulnerabilities
+        run: |
+          variants="work/VethuQ/packages/worker/src/vethuq_worker/variants.py"
+          for variant in $(python "$variants" --names); do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:0.58.1 image --quiet --exit-code 1 --severity CRITICAL --ignore-unfixed \
+              "$IMAGE:candidate-$variant"
+          done
+
       - name: Publish
         id: publish
         if: github.event_name != 'pull_request' && (github.event_name == 'push' || inputs.push)
@@ -194,6 +207,51 @@ jobs:
             echo "{\"variant\": \"$variant\", \"image\": \"$IMAGE:$VERSION-$variant@$digest\"}" \
               >> "$RUNNER_TEMP/rows.jsonl"
           done
+
+      # Signed with the workflow's own identity (no key to keep), with an SBOM and a build
+      # provenance attestation attached to each digest; how to check them is in github/image/README.md.
+      - uses: sigstore/cosign-installer@v3.7.0
+        if: steps.push.outcome == 'success'
+
+      - name: Sign every variant and make its SBOM
+        if: steps.push.outcome == 'success'
+        run: |
+          mkdir -p "$RUNNER_TEMP/sboms"
+          while read -r line; do
+            image="$(python -c "import json,sys; print(json.loads(sys.argv[1])['image'])" "$line")"
+            variant="$(python -c "import json,sys; print(json.loads(sys.argv[1])['variant'])" "$line")"
+            cosign sign --yes "$image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock anchore/syft:v1.18.1 \
+              "$image" -o spdx-json > "$RUNNER_TEMP/sboms/sbom-$variant.spdx.json"
+            cosign attest --yes --type spdxjson --predicate "$RUNNER_TEMP/sboms/sbom-$variant.spdx.json" "$image"
+          done < "$RUNNER_TEMP/rows.jsonl"
+
+      - name: Attest the build provenance (full)
+        if: steps.push.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.digest.outputs.full }}
+          push-to-registry: true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.push.outcome == 'success'
+        with:
+          name: worker-image-sbom
+          path: ${{ runner.temp }}/sboms
+          retention-days: 90
+
+      - name: The digest of the full image
+        id: digest
+        if: steps.push.outcome == 'success'
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          for line in open(os.path.join(os.environ["RUNNER_TEMP"], "rows.jsonl")):
+              row = json.loads(line)
+              if row["variant"] == "full":
+                  print("full=" + row["image"].split("@")[1])
+          PY
 
       - name: Compatibility row
         if: steps.push.outcome == 'success'

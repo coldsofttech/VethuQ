@@ -56,3 +56,18 @@ one job protocol and a minimum client.
 The workflow, Dockerfile and model baking are covered by tests that need no Docker
 (`packages/worker/tests/test_image_files.py`, `packages/core/tests/test_worker_integration.py`).
 The image itself is first built by the workflow; its smoke test is the real check.
+
+## Supply chain
+
+Every published variant is scanned (Trivy; the build stops on a CRITICAL finding that has a fix),
+signed with cosign using the workflow's own identity (no key to keep), carries an SPDX SBOM as a
+cosign attestation (and as the `worker-image-sbom` artifact for 90 days), and `full` has a build
+provenance attestation. The compatibility table names images by digest, so the client never writes
+one it does not list. To check an image:
+
+```sh
+cosign verify ghcr.io/coldsofttech/vethuq-worker@sha256:<digest> \
+  --certificate-identity-regexp 'https://github.com/coldsofttech/VethuQ/.github/workflows/github-image.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify oci://ghcr.io/coldsofttech/vethuq-worker@sha256:<digest> --repo coldsofttech/VethuQ
+```

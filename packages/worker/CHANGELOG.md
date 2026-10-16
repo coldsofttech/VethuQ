@@ -5,6 +5,9 @@ tags named `vethuq-worker-vX.Y.Z` (through hatch-vcs), not from this file.
 
 ## [Unreleased]
 
+### Added (GitHub tier)
+- The worker refuses a licence whose GitHub owner list doesn't hold the repository's owner (`owner_mismatch`; the pinned workflow gives it `VETHUQ_GITHUB_OWNER_ID`), and a manifest naming an unknown model profile (`bad_profile`). The manifest has optional `profiles` (phase to profile) and the result an optional `runner` (CPU model, profiles).
+
 ### Changed (image variants, models fetched on first run)
 - The worker image comes in variants (`slim`, `office`, `web`, `developer`, `open-office`, `deep-scan`,
   `email`, `image`, `full`), defined in `vethuq_worker.variants` (`choose(phases, addons)` picks the

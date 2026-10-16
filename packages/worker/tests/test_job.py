@@ -323,3 +323,83 @@ class TestResult:
                 "manifest", {"protocol": 1, "job_id": "short", "limits": {}, "pages": []}
             )
         assert caught.value.code == "bad_manifest"
+
+
+class TestOwner:
+    """A licence that lists GitHub owner ids is for those owners only (the workflow gives the
+    worker the owner's id)."""
+
+    @staticmethod
+    def verifier(mismatch_for):
+        from types import SimpleNamespace
+
+        def verify(token, github_owner_id=None, **_):
+            bad = token == mismatch_for and github_owner_id != 7
+            return SimpleNamespace(status=SimpleNamespace(name="OWNER_MISMATCH" if bad else "OK"))
+
+        return verify
+
+    def run(self, tmp_path, owner, monkeypatch, tokens=("bound",)):
+        from vethuq_worker.owner import VARIABLE
+
+        if owner is None:
+            monkeypatch.delenv(VARIABLE, raising=False)
+        else:
+            monkeypatch.setenv(VARIABLE, str(owner))
+        builder = JobBuilder(
+            KEY, addon_settings={f"a{i}": {"licence": t} for i, t in enumerate(tokens)}
+        )
+        builder.add(request("k"))
+        folder = send(tmp_path, builder)
+        engine = StaticEngine(FakeExecutor(default="read"), [EN])
+        return Worker.with_engine(engine, self.verifier("bound")).run(
+            builder.job_id, folder, tmp_path / "out", KEY
+        )
+
+    def test_a_listed_owner_is_accepted(self, tmp_path, monkeypatch):
+        assert self.run(tmp_path, 7, monkeypatch).status == "done"
+
+    def test_another_owner_is_refused_with_a_clear_code(self, tmp_path, monkeypatch):
+        result = self.run(tmp_path, 8, monkeypatch)
+        assert (result.status, result.error_code) == ("failed", "owner_mismatch")
+
+    def test_a_licence_with_no_owner_list_is_not_affected(self, tmp_path, monkeypatch):
+        assert self.run(tmp_path, 8, monkeypatch, tokens=("free",)).status == "done"
+
+    def test_outside_github_nothing_is_checked(self, tmp_path, monkeypatch):
+        assert self.run(tmp_path, None, monkeypatch).status == "done"
+
+    def test_a_bad_owner_id_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("VETHUQ_GITHUB_OWNER_ID", "abc")
+        builder = JobBuilder(KEY)
+        builder.add(request("k"))
+        result = worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "out", KEY)
+        assert result.error_code == "owner_mismatch"
+
+
+class TestProfiles:
+    def test_the_manifest_names_the_profile_of_each_phase(self):
+        builder = JobBuilder(KEY)
+        builder.add(request("a"))
+        builder.add(request("b", phase="moderate"))
+        assert builder.manifest().profiles == {"quick": "fast", "moderate": "advanced"}
+
+    def test_the_result_reports_the_cpu_and_the_profiles_used(self, tmp_path):
+        builder = JobBuilder(KEY)
+        builder.add(request("a"))
+        builder.add(request("b", phase="moderate"))
+        result = worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
+        assert result.runner["profiles"] == ["advanced", "fast"] and result.runner["cpu_model"]
+
+    def test_an_unknown_profile_is_refused(self, tmp_path):
+        builder = JobBuilder(KEY)
+        builder.add(request("a"))
+        builder.manifest = lambda real=builder.manifest: _with(real(), {"quick": "turbo"})
+        result = worker().run(builder.job_id, send(tmp_path, builder), tmp_path / "o", KEY)
+        assert result.error_code == "bad_manifest"  # the schema refuses it first
+
+
+def _with(manifest, profiles):
+    from dataclasses import replace
+
+    return replace(manifest, profiles=profiles)

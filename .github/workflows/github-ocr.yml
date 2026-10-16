@@ -136,10 +136,13 @@ jobs:
           IMAGE: ${{ steps.check.outputs.image }}
           JOB_ID: ${{ inputs.job_id }}
           VETHUQ_MASTER_KEY: ${{ secrets.master_key }}
+          # From this pinned workflow, not from the caller: a licence that lists owners is held
+          # to the owner of the repository the job runs in (user or organisation).
+          VETHUQ_GITHUB_OWNER_ID: ${{ github.repository_owner_id }}
         run: |
           docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
             --user "$(id -u):$(id -g)" --tmpfs /tmp \
-            -e VETHUQ_MASTER_KEY \
+            -e VETHUQ_MASTER_KEY -e VETHUQ_GITHUB_OWNER_ID \
             -v "$RUNNER_TEMP/payload:/payload:ro" -v "$RUNNER_TEMP/out:/out" \
             -v "$RUNNER_TEMP/models:/opt/vethuq/models:ro" \
             "$IMAGE" run --job-id "$JOB_ID" --payload /payload --out /out

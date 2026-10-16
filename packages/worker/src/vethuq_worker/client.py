@@ -98,6 +98,11 @@ class JobBuilder:
             addon_settings=self._addon_settings,
             created=datetime.now(UTC).isoformat(timespec="seconds"),
             client=self._client,
+            profiles={
+                phase: Protocol.PHASE_PROFILES[phase]
+                for phase in sorted({p.phase for p in self._pages})
+                if phase in Protocol.PHASE_PROFILES
+            },
         )
 
     def build(self) -> bytes:

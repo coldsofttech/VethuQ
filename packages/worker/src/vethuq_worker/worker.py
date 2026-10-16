@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import platform
 import tempfile
 import time
 from abc import ABC, abstractmethod
@@ -26,6 +27,7 @@ from vethuq_worker.crypto import JobCrypto
 from vethuq_worker.errors import JobError
 from vethuq_worker.images import Images
 from vethuq_worker.models import ModelsCheck
+from vethuq_worker.owner import OwnerCheck
 from vethuq_worker.protocol import JobResult, Manifest, PageResult, Protocol
 
 logger = logging.getLogger("vethuq.worker")
@@ -124,18 +126,21 @@ class Worker:
     RESULT_FILE = "result.bin"
     PAYLOAD_FILE = "payload.bin"
 
-    def __init__(self, engine_for: EngineFor | None = None) -> None:
+    def __init__(
+        self, engine_for: EngineFor | None = None, verifier: Callable[..., object] | None = None
+    ) -> None:
         self._engine_for: EngineFor = engine_for or CoreEngine.open
+        self._verifier = verifier  # how licences are checked for their owner (tests)
 
     @classmethod
-    def with_engine(cls, engine: Engine) -> Worker:
+    def with_engine(cls, engine: Engine, verifier: Callable[..., object] | None = None) -> Worker:
         """A worker that always reads with `engine`."""
 
         @contextmanager
         def engine_for(manifest: Manifest) -> Iterator[Engine]:
             yield engine
 
-        return cls(engine_for)
+        return cls(engine_for, verifier)
 
     @staticmethod
     def version() -> str:
@@ -189,6 +194,10 @@ class Worker:
             manifest.max_bytes, Protocol.MAX_BYTES
         ):
             raise JobError("too_large", "The job is larger than a job may be.")
+        for phase, profile in manifest.profiles.items():
+            if profile not in Protocol.PROFILES or phase not in Protocol.PHASE_PROFILES:
+                raise JobError("bad_profile", "The job names a model profile this worker lacks.")
+        OwnerCheck.check(manifest.addon_settings, OwnerCheck.owner_id(), self._verifier)
         with self._engine_for(manifest) as engine:
             return self._read_pages(manifest, entries, engine)
 
@@ -213,7 +222,22 @@ class Worker:
             tuple(results),
             billable_seconds=math.ceil((time.monotonic() - started) * 10) / 10,
             worker=self.version(),
+            runner={
+                "cpu_model": self._cpu_model(),
+                "profiles": sorted(set(manifest.profiles.values())),
+            },
         )
+
+    @staticmethod
+    def _cpu_model() -> str:
+        """The processor's name, for the client's pace and cost figures (no identifiers)."""
+        try:
+            for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+                if line.lower().startswith("model name"):
+                    return line.split(":", 1)[1].strip()[:120]
+        except OSError:
+            pass
+        return (platform.processor() or platform.machine())[:120]
 
     @staticmethod
     def _read_page(

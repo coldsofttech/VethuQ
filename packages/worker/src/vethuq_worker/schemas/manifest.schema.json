@@ -10,6 +10,11 @@
     "job_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
     "created": {"type": "string"},
     "client": {"type": "string"},
+    "profiles": {
+      "description": "The OCR model profile each phase reads with (fast or advanced); the worker refuses a profile it doesn't know.",
+      "type": "object",
+      "additionalProperties": {"enum": ["fast", "advanced"]}
+    },
     "limits": {
       "type": "object",
       "required": ["max_pages", "max_bytes"],

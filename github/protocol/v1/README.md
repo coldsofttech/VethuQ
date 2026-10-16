@@ -57,3 +57,10 @@ reads `DIR/payload.bin` and writes `OUT/result.bin`. Exit code 0 when at least o
 1 when the job failed, 2 for a usage problem (no or bad key). `VETHUQ_MODELS` points at the OCR models, which the
 runner fetched once and cached (`fetch-models`); the worker verifies them against the image's
 `models.lock.json` and fails with `models_missing` or `models_unverified` otherwise. The worker needs no network; run it without one where the runner allows.
+
+## Profiles and the runner
+
+The manifest's optional `profiles` names the OCR model profile each phase reads with (`quick` on
+`fast`; `moderate` and `high` on `advanced`); the worker refuses any other. The result's optional
+`runner` holds the CPU model the job ran on and the profiles used, so the client can learn the pace
+of each kind of runner (see `docs/github.md`).

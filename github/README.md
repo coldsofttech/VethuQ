@@ -20,6 +20,9 @@ sequenceDiagram
     C->>R: Poll, download, decrypt, import; delete the asset and artifact
 ```
 
+The user guide (set-up, public or private, data flow, minutes, troubleshooting, result codes) is
+`docs/github.md`.
+
 ## What is here
 
 | Path | Purpose |
