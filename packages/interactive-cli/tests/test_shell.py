@@ -76,13 +76,12 @@ def test_version_runs_from_the_main_menu(shell, capsys):
     assert "VethuQ" in capsys.readouterr().out
 
 
-def test_addon_settings_and_stopped_addons_appear_as_menus(capsys):
+def test_addon_settings_and_stopped_addons_appear_as_menus(capsys, scripted_ui):
     """The menus come from the command tree, so an add-on's settings are there with no shell code,
     and an add-on that isn't running shows its reason."""
     from types import SimpleNamespace
 
     import typer
-    from conftest import ScriptedUi
     from vethuq_cli.settings import addon_app
     from vethuq_interactive_cli.shell import Shell
 
@@ -108,7 +107,7 @@ def test_addon_settings_and_stopped_addons_appear_as_menus(capsys):
     settings = typer.Typer()
     settings.add_typer(addon_app(client), name="addons")
     app.add_typer(settings, name="settings")
-    ui = ScriptedUi(
+    ui = scripted_ui(
         ["settings", "addons", "demo", "level", None, False, BACK, "off", BACK, BACK, BACK, EXIT]
     )
     Shell(ui, typer.main.get_command(app)).run()

@@ -63,3 +63,9 @@ def docs(tmp_path):
     folder.mkdir()
     (folder / "a.txt").write_text("hello museum world")
     return folder
+
+
+@pytest.fixture
+def scripted_ui():
+    """The `ScriptedUi` class, for tests that build their own command tree."""
+    return ScriptedUi

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "provisional": true,
+  "note": "Starting limits for English, not yet measured against the real engine: run the 'ocr-accuracy' workflow, compare the report, and replace them with reviewed values from --suggest. A case with no limit is only reported.",
+  "limits": {
+    "quick": {
+      "clean": {"max_cer": 0.02, "min_word_recall": 0.95},
+      "scan": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "skew": {"max_cer": 0.08, "min_word_recall": 0.85},
+      "photo": {"max_cer": 0.15, "min_word_recall": 0.75},
+      "small": {"max_cer": 0.10, "min_word_recall": 0.80},
+      "numbers": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "large": {"max_cer": 0.02, "min_word_recall": 0.95}
+    },
+    "moderate": {
+      "clean": {"max_cer": 0.02, "min_word_recall": 0.95},
+      "scan": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "skew": {"max_cer": 0.08, "min_word_recall": 0.85},
+      "photo": {"max_cer": 0.15, "min_word_recall": 0.75},
+      "rotated": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "small": {"max_cer": 0.10, "min_word_recall": 0.80},
+      "numbers": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "large": {"max_cer": 0.02, "min_word_recall": 0.95}
+    },
+    "deep": {
+      "clean": {"max_cer": 0.02, "min_word_recall": 0.95},
+      "scan": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "skew": {"max_cer": 0.06, "min_word_recall": 0.88},
+      "photo": {"max_cer": 0.12, "min_word_recall": 0.80},
+      "rotated": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "small": {"max_cer": 0.10, "min_word_recall": 0.80},
+      "numbers": {"max_cer": 0.05, "min_word_recall": 0.90},
+      "large": {"max_cer": 0.02, "min_word_recall": 0.95}
+    }
+  }
+}

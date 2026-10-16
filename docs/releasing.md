@@ -41,6 +41,13 @@ platform wheels only: no macOS, and no sdist.
 To pick up a new runtime: release it in VethuQ-entitlements, change `ENTITLEMENTS_VERSION`, then release
 `vethuq`.
 
+## Before a release: OCR accuracy
+
+Run the `ocr-accuracy` workflow (Actions > ocr-accuracy > Run workflow) on the commit to be tagged,
+or call it from a release workflow. It reads test pages with the real models and fails when accuracy
+falls below the limits in `tools/ocr_accuracy/thresholds.json`; see `tools/ocr_accuracy/README.md`.
+It is not wired into `release.yml` yet.
+
 ## Order
 
 `vethuq-addon-api` first; then the add-ons and bundles in VethuQ-premium that `vethuq` depends on and

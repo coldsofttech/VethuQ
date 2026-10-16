@@ -1,0 +1,103 @@
+# OCR accuracy regression suite: pages rendered from known text, degraded like scans and photos,
+# read by every installed OCR phase with the real models, scored (CER, word recall) and checked
+# against tools/ocr_accuracy/thresholds.json. It needs the model downloads and takes 10 to 20
+# minutes, so it runs weekly, by hand, and before a release (run it, or call it from a release
+# workflow with `uses: ./.github/workflows/ocr-accuracy.yml`), never on a push or pull request. The
+# unit tests of the suite itself run in test.yml.
+name: ocr-accuracy
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      phases:
+        description: "OCR phases, comma-separated (empty: every installed one)"
+        type: string
+        default: ""
+      pages:
+        description: "Page types, comma-separated (empty: all)"
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      phases:
+        type: string
+        default: ""
+      pages:
+        type: string
+        default: ""
+    secrets:
+      PREMIUM_READ_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-accuracy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      # The OCR models live here so they can be cached between runs.
+      PADDLE_PDX_CACHE_HOME: ${{ github.workspace }}/.paddlex-cache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/VethuQ
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-premium
+          path: work/VethuQ-premium
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: coldsofttech/VethuQ-entitlements
+          path: work/VethuQ-entitlements
+          token: ${{ secrets.PREMIUM_READ_TOKEN }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: work/VethuQ
+        run: uv sync --all-packages --group dev
+      # The moderate and deep phases are add-ons of their own.
+      - name: Install the OCR phases
+        working-directory: work/VethuQ
+        run: |
+          uv pip install ../VethuQ-premium/packages/add-ons/ocr/modes/moderate \
+            ../VethuQ-premium/packages/add-ons/ocr/modes/deep
+      # Model files are tied to the PaddleOCR version in uv.lock, so the lock file keys the cache.
+      - name: Restore the OCR models
+        uses: actions/cache@v4
+        with:
+          path: .paddlex-cache
+          key: paddle-models-${{ runner.os }}-${{ hashFiles('work/VethuQ/uv.lock') }}
+          restore-keys: paddle-models-${{ runner.os }}-
+      - name: Read and score the pages
+        working-directory: work/VethuQ
+        env:
+          PHASES: ${{ inputs.phases }}
+          PAGES: ${{ inputs.pages }}
+        run: |
+          args=(--out accuracy-report.json --suggest accuracy-suggested-limits.json \
+                --summary "$GITHUB_STEP_SUMMARY")
+          [ -n "$PHASES" ] && args+=(--phases "$PHASES")
+          [ -n "$PAGES" ] && args+=(--pages "$PAGES")
+          uv run --no-sync python -m tools.ocr_accuracy "${args[@]}"
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-accuracy
+          path: |
+            work/VethuQ/accuracy-report.json
+            work/VethuQ/accuracy-suggested-limits.json
+          if-no-files-found: ignore
