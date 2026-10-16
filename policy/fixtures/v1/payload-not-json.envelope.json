@@ -1,6 +1,6 @@
 {
   "alg": "Ed25519",
-  "kid": "contract-test-1",
+  "kid": "test-pol-534200f601ad1487",
   "payload": "dGhpcyBpcyBub3QganNvbg",
   "sig": "TgmpvtW_Z7169gYGCbgtAikZDYGfFMdWSpQcTtR1UBUvRyW8HrmR6BdZG4l89uKHCCuE8HaOHCTpqtVTxrXyCw"
 }

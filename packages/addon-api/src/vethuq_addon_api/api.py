@@ -194,7 +194,9 @@ class Host(Protocol):
         missing). Nothing in it is VethuQ's: the add-on owns its layout and its migrations."""
 
     def revoked_licence_ids(self) -> frozenset[str]:
-        """Licence ids the signed policy has revoked (from the cached policy; no network)."""
+        """Licence ids the signed policy has revoked, and the signing key ids it has revoked (from
+        the cached policy; no network). Pass the whole set as `Licences.verify(revoked=...)`: a
+        licence on it, or signed by a key on it, stops verifying."""
 
     def licence_tokens(self) -> dict[str, str]:
         """The licence tokens installed for add-ons (their `licence` setting), by add-on id.

@@ -85,6 +85,15 @@ class PolicyClient:
         """
         return self._policy_client().refresh(force=force)
 
+    def revoked_key_ids(self) -> frozenset[str]:
+        """Signing key ids the signed policy has revoked (read-only, for diagnostics). A key is
+        revoked by a policy signed with the standby key and stays revoked: the set only grows and
+        survives restarts. Makes no request and never raises."""
+        try:
+            return self._policy_client().revoked_key_ids()
+        except Exception:  # noqa: BLE001 - a policy problem must not stop local work
+            return frozenset()
+
     def now(self) -> datetime:
         """The time to evaluate notice windows and promotions against.
 

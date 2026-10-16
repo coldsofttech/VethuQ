@@ -245,6 +245,8 @@ class TestPolicyResult:
             "status": "current",
             "detail": "",
             "update_required": False,
+            "revoked_key_ids": [],
+            "trust_message": "",
             "sequence": 0,
             "kid": "baseline",
         }

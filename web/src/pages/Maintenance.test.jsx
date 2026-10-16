@@ -237,6 +237,22 @@ describe('Policy', () => {
   });
 });
 
+describe('Policy key revocation', () => {
+  it('shows the revoked keys and says why the saved policy is not used', async () => {
+    mockApi({
+      ...BASE,
+      'GET /api/policy': {
+        ...BASE['GET /api/policy'],
+        revoked_key_ids: ['pol-aaaaaaaaaaaaaaaa'],
+        trust_message: 'The key that signed the saved policy has been revoked.',
+      },
+    });
+    renderWithProviders(<App />, { route: '/settings/policy' });
+    expect(await screen.findByText(/signed the saved policy has been revoked/)).toBeInTheDocument();
+    expect(screen.getByText('pol-aaaaaaaaaaaaaaaa')).toBeInTheDocument();
+  });
+});
+
 describe('Shared metrics', () => {
   it('shows where sharing stands and exactly what would be sent', async () => {
     mockApi(BASE);

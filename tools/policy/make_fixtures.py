@@ -3,7 +3,7 @@
 
 The fixtures are signed envelopes covering every way a policy can be good or bad. They are signed
 with a TEST key derived from a fixed phrase, so the output is reproducible and the private key is
-never stored; only its public half is published here (`keys/contract-test-1.pub`). Production
+never stored; only its public half is published here (`keys/<kid>.pub`). Production
 keys never appear in this directory.
 
 The core client's contract tests and the admin tool's signing tests both read `manifest.json`:
@@ -29,10 +29,28 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 OUT = Path(__file__).resolve().parents[2] / "policy" / "fixtures" / "v1"
-KID = "contract-test-1"
 UNKNOWN_KID = "contract-unknown"
 SEED = hashlib.sha256(b"vethuq policy contract fixtures: test key, not a secret").digest()
+STANDBY_SEED = hashlib.sha256(b"vethuq policy contract fixtures: standby test key").digest()
 OTHER_SEED = hashlib.sha256(b"vethuq policy contract fixtures: signer nobody trusts").digest()
+
+
+def public_of(seed: bytes) -> bytes:
+    return (
+        Ed25519PrivateKey.from_private_bytes(seed)
+        .public_key()
+        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    )
+
+
+def kid_of(prefix: str, seed: bytes) -> str:
+    """The id scheme the admin tool uses: the role prefix and 16 hex digits of SHA-256(key)."""
+    return f"test-{prefix}-{hashlib.sha256(public_of(seed)).hexdigest()[:16]}"
+
+
+KID = kid_of("pol", SEED)  # the current policy key
+STANDBY_KID = kid_of("pst", STANDBY_SEED)  # the policy-standby key: the only one that can revoke
+LICENCE_KID = "test-lic-00000000000000aa"  # a signing key id for a revocation to name
 
 
 def b64url(data: bytes) -> str:
@@ -98,14 +116,27 @@ def build() -> dict[str, str]:
         "malformed-json.envelope.json": '{"alg": "Ed25519", "kid": \n',
         "payload-not-json.envelope.json": envelope(b"this is not json"),
     }
-    public = (
-        Ed25519PrivateKey.from_private_bytes(SEED)
-        .public_key()
-        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    )
-    files[f"keys/{KID}.pub"] = b64url(public) + "\n"
+    files |= {
+        # The standby key revokes the current key. Everything the current key signs is refused
+        # from then on, whatever its sequence.
+        "revoke-by-standby.envelope.json": envelope(
+            payload(20, STANDBY_KID, revoked_key_ids=[KID]), STANDBY_SEED, STANDBY_KID
+        ),
+        "signed-by-revoked-key.envelope.json": envelope(payload(30)),
+        # A revocation signed by the current (non-standby) key has no authority.
+        "revoke-by-active.envelope.json": envelope(payload(7, revoked_key_ids=[LICENCE_KID])),
+        # Entries naming the signer or a standby key are ignored; the other entry stands.
+        "revoke-ignored-entries.envelope.json": envelope(
+            payload(21, STANDBY_KID, revoked_key_ids=[STANDBY_KID, LICENCE_KID]),
+            STANDBY_SEED,
+            STANDBY_KID,
+        ),
+    }
+    files[f"keys/{KID}.pub"] = b64url(public_of(SEED)) + "\n"
+    files[f"keys/{STANDBY_KID}.pub"] = b64url(public_of(STANDBY_SEED)) + "\n"
     manifest = {
         "kid": KID,
+        "standby_kid": STANDBY_KID,
         "note": "Test key only. 'last_good' is valid.envelope.json (sequence 5).",
         "fixtures": [
             {"file": "valid.envelope.json", "expect": "accepted", "sequence": 5},
@@ -124,6 +155,28 @@ def build() -> dict[str, str]:
             "active": ["active"],
             "expired": ["expired"],
             "future": ["future"],
+        },
+        "revocation": {
+            "revoked_by_standby": {
+                "file": "revoke-by-standby.envelope.json",
+                "sequence": 20,
+                "revokes": [KID],
+            },
+            "refused_once_revoked": [
+                "signed-by-revoked-key.envelope.json",
+                "valid-newer.envelope.json",
+            ],
+            "no_authority": {
+                "file": "revoke-by-active.envelope.json",
+                "sequence": 7,
+                "ignored": [LICENCE_KID],
+            },
+            "ignored_entries": {
+                "file": "revoke-ignored-entries.envelope.json",
+                "sequence": 21,
+                "ignored": [STANDBY_KID],
+                "revokes": [LICENCE_KID],
+            },
         },
         "generated": ["oversize payload", "all URLs failing / offline", "ETag unchanged"],
     }

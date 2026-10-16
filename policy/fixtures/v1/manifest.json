@@ -1,5 +1,6 @@
 {
-  "kid": "contract-test-1",
+  "kid": "test-pol-534200f601ad1487",
+  "standby_kid": "test-pst-77e47eeec8f013b8",
   "note": "Test key only. 'last_good' is valid.envelope.json (sequence 5).",
   "fixtures": [
     {
@@ -58,6 +59,36 @@
     "future": [
       "future"
     ]
+  },
+  "revocation": {
+    "revoked_by_standby": {
+      "file": "revoke-by-standby.envelope.json",
+      "sequence": 20,
+      "revokes": [
+        "test-pol-534200f601ad1487"
+      ]
+    },
+    "refused_once_revoked": [
+      "signed-by-revoked-key.envelope.json",
+      "valid-newer.envelope.json"
+    ],
+    "no_authority": {
+      "file": "revoke-by-active.envelope.json",
+      "sequence": 7,
+      "ignored": [
+        "test-lic-00000000000000aa"
+      ]
+    },
+    "ignored_entries": {
+      "file": "revoke-ignored-entries.envelope.json",
+      "sequence": 21,
+      "ignored": [
+        "test-pst-77e47eeec8f013b8"
+      ],
+      "revokes": [
+        "test-lic-00000000000000aa"
+      ]
+    }
   },
   "generated": [
     "oversize payload",

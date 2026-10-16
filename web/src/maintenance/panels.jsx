@@ -400,8 +400,17 @@ export function PolicyPanel() {
               ],
               ['Key', p.source !== 'baseline' ? p.kid : undefined],
               ['Note', p.detail],
+              [
+                'Revoked keys',
+                p.revoked_key_ids?.length ? p.revoked_key_ids.join(', ') : undefined,
+              ],
             ]}
           />
+          {p.trust_message && (
+            <MessageBar intent="warning">
+              <MessageBarBody>{p.trust_message}</MessageBarBody>
+            </MessageBar>
+          )}
           {p.update_required && (
             <MessageBar intent="warning">
               <MessageBarBody>A newer VethuQ is needed to receive new policy.</MessageBarBody>

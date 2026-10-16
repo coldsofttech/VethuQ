@@ -42,6 +42,9 @@ class AfterCommand:
             result = client.updates.status()
             if result.status is not UpdateStatus.DISABLED and result.notify and result.message:
                 lines.append((f"{result.message} Run: vethuq update", Theme.WARN))
+            trust = client.policy.current().trust_message
+            if trust:
+                lines.append((trust, Theme.WARN))
             if result.status is not UpdateStatus.DISABLED:
                 for notice in client.policy.notices():
                     text = notice.message + (f" ({notice.link})" if notice.link else "")

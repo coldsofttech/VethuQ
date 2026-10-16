@@ -6,6 +6,11 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (key revocation)
+- `client.policy.revoked_key_ids()` and `PolicyResult.revoked_key_ids` expose, read-only, the signing key ids the signed policy has revoked (only a policy signed with the standby key can revoke; the set only grows and survives restarts). When the key that signed the saved policy is revoked, trust fails closed (the built-in baseline applies) and `PolicyResult.trust_message` says so; the CLI prints it and the Policy settings tab shows it.
+- `host.revoked_licence_ids()` and `client.credits.redeem_licence()` include the revoked signing key ids, so a licence signed by a revoked key stops verifying (`LicenceStatus.KEY_REVOKED` in `vethuq-entitlements`) without any change to the add-ons.
+- Contract fixtures for standby revocation, a revocation without authority, ignored entries and a policy signed by a revoked key.
+
 ### Added (build trust)
 - The policy URLs and public keys a build trusts are in `vethuq/_policy/embedded.py`, written by `scripts/release/embed_policy.py` in one of three flavours (`development`, `test`, `production`). A release is refused by `scripts/release/check_embedded.py` if it carries a test key or test URL, or has no standby key. Nothing changes at run time until keys are embedded: the committed file has none.
 

@@ -159,6 +159,11 @@ class TestCurrentAndRefresh:
         assert any(m.startswith("accepted policy sequence 3") for m in messages)
         assert client.logs.policy.file().exists is True
 
+    def test_revoked_key_ids_are_read_only_diagnostics_that_start_empty(self, client):
+        assert client.policy.revoked_key_ids() == frozenset()
+        assert isinstance(client.policy.revoked_key_ids(), frozenset)
+        assert client.policy.current().to_dict()["revoked_key_ids"] == []
+
     def test_the_result_has_json(self, client):
         data = json.loads(client.policy.current().to_json())
 

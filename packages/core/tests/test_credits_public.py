@@ -623,6 +623,25 @@ class TestRedeem:
         (done,) = client.credits.redeem_licence("VQLIC1.token")
         assert done.credits == 75 and seen == {"token": "VQLIC1.token", "revoked": ["OLD"]}
 
+    def test_revoked_signing_key_ids_are_checked_with_the_revoked_licences(
+        self, client, monkeypatch
+    ):
+        from types import SimpleNamespace
+
+        from vethuq._policy import _PolicyState, _PolicyStore
+
+        grant = SimpleNamespace(id="L-2", amount=5.0, scope=None, expires=None)
+        licence = SimpleNamespace(ok=True, detail="", credit_grants=lambda: (grant,))
+        seen = {}
+        self.entitlements(monkeypatch, licence, seen)
+        store = _PolicyStore(client.policy.directory)
+        store.write_state(_PolicyState().with_revoked(["lic-0123456789abcdef"]))
+        policy(client, revoked_licence_ids=["OLD"])
+
+        client.credits.redeem_licence("VQLIC1.token")
+
+        assert seen["revoked"] == ["OLD", "lic-0123456789abcdef"]
+
     def test_a_licence_that_does_not_verify_is_refused(self, client, monkeypatch):
         from types import SimpleNamespace
 

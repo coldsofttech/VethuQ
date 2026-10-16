@@ -7,6 +7,7 @@ when there is none), so offline use and local work are never blocked.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -153,7 +154,13 @@ class _PolicyClient:
             self._logger.warning("could not save the policy cache: %s", exc)
             detail = f"policy not cached: {exc}"
         self._logger.info("accepted policy sequence %d from %s", verified.policy.sequence, url)
-        return PolicyResult(verified.policy, PolicySource.FETCHED, PolicyStatus.UPDATED, detail)
+        return PolicyResult(
+            verified.policy,
+            PolicySource.FETCHED,
+            PolicyStatus.UPDATED,
+            detail,
+            revoked_key_ids=state.revoked,
+        )
 
     @staticmethod
     def _synced(state: _PolicyState, server_time: float | None, now: float) -> _PolicyState:
@@ -198,7 +205,31 @@ class _PolicyClient:
             else (_Baseline.policy(), PolicySource.BASELINE)
         )
         message = PolicyResult.UPDATE_MESSAGE if state.update_required else ""
-        return PolicyResult(policy, source, status, detail or message, state.update_required)
+        return PolicyResult(
+            policy,
+            source,
+            status,
+            detail or message,
+            state.update_required,
+            state.revoked,
+            self._trust_message(cached, state),
+        )
+
+    def revoked_key_ids(self) -> frozenset[str]:
+        """The signing key ids the policy has revoked, from the saved state. No network."""
+        return self._store.read_state().revoked
+
+    def _trust_message(self, cached: _VerifiedEnvelope | None, state: _PolicyState) -> str:
+        """Said when the saved policy is set aside because its signing key was revoked: trust
+        fails closed (the baseline applies) and local work carries on."""
+        if cached is not None or not state.revoked:
+            return ""
+        raw = self._store.read_envelope()
+        try:
+            kid = json.loads(raw).get("kid") if raw else None
+        except (ValueError, AttributeError):
+            return ""
+        return PolicyResult.SIGNER_REVOKED_MESSAGE if kid in state.revoked else ""
 
     def _save(self, state: _PolicyState) -> None:
         try:

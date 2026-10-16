@@ -14,12 +14,19 @@ class _Tty(io.StringIO):
 
 
 def _client(
-    status=UpdateStatus.AVAILABLE, notify=True, message="VethuQ 2.0.0 is available.", notices=()
+    status=UpdateStatus.AVAILABLE,
+    notify=True,
+    message="VethuQ 2.0.0 is available.",
+    notices=(),
+    trust="",
 ):
     result = SimpleNamespace(status=status, notify=notify, message=message)
     return SimpleNamespace(
         updates=SimpleNamespace(status=lambda: result),
-        policy=SimpleNamespace(notices=lambda: tuple(notices)),
+        policy=SimpleNamespace(
+            notices=lambda: tuple(notices),
+            current=lambda: SimpleNamespace(trust_message=trust),
+        ),
     )
 
 
@@ -72,6 +79,13 @@ class TestLines:
         texts = [t for t, _ in AfterCommand.lines(client)]
 
         assert texts == ["Hello", "CRITICAL: Stop (https://x)"]
+
+    def test_a_revoked_signing_key_is_said_once_even_with_nothing_else_to_say(self):
+        client = _client(
+            UpdateStatus.UP_TO_DATE, notify=False, message="", trust="The signing key was revoked."
+        )
+
+        assert [t for t, _ in AfterCommand.lines(client)] == ["The signing key was revoked."]
 
     def test_a_failure_prints_nothing(self):
         broken = SimpleNamespace(updates=SimpleNamespace(status=lambda: 1 / 0))

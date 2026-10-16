@@ -20,6 +20,7 @@ from vethuq._policy import (
     _PolicyFetcher,
     _PolicyKey,
     _PolicyKeys,
+    _PolicyStore,
 )
 from vethuq.enums import PolicySource, PolicyStatus
 
@@ -32,9 +33,14 @@ def _fixture(name: str) -> bytes:
     return (FIXTURES / name).read_bytes()
 
 
+def _key(kid: str, standby: bool = False) -> _PolicyKey:
+    text = (FIXTURES / "keys" / f"{kid}.pub").read_text(encoding="utf-8")
+    return _PolicyKey.from_b64url(kid, text, standby)
+
+
 def _keys() -> _PolicyKeys:
-    text = (FIXTURES / "keys" / f"{MANIFEST['kid']}.pub").read_text(encoding="utf-8")
-    return _PolicyKeys([_PolicyKey.from_b64url(MANIFEST["kid"], text)])
+    """The current policy key and the standby key, as a client has them embedded."""
+    return _PolicyKeys([_key(MANIFEST["kid"]), _key(MANIFEST["standby_kid"], standby=True)])
 
 
 class _Clock:
@@ -233,3 +239,122 @@ class TestNoticeWindows:
             n.id for n in policy.active_notices(datetime(2026, 1, 1, tzinfo=UTC))
         ]
         assert "future" in [n.id for n in policy.active_notices(datetime(2100, 1, 1, tzinfo=UTC))]
+
+
+REVOCATION = MANIFEST["revocation"]
+ACTIVE = MANIFEST["kid"]
+STANDBY = MANIFEST["standby_kid"]
+
+
+def _revoke(client, fetcher, clock, name: str):
+    clock.now += 2 * 24 * 3600
+    fetcher.serve(_ok(_fixture(name)))
+    return client.refresh(force=True)
+
+
+class TestKeyRevocation:
+    def test_a_standby_policy_revokes_a_key_and_is_accepted(self, with_last_good, fetcher, clock):
+        spec = REVOCATION["revoked_by_standby"]
+
+        result = _revoke(with_last_good, fetcher, clock, spec["file"])
+
+        assert result.status is PolicyStatus.UPDATED and result.policy.sequence == spec["sequence"]
+        assert with_last_good.revoked_key_ids() == frozenset(spec["revokes"])
+        assert result.revoked_key_ids == frozenset(spec["revokes"])
+
+    def test_everything_the_revoked_key_signs_is_refused_afterwards(
+        self, with_last_good, fetcher, clock
+    ):
+        _revoke(with_last_good, fetcher, clock, REVOCATION["revoked_by_standby"]["file"])
+
+        for name in REVOCATION["refused_once_revoked"]:
+            result = _revoke(with_last_good, fetcher, clock, name)
+            assert result.status is PolicyStatus.REJECTED, name
+            assert result.policy.sequence == REVOCATION["revoked_by_standby"]["sequence"], name
+
+    def test_the_revocation_survives_a_restart(self, tmp_path, fetcher, clock, with_last_good):
+        _revoke(with_last_good, fetcher, clock, REVOCATION["revoked_by_standby"]["file"])
+        restarted = _PolicyClient(tmp_path / "policy", keys=_keys(), fetcher=fetcher, clock=clock)
+
+        assert restarted.revoked_key_ids() == frozenset({ACTIVE})
+        fetcher.serve(_ok(_fixture("signed-by-revoked-key.envelope.json")))
+        clock.now += 2 * 24 * 3600
+        result = restarted.refresh(force=True)
+
+        assert result.status is PolicyStatus.REJECTED and "revoked" in result.detail
+        assert result.policy.sequence == REVOCATION["revoked_by_standby"]["sequence"]
+
+    def test_a_revocation_signed_by_the_current_key_is_ignored(
+        self, with_last_good, fetcher, clock
+    ):
+        spec = REVOCATION["no_authority"]
+
+        result = _revoke(with_last_good, fetcher, clock, spec["file"])
+
+        assert result.status is PolicyStatus.UPDATED and result.policy.sequence == spec["sequence"]
+        assert with_last_good.revoked_key_ids() == frozenset()
+        assert spec["ignored"][0] in result.policy.revoked_key_ids  # in the policy, not honoured
+
+    def test_entries_naming_the_signer_or_a_standby_key_are_ignored(
+        self, with_last_good, fetcher, clock
+    ):
+        spec = REVOCATION["ignored_entries"]
+
+        _revoke(with_last_good, fetcher, clock, spec["file"])
+
+        revoked = with_last_good.revoked_key_ids()
+        assert revoked == frozenset(spec["revokes"])
+        assert not (revoked & {STANDBY, *spec["ignored"]})
+
+    def test_the_standby_key_keeps_working_after_it_revoked(self, with_last_good, fetcher, clock):
+        _revoke(with_last_good, fetcher, clock, REVOCATION["revoked_by_standby"]["file"])
+
+        result = _revoke(with_last_good, fetcher, clock, REVOCATION["ignored_entries"]["file"])
+
+        assert result.status is PolicyStatus.UPDATED
+        assert result.policy.sequence == REVOCATION["ignored_entries"]["sequence"]
+
+    def test_the_revoked_set_only_grows(self, with_last_good, fetcher, clock):
+        _revoke(with_last_good, fetcher, clock, REVOCATION["revoked_by_standby"]["file"])
+        _revoke(with_last_good, fetcher, clock, REVOCATION["ignored_entries"]["file"])
+
+        # The second policy does not name the first revoked key, yet it stays revoked.
+        assert with_last_good.revoked_key_ids() == frozenset(
+            {
+                *REVOCATION["revoked_by_standby"]["revokes"],
+                *REVOCATION["ignored_entries"]["revokes"],
+            }
+        )
+
+    def test_when_the_saved_policys_key_is_revoked_trust_fails_closed_and_it_says_so(
+        self, tmp_path, with_last_good
+    ):
+        store = _PolicyStore(tmp_path / "policy")
+        store.write_state(store.read_state().with_revoked([ACTIVE]))
+
+        result = with_last_good.current()
+
+        assert result.source is PolicySource.BASELINE
+        assert result.trust_message == result.SIGNER_REVOKED_MESSAGE
+        assert result.to_dict()["revoked_key_ids"] == [ACTIVE]
+
+    def test_a_damaged_revoked_set_never_blocks_local_work(self, tmp_path, with_last_good):
+        (tmp_path / "policy" / "state.json").write_text("{ not json", encoding="utf-8")
+
+        result = with_last_good.current()
+
+        assert with_last_good.revoked_key_ids() == frozenset()
+        assert result.policy is not None
+
+    def test_an_unwritable_folder_still_gives_the_revocation_for_the_session(
+        self, tmp_path, fetcher, clock
+    ):
+        # No cache folder can be written: the policy is still returned, and nothing raises.
+        blocked = tmp_path / "blocked"
+        blocked.write_text("a file where a folder should be")
+        client = _PolicyClient(blocked / "policy", keys=_keys(), fetcher=fetcher, clock=clock)
+        fetcher.serve(_ok(_fixture(REVOCATION["revoked_by_standby"]["file"])))
+
+        result = client.refresh(force=True)
+
+        assert result.policy.sequence == REVOCATION["revoked_by_standby"]["sequence"]

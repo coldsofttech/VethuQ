@@ -95,8 +95,22 @@ class _Host:
             return None
 
     def revoked_licence_ids(self) -> frozenset[str]:
+        """Revoked licence ids and revoked signing key ids. Both go to `Licences.verify(revoked=)`,
+        which refuses a licence on either, so an add-on that passes this list is protected."""
         policy = self._policy()
-        return frozenset(policy.revoked_licence_ids) if policy is not None else frozenset()
+        ids = frozenset(policy.revoked_licence_ids) if policy is not None else frozenset()
+        return ids | self._revoked_key_ids()
+
+    def _revoked_key_ids(self) -> frozenset[str]:
+        if self._policy_source is not None:
+            return frozenset()
+        try:
+            directory = _Paths.policy_dir(self._db_path, create=False)
+            return _PolicyClient(
+                directory, logger=logging.getLogger("vethuq.policy")
+            ).revoked_key_ids()
+        except Exception:  # noqa: BLE001 - a policy problem never blocks an add-on
+            return frozenset()
 
     def licence_tokens(self) -> dict[str, str]:
         return _AddonSettingsStore.licences(self._db_path)

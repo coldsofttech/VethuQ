@@ -1165,6 +1165,8 @@ client.policy.notices()  # the notices active now
 client.policy.section("promotions")  # a read-only view of one section of the signed policy
 ```
 
+**Revoked signing keys.** A policy signed with the standby key can revoke signing key ids (`revoked_key_ids`); anything signed by a revoked key is refused from then on, including after a restart. A revocation from any other key is ignored, as are entries naming the signer or a standby key, and the revoked set only grows. `client.policy.revoked_key_ids()` lists them (read-only, no request). If the key that signed the saved policy is revoked, the built-in baseline applies until a new policy is accepted and `result.trust_message` says why; local work is never blocked. Licences signed by a revoked key stop verifying and have to be re-issued.
+
 **The clock.** A notice's time window is judged by `client.policy.now()`, not by the bare local clock: it is the local clock corrected by how far it was from the policy server's `Date` header at the last fetch, and never earlier than when the cached policy was issued. Setting the computer's date back does not bring back an expired notice. It makes no request.
 
 **Sections for other packages.** `client.policy.section(name)` returns a top-level section of the verified policy (`rate_card`, `limits`, `promotions`, ...) as read-only data, or an empty mapping when the policy has none. The entitlements package reads its limits and promotions through this and nothing else.

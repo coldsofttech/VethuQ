@@ -76,6 +76,19 @@ class TestHost:
         assert host.addon_policy_enabled() is False
         assert _Host("other", db_path, lambda: None, policy=lambda: policy).addon_policy_enabled()
 
+    def test_revoked_signing_key_ids_are_in_the_same_list_licences_are_checked_against(
+        self, db_path
+    ):
+        from vethuq._paths import _Paths  # noqa: PLC0415
+        from vethuq._policy import _PolicyState, _PolicyStore  # noqa: PLC0415
+
+        store = _PolicyStore(_Paths.policy_dir(db_path))
+        store.write_state(_PolicyState().with_revoked(["lic-0123456789abcdef"]))
+
+        host = _Host("backup", db_path, lambda: None)
+
+        assert host.revoked_licence_ids() == frozenset({"lic-0123456789abcdef"})
+
     def test_without_a_cached_policy_nothing_is_revoked_and_it_is_enabled(self, db_path):
         host = _Host("backup", db_path, lambda: None)
         assert host.revoked_licence_ids() == frozenset()

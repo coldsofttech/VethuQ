@@ -187,9 +187,11 @@ class Credits:
         credits: _Credits,
         estimate: Callable[[int | str | Path | None], tuple[int, int, int, int]],
         wallets: Callable[[], list[str]],
+        revoked_keys: Callable[[], frozenset[str]] = frozenset,
     ) -> None:
         self._database = database
         self._credits = credits
+        self._revoked_keys = revoked_keys
         self._estimate = estimate
         self._wallets = wallets
 
@@ -407,7 +409,9 @@ class Credits:
                 "Licences can't be checked here.", "Install vethuq-entitlements."
             ) from None
         revoked = self._credits.policy().get("revoked_licence_ids", [])
-        licence = Licences().verify(token, revoked=revoked)
+        # Revoked signing key ids go in the same list: a runtime that knows about them refuses a
+        # licence signed by one, and an older one just never matches.
+        licence = Licences().verify(token, revoked=[*revoked, *self._revoked_keys()])
         if not licence.ok:
             raise _InvalidGrantError(f"The licence isn't valid: {licence.detail}.")
         return self.redeem(licence.credit_grants())

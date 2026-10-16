@@ -271,7 +271,13 @@ class VethuQ:
                 running = {i for i, loaded in manager.loaded().items() if loaded.addon is not None}
                 return names + [w for w in sub_wallets if w in running and w not in names]
 
-            self._credits = Credits(self._db(), self._credit_engine(), indexer.estimate, wallets)
+            self._credits = Credits(
+                self._db(),
+                self._credit_engine(),
+                indexer.estimate,
+                wallets,
+                lambda: self.policy.revoked_key_ids(),
+            )
         return self._credits
 
     @property

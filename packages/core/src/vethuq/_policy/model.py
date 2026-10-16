@@ -231,8 +231,14 @@ class PolicyResult:
     status: PolicyStatus
     detail: str = ""  # why a fetch failed or was refused; the update message when update_required
     update_required: bool = False  # the latest policy needs a newer VethuQ than this one
+    revoked_key_ids: frozenset[str] = frozenset()  # signing key ids revoked; read-only diagnostics
+    trust_message: str = ""  # why the saved policy is not used, when its signing key was revoked
 
     UPDATE_MESSAGE = "Update VethuQ to receive new policy."
+    SIGNER_REVOKED_MESSAGE = (
+        "The key that signed the saved policy has been revoked, so it is not used until a new "
+        "policy is accepted."
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -240,6 +246,8 @@ class PolicyResult:
             "status": self.status.value,
             "detail": self.detail,
             "update_required": self.update_required,
+            "revoked_key_ids": sorted(self.revoked_key_ids),
+            "trust_message": self.trust_message,
             "sequence": self.policy.sequence,
             "kid": self.policy.kid,
         }
