@@ -5,11 +5,13 @@ on:
     paths:
       - "policy/**"
       - "tools/policy/**"
+      - "scripts/release/**"
       - ".github/workflows/policy-ci.yml"
   pull_request:
     paths:
       - "policy/**"
       - "tools/policy/**"
+      - "scripts/release/**"
       - ".github/workflows/policy-ci.yml"
 
 permissions:
@@ -29,6 +31,9 @@ jobs:
 
       - name: Unit tests (schema, signature, sequence, windows)
         run: python -m pytest -q tools/policy/tests
+
+      - name: Embedding switch and release guard
+        run: python -m pytest -q scripts/release/tests
 
       - name: Contract fixtures are up to date
         run: python tools/policy/make_fixtures.py --check

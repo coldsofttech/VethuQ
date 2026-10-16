@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from vethuq._policy import embedded as _embedded
 from vethuq._policy.errors import _PolicyFormatError
 
 
@@ -36,10 +37,16 @@ class _PolicyKey:
 class _PolicyKeys:
     """A set of trusted keys, looked up by key id."""
 
-    # Filled in once the production keys exist (coldsofttech/VethuQ-support#275): the current
-    # policy key and the standby key, each as
-    # `_PolicyKey.from_b64url(kid, "<policy/keys/kid.pub>")`.
-    EMBEDDED: tuple[_PolicyKey, ...] = ()
+    # What the build embedded (`vethuq/_policy/embedded.py`, written by
+    # `scripts/release/embed_policy.py`): the current policy key and the standby key. Empty until
+    # the production keys exist (coldsofttech/VethuQ-support#275).
+    EMBEDDED: tuple[_PolicyKey, ...] = (
+        *(_PolicyKey.from_b64url(kid, text) for kid, text in _embedded.POLICY_KEYS.items()),
+        *(
+            _PolicyKey.from_b64url(kid, text, standby=True)
+            for kid, text in _embedded.POLICY_STANDBY_KEYS.items()
+        ),
+    )
 
     def __init__(self, keys: Iterable[_PolicyKey]) -> None:
         self._keys = {key.kid: key for key in keys}
@@ -67,7 +74,7 @@ class _PolicyKeys:
 class _PolicyUrls:
     """Where the signed policy is published, tried in order. Trust comes from the signature."""
 
-    DEFAULT: tuple[str, ...] = (
+    DEFAULT: tuple[str, ...] = _embedded.POLICY_URLS or (
         "https://coldsofttech.github.io/vethuq/policy/v1/policy.json",
         "https://cdn.jsdelivr.net/gh/coldsofttech/vethuq@main/policy/v1/policy.json",
         "https://raw.githubusercontent.com/coldsofttech/vethuq/main/policy/v1/policy.json",

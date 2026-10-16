@@ -6,6 +6,9 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added (build trust)
+- The policy URLs and public keys a build trusts are in `vethuq/_policy/embedded.py`, written by `scripts/release/embed_policy.py` in one of three flavours (`development`, `test`, `production`). A release is refused by `scripts/release/check_embedded.py` if it carries a test key or test URL, or has no standby key. Nothing changes at run time until keys are embedded: the committed file has none.
+
 ### Added (policy and update help)
 - `client.policy.now()` evaluates notice windows against a trusted clock: the local clock corrected by the offset seen in the policy server's `Date` header, and never earlier than when the cached policy was issued, so setting the date back does not revive an expired notice. `client.policy.notices()` returns the notices active by that clock.
 - `client.policy.section(name)` is a read-only view of a top-level policy section (`rate_card`, `limits`, `promotions`, ...), the narrow interface the entitlements package reads its parts through.

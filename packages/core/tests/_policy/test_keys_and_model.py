@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 
 import pytest
@@ -45,6 +46,35 @@ class TestPolicyKeys:
     def test_no_production_keys_are_built_in_yet(self):
         assert _PolicyKeys.EMBEDDED == ()
         assert _PolicyKeys.embedded().kids == ()
+
+    def test_the_committed_build_is_the_development_flavour(self):
+        from vethuq._policy import embedded  # noqa: PLC0415
+
+        assert embedded.FLAVOUR == "development"
+        assert not embedded.POLICY_KEYS and not embedded.POLICY_STANDBY_KEYS
+        assert embedded.POLICY_URLS == ()
+
+    def test_embedded_keys_become_current_and_standby_keys(self, monkeypatch):
+        import importlib.util  # noqa: PLC0415
+
+        from vethuq._policy import embedded, keys  # noqa: PLC0415
+
+        signer, standby = PolicySigner("pol-aaaaaaaaaaaaaaaa"), PolicySigner("pst-bbbbbbbbbbbbbbbb")
+        monkeypatch.setattr(embedded, "POLICY_KEYS", {signer.kid: b64url(signer.public)})
+        monkeypatch.setattr(embedded, "POLICY_STANDBY_KEYS", {standby.kid: b64url(standby.public)})
+        monkeypatch.setattr(embedded, "POLICY_URLS", ("https://example.test/policy.json",))
+        # A private copy of the module, so the real one (and the classes the rest of the tests
+        # share) is left alone.
+        spec = importlib.util.spec_from_file_location("keys_probe", keys.__file__)
+        probe = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, "keys_probe", probe)  # dataclasses looks it up
+        spec.loader.exec_module(probe)
+
+        built = probe._PolicyKeys.embedded()
+
+        assert built.kids == (signer.kid, standby.kid)
+        assert built.standby_kids == frozenset({standby.kid})
+        assert probe._PolicyUrls.resolve({}) == ("https://example.test/policy.json",)
 
 
 class TestPolicyUrls:

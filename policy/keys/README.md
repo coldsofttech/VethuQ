@@ -8,3 +8,5 @@ CI verifies `v1/policy.json` against these keys. Only public keys belong here. N
 keys. Rotating a key means adding a new `<kid>.pub`; keep old ones as long as old signed files must verify.
 
 No key is published yet; it is added when the admin tooling generates the first signing key.
+
+Release builds embed these files (`scripts/release/embed_policy.py --flavour production --keys-dir policy/keys`): `pol-<hex>` is a current key and `pst-<hex>` the standby, and a release without a standby key is refused. Test keys (`test-...`) never belong here.

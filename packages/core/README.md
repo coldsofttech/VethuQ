@@ -1245,9 +1245,9 @@ VethuQ never upgrades itself inside the running process (file locks, virtual env
 
 ```python
 help_ = client.updates.upgrade_help(addons=["vethuq-addon-pdf"])
-help_.kind      # InstallKind.VENV: INSTALLER, PIPX, VENV, EXTERNALLY_MANAGED or PIP
+help_.kind  # InstallKind.VENV: INSTALLER, PIPX, VENV, EXTERNALLY_MANAGED or PIP
 help_.commands  # ("python -m pip install --upgrade vethuq vethuq-addon-pdf",)
-help_.steps     # the same, as sentences
+help_.steps  # the same, as sentences
 ```
 
 The desktop installer build has no command: its update dialog offers **Install now**, which downloads the installer named by the signed policy, checks its size and sha256 against the policy entry, stops the background service, runs the installer silently and starts the service again.

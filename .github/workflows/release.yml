@@ -150,6 +150,9 @@ jobs:
         with:
           name: entitlements
           path: entitlements
+      - name: Embed the production policy keys
+        run: |
+          python scripts/release/embed_policy.py --flavour production --keys-dir policy/keys
       - name: Build the pure wheel
         run: uv build --wheel --no-sources --out-dir pure "${{ needs.plan.outputs.directory }}"
       - name: One wheel per platform, with the compiled runtime inside
@@ -161,6 +164,8 @@ jobs:
           done
           ls -l dist
           python scripts/release/plan.py "$GITHUB_REF_NAME" --wheels dist/*.whl
+      - name: The wheels hold the production keys only, with a standby key (no test keys or URLs)
+        run: python scripts/release/check_embedded.py --wheel dist/*.whl
       - run: uvx twine check dist/*
       - uses: actions/upload-artifact@v4
         with:

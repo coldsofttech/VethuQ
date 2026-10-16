@@ -89,6 +89,13 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
+      - name: Embed the production policy keys and refuse a build with test keys
+        working-directory: work/VethuQ
+        shell: bash
+        run: |
+          python scripts/release/embed_policy.py --flavour production --keys-dir policy/keys
+          python scripts/release/check_embedded.py
+
       - name: Build the installer
         working-directory: work/VethuQ
         shell: bash

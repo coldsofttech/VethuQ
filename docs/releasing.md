@@ -55,6 +55,25 @@ whenever the GitHub tier's protocol changes.
 - Secret `PREMIUM_READ_TOKEN`: read access to VethuQ-premium and VethuQ-entitlements (it is already used
   by the test workflow).
 
+## Which policy keys a build trusts
+
+The policy URLs and the Ed25519 public keys a build trusts are in `packages/core/src/vethuq/_policy/embedded.py`, which the build rewrites with `scripts/release/embed_policy.py`. There are three flavours:
+
+| Flavour | Keys | URLs | Used by |
+|---|---|---|---|
+| `development` | none (the committed file) | the defaults | a checkout; `refresh()` makes no request |
+| `test` | `test-pol-...` and `test-pst-...` | `policy/test/v1/policy.json` | dev and CI builds that exercise the real fetch |
+| `production` | `pol-...` and `pst-...` | the Pages URL and two mirrors | releases |
+
+    python scripts/release/embed_policy.py --flavour production --keys-dir policy/keys
+    python scripts/release/embed_policy.py --flavour test --keys-dir ../VethuQ-entitlements/testkit/policy/keys
+
+`--keys-dir` holds one `<kid>.pub` per key. The flavour decides what is accepted: a test key cannot go into a production build, a production key cannot go into a test build, every id must match its key, and a production or test build needs a standby (`pst-`) key as well as a current one.
+
+Every release workflow embeds the production set from `policy/keys/` and then runs `scripts/release/check_embedded.py`, which **fails the release** if the flavour is not `production`, any key id starts with `test-`, a policy URL is not an https production location, or there is no standby key. For the `vethuq` wheels the check reads the built wheels and also scans every Python file in them for a test key id or the test policy location. The installers are checked on the source file just before they are built.
+
+Until the production keys are published in `policy/keys/` (`policy/keys/README.md`), the release workflows stop at the embed step. That is intended: no release can go out without its standby key. For key rotation see `key-custody.md` in the entitlements repository.
+
 ## Command-line installers
 
 `vethuq-cli-vX.Y.Z` (`-rcN` for a release candidate) builds the command line only, with no desktop app,
