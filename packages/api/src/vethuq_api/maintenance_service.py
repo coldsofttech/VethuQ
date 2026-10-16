@@ -174,7 +174,7 @@ class MaintenanceService:
         return self._client().metrics.opt_in().to_dict()
 
     def metrics_dismiss_prompt(self) -> dict[str, object]:
-        self._client().metrics.dismiss_prompt()
+        self._client()._metrics_engine().dismiss_prompt()  # noqa: SLF001
         return self._client().metrics.status().to_dict()
 
     def metrics_rotate_id(self) -> dict[str, object]:

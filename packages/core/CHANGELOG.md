@@ -6,6 +6,16 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 
 ## [Unreleased]
 
+### Added
+- `client.bundles`: list a bundle's add-ons, check if it is installed, turn all of it on or off, and install a licence for it.
+- Until the signed catalog is fetched, `client.catalog` lists the add-ons and bundles that ship with this version.
+
+### Changed
+- `client.addons.bundles()` is now `client.bundles.list()`, and `client.catalog.get()` is now `get_addon()`.
+- Licence errors are now in `vethuq.errors.licence`.
+- `Metrics.dismiss_prompt()` is no longer public; the web app still dismisses the first-run question.
+- Exporting a log to a name with no extension saves it as `.log`.
+
 ### Added (metrics: events, consent, rotation)
 - Sharing metrics counts events in buckets, when you opted in: a run that ran out of credits, and searches (engine, words in the query, script, result count, speed; never the text). `metrics/schema/v1` gets an optional `events` list per day.
 - What sharing covers is versioned: someone who agreed before a category was added is asked again (`consent_current`, `needs_consent`; the bonus pauses). `Metrics.rotate_id()`, `dismiss_prompt()`, a first-run question in the web interface, and unsent days older than 30 days are dropped; opting out drops what was waiting.

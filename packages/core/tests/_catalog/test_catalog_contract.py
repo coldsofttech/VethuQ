@@ -163,7 +163,7 @@ class TestRefusedKeepsTheLastGoodCatalog:
 
         result = with_last_good.current()
 
-        assert result.source is PolicySource.BASELINE and not result.catalog.addons
+        assert result.source is PolicySource.BASELINE and result.catalog.sequence == 0
 
     def test_every_url_failing_is_offline(self, with_last_good, fetcher):
         fetcher.serve(

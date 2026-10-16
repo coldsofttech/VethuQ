@@ -68,6 +68,7 @@ def _pip(latest: str, minimum: str) -> dict:
     return {"pip": {"latest": latest, "minimum_supported": minimum}}
 
 
+@pytest.mark.basic
 class TestPolicyAccess:
     def test_is_available_on_the_client_and_as_a_module(self, client):
         assert isinstance(client.policy, vethuq.policy.PolicyClient)
@@ -92,6 +93,7 @@ class TestPolicyAccess:
         assert vethuq.Paths.policy_dir() == vethuq.Paths.data_root() / "policy"
 
 
+@pytest.mark.basic
 class TestCurrentAndRefresh:
     def test_before_anything_is_fetched_the_baseline_applies(self, client):
         result = client.policy.current()

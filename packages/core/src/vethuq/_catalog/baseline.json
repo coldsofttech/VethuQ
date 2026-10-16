@@ -1,0 +1,1112 @@
+{
+  "schema_version": 1,
+  "sequence": 1,
+  "issued_at": "1970-01-01T00:00:00Z",
+  "kid": "baseline",
+  "addons": [
+    {
+      "id": "autoscale",
+      "label": "Autoscale",
+      "summary": "Scale workers to your machine automatically.",
+      "kind": "autoscale",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "backup",
+      "label": "Backup",
+      "summary": "Back up your VethuQ data.",
+      "kind": "backup",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "bmp",
+      "label": "BMP",
+      "summary": "Read BMP files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "cs",
+      "label": "C#",
+      "summary": "Read C# files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "css",
+      "label": "CSS",
+      "summary": "Read CSS files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "csv",
+      "label": "CSV",
+      "summary": "Read CSV files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "data"
+      ]
+    },
+    {
+      "id": "doc",
+      "label": "Word 97-2003",
+      "summary": "Read Word 97-2003 files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "docx",
+      "label": "Word",
+      "summary": "Read Word files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "dot",
+      "label": "Word 97-2003 template",
+      "summary": "Read Word 97-2003 template files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "dotx",
+      "label": "Word template",
+      "summary": "Read Word template files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "eml",
+      "label": "Email (EML)",
+      "summary": "Read Email (EML) files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "email",
+        "office"
+      ]
+    },
+    {
+      "id": "gif",
+      "label": "GIF",
+      "summary": "Read GIF files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "go",
+      "label": "Go",
+      "summary": "Read Go files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "heic",
+      "label": "HEIC",
+      "summary": "Read HEIC files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "html",
+      "label": "HTML",
+      "summary": "Read HTML files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "ini",
+      "label": "INI",
+      "summary": "Read INI files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "ipynb",
+      "label": "Jupyter notebooks",
+      "summary": "Read Jupyter notebooks files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "java",
+      "label": "Java",
+      "summary": "Read Java files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "jp2",
+      "label": "JPEG 2000",
+      "summary": "Read JPEG 2000 files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "jpg",
+      "label": "JPG",
+      "summary": "Read JPG files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "js",
+      "label": "JavaScript",
+      "summary": "Read JavaScript files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "json",
+      "label": "JSON",
+      "summary": "Read JSON files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "data",
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "jsx",
+      "label": "JSX",
+      "summary": "Read JSX files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "log",
+      "label": "Log",
+      "summary": "Read Log files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "markdown",
+      "label": "Markdown",
+      "summary": "Read Markdown files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "mhtml",
+      "label": "MHTML",
+      "summary": "Read MHTML files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "msg",
+      "label": "Outlook messages",
+      "summary": "Read Outlook messages files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "email",
+        "office"
+      ]
+    },
+    {
+      "id": "ndjson",
+      "label": "NDJSON",
+      "summary": "Read NDJSON files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "data"
+      ]
+    },
+    {
+      "id": "odp",
+      "label": "OpenDocument presentation",
+      "summary": "Read OpenDocument presentation files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "ods",
+      "label": "OpenDocument spreadsheet",
+      "summary": "Read OpenDocument spreadsheet files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "odt",
+      "label": "OpenDocument text",
+      "summary": "Read OpenDocument text files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "otp",
+      "label": "OpenDocument presentation template",
+      "summary": "Read OpenDocument presentation template files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "ots",
+      "label": "OpenDocument spreadsheet template",
+      "summary": "Read OpenDocument spreadsheet template files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "ott",
+      "label": "OpenDocument text template",
+      "summary": "Read OpenDocument text template files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "open-office"
+      ]
+    },
+    {
+      "id": "parquet",
+      "label": "Parquet",
+      "summary": "Read Parquet files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "data"
+      ]
+    },
+    {
+      "id": "pdf",
+      "label": "PDF",
+      "summary": "Read PDF files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available"
+    },
+    {
+      "id": "php",
+      "label": "PHP",
+      "summary": "Read PHP files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "png",
+      "label": "PNG",
+      "summary": "Read PNG files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "pps",
+      "label": "PowerPoint show 97-2003",
+      "summary": "Read PowerPoint show 97-2003 files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "ppsx",
+      "label": "PowerPoint show",
+      "summary": "Read PowerPoint show files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "ppt",
+      "label": "PowerPoint 97-2003",
+      "summary": "Read PowerPoint 97-2003 files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "pptm",
+      "label": "PowerPoint macro-enabled",
+      "summary": "Read PowerPoint macro-enabled files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "pptx",
+      "label": "PowerPoint",
+      "summary": "Read PowerPoint files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "ps1",
+      "label": "PowerShell",
+      "summary": "Read PowerShell files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "py",
+      "label": "Python",
+      "summary": "Read Python files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "rb",
+      "label": "Ruby",
+      "summary": "Read Ruby files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "rs",
+      "label": "Rust",
+      "summary": "Read Rust files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "rss",
+      "label": "RSS and Atom",
+      "summary": "Read RSS and Atom files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "rst",
+      "label": "RST",
+      "summary": "Read RST files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "rtf",
+      "label": "RTF",
+      "summary": "Read RTF files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "sh",
+      "label": "Shell",
+      "summary": "Read Shell files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "sql",
+      "label": "SQL",
+      "summary": "Read SQL files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "svg",
+      "label": "SVG",
+      "summary": "Read SVG files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "image",
+        "web"
+      ]
+    },
+    {
+      "id": "tiff",
+      "label": "TIFF",
+      "summary": "Read TIFF files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "toml",
+      "label": "TOML",
+      "summary": "Read TOML files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "ts",
+      "label": "TypeScript",
+      "summary": "Read TypeScript files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "tsv",
+      "label": "TSV",
+      "summary": "Read TSV files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "data"
+      ]
+    },
+    {
+      "id": "tsx",
+      "label": "TSX",
+      "summary": "Read TSX files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "txt",
+      "label": "Text",
+      "summary": "Read Text files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available"
+    },
+    {
+      "id": "webp",
+      "label": "WebP",
+      "summary": "Read WebP files.",
+      "kind": "file-type",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "image"
+      ]
+    },
+    {
+      "id": "xls",
+      "label": "Excel 97-2003",
+      "summary": "Read Excel 97-2003 files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "xlsb",
+      "label": "Excel binary",
+      "summary": "Read Excel binary files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "xlsm",
+      "label": "Excel macro-enabled",
+      "summary": "Read Excel macro-enabled files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "xlsx",
+      "label": "Excel",
+      "summary": "Read Excel files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "office"
+      ]
+    },
+    {
+      "id": "xml",
+      "label": "XML",
+      "summary": "Read XML files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer",
+        "web"
+      ]
+    },
+    {
+      "id": "yaml",
+      "label": "YAML",
+      "summary": "Read YAML files.",
+      "kind": "file-type",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "developer"
+      ]
+    },
+    {
+      "id": "english",
+      "label": "English",
+      "summary": "English, the default OCR language.",
+      "kind": "language",
+      "licence": "free",
+      "status": "available"
+    },
+    {
+      "id": "french",
+      "label": "French",
+      "summary": "French OCR language.",
+      "kind": "language",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "hindi",
+      "label": "Hindi",
+      "summary": "Hindi OCR language.",
+      "kind": "language",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "spanish",
+      "label": "Spanish",
+      "summary": "Spanish OCR language.",
+      "kind": "language",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "telugu",
+      "label": "Telugu",
+      "summary": "Telugu OCR language.",
+      "kind": "language",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "urdu",
+      "label": "Urdu",
+      "summary": "Urdu OCR language.",
+      "kind": "language",
+      "licence": "licensed",
+      "status": "available"
+    },
+    {
+      "id": "paddle",
+      "label": "PaddleOCR",
+      "summary": "PaddleOCR reading of scanned pages.",
+      "kind": "ocr",
+      "licence": "free",
+      "status": "available"
+    },
+    {
+      "id": "ocr-deep",
+      "label": "Deep OCR",
+      "summary": "Deep OCR reading of scanned pages.",
+      "kind": "ocr",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "deep-scan"
+      ]
+    },
+    {
+      "id": "ocr-moderate",
+      "label": "Moderate OCR",
+      "summary": "Moderate OCR reading of scanned pages.",
+      "kind": "ocr",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "deep-scan"
+      ]
+    },
+    {
+      "id": "ocr-quick",
+      "label": "Quick OCR",
+      "summary": "Quick OCR reading of scanned pages.",
+      "kind": "ocr",
+      "licence": "free",
+      "status": "available",
+      "bundles": [
+        "deep-scan"
+      ]
+    },
+    {
+      "id": "exact",
+      "label": "Exact",
+      "summary": "Exact search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "full-text",
+      "label": "Full text",
+      "summary": "Full text search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "fuzzy",
+      "label": "Fuzzy",
+      "summary": "Fuzzy search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "lexical",
+      "label": "Lexical",
+      "summary": "Lexical search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "like",
+      "label": "Like",
+      "summary": "Like search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "noise-fuzzy",
+      "label": "Noise fuzzy",
+      "summary": "Noise fuzzy search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "proximity",
+      "label": "Proximity",
+      "summary": "Proximity search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "semantic",
+      "label": "Semantic",
+      "summary": "Semantic search.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "case",
+      "label": "Case",
+      "summary": "Case matching for searches.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "leetspeak",
+      "label": "Leetspeak",
+      "summary": "Leetspeak matching for searches.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "unicode",
+      "label": "Unicode",
+      "summary": "Unicode matching for searches.",
+      "kind": "search-engine",
+      "licence": "licensed",
+      "status": "available",
+      "bundles": [
+        "search"
+      ]
+    },
+    {
+      "id": "github",
+      "label": "GitHub tier",
+      "summary": "GitHub tier: OCR in your own GitHub account.",
+      "kind": "tier",
+      "licence": "free",
+      "status": "available"
+    }
+  ],
+  "bundles": [
+    {
+      "id": "data",
+      "label": "Data",
+      "summary": "The CSV, TSV, Parquet, JSON and NDJSON file types.",
+      "addons": [
+        "csv",
+        "json",
+        "ndjson",
+        "parquet",
+        "tsv"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "deep-scan",
+      "label": "Deep scan",
+      "summary": "The three OCR phases (quick, moderate, deep).",
+      "addons": [
+        "ocr-deep",
+        "ocr-moderate",
+        "ocr-quick"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "developer",
+      "label": "Developer",
+      "summary": "The config, data, source code, Markdown and web file types.",
+      "addons": [
+        "cs",
+        "css",
+        "go",
+        "html",
+        "ini",
+        "ipynb",
+        "java",
+        "js",
+        "json",
+        "jsx",
+        "log",
+        "markdown",
+        "mhtml",
+        "php",
+        "ps1",
+        "py",
+        "rb",
+        "rs",
+        "rss",
+        "rst",
+        "sh",
+        "sql",
+        "svg",
+        "toml",
+        "ts",
+        "tsx",
+        "xml",
+        "yaml"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "email",
+      "label": "Email",
+      "summary": "The email file types (EML, MSG).",
+      "addons": [
+        "eml",
+        "msg"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "image",
+      "label": "Image",
+      "summary": "The image file types (PNG, JPG, TIFF).",
+      "addons": [
+        "bmp",
+        "gif",
+        "heic",
+        "jp2",
+        "jpg",
+        "png",
+        "svg",
+        "tiff",
+        "webp"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "office",
+      "label": "Office",
+      "summary": "The office bundle, Word, Excel, PowerPoint, RTF and email file types.",
+      "addons": [
+        "doc",
+        "docx",
+        "dot",
+        "dotx",
+        "eml",
+        "msg",
+        "pps",
+        "ppsx",
+        "ppt",
+        "pptm",
+        "pptx",
+        "rtf",
+        "xls",
+        "xlsb",
+        "xlsm",
+        "xlsx"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "open-office",
+      "label": "OpenDocument",
+      "summary": "The OpenDocument file types (ODT, OTT, ODS, OTS, ODP, OTP).",
+      "addons": [
+        "odp",
+        "ods",
+        "odt",
+        "otp",
+        "ots",
+        "ott"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "search",
+      "label": "Search",
+      "summary": "Every search engine and normalizer.",
+      "addons": [
+        "case",
+        "exact",
+        "full-text",
+        "fuzzy",
+        "leetspeak",
+        "lexical",
+        "like",
+        "noise-fuzzy",
+        "proximity",
+        "semantic",
+        "unicode"
+      ],
+      "status": "available"
+    },
+    {
+      "id": "web",
+      "label": "Web",
+      "summary": "The web file types (HTML, MHTML, XML, RSS, SVG, CSS, JS, JSON).",
+      "addons": [
+        "css",
+        "html",
+        "json",
+        "mhtml",
+        "rss",
+        "svg",
+        "xml"
+      ],
+      "status": "available"
+    }
+  ]
+}

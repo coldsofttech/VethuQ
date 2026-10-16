@@ -37,6 +37,7 @@ def service(vethuq):
     return SourcesService(lambda: vethuq)
 
 
+@pytest.mark.basic
 class TestSources:
     def test_a_folder_and_a_file_are_added_with_their_type(self, service, library):
         folder = service.add(str(library / "library"))

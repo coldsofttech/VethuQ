@@ -25,15 +25,13 @@ from vethuq._errors.index import (
     _IndexNotRunningError,
     _IndexRunNotFoundError,
     _InvalidGrantError,
-    _InvalidLicenceError,
-    _LicenceError,
-    _LicenceRequestError,
     _SearchError,
     _SearchOptionError,
     _SearchQueryError,
     _SearchUnavailableError,
 )
 from vethuq._errors.language import _LanguageUnavailableError, _LastLanguageError
+from vethuq._errors.licence import _InvalidLicenceError, _LicenceError, _LicenceRequestError
 from vethuq._errors.logs import _InvalidLogRequestError, _LogError, _LogNotFoundError
 from vethuq._errors.settings import _InvalidSettingValueError, _SettingsError
 from vethuq._errors.sources import (

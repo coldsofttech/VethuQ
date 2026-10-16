@@ -183,7 +183,7 @@ class CatalogClient:
             return self._client
 
     def current(self) -> CatalogResult:
-        """The catalog to use now: the cached one, else an empty one. Makes no request."""
+        """The catalog to use now: the cached one, else the built-in baseline. Makes no request."""
         return self._catalog_client().current()
 
     def refresh(self, force: bool = False) -> CatalogResult:
@@ -269,7 +269,7 @@ class CatalogClient:
             )
         return found
 
-    def get(self, addon_id: str, language: str | None = None) -> CatalogEntry | None:
+    def get_addon(self, addon_id: str, language: str | None = None) -> CatalogEntry | None:
         """One add-on, or None if the catalog doesn't list it and it isn't installed."""
         return next((e for e in self.addons(language) if e.id == addon_id), None)
 

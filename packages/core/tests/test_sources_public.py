@@ -7,6 +7,8 @@ import pytest
 import vethuq
 from vethuq import errors
 
+pytestmark = pytest.mark.basic
+
 
 class TestSource:
     def test_an_unsaved_source_only_has_what_was_described(self):

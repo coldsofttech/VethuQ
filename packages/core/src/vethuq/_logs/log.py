@@ -346,8 +346,11 @@ class _Log:
             entries = cls.tail(
                 db_path, lines=lines, day=day, level=level, contains=contains, order=order
             )
+        target = Path(path)
+        if not target.suffix:
+            target = target.with_suffix(".log")
         text = "\n".join(entry.raw for entry in entries)
-        Path(path).write_text(text + "\n" if entries else "", encoding="utf-8")
+        target.write_text(text + "\n" if entries else "", encoding="utf-8")
         return len(entries)
 
 

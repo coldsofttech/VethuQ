@@ -283,7 +283,7 @@ class Licences:
                 for bundle in bundles:
                     members.setdefault(bundle, set()).add(addon_id)
         with contextlib.suppress(Exception):  # without a catalog only the add-ons' own word is used
-            for entry in self._addons.bundles():
+            for entry in self._addons._catalog_client().bundles():  # noqa: SLF001
                 members.setdefault(entry.id, set()).update(entry.addons)
         return {bundle: tuple(sorted(ids)) for bundle, ids in members.items()}
 
@@ -399,7 +399,8 @@ class Licences:
             headers["Authorization"] = f"Bearer {token}"
         url = f"https://api.github.com/{'users/' + login if login else 'user'}"
         try:
-            with self._urlopen(urllib.request.Request(url, headers=headers), timeout=15) as reply:
+            request = urllib.request.Request(url, headers=headers)  # noqa: S310 - fixed https URL
+            with self._urlopen(request, timeout=15) as reply:  # noqa: S310
                 found = json.loads(reply.read().decode("utf-8")).get("id")
         except urllib.error.HTTPError as error:
             raise _LicenceRequestError(

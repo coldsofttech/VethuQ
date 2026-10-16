@@ -74,6 +74,7 @@ def pages(client, name=None):
         return [(p.page_number, p.text, p.source.value, round(p.confidence, 2)) for p in rows]
 
 
+@pytest.mark.basic
 class TestRun:
     def test_a_native_pdf_is_indexed_without_ocr(self, client, root):
         write(root, "a.pdf", fp.native_page("one two three four five six"), fp.native_page())
@@ -184,6 +185,7 @@ class TestRun:
         assert files(client, source)["n.docx"].status is FileStatus.UNSUPPORTED
 
 
+@pytest.mark.basic
 class TestChanges:
     def test_a_modified_file_is_read_again(self, client, root):
         path = write(root, "a.pdf", fp.native_page("first version of the words here"))

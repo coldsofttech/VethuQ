@@ -6,6 +6,7 @@ import vethuq
 from vethuq import errors
 
 
+@pytest.mark.basic
 class TestSettings:
     @pytest.fixture
     def client(self, tmp_path):

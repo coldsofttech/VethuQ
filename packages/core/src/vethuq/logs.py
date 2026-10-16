@@ -210,7 +210,8 @@ class Log:
         order: SortOrder | str = SortOrder.ASC,
     ) -> int:
         """Write the selected entries to `path` as plain text, one entry per line, and return
-        how many were written. With `lines`, only the most recent that many; otherwise all."""
+        how many were written. With `lines`, only the most recent that many; otherwise all.
+        A `path` with no extension gets `.log` added."""
         return self._log.export(
             self._db_path, path, lines=lines, day=day, level=level, contains=contains, order=order
         )

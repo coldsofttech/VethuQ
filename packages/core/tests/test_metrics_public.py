@@ -439,7 +439,7 @@ class TestConsent:
 
     def test_the_first_run_question_is_asked_once(self, client):
         assert client.metrics.status().prompted is False
-        client.metrics.dismiss_prompt()
+        client._metrics_engine().dismiss_prompt()  # noqa: SLF001
         assert client.metrics.status().prompted is True and not client.metrics.status().opted_in
 
 

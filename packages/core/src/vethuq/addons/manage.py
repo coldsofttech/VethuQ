@@ -13,7 +13,7 @@ from vethuq.enums import AddonStatus
 from vethuq_addon_api import CliGroup
 
 if TYPE_CHECKING:
-    from vethuq.catalog import BundleEntry, CatalogClient, CatalogEntry
+    from vethuq.catalog import CatalogClient, CatalogEntry
 
 __all__ = ["AddonInfo", "AddonSettings", "Addons"]
 
@@ -100,10 +100,6 @@ class Addons:
         """Every add-on that exists, installed or not, with its description and where it stands on
         this computer (see `VethuQ().catalog`). Makes no request."""
         return self._catalog_client().addons(language)
-
-    def bundles(self, language: str | None = None) -> list[BundleEntry]:
-        """Every bundle of add-ons, with which of them are installed here."""
-        return self._catalog_client().bundles(language)
 
     def _catalog_client(self) -> CatalogClient:
         if self._catalog is None:

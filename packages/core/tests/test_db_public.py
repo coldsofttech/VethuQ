@@ -27,6 +27,7 @@ def _damage(db_path, table="sources"):
         handle.write(b"\x00" * page_size)
 
 
+@pytest.mark.basic
 class TestDbAccess:
     def test_is_on_the_client_and_a_module(self, client):
         assert isinstance(client.db, vethuq.db.Db)
@@ -46,6 +47,7 @@ class TestDbAccess:
         assert not (tmp_path / "db").exists()
 
 
+@pytest.mark.basic
 class TestIntegrityCheck:
     def test_a_healthy_database_passes(self, client):
         result = client.db.integrity_check()

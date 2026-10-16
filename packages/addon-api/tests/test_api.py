@@ -16,6 +16,8 @@ from vethuq_addon_api import (
 )
 from vethuq_addon_api.testing import FakeHost
 
+pytestmark = pytest.mark.basic
+
 
 class TestManifest:
     def test_supports_the_current_api(self):

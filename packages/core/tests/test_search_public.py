@@ -101,6 +101,7 @@ class TestEnginesAndNormalizers:
         assert {e.id for e in client.search.engines() if e.selected} == {"like"}
 
 
+@pytest.mark.basic
 class TestRunning:
     def test_like_finds_a_substring_ignoring_case(self, indexed):
         result = indexed.search.run("MUS", engine="like")
@@ -304,6 +305,7 @@ class TestEnginesChoice:
             indexed.search.run("x", engine="picky")
 
 
+@pytest.mark.basic
 class TestResults:
     def test_sorting_and_paging(self, indexed):
         everything = indexed.search.run("e", engine="like")
@@ -613,9 +615,9 @@ class TestLocation:
         assert ("data.csv", 2, 8) in found  # a CSV row; the column counts in "farm | wheat"
 
     def test_a_pdf_match_has_a_page_and_no_line(self, texts):
-        (pdf,) = [
+        (pdf,) = (
             m for m in texts.search.run("wheat", engine="like") if m.file_name == "report.pdf"
-        ]
+        )
         assert (pdf.page_number, pdf.line, pdf.column) == (1, None, None)
         assert "line" in pdf.to_dict() and "column" in pdf.to_dict()
 
@@ -667,9 +669,9 @@ class TestPlacedMatches:
         return client
 
     def test_a_match_on_a_scanned_page_has_its_box(self, scanned):
-        (match,) = [
+        (match,) = (
             m for m in scanned.search.run("wheat", engine="like") if m.file_name == "scan.pdf"
-        ]
+        )
         assert match.boxes is not None and len(match.boxes) == 1
         x0, y0, x1, y1 = match.boxes[0]
         # The second line of the page: the fake engine puts the lines one under another.
@@ -681,16 +683,16 @@ class TestPlacedMatches:
         assert match.to_dict()["boxes"] == [list(match.boxes[0])] or match.to_dict()["boxes"]
 
     def test_a_page_with_a_text_layer_has_none(self, scanned):
-        (match,) = [
+        (match,) = (
             m for m in scanned.search.run("wheat", engine="like") if m.file_name == "plain.pdf"
-        ]
+        )
         assert match.boxes is None
 
     def test_reading_the_file_again_replaces_the_boxes(self, scanned, tmp_path):
         folder = tmp_path / "scans"
         write(folder, "scan.pdf", fp.scanned_page("only one wheat line now"))
         assert scanned.index.run().status.value == "completed"
-        (match,) = [
+        (match,) = (
             m for m in scanned.search.run("wheat", engine="like") if m.file_name == "scan.pdf"
-        ]
+        )
         assert match.boxes is not None and round(match.boxes[0][1], 2) == 0.1

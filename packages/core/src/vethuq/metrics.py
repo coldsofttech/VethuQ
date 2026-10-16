@@ -113,10 +113,6 @@ class Metrics:
         self._metrics.forget_unsent()
         return self.status()
 
-    def dismiss_prompt(self) -> None:
-        """The first-run question has been answered with "not now": don't ask again."""
-        self._metrics.dismiss_prompt()
-
     def rotate_id(self) -> str:
         """A new random install id, so what is sent from now on isn't linked to what was sent
         before. Data already at the collector stays under the old id (see `delete_data`)."""

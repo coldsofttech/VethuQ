@@ -79,5 +79,34 @@ class TestCleanup:
 
         assert self._existing(tmp_path) == []
 
+    def test_removes_pycache_folders_at_any_depth(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        for where in ("", "pkg", "pkg/sub"):
+            folder = tmp_path / where / "__pycache__"
+            folder.mkdir(parents=True)
+            (folder / "m.pyc").write_text("x")
+        (tmp_path / "pkg" / "m.py").write_text("keep")
+
+        Cleanup(root=tmp_path, targets=()).run()
+
+        assert not list(tmp_path.rglob("__pycache__"))
+        assert (tmp_path / "pkg" / "m.py").read_text() == "keep"
+        assert capsys.readouterr().out.splitlines() == ["removed 3 __pycache__ folder(s)"]
+
+    def test_leaves_pycache_inside_the_virtual_environment_and_node_modules(
+        self, tmp_path: Path
+    ) -> None:
+        kept = [
+            tmp_path / ".venv" / "lib" / "__pycache__",
+            tmp_path / "node_modules" / "__pycache__",
+        ]
+        for folder in kept:
+            folder.mkdir(parents=True)
+
+        Cleanup(root=tmp_path, targets=()).run()
+
+        assert all(folder.is_dir() for folder in kept)
+
     def test_default_root_is_repo_root(self) -> None:
         assert (Cleanup.REPO_ROOT / "scripts" / "dev" / "cleanup.py").is_file()

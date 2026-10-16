@@ -6,6 +6,8 @@ import pytest
 
 import vethuq
 
+pytestmark = pytest.mark.basic
+
 
 class TestPublicApi:
     def test_app_name_and_tagline_come_from_the_brand(self):

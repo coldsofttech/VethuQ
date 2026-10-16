@@ -8,6 +8,8 @@ import pytest
 import vethuq
 from vethuq._db import _Schema
 
+pytestmark = pytest.mark.basic
+
 
 class TestVersion:
     def test_fields_and_defaults(self):

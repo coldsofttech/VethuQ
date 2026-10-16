@@ -72,6 +72,7 @@ def stored(client, addon_id):
     return client.addons.settings(addon_id).get("licence")
 
 
+@pytest.mark.basic
 class TestInstall:
     def test_one_paste_stores_the_token_on_every_installed_addon_it_lists(
         self, client, entitlements
@@ -151,6 +152,7 @@ class TestFile:
             client.licences.install_file(huge)
 
 
+@pytest.mark.basic
 class TestShow:
     def test_installed_licences_are_grouped_by_token(self, client, entitlements):
         client.licences.install("VQLIC1.t")
@@ -354,6 +356,19 @@ class TestBundleLicences:
     """One key for a bundle: stored on every add-on that says it is in the bundle."""
 
     @pytest.fixture(autouse=True)
+    def empty_baseline(self, monkeypatch):
+        """These tests name the bundles through the add-ons, so the built-in catalog is out."""
+        from datetime import UTC, datetime
+
+        from vethuq._catalog import Catalog, _CatalogClient
+
+        monkeypatch.setattr(
+            _CatalogClient,
+            "_baseline",
+            staticmethod(lambda: Catalog(1, 0, datetime(1970, 1, 1, tzinfo=UTC), "baseline")),
+        )
+
+    @pytest.fixture(autouse=True)
     def declared(self, monkeypatch):
         from vethuq.addons.manage import Addons
 
@@ -426,10 +441,11 @@ class TestBundleLicences:
 
     def test_a_bundle_with_nothing_licensed_in_it_is_free(self, client, entitlements, monkeypatch):
         from vethuq.addons.manage import Addons
+        from vethuq.catalog import CatalogClient
 
         monkeypatch.setattr(Addons, "licence_bundles", lambda self: {})
         monkeypatch.setattr(
-            Addons,
+            CatalogClient,
             "bundles",
             lambda self, language=None: [
                 SimpleNamespace(id="images", addons=("png", "jpg")),

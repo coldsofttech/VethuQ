@@ -1,4 +1,4 @@
-"""The catalog client: fetch, verify, cache, and fall back to an empty catalog.
+"""The catalog client: fetch, verify, cache, and fall back to the built-in baseline catalog.
 
 It works like the policy client and shares its parts (keys, mirrors, fetcher, envelope check), with
 its own cached file and its own sequence counter. Nothing here runs on import or when a client is
@@ -86,7 +86,7 @@ class _CatalogClient:
         self._lock = threading.RLock()
 
     def current(self) -> CatalogResult:
-        """The catalog to use now: the cached one, else an empty one. No network."""
+        """The catalog to use now: the cached one, else the built-in baseline. No network."""
         return self._describe(PolicyStatus.CURRENT, self._store.read_state())
 
     def refresh(self, force: bool = False) -> CatalogResult:
@@ -239,10 +239,19 @@ class _CatalogClient:
         )
         return CatalogResult(catalog, source, status, detail, state.update_required)
 
+    BASELINE_FILENAME = "baseline.json"
+
     @staticmethod
     def _baseline() -> Catalog:
-        """No catalog yet: nothing is listed beyond what is installed."""
-        return Catalog(1, 0, datetime(1970, 1, 1, tzinfo=UTC), "baseline")
+        """No catalog fetched yet: the add-ons and bundles that shipped with this version.
+        Sequence 0, so any signed catalog supersedes it."""
+        try:
+            raw = (Path(__file__).parent / _CatalogClient.BASELINE_FILENAME).read_text(
+                encoding="utf-8"
+            )
+            return replace(Catalog.from_payload(json.loads(raw)), sequence=0)
+        except (OSError, ValueError, _PolicyError):  # an unreadable baseline just lists nothing
+            return Catalog(1, 0, datetime(1970, 1, 1, tzinfo=UTC), "baseline")
 
     def _save(self, state: _PolicyState) -> None:
         try:

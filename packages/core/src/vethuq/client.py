@@ -23,6 +23,7 @@ from vethuq._settings import _FileTypeSettings, _OcrSettings, _SearchSettings
 from vethuq._tiers import _LocalExecutor, _Tiers
 from vethuq._version import _Version
 from vethuq.addons import Addons
+from vethuq.bundles import Bundles
 from vethuq.catalog import CatalogClient
 from vethuq.credits import Credits
 from vethuq.db import Db
@@ -71,6 +72,7 @@ class VethuQ:
         self._checks: Db | None = None
         self._addon_manager: _AddonManager | None = None
         self._addons: Addons | None = None
+        self._bundles: Bundles | None = None
         self._licences: Licences | None = None
         self._file_types: FileTypes | None = None
         self._index: Index | None = None
@@ -427,6 +429,14 @@ class VethuQ:
         return self._addons
 
     @property
+    def bundles(self) -> Bundles:
+        """The bundles of add-ons: what is listed, what is installed of each, turning one on or
+        off, and installing a licence for one. It doesn't open the database."""
+        if self._bundles is None:
+            self._bundles = Bundles(self.addons, lambda: self.catalog)
+        return self._bundles
+
+    @property
     def licences(self) -> Licences:
         """Installing licences (one key for every add-on it lists) and asking for them. It doesn't
         open the database."""
@@ -455,6 +465,7 @@ class VethuQ:
             self._updates = None
             self._checks = None
             self._addons = None
+            self._bundles = None
             self._licences = None
             self._file_types = None
             self._index = None

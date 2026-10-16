@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
 from api_support import ORIGIN, TOKEN
+
+pytestmark = pytest.mark.basic
 
 
 class TestSignIn:

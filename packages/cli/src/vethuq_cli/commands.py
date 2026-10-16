@@ -1032,7 +1032,7 @@ def catalog_bundles(language: Language = None) -> None:
 def catalog_show(item: str, language: Language = None) -> None:
     """Everything about one add-on or bundle, including how to ask for it."""
     found = client().catalog
-    entry = found.get(item, language) or found.get_bundle(item, language)
+    entry = found.get_addon(item, language) or found.get_bundle(item, language)
     if entry is None:
         raise typer.BadParameter(f"{item!r} is not an add-on or a bundle in the catalog.")
     if State.json:

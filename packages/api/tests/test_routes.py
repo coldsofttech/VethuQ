@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
 from api_support import ORIGIN
 
 from vethuq_api import allow_host, create_app
 from vethuq_api.core import VethuQCore
+
+pytestmark = pytest.mark.basic
 
 
 class TestPlatform:

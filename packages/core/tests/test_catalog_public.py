@@ -71,13 +71,14 @@ class TestNothingHappensUntilAsked:
 
         assert served["calls"] == 0
 
-    def test_before_a_catalog_only_what_is_installed_is_listed(self, client, monkeypatch):
+    def test_before_a_catalog_the_built_in_baseline_is_listed(self, client, monkeypatch):
         installed(client, monkeypatch, info("pdf"), info("csv"))
 
-        entries = client.catalog.addons()
+        entries = {e.id: e for e in client.catalog.addons()}
 
-        assert [e.id for e in entries] == ["pdf", "csv"] and not any(e.listed for e in entries)
-        assert client.catalog.bundles() == []
+        assert entries["pdf"].listed and entries["pdf"].installed_version
+        assert entries["docx"].listed and entries["docx"].installed_version is None
+        assert "office" in {b.id for b in client.catalog.bundles()}
 
     def test_the_cache_folder_is_beside_the_policys(self, client):
         assert client.catalog.directory == Path(client.policy.directory)
@@ -124,6 +125,7 @@ class TestRefresh:
         assert client.catalog.current().catalog.sequence == 5
 
 
+@pytest.mark.basic
 class TestMergedWithWhatIsInstalled:
     def test_each_add_on_says_where_it_stands(self, client, served, monkeypatch):
         installed(client, monkeypatch, info("pdf", version="2.1.0"))
@@ -153,7 +155,7 @@ class TestMergedWithWhatIsInstalled:
         installed(client, monkeypatch, info("docx", status, disabled))
         load(client, served)
 
-        assert client.catalog.get("docx").state is state
+        assert client.catalog.get_addon("docx").state is state
 
     def test_an_installed_add_on_the_catalog_does_not_list_is_still_shown(
         self, client, served, monkeypatch
@@ -177,8 +179,8 @@ class TestMergedWithWhatIsInstalled:
     def test_text_comes_in_the_language_asked_for(self, client, served):
         load(client, served)
 
-        assert client.catalog.get("docx", "es").label == "Documentos de Word"
-        assert client.catalog.get("docx").label == "Word documents"
+        assert client.catalog.get_addon("docx", "es").label == "Documentos de Word"
+        assert client.catalog.get_addon("docx").label == "Word documents"
 
     def test_an_add_on_needing_a_newer_vethuq_says_so(self, client, monkeypatch):
         from vethuq import catalog as catalog_module
@@ -205,17 +207,20 @@ class TestMergedWithWhatIsInstalled:
         installed(client, monkeypatch)
         load(client, served)
 
-        data = client.catalog.get("pdf").to_dict()
+        data = client.catalog.get_addon("pdf").to_dict()
 
         assert data["state"] == "not_installed" and data["installed"] is False
-        assert json.loads(client.catalog.get("pdf").to_json()) == data
+        assert json.loads(client.catalog.get_addon("pdf").to_json()) == data
 
     def test_an_unknown_id_is_none(self, client, served):
         load(client, served)
 
-        assert client.catalog.get("nope") is None and client.catalog.get_bundle("nope") is None
+        assert (
+            client.catalog.get_addon("nope") is None and client.catalog.get_bundle("nope") is None
+        )
 
 
+@pytest.mark.basic
 class TestBundles:
     def test_a_bundle_says_which_of_its_add_ons_are_installed(self, client, served, monkeypatch):
         load(client, served)
@@ -232,8 +237,7 @@ class TestBundles:
 
 
 class TestOnTheAddonsObject:
-    def test_addons_catalog_and_bundles_are_the_same_lists(self, client, served):
+    def test_addons_catalog_is_the_same_list(self, client, served):
         load(client, served)
 
         assert [e.id for e in client.addons.catalog()] == [e.id for e in client.catalog.addons()]
-        assert [b.id for b in client.addons.bundles("es")] == ["office"]
