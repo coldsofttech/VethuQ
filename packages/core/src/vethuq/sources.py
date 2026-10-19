@@ -494,19 +494,25 @@ class Sources:
     def export_files(
         self,
         source: Source | int | str | Path,
-        files: Sequence[SourceFile],
-        output: str | Path,
+        files: Sequence[SourceFile] | None = None,
+        output: str | Path = "files",
         format: ExportFormat | str | None = None,
     ) -> Path:
-        """Write the files of a source (what `list_files()` returned) to a file and return its path.
+        """Write the files of a source to a file and return its path.
 
-        Files listed with `detailed=True` carry where each is in indexing, and the export then
-        shows it (status, type, pages, confidence, band, languages, duplicates, errors). `format`
-        and the errors are as in `export`. Raises `SourceNotFoundError` if `source` isn't one.
+        `files` are the ones to write (what `list_files()` returned); left out, every file of the
+        source is listed with `detailed=True`, as the source is now. Files listed with
+        `detailed=True` carry where each is in indexing, and the export then shows it (status,
+        type, pages, confidence, band, languages, duplicates, errors). `format` and the errors
+        are as in `export`, and an `output` without an extension gets the format's. Raises
+        `SourceNotFoundError` if `source` isn't one and `SourcePathError` if its path is no
+        longer on disk (when `files` is left out).
         """
         if not isinstance(source, Source):
             with self._database.session() as session:
                 source = Source._from_model(_Sources.get(session, source))
+        if files is None:
+            files = self.list_files(source.id, detailed=True)
         return self._exporter_().source_files(
             source, list(files), Path(output), self._format(format)
         )

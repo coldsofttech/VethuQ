@@ -11,6 +11,7 @@ All notable changes to the `VethuQ` package are documented here. The format is b
 - Until the signed catalog is fetched, `client.catalog` lists the add-ons and bundles that ship with this version.
 
 ### Changed
+- `client.sources.export` and `export_files` no longer need the sources or files: left out, they export every active source, or every file of the source listed with `detailed=True`. `export` has `include_removed`. An output name with no extension gets the format's.
 - `client.addons.bundles()` is now `client.bundles.list()`, and `client.catalog.get()` is now `get_addon()`.
 - Licence errors are now in `vethuq.errors.licence`.
 - `Metrics.dismiss_prompt()` is no longer public; the web app still dismisses the first-run question.

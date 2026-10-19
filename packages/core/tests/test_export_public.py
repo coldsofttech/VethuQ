@@ -448,6 +448,13 @@ class TestClientSourceExport:
         ).read_text("utf-8")
         assert "Confidence" not in text and "museum.pdf" in text and "sub/cafe.pdf" in text
 
+    def test_files_default_to_every_file_of_the_source(self, indexed, tmp_path):
+        source = indexed.sources.list()[0]
+        path = indexed.sources.export_files(source.id, output=tmp_path / "files", format="json")
+        payload = json.loads(path.read_text())
+        assert path.name == "files.json" and payload["detail"] is True
+        assert payload["file_count"] == len(indexed.sources.list_files(source.id))
+
     def test_files_with_detail(self, indexed, tmp_path):
         source = indexed.sources.list()[0]
         files = indexed.sources.list_files(source.id, detailed=True)
