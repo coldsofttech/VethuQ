@@ -57,6 +57,29 @@ transactions, so the cost is that writers queue.
   and the database file is `0666`, so any account can use it but not delete another's files. A
   folder that already exists keeps its permissions.
 
+## Uninstalling
+
+An ordinary uninstall never removes the device folder, so uninstalling and reinstalling keeps the
+licences and the credit ledger (and does not hand out a fresh allowance). Everything below is done
+by the command line's uninstaller (`Uninstall VethuQ CLI`, or `unins000.exe`):
+
+| What | Default uninstall | "Remove all VethuQ data" |
+|---|---|---|
+| Programs, `lib\` and installed add-ons (`add-ons\`) | removed | removed |
+| Background service | stopped and removed | stopped and removed |
+| Device folder (licences, credit ledger) | kept | removed |
+| This account's data folder: database, settings, logs, add-on data | kept | removed |
+| OCR models (`models\` in the data folder) | kept | removed |
+| Another account's data folder, a data folder moved with `VETHUQ_HOME` or `vethuq settings location set` | kept | kept: remove it by hand |
+
+"Remove all VethuQ data" is a question in the uninstaller, answered No unless chosen, with a warning
+that it deletes licences and credit history. A silent uninstall never asks: add `/REMOVEDATA=1`
+(`VethuQ-CLI-Setup` leaves `unins000.exe` in the install folder:
+`unins000.exe /VERYSILENT /REMOVEDATA=1`). Removing the device folder needs the rights it was
+created with: a per-user uninstall that cannot delete it says so, and the folder can be deleted as
+an administrator. The other installers' uninstallers (desktop app, interactive CLI, worker,
+background service) remove only their own program and have no such choice.
+
 ## What it is not
 
 It is a **deterrent, not a lock**. The folder is writable by every local account, so a user with the

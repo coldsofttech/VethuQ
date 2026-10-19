@@ -5,6 +5,9 @@ All notable changes to `vethuq-cli`.
 ## [Unreleased]
 
 ### Changed (installer)
+- Uninstalling the command line stops and removes the background service. The uninstaller asks "Also remove all VethuQ data?" (default No; silently `/REMOVEDATA=1`): by default licences, the credit ledger, the database, settings and OCR models are kept; Yes also removes them. The installer's closing text and `docs/troubleshooting.md` say so.
+
+### Changed (installer)
 - Start > Programs > VethuQ gets `Uninstall VethuQ CLI`.
 
 ### Added (bundle licences, the device folder)

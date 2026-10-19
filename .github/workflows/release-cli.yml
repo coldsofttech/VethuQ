@@ -114,6 +114,23 @@ jobs:
           Write-Host $engines
           foreach ($id in "like", "exact", "full-text") { if ($engines -notmatch $id) { throw "missing $id" } }
           if ($engines -match "fuzzy|lexical|proximity") { throw "an add-on that is not a default is installed" }
+          # Uninstalling keeps the licences, the ledger and the data; a reinstall finds them (#187).
+          $device = "$env:PROGRAMDATA\VethuQ"
+          $data = "$env:LOCALAPPDATA\VethuQ"
+          New-Item -ItemType Directory -Force "$device", "$data\models" | Out-Null
+          Set-Content "$device\device.db" "ledger"
+          Set-Content "$data\models\model.bin" "model"
+          Start-Process -Wait "$dir\unins000.exe" -ArgumentList "/VERYSILENT"
+          if (Test-Path "$dir\vethuq.exe") { throw "the uninstall left the program behind" }
+          if (-not (Test-Path "$device\device.db")) { throw "the uninstall removed the ledger" }
+          if (-not (Test-Path "$data\models\model.bin")) { throw "the uninstall removed the models" }
+          Start-Process -Wait dist\VethuQ-CLI-Setup.exe -ArgumentList "/VERYSILENT","/CURRENTUSER","/MERGETASKS=!addtopath","/DIR=$dir"
+          if (-not (Test-Path "$device\device.db")) { throw "the reinstall lost the ledger" }
+          # Full removal, silently.
+          Start-Process -Wait "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/REMOVEDATA=1"
+          if (Test-Path "$dir\vethuq.exe") { throw "the full removal left the program behind" }
+          if (Test-Path "$device") { throw "the full removal left the device folder" }
+          if (Test-Path "$data") { throw "the full removal left the data folder" }
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         working-directory: work/VethuQ

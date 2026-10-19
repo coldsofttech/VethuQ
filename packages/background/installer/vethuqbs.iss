@@ -94,59 +94,10 @@ Name: "{autoprograms}\VethuQ\Uninstall VethuQ Background Service"; Filename: "{u
 [Code]
 #include "..\..\..\installer\shared\into_cli_folder.iss"
 
-const
-  ServiceName = 'VethuQBackground';
+#include "..\..\..\installer\shared\background_service.iss"
 
 var
   ServiceWasRunning: Boolean;
-
-{ Runs sc.exe, elevated through UAC when Setup is not already running as administrator. Returns its
-  exit code, or -1 if it did not run. }
-function RunSc(const Params: string): Integer;
-var
-  ResultCode: Integer;
-  Sc: string;
-begin
-  Result := -1;
-  Sc := ExpandConstant('{sys}\sc.exe');
-  if IsAdminInstallMode then
-  begin
-    if Exec(Sc, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      Result := ResultCode;
-  end
-  else if ShellExec('runas', Sc, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    Result := ResultCode;
-end;
-
-{ sc.exe exits 0 when the service exists (a query needs no elevation). }
-function ServiceInstalled: Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec(ExpandConstant('{sys}\sc.exe'), 'query ' + ServiceName, '', SW_HIDE,
-    ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-end;
-
-function ServiceRunning: Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec(ExpandConstant('{cmd}'), '/C sc query ' + ServiceName + ' | find "RUNNING"', '',
-    SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-end;
-
-{ Waits (up to about 30 seconds) for the service to stop, so its program can be replaced or deleted. }
-procedure WaitUntilStopped;
-var
-  Waited: Integer;
-begin
-  Waited := 0;
-  while ServiceRunning and (Waited < 60) do
-  begin
-    Sleep(500);
-    Waited := Waited + 1;
-  end;
-end;
 
 function InitializeSetup: Boolean;
 begin
@@ -174,11 +125,7 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if (CurUninstallStep = usUninstall) and ServiceInstalled then
-  begin
-    { Before the files go: the service holds vethuqbs.exe open. }
-    RunSc('stop ' + ServiceName);
-    WaitUntilStopped;
-    RunSc('delete ' + ServiceName);
-  end;
+  { Before the files go: the service holds vethuqbs.exe open. }
+  if CurUninstallStep = usUninstall then
+    RemoveService;
 end;

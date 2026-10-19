@@ -1,0 +1,10 @@
+VethuQ is installed. Open a new terminal and run "vethuq --help".
+
+Uninstalling
+- Removing VethuQ keeps your licences, credit history, database, settings and downloaded OCR models,
+  so installing it again carries on where it left off (and does not start a fresh credit allowance).
+- Add-ons installed with VethuQ are removed with it. If the background service is installed, it is
+  stopped and removed.
+- To remove everything too, answer Yes to "Also remove all VethuQ data?" when uninstalling, or run
+  the uninstaller silently with /REMOVEDATA=1. That deletes your licences and credit history, and
+  this account's database, settings, logs, OCR models and add-on data; it cannot be undone.

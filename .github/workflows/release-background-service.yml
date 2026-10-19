@@ -121,6 +121,12 @@ jobs:
           Write-Host $help
           if ($help -notmatch "install") { throw "vethuq background is missing" }
           if (-not (Test-Path "$dir\vethuq.exe")) { throw "the command line is gone" }
+          # Uninstalling the command line stops and removes the service it runs (#187).
+          sc.exe create VethuQBackground binPath= "$dir\vethuqbs.exe --service --db $env:RUNNER_TEMP\vethuq-bs.db" start= demand | Out-Null
+          Start-Process -Wait "$dir\unins000.exe" -ArgumentList "/VERYSILENT"
+          sc.exe query VethuQBackground | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "the uninstall left the service behind" }
+          if (Test-Path "$dir\vethuqbs.exe") { throw "the uninstall left the service program behind" }
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
         working-directory: work/VethuQ

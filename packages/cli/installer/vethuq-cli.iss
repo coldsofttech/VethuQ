@@ -35,6 +35,7 @@ AppPublisher=coldsofttech
 AppPublisherURL=https://github.com/coldsofttech/VethuQ
 VersionInfoVersion={#MyAppNumericVersion}
 LicenseFile=..\..\..\installer\shared\LICENSE.rtf
+InfoAfterFile=AFTER_INSTALL.txt
 ; The VethuQ icon: the installer/uninstaller exe, Apps & Features, and the wizard's side and header images.
 SetupIconFile=..\..\..\installer\shared\vethuq.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -69,8 +70,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; The device folder: licences and the credit ledger, shared by every account on this computer and by
 ; the background service (see vethuq._paths.device). An all-users install creates it here, open to
 ; the Users group; a per-user install can't, so VethuQ makes it on first use if the account may, and
-; otherwise keeps those in the account's own data folder. Never removed by an uninstall, so
-; reinstalling does not hand out a fresh allowance.
+; otherwise keeps those in the account's own data folder. Never removed by an ordinary uninstall, so
+; reinstalling does not hand out a fresh allowance; only the uninstaller's "remove all VethuQ data"
+; choice (or /REMOVEDATA=1 when silent) removes it. See docs/device-folder.md.
 Name: "{commonappdata}\VethuQ"; Permissions: users-modify; Flags: uninsneveruninstall; Check: IsAdminInstallMode
 
 [Files]
@@ -102,6 +104,8 @@ Type: filesandordirs; Name: "{app}\lib"
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuq"" from any terminal)"; GroupDescription: "Command line:"; Flags: checkedonce
 
 [Code]
+#include "..\..\..\installer\shared\background_service.iss"
+
 const
   SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
   UserEnvironmentKey = 'Environment';
@@ -188,8 +192,51 @@ begin
     EnvAddPath(ExpandConstant('{app}'));
 end;
 
+var
+  RemoveAllData: Boolean;
+
+{ Whether to remove all VethuQ data too: asked once, default No. /REMOVEDATA=1 says yes without asking
+  (a silent uninstall never shows the question). }
+function InitializeUninstall: Boolean;
+begin
+  Result := True;
+  RemoveAllData := ExpandConstant('{param:REMOVEDATA|0}') = '1';
+  if not RemoveAllData then
+    RemoveAllData := SuppressibleMsgBox(
+      'Also remove all VethuQ data?' + #13#10 + #13#10 +
+      'This deletes your licences and credit history (shared by every account on this computer), ' +
+      'and this account''s database, settings, logs, downloaded OCR models and add-on data. ' +
+      'It cannot be undone, and reinstalling would start with a fresh allowance.' + #13#10 + #13#10 +
+      'Choose No to keep them: a later install picks up where this one left off.',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES;
+end;
+
+{ What "all VethuQ data" is: the device folder (licences and the credit ledger) and this account's data
+  folder (database, settings, logs, OCR models, add-on data). Another account's data folder, and a
+  data folder moved elsewhere on purpose (VETHUQ_HOME or `vethuq settings location set`), are left
+  alone. The device folder needs the rights it was created with: a per-user uninstall may not have them. }
+procedure RemoveVethuQData;
+var
+  Device: string;
+begin
+  Device := ExpandConstant('{commonappdata}\VethuQ');
+  DelTree(ExpandConstant('{localappdata}\VethuQ'), True, True, True);
+  DelTree(ExpandConstant('{userappdata}\VethuQ'), True, True, True);
+  if DirExists(Device) and not DelTree(Device, True, True, True) then
+    SuppressibleMsgBox(
+      'The licences and credit history in ' + Device + ' could not be removed. Uninstall VethuQ for ' +
+      'all users, or delete that folder as an administrator.',
+      mbInformation, MB_OK, IDOK);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    { The service runs vethuqbs.exe from this folder: stop and remove it before the files go. }
+    RemoveService;
     EnvRemovePath(ExpandConstant('{app}'));
+  end
+  else if (CurUninstallStep = usPostUninstall) and RemoveAllData then
+    RemoveVethuQData;
 end;
