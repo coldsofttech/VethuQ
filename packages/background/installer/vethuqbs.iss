@@ -81,6 +81,16 @@ Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 ; The `vethuq background` commands: the package and its dist-info (its entry point), staged by release.py.
 Source: "..\..\..\build\cli\background-plugin\*"; DestDir: "{app}\add-ons\background"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Icons]
+; The Start menu folder (Start > Programs > VethuQ) is shared with the other installers; each removes only its
+; own shortcuts. They run the `vethuq background` commands (add-ons\background) in a terminal that stays open so
+; the result can be read; start and stop ask for administrator permission themselves. The shortcut named after
+; the service shows its status, since running vethuqbs.exe by hand would start a second worker.
+Name: "{autoprograms}\VethuQ\VethuQ Background Service"; Filename: "{sys}\cmd.exe"; Parameters: "/K """"{app}\vethuq.exe"" background status"""; WorkingDir: "{app}"; IconFilename: "{app}\vethuq.ico"; Comment: "Show whether the background service is running"
+Name: "{autoprograms}\VethuQ\Start Background Service"; Filename: "{sys}\cmd.exe"; Parameters: "/K """"{app}\vethuq.exe"" background start"""; WorkingDir: "{app}"; IconFilename: "{app}\vethuq.ico"; Comment: "Start the background service"
+Name: "{autoprograms}\VethuQ\Stop Background Service"; Filename: "{sys}\cmd.exe"; Parameters: "/K """"{app}\vethuq.exe"" background stop"""; WorkingDir: "{app}"; IconFilename: "{app}\vethuq.ico"; Comment: "Stop the background service"
+Name: "{autoprograms}\VethuQ\Uninstall VethuQ Background Service"; Filename: "{uninstallexe}"; IconFilename: "{app}\vethuq.ico"; Comment: "Remove the background service"
+
 [Code]
 #include "..\..\..\installer\shared\into_cli_folder.iss"
 

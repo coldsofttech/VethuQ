@@ -11,3 +11,6 @@ for it. "vethuq background --help" lists the other commands (start, stop, pause,
 uninstall).
 
 Uninstalling this removes the service too.
+
+Start > Programs > VethuQ has shortcuts to show the service's status, start it, stop it and uninstall
+this (each opens a terminal; start and stop ask for administrator permission).

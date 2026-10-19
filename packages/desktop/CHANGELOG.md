@@ -4,6 +4,9 @@ All notable changes to `vethuq-desktop`.
 
 ## [Unreleased]
 
+### Changed (installer)
+- The Start menu entry is now Start > Programs > VethuQ > VethuQ, and the optional desktop shortcut is on by default.
+
 ### Added (discover)
 - Add-ons › Discover: every add-on and bundle that exists, with descriptions and where to ask for what is not installed; the Get more tab's "packs" are now "bundles".
 

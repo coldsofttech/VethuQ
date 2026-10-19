@@ -4,6 +4,9 @@ All notable changes to `vethuq-interactive-cli`.
 
 ## [Unreleased]
 
+### Changed (installer)
+- The Start menu entry is now Start > Programs > VethuQ > VethuQ Interactive CLI, and there is an optional desktop shortcut, on by default.
+
 ### Documented
 - The `Licence` menu (install, show, code, request), built from the `vethuq licence` commands.
 

@@ -124,7 +124,7 @@ PyInstaller build makes `vethuq` and `vethuqic`, which share `lib/`.
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Interactive-CLI-Setup.exe` | `vethuqic.exe` into the folder `VethuQ-CLI-Setup.exe` chose, plus a Start menu entry and the PATH task |
+| Windows | `VethuQ-Interactive-CLI-Setup.exe` | `vethuqic.exe` into the folder `VethuQ-CLI-Setup.exe` chose, plus `VethuQ Interactive CLI` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) and the PATH task |
 | Linux | `vethuq-interactive-cli_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqic`, `/usr/bin/vethuqic`, a `.desktop` launcher (`Terminal=true`) and icons; depends on `vethuq-cli` |
 
 Install the command line first. Both installers refuse to run otherwise, and refuse a command line
@@ -145,7 +145,7 @@ with `.github/workflows/release-desktop.yml`. Windows only: the window is pywebv
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Desktop-Setup.exe` | `vethuqd.exe` (a GUI program, no console), a Start menu entry, an optional desktop shortcut |
+| Windows | `VethuQ-Desktop-Setup.exe` | `vethuqd.exe` (a GUI program, no console), `VethuQ` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) |
 
 The React interface (`web/`) is built first (`npm ci && npm run build`, done by `release.py` when
 `web/dist` is missing) and frozen into `lib/vethuq_desktop/web`; the program serves it from a local
@@ -168,7 +168,7 @@ and `add-ons/`, and it needs the command line installed first, from the same bui
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Background-Service-Setup.exe` | `vethuqbs.exe`, and the `vethuq background` commands in `add-ons\background` |
+| Windows | `VethuQ-Background-Service-Setup.exe` | `vethuqbs.exe`, and the `vethuq background` commands in `add-ons\background`; in Start > Programs > VethuQ: `VethuQ Background Service` (shows its status), `Start Background Service`, `Stop Background Service` and `Uninstall VethuQ Background Service` |
 | Linux | `vethuq-background-service_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqbs`, `/usr/bin/vethuqbs`, `/opt/vethuq/add-ons/background`; depends on `vethuq-cli` |
 
 `vethuqbs` is what runs: `vethuqbs --service --db FILE`. On Windows it hosts itself in the service manager

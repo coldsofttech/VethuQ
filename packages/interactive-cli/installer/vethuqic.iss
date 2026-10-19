@@ -62,10 +62,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; A console program: Windows opens it in a terminal window.
-Name: "{autoprograms}\VethuQ Interactive"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Menus over the VethuQ commands"
+; A console program: Windows opens it in a terminal window. The Start menu folder (Start > Programs >
+; VethuQ) is shared with the other installers; each removes only its own shortcuts.
+Name: "{autoprograms}\VethuQ\VethuQ Interactive CLI"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Menus over the VethuQ commands"
+Name: "{autodesktop}\VethuQ Interactive CLI"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Menus over the VethuQ commands"; Tasks: desktopicon
 
 [Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 Name: "addtopath"; Description: "Add VethuQ to PATH (lets you run ""vethuqic"" from any terminal)"; GroupDescription: "Command line:"; Flags: checkedonce
 
 [Code]
