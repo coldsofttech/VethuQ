@@ -74,6 +74,7 @@ Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 ; The Start menu folder (Start > Programs > VethuQ) is shared with the other installers; each removes only its own shortcuts.
 Name: "{autoprograms}\VethuQ\VethuQ"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Search your documents"
 Name: "{autodesktop}\VethuQ"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Tasks: desktopicon
+Name: "{autoprograms}\VethuQ\Uninstall VethuQ"; Filename: "{uninstallexe}"; IconFilename: "{app}\vethuq.ico"; Comment: "Remove the VethuQ desktop application"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"

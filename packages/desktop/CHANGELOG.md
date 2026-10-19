@@ -5,6 +5,7 @@ All notable changes to `vethuq-desktop`.
 ## [Unreleased]
 
 ### Changed (installer)
+- Start > Programs > VethuQ also has `Uninstall VethuQ`.
 - The Start menu entry is now Start > Programs > VethuQ > VethuQ, and the optional desktop shortcut is on by default.
 
 ### Added (discover)

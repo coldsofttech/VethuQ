@@ -79,6 +79,11 @@ Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 Source: "..\..\..\build\cli\vethuq\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\..\build\cli\vethuq\add-ons\*"; DestDir: "{app}\add-ons"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Icons]
+; The Start menu folder (Start > Programs > VethuQ) is shared with the other installers; each removes only its own shortcuts.
+; Only an uninstall shortcut: removing the command line removes the whole folder, the other VethuQ programs in it included.
+Name: "{autoprograms}\VethuQ\Uninstall VethuQ CLI"; Filename: "{uninstallexe}"; IconFilename: "{app}\vethuq.ico"; Comment: "Remove the VethuQ command line"
+
 [UninstallDelete]
 ; The interactive shell, the background service and the worker (their own installers) live in this folder and rely
 ; on lib\.

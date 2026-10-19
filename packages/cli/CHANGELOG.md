@@ -4,6 +4,9 @@ All notable changes to `vethuq-cli`.
 
 ## [Unreleased]
 
+### Changed (installer)
+- Start > Programs > VethuQ gets `Uninstall VethuQ CLI`.
+
 ### Added (bundle licences, the device folder)
 - `vethuq licence bundles` (each bundle's licence state), a `bundles` column in `licence show`, a `licence` column in `catalog bundles`, and `licence install` reports which add-ons got the key through a bundle.
 - `vethuq settings location show` also shows the device folder (licences and credits) and who shares it.

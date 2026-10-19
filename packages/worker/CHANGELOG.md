@@ -5,6 +5,9 @@ tags named `vethuq-worker-vX.Y.Z` (through hatch-vcs), not from this file.
 
 ## [Unreleased]
 
+### Changed (installer)
+- Start > Programs > VethuQ gets `Uninstall VethuQ Worker`.
+
 ### Added (GitHub tier)
 - The worker refuses a licence whose GitHub owner list doesn't hold the repository's owner (`owner_mismatch`; the pinned workflow gives it `VETHUQ_GITHUB_OWNER_ID`), and a manifest naming an unknown model profile (`bad_profile`). The manifest has optional `profiles` (phase to profile) and the result an optional `runner` (CPU model, profiles).
 

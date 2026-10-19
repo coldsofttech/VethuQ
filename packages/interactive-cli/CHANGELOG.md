@@ -5,6 +5,7 @@ All notable changes to `vethuq-interactive-cli`.
 ## [Unreleased]
 
 ### Changed (installer)
+- Start > Programs > VethuQ also has `Uninstall VethuQ Interactive CLI`.
 - The Start menu entry is now Start > Programs > VethuQ > VethuQ Interactive CLI, and there is an optional desktop shortcut, on by default.
 
 ### Documented

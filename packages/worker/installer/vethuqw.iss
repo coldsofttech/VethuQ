@@ -63,6 +63,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
+[Icons]
+; The Start menu folder (Start > Programs > VethuQ) is shared with the other installers; each removes only its own shortcuts.
+Name: "{autoprograms}\VethuQ\Uninstall VethuQ Worker"; Filename: "{uninstallexe}"; IconFilename: "{app}\vethuq.ico"; Comment: "Remove the VethuQ worker"
+
 [Code]
 #include "..\..\..\installer\shared\into_cli_folder.iss"
 

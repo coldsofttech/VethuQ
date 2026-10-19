@@ -89,7 +89,7 @@ interactive shell or background service, and attaches the installers to a GitHub
 
 | Platform | File | Made with |
 |---|---|---|
-| Windows | `VethuQ-CLI-Setup.exe` | PyInstaller, then Inno Setup (`packages/cli/installer/vethuq-cli.iss`) |
+| Windows | `VethuQ-CLI-Setup.exe` | PyInstaller, then Inno Setup (`packages/cli/installer/vethuq-cli.iss`); `Uninstall VethuQ CLI` in Start > Programs > VethuQ |
 | Linux | `vethuq-cli_X.Y.Z_amd64.deb` | PyInstaller, then `dpkg-deb`; installs to `/opt/vethuq`, with `/usr/bin/vethuq` |
 
 Both hold the same folder:
@@ -124,7 +124,7 @@ PyInstaller build makes `vethuq` and `vethuqic`, which share `lib/`.
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Interactive-CLI-Setup.exe` | `vethuqic.exe` into the folder `VethuQ-CLI-Setup.exe` chose, plus `VethuQ Interactive CLI` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) and the PATH task |
+| Windows | `VethuQ-Interactive-CLI-Setup.exe` | `vethuqic.exe` into the folder `VethuQ-CLI-Setup.exe` chose, plus `VethuQ Interactive CLI` and `Uninstall VethuQ Interactive CLI` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) and the PATH task |
 | Linux | `vethuq-interactive-cli_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqic`, `/usr/bin/vethuqic`, a `.desktop` launcher (`Terminal=true`) and icons; depends on `vethuq-cli` |
 
 Install the command line first. Both installers refuse to run otherwise, and refuse a command line
@@ -145,7 +145,7 @@ with `.github/workflows/release-desktop.yml`. Windows only: the window is pywebv
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Desktop-Setup.exe` | `vethuqd.exe` (a GUI program, no console), `VethuQ` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) |
+| Windows | `VethuQ-Desktop-Setup.exe` | `vethuqd.exe` (a GUI program, no console), `VethuQ` and `Uninstall VethuQ` in Start > Programs > VethuQ, an optional desktop shortcut (on by default) |
 
 The React interface (`web/`) is built first (`npm ci && npm run build`, done by `release.py` when
 `web/dist` is missing) and frozen into `lib/vethuq_desktop/web`; the program serves it from a local
@@ -195,7 +195,7 @@ unchanged.) Like the shell and the service it installs **into the command line's
 
 | Platform | File | Installs |
 |---|---|---|
-| Windows | `VethuQ-Worker-Setup.exe` | `vethuqw.exe` |
+| Windows | `VethuQ-Worker-Setup.exe` | `vethuqw.exe`, and `Uninstall VethuQ Worker` in Start > Programs > VethuQ |
 | Linux | `vethuq-worker_X.Y.Z_amd64.deb` | `/opt/vethuq/vethuqw`, and `/usr/bin/vethuq-worker` pointing at it; depends on `vethuq-cli` |
 
     vethuqw run --job-id ID --payload DIR --out DIR      # the key is in VETHUQ_MASTER_KEY

@@ -65,6 +65,7 @@ Source: "..\..\..\build\cli\vethuq\{#MyAppExeName}"; DestDir: "{app}"; Flags: ig
 ; A console program: Windows opens it in a terminal window. The Start menu folder (Start > Programs >
 ; VethuQ) is shared with the other installers; each removes only its own shortcuts.
 Name: "{autoprograms}\VethuQ\VethuQ Interactive CLI"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Menus over the VethuQ commands"
+Name: "{autoprograms}\VethuQ\Uninstall VethuQ Interactive CLI"; Filename: "{uninstallexe}"; IconFilename: "{app}\vethuq.ico"; Comment: "Remove the VethuQ interactive CLI"
 Name: "{autodesktop}\VethuQ Interactive CLI"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\vethuq.ico"; Comment: "Menus over the VethuQ commands"; Tasks: desktopicon
 
 [Tasks]
