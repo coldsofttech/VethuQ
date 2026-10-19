@@ -194,12 +194,26 @@ class TestCharging:
         assert charge.size_factor == 1.0 and charge.rate_card_version == 1
         assert charge.run_id == run.id and charge.source_id == 1 and charge.note.endswith("a.pdf")
 
-    def test_native_pages_cost_nothing(self, client, root):
+    def test_native_pages_cost_half_an_ocr_page(self, client, root):
         write(root, "a.pdf", fp.native_page(), fp.native_page("some other native words here"))
         client.sources.create(root)
         run = client.index.run()
-        assert (run.credits_charged, run.ocr_pages, run.pages_processed) == (0, 0, 2)
-        assert client.credits.history(kind="charge") == []
+        assert (run.credits_charged, run.ocr_pages, run.pages_processed) == (1.0, 0, 2)
+        charges = client.credits.history(kind="charge")
+        assert [c.phase for c in charges] == ["native", "native"]
+        assert [abs(c.amount) for c in charges] == [0.5, 0.5]
+
+    def test_the_policy_sets_the_native_rate_per_file_type(self, client, root):
+        policy(client, rate_card={"version": 2, "native": {"default": 0.25, "types": {"pdf": 0.75}}})
+        write(root, "a.pdf", fp.native_page())
+        client.sources.create(root)
+        assert client.index.run().credits_charged == 0.75
+
+    def test_a_native_rate_of_zero_is_free(self, client, root):
+        policy(client, rate_card={"version": 2, "native": {"default": 0}})
+        write(root, "a.pdf", fp.native_page())
+        client.sources.create(root)
+        assert client.index.run().credits_charged == 0
 
     def test_size_sets_the_price(self, client, root):
         write(root, "a.pdf", scan(**fp.A3))
@@ -212,12 +226,12 @@ class TestCharging:
         write(root, "a.pdf", fp.mixed_page("Native text with enough words in it.", "one", "two",
                                             region_side=side))  # fmt: skip
         client.sources.create(root)
-        assert client.index.run().credits_charged == 0.639
+        assert client.index.run().credits_charged == 0.82  # 0.639 for the images, 0.181 native
 
     def test_a_mixed_page_with_small_images_costs_the_minimum(self, client, root):
         write(root, "a.pdf", fp.mixed_page("Native text with enough words in it.", "logo"))
         client.sources.create(root)
-        assert client.index.run().credits_charged == 0.25
+        assert client.index.run().credits_charged == 0.75  # 0.25 for the images, 0.5 native
 
     def test_a_blank_page_costs_the_minimum(self, client, root):
         write(root, "a.pdf", scan(""))
@@ -261,8 +275,8 @@ class TestCharging:
             write(b, "x.pdf", scan("shared words"), fp.native_page())
             first = client.sources.create(a, languages=["en"])
             second = client.sources.create(b, languages=["te"])
-            assert client.index.run(first.id).credits_charged == 1.0
-            assert client.index.run(second.id).credits_charged == 1.0  # language_pass
+            assert client.index.run(first.id).credits_charged == 1.5  # the scan and the native page
+            assert client.index.run(second.id).credits_charged == 1.0  # language_pass only
         finally:
             sys.path.remove(str(folder))
             LanguageAddonFactory.forget("vethuq_addon_telugu")
@@ -398,7 +412,7 @@ class TestEstimate:
         client.sources.create(root)
         estimate = client.credits.estimate()
         assert (estimate.files, estimate.pages, estimate.ocr_pages) == (2, 4, 2)
-        assert (estimate.credits, estimate.maximum, estimate.affordable) == (2.0, 2.5, True)
+        assert (estimate.credits, estimate.maximum, estimate.affordable) == (3.0, 3.75, True)
         assert json.loads(estimate.to_json()) == estimate.to_dict()
 
     def test_it_matches_what_a_run_charges(self, client, root):

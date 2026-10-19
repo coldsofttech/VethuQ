@@ -52,6 +52,22 @@ class _Pricing:
             return milli(full)
         return milli(min(full, max(full * covered, t.minimum)))
 
+    def native_milli(
+        self,
+        factor: float,
+        file_type: str | None,
+        *,
+        covered: float = 0.0,
+        blank: bool = False,
+    ) -> int:
+        """The cost of a page read from the file's own text: `factor` x the quick rate x the
+        native share of the file type. `covered` is the share of the page its images cover (read
+        by OCR and priced by `cost_milli`), so only the rest is native. No OCR runs, so the
+        device and model multipliers don't apply. A blank page costs the minimum at most."""
+        t = self.terms
+        cost = milli(factor * t.quick * t.native_rate(file_type) * max(1.0 - covered, 0.0))
+        return min(cost, milli(t.minimum)) if blank else cost
+
     def rotated_milli(
         self, factor: float, passes: int, *, covered: float = 1.0, device: str = "cpu"
     ) -> int:

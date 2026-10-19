@@ -279,6 +279,17 @@
           "description": "Multiplier for each rotated angle pass (a pricing discount, not the compute cost).",
           "$ref": "#/$defs/credits"
         },
+        "native": {
+          "description": "What a page read from the file's own text (no OCR) costs, as a share of the quick OCR price of the same page. On a page that also has images, only the part outside the images is native. `default` applies to every file type; `types` overrides it per file type id (for example pdf, xlsx). 0 makes a type free.",
+          "type": "object",
+          "properties": {
+            "default": { "type": "number", "minimum": 0 },
+            "types": {
+              "type": "object",
+              "additionalProperties": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
         "language_pass": {
           "description": "Credits per page per additional language (upright).",
           "$ref": "#/$defs/credits"

@@ -154,16 +154,16 @@ class TestOverview:
         assert [r.key for r in overview.rows] == [sa.path, sb.path]
         a, b = overview.rows
         assert (a.pages, a.native_pages, a.ocr_pages, a.passes) == (3, 1, 2, 2)
-        assert (a.credits, a.files, a.failures) == (2.0, 1, 1)
+        assert (a.credits, a.files, a.failures) == (2.5, 1, 1)
         assert a.confidence == pytest.approx((0.95 + 0.75 + 1.0) / 3)
         assert a.bands == {"high": 2, "medium": 0, "low": 1, "unreliable": 0}
-        assert (b.pages, b.ocr_pages, b.credits) == (2, 2, 1.319)
+        assert (b.pages, b.ocr_pages, b.credits) == (2, 2, 1.659)
         assert b.bands == {"high": 0, "medium": 1, "low": 0, "unreliable": 1}
 
     def test_the_total_adds_everything_up(self, client, two_sources):
         total = client.stats.overview().total
         assert (total.pages, total.ocr_pages, total.native_pages) == (5, 4, 1)
-        assert total.credits == 3.319 and total.failures == 1 and total.key == "total"
+        assert total.credits == 4.159 and total.failures == 1 and total.key == "total"
         assert total.duration_ms >= 0
         assert total.bands == {"high": 2, "medium": 1, "low": 1, "unreliable": 1}
 
@@ -271,7 +271,7 @@ class TestOverview:
         client.sources.purge(sa.id)
         overview = client.stats.overview()
         assert sorted(r.key for r in overview.rows) == ["(purged source)", sb.path]
-        assert overview.total.pages == 5 and overview.total.credits == 3.319
+        assert overview.total.pages == 5 and overview.total.credits == 4.159
         purged = next(r for r in overview.rows if r.key == "(purged source)")
         assert (purged.pages, purged.files) == (3, None)
         with pytest.raises(errors.SourceNotFoundError):

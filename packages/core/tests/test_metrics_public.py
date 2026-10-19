@@ -158,7 +158,7 @@ class TestBatch:
         assert ocr["phase"] == "quick" and ocr["language"] == "en" and ocr["size_bucket"] == "m"
         assert ocr["file_type"] == "pdf" and ocr["engine"] == "fake-ocr 1.0"
         native = by_source[("native", "high")]
-        assert (native["pages"], native["credits_milli"], native["phase"]) == (1, 0, "")
+        assert (native["pages"], native["credits_milli"], native["phase"]) == (1, 500, "")
         assert day["failures"] == [{"file_type": "pdf", "code": "password", "count": 1}]
         assert data["settings"] == {
             "workers": "auto",

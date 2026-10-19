@@ -499,8 +499,10 @@ class _PageMeter:
         additional_language: bool,
         scope: str | None = None,
         wallet: str = LOCAL,
+        file_type: str | None = None,
     ) -> None:
         self.credits = credits
+        self.file_type = file_type
         self.wallet_name = wallet
         self.wallet = credits.wallet_for(wallet)
         self.source_id, self.run_id = source_id, run_id
@@ -532,6 +534,15 @@ class _PageMeter:
             device=self.device,
         )
         return factor, cost
+
+    def quote_native(
+        self, width_pt, height_pt, covered: float = 0.0, blank: bool = False
+    ) -> tuple[float, int]:
+        """(size factor, cost in milli-credits) of the part of a page read from the file's text.
+        Raises `_PageTooLarge`."""
+        pricing = self.pricing()
+        factor = pricing.size_factor(width_pt, height_pt)
+        return factor, pricing.native_milli(factor, self.file_type, covered=covered, blank=blank)
 
     def reserve(self, cost_milli: int) -> int:
         with self.credits.database.session() as session:

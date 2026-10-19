@@ -68,6 +68,11 @@ class _Terms:
     github_daily_private: float = 20.0
     github_daily_public: float = 200.0
     github_starter: float = 0.0
+    # What a page read from the file's own text costs, as a share of the quick OCR price of the
+    # same page: `native` for any file type, `native_types` (file type id -> share) for the ones
+    # that differ. 0 makes a type free.
+    native: float = 0.5
+    native_types: Mapping[str, float] = field(default_factory=dict)
     # Credits per page of work an add-on does (the rate card's `semantic`: embedding one page).
     semantic: float = 0.5
     # Add-on sub-wallets by add-on id: {"local_daily": credits, "starter": credits}. An add-on
@@ -152,6 +157,14 @@ class _Terms:
         values["per_page_max"] = number(size.get("per_page_max"), base.per_page_max, 0.001)
         values["semantic"] = number(card.get("semantic"), base.semantic)
         values["quick"] = number(phases.get("quick"), base.quick)
+        native = card.get("native") if isinstance(card.get("native"), Mapping) else {}
+        values["native"] = number(native.get("default"), base.native)
+        kinds = native.get("types") if isinstance(native.get("types"), Mapping) else {}
+        values["native_types"] = {
+            str(name): number(rate, values["native"])
+            for name, rate in kinds.items()
+            if isinstance(name, str)
+        }
         values["language_pass"] = number(card.get("language_pass"), base.language_pass)
         values["rotated_factor"] = number(card.get("rotated_factor"), base.rotated_factor)
         values["cpu"] = number(device.get("cpu"), base.cpu)
@@ -267,6 +280,10 @@ class _Terms:
     def device_factor(self, device: str) -> float:
         """The multiplier for the compute device a page was read on (`cpu` or `gpu`)."""
         return self.gpu if device == "gpu" else self.cpu
+
+    def native_rate(self, file_type: str | None) -> float:
+        """The share of the quick OCR price a native page of `file_type` costs."""
+        return self.native_types.get(file_type or "", self.native)
 
     def rate_for(self, key: str, default: float) -> float:
         """What an add-on's work costs per page, from the rate card (`default` if it has none)."""

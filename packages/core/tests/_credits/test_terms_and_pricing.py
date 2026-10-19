@@ -91,7 +91,39 @@ class TestCost:
         assert p.blank_milli(100) == 100
 
 
+class TestNative:
+    def test_half_the_quick_price_by_default(self):
+        p = pricing()
+        assert p.native_milli(1.0, "pdf") == 500
+        assert p.native_milli(2.0, "xlsx") == 1000
+
+    def test_a_file_type_can_have_its_own_share(self):
+        p = pricing(native_types={"xlsx": 0.75})
+        assert (p.native_milli(1.0, "xlsx"), p.native_milli(1.0, "pdf")) == (750, 500)
+
+    def test_zero_is_free(self):
+        assert pricing(native=0.0).native_milli(1.0, "pdf") == 0
+
+    def test_it_follows_the_quick_rate_but_not_device_or_model(self):
+        assert pricing(quick=2.0, gpu=3.0, cpu=3.0, fast=3.0).native_milli(1.0, "pdf") == 1000
+
+    def test_only_the_part_outside_the_images_is_native(self):
+        p = pricing()
+        assert p.native_milli(1.0, "pdf", covered=0.5) == 250
+        assert p.native_milli(1.0, "pdf", covered=1.0) == 0
+
+    def test_a_blank_page_costs_the_minimum_at_most(self):
+        assert pricing().native_milli(1.0, "pdf", blank=True) == 250
+        assert pricing().native_milli(0.25, "pdf", blank=True) == 125
+
+
 class TestTermsFromPolicy:
+    def test_the_native_rates(self):
+        card = {"version": 2, "native": {"default": 0.4, "types": {"xlsx": 0.75, "bad": -1}}}
+        t = _Terms.from_policy({"rate_card": card})
+        assert (t.native_rate("pdf"), t.native_rate("xlsx"), t.native_rate("bad")) == (0.4, 0.75, 0.4)
+        assert _Terms.from_policy({}).native_rate("pdf") == 0.5
+
     def test_defaults_are_the_documented_numbers(self):
         t = _Terms.from_policy({})
         assert (t.local_daily, t.local_starter, t.grace_percent, t.grace_mode) == (

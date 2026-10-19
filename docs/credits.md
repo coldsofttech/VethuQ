@@ -25,14 +25,23 @@ reference for the numbers; the signed policy can change any of them, from the ne
 
 `size factor = page area / A4 area`, reduced by 5%, rounded up to a quarter, at least 0.25, at most
 16 (larger pages are refused). A page of an image file is taken to be 300 dpi, so its size is its
-pixel count. Blank pages cost the minimum. Pages with native text, duplicates and unchanged files
-cost nothing.
+pixel count. Blank pages cost the minimum. Duplicates and unchanged files cost nothing.
+
+Pages read from the file's own text (native) cost a share of what OCR would charge for the same
+page: `factor x quick x native share`. The share is `rate_card.native.default` (0.5 until the
+policy says otherwise) and `rate_card.native.types` can set it per file type id, for example
+`{"default": 0.5, "types": {"xlsx": 0.75}}`; 0 makes a type free. No OCR runs, so the device and
+model multipliers don't apply. On a mixed page the images cost as below and the rest of the page
+costs the native share. A blank native page costs the minimum at most. Images are always read by
+OCR, so they never cost the native rate. A native page is paid for once, when it is first read:
+reading the file again in another language charges only the OCR passes.
 
 | Pass | Cost |
 |---|---|
 | quick, first language | `factor x 1.0 x device x fast` |
 | another language | `factor x language_pass x device x fast` |
 | each rotated pass (moderate, high) | `factor x 0.8 x device x advanced` |
+| native page | `factor x quick x native share` (phase `native`, no device or model multiplier) |
 | embedding a page (`semantic`) | 0.5, from the add-on's sub-wallet |
 
 `device` is 1.0 for `cpu` and `gpu` until the policy says otherwise; a remote tier is CPU only.

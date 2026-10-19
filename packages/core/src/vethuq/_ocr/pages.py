@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from vethuq._credits import _PageMeter
+from vethuq._credits import _PageMeter, _PageTooLarge
 from vethuq._db.values import _PageSource
 from vethuq_addon_api import (
     DocumentReader,
@@ -251,6 +251,27 @@ class _PageOcr:
         return result
 
     @staticmethod
+    def _read_native(
+        number: int, page: ReadPage, native: str, meter: _PageMeter | None
+    ) -> _PageResult:
+        """A page whose text came from the file: no OCR runs, and with a `meter` it is paid for at
+        the native rate of its file type. A page too large for the rate card costs nothing here, as
+        it did before native pages were priced; a blank one costs the minimum at most."""
+        if meter is None:
+            return _PageResult(number, native, 1.0, _PageSource.NATIVE)
+        try:
+            factor, cost = meter.quote_native(
+                page.width_pt, page.height_pt, blank=not native and not page.image_regions
+            )
+        except _PageTooLarge:
+            return _PageResult(number, native, 1.0, _PageSource.NATIVE)
+        held = meter.reserve(cost)
+        charged = meter.commit(held, cost, number, factor, "native", count_page=False)
+        return _PageResult(
+            number, native, 1.0, _PageSource.NATIVE, credits_milli=charged, size_factor=factor
+        )
+
+    @staticmethod
     def _read(
         number: int,
         page: ReadPage,
@@ -268,17 +289,18 @@ class _PageOcr:
         `pending` with the images to send (`requests`, keyed `key_prefix` + page + image index)."""
         native = page.native_text.strip()
         if not _PageOcr.needs_ocr(page):
-            return _PageResult(number, native, 1.0, _PageSource.NATIVE)
+            return _PageOcr._read_native(number, page, native, meter)
         if executor is None or language is None:
             raise LookupError("OCR isn't available")
         has_text = not page.ocr or _PageOcr.has_text(native)
         regions = list(page.image_regions) if has_text else [None]
-        factor, cost, held = 1.0, 0, 0
+        factor, cost, held, native_cost = 1.0, 0, 0, 0
         if meter is not None:
-            factor, cost = meter.quote(
-                page.width_pt, page.height_pt, _PageOcr.covered(page) if has_text else 1.0
-            )
-            held = meter.reserve(cost)
+            covered = _PageOcr.covered(page) if has_text else 1.0
+            factor, cost = meter.quote(page.width_pt, page.height_pt, covered)
+            if has_text:  # a mixed page: the text outside the images is native
+                native_cost = meter.quote_native(page.width_pt, page.height_pt, covered)[1]
+            held = meter.reserve(cost + native_cost)
         source = _PageSource.MIXED if has_text else _PageSource.OCR
         try:
             if executor.asynchronous:
@@ -293,7 +315,9 @@ class _PageOcr:
                     for index, region in enumerate(regions)
                 )
                 before = len(meter.ledger_ids) if meter is not None else 0
-                charged = meter.commit(held, cost, number, factor, "quick") if meter else 0
+                charged = (
+                    meter.commit(held, cost + native_cost, number, factor, "quick") if meter else 0
+                )
                 paid = tuple(meter.ledger_ids[before:]) if meter is not None else ()
                 return _PageResult(
                     number, native, 0.0, source, None, None, None, charged, factor,
@@ -322,5 +346,5 @@ class _PageOcr:
         charged = 0
         if meter is not None:
             actual = cost if found else meter.pricing().blank_milli(cost)
-            charged = meter.commit(held, actual, number, factor, "quick")
+            charged = meter.commit(held, actual + native_cost, number, factor, "quick")
         return _PageOcr.combine(number, native, has_text, results, duration, factor, charged)

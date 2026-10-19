@@ -1,9 +1,10 @@
 """Credits: what reading pages costs and what you have left: `VethuQ().credits`.
 
 One credit is the work of reading one A4 page once, upright, in one language. Pages that need no
-OCR (native text), duplicate files and unchanged files cost nothing, and searching is free. The
-free local wallet gets a daily allowance (and a one-off starter) that resets at 00:00 UTC; the
-rates and limits come from the signed policy. See `docs/credits.md`.
+OCR (native text) cost a share of that (half, until the policy says otherwise), duplicate files and
+unchanged files cost nothing, and searching is free. The free local wallet gets a daily allowance
+(and a one-off starter) that resets at 00:00 UTC; the rates and limits come from the signed policy.
+See `docs/credits.md`.
 """
 
 from __future__ import annotations

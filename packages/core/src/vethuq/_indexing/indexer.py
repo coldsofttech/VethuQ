@@ -429,6 +429,7 @@ class _Indexer:
                         language=plan.language.id,
                         additional_language=additional,
                         wallet=wallet,
+                        file_type=plan.file_type,
                     )
                 return meters[wallet]
 
@@ -697,13 +698,20 @@ class _Indexer:
             files += 1
             for _number, page in found:
                 pages += 1
-                if not _PageOcr.needs_ocr(page):
-                    continue
-                has_text = _PageOcr.has_text(page.native_text.strip())
                 try:
                     factor = pricing.size_factor(page.width_pt, page.height_pt)
                 except _PageTooLarge:
                     continue
+                if not _PageOcr.needs_ocr(page):
+                    cost += pricing.native_milli(
+                        factor,
+                        file_type.id,
+                        blank=not page.native_text.strip() and not page.image_regions,
+                    )
+                    continue
+                has_text = _PageOcr.has_text(page.native_text.strip())
+                if has_text:  # a mixed page: the text outside the images is native
+                    cost += pricing.native_milli(factor, file_type.id, covered=_PageOcr.covered(page))
                 ocr_pages += 1
                 cost += pricing.cost_milli(
                     factor,

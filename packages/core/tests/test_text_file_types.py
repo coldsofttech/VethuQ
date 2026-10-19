@@ -51,7 +51,7 @@ class TestTextFiles:
         (root / "c.md").write_text("ok\n")
         run, statuses = index(client, root)
         assert set(statuses.values()) == {FileStatus.INDEXED}
-        assert (run.files_processed, run.ocr_pages, run.credits_charged) == (3, 0, 0.0)
+        assert (run.files_processed, run.ocr_pages, run.credits_charged) == (3, 0, 1.5)  # native pages: 0.5 each
 
     def test_they_are_found_by_search(self, client, root):
         (root / "a.txt").write_text("zebra crossing")
