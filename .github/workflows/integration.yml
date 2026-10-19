@@ -2,9 +2,11 @@
 # workflow); never on a push or pull request. These tests need the real OCR engine, so they are
 # far too heavy for test.yml.
 #
-# The inputs choose what is tested. The tests read them from the environment (VETHUQ_IT_*) and
-# say what they cover with markers: lang_<id> and type_<id>. There are no integration tests yet,
-# so a run that collects nothing passes with a warning. Tests so far: PDF, PNG and JPG (English, Telugu).
+# The integration tests live in VethuQ-premium (tests/integration/<file type>/): this workflow
+# checks that repository out with a token, runs its scripts/dev/tests.py with VethuQ's environment,
+# and uploads the test results. The inputs choose what is tested; the tests say what they cover
+# with markers (lang_<id> and type_<id>). A selection with no tests passes with a warning.
+# Tests so far: PDF, PNG and JPG (English, Telugu).
 name: integration
 
 on:
@@ -136,24 +138,19 @@ jobs:
             echo "- Autoscale: $VETHUQ_IT_AUTOSCALE"
             echo "- File type: $VETHUQ_IT_FILE_TYPE"
           } >> "$GITHUB_STEP_SUMMARY"
+      # VethuQ's environment (VethuQ, the OCR engine and the add-ons installed above) runs premium's tests.
       - name: Run integration tests
-        working-directory: work/VethuQ
+        working-directory: work/VethuQ-premium
         run: |
-          expr="integration and lang_${VETHUQ_IT_LANGUAGE} and type_${VETHUQ_IT_FILE_TYPE}"
-          echo "pytest -m \"$expr\""
-          set +e
-          uv run --no-sync pytest -m "$expr" -ra --durations=15 --junitxml=junit-integration.xml packages/core/tests/integration
-          code=$?
-          # pytest exits 5 when nothing matched: say so, but pass.
-          if [ "$code" -eq 5 ]; then
-            echo "::warning::No integration tests matched: $expr"
-            code=0
-          fi
-          exit "$code"
+          args=(--language "$VETHUQ_IT_LANGUAGE" --file-type "$VETHUQ_IT_FILE_TYPE" \
+            --ocr-engine "$VETHUQ_IT_OCR_ENGINE" --ocr-mode "$VETHUQ_IT_OCR_MODE" \
+            --junit junit-integration.xml)
+          if [ "$VETHUQ_IT_AUTOSCALE" = "true" ]; then args+=(--autoscale); fi
+          uv run --no-sync --project ../VethuQ python scripts/dev/tests.py integration "${args[@]}"
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: junit-integration-${{ inputs.language }}-${{ inputs.ocr-mode }}-${{ inputs.file-type }}
-          path: work/VethuQ/junit-integration.xml
+          path: work/VethuQ-premium/junit-integration.xml
           if-no-files-found: ignore

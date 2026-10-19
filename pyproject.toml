@@ -168,10 +168,5 @@ testpaths = ["packages/core/tests", "packages/addon-api/tests", "packages/worker
 addopts = "-ra -m \"not integration\""
 markers = [
     "basic: the few tests that cover the core functionality; the pre-commit and pre-push hooks run only these (`pytest -m basic`)",
-    "integration: end-to-end tests that need real engines or network (run by integration.yml only)",
-    "lang_en: integration tests of English files",
-    "lang_te: integration tests of Telugu files",
-    "type_pdf: integration tests of PDF files",
-    "type_png: integration tests of PNG files",
-    "type_jpg: integration tests of JPG files",
+    "integration: end-to-end tests that need real engines or network (none here: they live in VethuQ-premium and run through integration.yml)",
 ]

@@ -9,14 +9,13 @@ Everything is encrypted; the page is a fixture of the repository. Exit code 0 on
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
-FIXTURES = Path(__file__).resolve().parents[2] / "packages/core/tests/integration/fixtures/en/png"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "invoice.png"
 WAIT_MINUTES = 25
 
 
@@ -31,12 +30,10 @@ def main() -> int:
     from vethuq import VethuQ
 
     owner, _, repo = os.environ["E2E_REPO"].partition("/")
-    expected = json.loads((FIXTURES / "expected.json").read_text("utf-8"))["files"]
-    name = sorted(expected)[0] if isinstance(expected, dict) else expected[0]["name"]
     with tempfile.TemporaryDirectory(prefix="vethuq-e2e-") as folder:
         docs = Path(folder) / "docs"
         docs.mkdir()
-        shutil.copy(FIXTURES / name, docs / name)
+        shutil.copy(FIXTURE, docs / FIXTURE.name)
         with VethuQ(db_path=Path(folder) / "db" / "vethuq.db") as client:
             github = GitHub(client)
             github.setup(repo, owner=owner, private=False, create=False, adopt=True)
