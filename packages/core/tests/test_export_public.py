@@ -417,6 +417,24 @@ class TestClientSourceExport:
         assert '<div class="label">Folders</div><div class="value">1</div>' in text
         assert "docs" in text
 
+    def test_sources_default_to_every_active_source(self, indexed, tmp_path):
+        path = indexed.sources.export(output=tmp_path / "s.json")
+        assert json.loads(path.read_text())["source_count"] == 1
+
+    def test_include_removed(self, indexed, tmp_path):
+        source = indexed.sources.list()[0]
+        indexed.sources.remove(source.id)
+        active = indexed.sources.export(output=tmp_path / "a.json")
+        everything = indexed.sources.export(output=tmp_path / "b.json", include_removed=True)
+        assert json.loads(active.read_text())["source_count"] == 0
+        assert json.loads(everything.read_text())["source_count"] == 1
+
+    def test_extension_is_added_when_missing(self, indexed, tmp_path):
+        sources = indexed.sources.list()
+        assert indexed.sources.export(sources, tmp_path / "export", "html").name == "export.html"
+        assert indexed.sources.export(sources, tmp_path / "other").name == "other.json"
+        assert indexed.sources.export(sources, tmp_path / "keep.txt", "html").name == "keep.txt"
+
     def test_files_without_detail(self, indexed, tmp_path):
         source = indexed.sources.list()[0]
         files = indexed.sources.list_files(source.id)

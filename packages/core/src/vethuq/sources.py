@@ -471,17 +471,24 @@ class Sources:
 
     def export(
         self,
-        sources: Sequence[Source],
-        output: str | Path,
+        sources: Sequence[Source] | None = None,
+        output: str | Path = "sources",
         format: ExportFormat | str | None = None,
+        *,
+        include_removed: bool = False,
     ) -> Path:
-        """Write a list of sources (what `list()` returned) to a file and return its path.
+        """Write sources to a file and return its path.
 
-        `format` is `json` or `html`; left out, the saved default (`settings.search`, `json`). The
-        HTML is one portable page with a row per source and its status. The folder of `output` is
-        created if needed. Raises `ValueError` for a format that isn't `json` or `html` and
-        `IsADirectoryError` if `output` is a folder.
+        `sources` are the ones to write (what `list()` returned); left out, every active source is
+        written, and `include_removed=True` adds the removed ones. `include_removed` only applies
+        when `sources` is left out. `format` is `json` or `html`; left out, the saved default
+        (`settings.search`, `json`). An `output` without an extension gets the format's (`export`
+        becomes `export.html`). The HTML is one portable page with a row per source and its
+        status. The folder of `output` is created if needed. Raises `ValueError` for a format
+        that isn't `json` or `html` and `IsADirectoryError` if `output` is a folder.
         """
+        if sources is None:
+            sources = self.list(include_removed=include_removed)
         return self._exporter_().sources(list(sources), Path(output), self._format(format))
 
     def export_files(

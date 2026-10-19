@@ -38,6 +38,12 @@ class _Exporter:
         return format_
 
     @staticmethod
+    def with_extension(output: Path, format_: str) -> Path:
+        """`output` with `.format_` added when it has no extension of its own."""
+        output = Path(output).expanduser()
+        return output if output.suffix or output.is_dir() else output.with_name(f"{output.name}.{format_}")
+
+    @staticmethod
     def _write(output: Path, text: str) -> Path:
         output = Path(output).expanduser()
         if output.is_dir():
@@ -128,6 +134,7 @@ class _Exporter:
     def search_results(self, result: SearchResult, output: Path, format_: str) -> Path:
         """Write the matches of `result` to `output` as `format_` ('json' or 'html')."""
         self.check_format(format_)
+        output = self.with_extension(output, format_)
         if format_ == "json":
             return self._write(output, self._json(self._search_payload(result)))
         return self._write(output, self._search_html(result))
@@ -273,6 +280,7 @@ class _Exporter:
     def sources(self, sources: list[Source], output: Path, format_: str) -> Path:
         """Write the registered `sources` to `output`."""
         self.check_format(format_)
+        output = self.with_extension(output, format_)
         if format_ == "json":
             payload = {
                 "generated_at": _Page.generated_at(),
@@ -333,6 +341,7 @@ class _Exporter:
         """Write the `files` of `source` to `output`. Files that carry their `index` (listed with
         `detailed=True`) get the indexing columns too."""
         self.check_format(format_)
+        output = self.with_extension(output, format_)
         detailed = any(f.index is not None for f in files)
         if format_ == "json":
             payload = {
@@ -465,6 +474,7 @@ class _Exporter:
         escape). `cards` are extra `(label, value)` summary cards after the row count.
         """
         self.check_format(format_)
+        output = self.with_extension(output, format_)
         if format_ == "json":
             payload = {
                 "generated_at": _Page.generated_at(),
@@ -509,6 +519,7 @@ class _Exporter:
         with its own filters; a section with no records says so instead of showing a table.
         """
         self.check_format(format_)
+        output = self.with_extension(output, format_)
         if format_ == "json":
             payload: dict[str, object] = {
                 "generated_at": _Page.generated_at(),
